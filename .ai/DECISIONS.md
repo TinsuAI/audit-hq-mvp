@@ -52,6 +52,29 @@ Ghi lại các quyết định kiến trúc và phạm vi. Mỗi entry: ngày, q
 
 **Alternatives loại:** HTMX (cân nhắc lại tuần 9 nếu cần partial reload); SPA (over-engineer).
 
+### 7. Adapter trả về dataclass, không trả Pydantic / pandas DataFrame trực tiếp (2026-05-21)
+
+**Quyết định:** Mỗi adapter (`parse_m15`, ...) trả về `@dataclass` thuần (vd `M15File(header, rows, source_file)`, `M15Row(...)`). Không expose pandas DataFrame ra ngoài adapter.
+
+**Lý do:**
+- Type-safe (LSP/autocomplete trong IDE), dễ test.
+- Tách rời Excel parsing layer khỏi business logic — sau này swap pandas sang polars hoặc openpyxl raw không ảnh hưởng caller.
+- Pydantic có overhead validation không cần ở tầng adapter (đã trust schema sau khi parse).
+
+### 8. Pipeline ingest idempotent: xoá rồi insert lại (2026-05-21)
+
+**Quyết định:** `ingest()` delete toàn bộ rows của `(company_id, period_year)` trước khi insert. Re-run cùng command sẽ ghi đè.
+
+**Lý do:** Trong dev, sẽ tinker schema + chạy lại liên tục. Tránh dup data. Khi cần audit lịch sử, dùng git/snapshot.
+
+### 9. Mẫu 16 hỗ trợ 2 format song song (2026-05-21)
+
+**Quyết định:** Adapter `parse_m16` tự detect format theo sheet name:
+- `BCTT39` / `Bcqt` → mẫu TT39 chuẩn (data từ row 11, col 1-7)
+- `Sheet1` → format DINHMUC tự do (data từ row 1, col 1-9)
+
+**Lý do:** DN nộp 2 format khác nhau (HONG_AN có cả 2 file cùng năm). Forward-fill mã SP để xử lý layout parent-child trong cả 2 format.
+
 ### 6. Symlink `data/` thay vì duplicate
 
 **Quyết định:** `audit-hq-mvp/data` là symlink tới `audit-hq/data/raw/`. Cả 2 repo gitignore raw.

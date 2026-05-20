@@ -1,32 +1,31 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái:** Tuần 1 đang khởi tạo. Repo vừa scaffold (2026-05-21). Khung FastAPI + basic-auth chạy được, smoke test pass. Chưa có adapter, chưa có check.
+> **Trạng thái:** Tuần 2 hoàn tất (2026-05-21). 4 adapters + Tầng 1 model + pipeline ingest chạy đầu cuối trên HONG_AN 2024 (99 NVL / 75 SP / 476 định mức / 246 dòng BCCT). 12 tests pass, ruff clean. Sẵn sàng tuần 3.
 
 ## Current State
 
 - Stack: Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite, pandas + openpyxl/xlrd, Jinja2.
-- DB: SQLite cho cả dev + demo (theo quyết định 2026-05-21).
+- DB: SQLite (`audit_hq.sqlite`). 5 tables: `companies`, `nvl_balances`, `sp_balances`, `norms`, `declaration_lines`.
 - Auth: basic-auth (cookie-signed session). Mặc định `admin/admin` cho dev — thay env vars `AUTH_USER`/`AUTH_PASSWORD` cho demo.
 - Dữ liệu: symlink `data/` → `../audit-hq/data/raw/` (gitignored), 622 file thực 6 DN.
 
 ## Recent Changes
 
-- **2026-05-21** — Scaffold tuần 1: pyproject, Makefile, Dockerfile, docker-compose, FastAPI hello + login + overview placeholder, alembic init, 5 smoke tests pass.
+- **2026-05-21 (PM)** — Tuần 2: 4 adapters (M15/M15a/M16/BCCT) chuẩn hoá vào dataclass; models Tầng 1; Alembic initial migration; pipeline `discover + ingest` (CLI `python -m app.pipeline.ingest --company HONG_AN --year 2024`); 7 tests mới (4 adapters + 3 discover). Verify HONG_AN 2024 — Công ty Cổ phần Giầy Hồng An, MST 5400273360, ngành giày dép (SXXK loại hình E31/E62).
+- **2026-05-21 (AM)** — Scaffold tuần 1: pyproject, Makefile, Dockerfile, docker-compose, FastAPI hello + login + overview placeholder, alembic init, 5 smoke tests pass.
 
 ## Next Steps
 
-### Tuần 2 — Adapters đọc Excel (mục tiêu)
+### Tuần 3 — Cài Nhóm 1 (6 check MVP)
 
-1. `app/adapters/m15.py` — đọc Mẫu 15 NVL (cấu trúc cột: mã NVL, đơn vị, tồn đầu, nhập, xuất sản xuất, xuất tái xuất, chuyển mục đích sử dụng, xuất khác, tồn cuối).
-2. `app/adapters/m15a.py` — Mẫu 15a thành phẩm (tồn đầu, nhập kho, xuất khẩu, chuyển mục đích sử dụng, xuất khác, tồn cuối).
-3. `app/adapters/m16.py` — Mẫu 16 định mức (mã SP, mã NVL, định mức, đơn vị).
-4. `app/adapters/bcct.py` — Báo cáo hàng chi tiết NK/XK từ ECUS (số tờ khai, ngày, mã loại hình, mã NVL/SP, số lượng, đơn vị, mã HS, NCC).
-5. Pilot dataset: **HONG_AN 2024** (đầy đủ nhất).
-6. Models + migration (Alembic autogenerate).
-7. Pipeline ingest: command `python -m app.pipeline.ingest --company HONG_AN --year 2024 --path data/HONG_AN/2024/`.
-8. Smoke test: load 1 năm vào SQLite, query theo mã NVL ra số dòng kỳ vọng.
+1. `app/checks/c1_quantity.py` — implement C1.1, C1.2, C1.3, C1.4, C1.6, C1.7 (xem `../audit-hq/de-an-audit-hq.md` §4.1 Nhóm 1).
+2. `app/checks/registry.py` — đăng ký mã check, mức độ 🔴🟡🔵, ngưỡng, mô tả ngắn.
+3. Model `Finding` (Tầng 2): id, company_id, period_year, check_code, severity, subject_key (vd material_code), details (JSON), evidence_refs (FK list).
+4. `app/pipeline/run_checks.py` — orchestrate: chạy hết check trên 1 (company, year) → ghi Findings.
+5. UI: trang `/companies/<code>/findings` list findings group by check_code (basic, chưa polish).
+6. Test: mock M15 + BCCT đơn giản (3-5 dòng) verify từng rule fire/no-fire.
 
-### Sau tuần 2 (lộ trình §7 đề án)
+### Sau tuần 3 (lộ trình §7 đề án)
 
 - Tuần 3-4 — Cài Nhóm 1 + Nhóm 2 (9 check MVP).
 - Tuần 5-6 — Cài Nhóm 3 + 4 + 5 + 6 MVP (7 check) + scoring.
