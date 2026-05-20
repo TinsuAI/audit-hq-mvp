@@ -1,0 +1,42 @@
+[project]
+name = "audit-hq-mvp"
+version = "0.1.0"
+description = "Audit-HQ demo — risk management for customs (BCQT analytics)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "jinja2>=3.1",
+    "itsdangerous>=2.2",
+    "python-multipart>=0.0.18",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "pandas>=2.2",
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+    "xlsxwriter>=3.2",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.28",
+    "ruff>=0.8",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"

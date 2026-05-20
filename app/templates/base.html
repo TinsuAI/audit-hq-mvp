@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Audit-HQ{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1><a href="/">Audit-HQ</a></h1>
+  {% if user %}
+    <form method="post" action="/logout" class="logout">
+      <span>{{ user }}</span>
+      <button type="submit">Đăng xuất</button>
+    </form>
+  {% endif %}
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>
+  <small>Audit-HQ MVP — Tinsu AI × Trọng Tín. Bản demo.</small>
+</footer>
+</body>
+</html>
