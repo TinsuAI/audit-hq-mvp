@@ -21,6 +21,13 @@
   </div>
   {% endif %}
 
+  {% if selected_year %}
+  <div class="quick-actions">
+    <a href="/companies/{{ company.code }}/data?year={{ selected_year }}&table=m15" class="btn-link">📋 Dữ liệu gốc</a>
+    <a href="/companies/{{ company.code }}/export?year={{ selected_year }}" class="btn-link primary">📊 Xuất Excel kiến nghị</a>
+  </div>
+  {% endif %}
+
   {% if selected_year is none %}
     <p class="hint">Chưa có findings cho DN này. Chạy <code>python -m app.pipeline.run_checks --company {{ company.code }} --year YYYY</code>.</p>
   {% else %}
@@ -82,7 +89,7 @@
               </td>
               <td><code>{{ f.subject_key or '—' }}</code></td>
               <td>
-                {{ f.title }}
+                <a href="/findings/{{ f.id }}" class="finding-link">{{ f.title }}</a>
                 {% if f.notes %}<div class="finding-notes">📝 {{ f.notes }}</div>{% endif %}
               </td>
               <td><span class="status-pill status-{{ f.status }}">{{ STATUS_LABEL[f.status] }}</span></td>

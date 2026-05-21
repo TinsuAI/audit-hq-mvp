@@ -1,6 +1,6 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái:** Tuần 8 hoàn tất (2026-05-21). Inject 4 sai phạm chủ đích vào DN_003 2024 (fire 11 finding + combo COMBO_ACCOUNTING_INCONSISTENT). Bulk reject 201 critical finding của DN_005 (mô phỏng cán bộ review). Ranking 5 DN demo đúng tinh thần §6.3: DN_003=7896 (gian lận), DN_005=3 (sạch). 92 tests pass. Sẵn sàng tuần 9-10 (polish UI bảng tổng quan + xuất Excel kiến nghị + demo).
+> **Trạng thái:** Tuần 9 hoàn tất (2026-05-21). 3 trang UI mới: trang chi tiết finding (`/findings/{id}`) với chứng cứ Tầng 1 resolved live, trang dữ liệu gốc M15/M15a/M16/BCCT (`/companies/{code}/data`) có lọc + paging, và xuất Excel kiến nghị (`/companies/{code}/export`) với 7 sheet (Tổng quan + Phát hiện + 4 chứng cứ + Pháp lý). 99 tests pass. Sẵn sàng tuần 10 (tổng duyệt nội bộ + deploy + demo cho HQ).
 
 ## Current State
 
@@ -11,6 +11,12 @@
 
 ## Recent Changes
 
+- **2026-05-21 (trưa)** — Tuần 9: UI polish + Excel export.
+  - `GET /findings/{id}`: trang chi tiết phát hiện hiển thị spec nghiệp vụ, details JSON dạng bảng, **chứng cứ truy nguồn** — query Tầng 1 thật theo `evidence_refs` (NvlBalance/SpBalance/Norm/DeclarationLine/Finding) và render bảng kèm filter spec. Có inline form cập nhật trạng thái (status + notes lớn). Title click-through từ `/companies/{code}` table.
+  - `GET /companies/{code}/data?year=YYYY&table=m15|m15a|m16|bcct&q=&page=`: trang xem dữ liệu Tầng 1 — bảng raw có tabs giữa 4 loại, ô lọc theo mã, pagination 50/trang. Đảm bảo "không hộp đen" theo §2.2 đề án.
+  - `GET /companies/{code}/export?year=YYYY`: xuất file `.xlsx` 7 sheet (Tổng quan DN + tổng severity, Phát hiện với màu severity, Chứng cứ M15/M15a/M16/BCCT lọc theo subject_key của findings, Pháp lý với 5 trích yếu). Built bằng xlsxwriter, content-type Excel chuẩn.
+  - Thêm quick actions buttons trong `/companies/{code}`: "📋 Dữ liệu gốc" và "📊 Xuất Excel kiến nghị".
+  - +7 tests (finding detail + 404, data viewer + filter + invalid table, export valid Excel + 404). Tổng 99 tests pass.
 - **2026-05-21 (sáng)** — Tuần 8: inject sai phạm chủ đích cho demo §6.3.
   - `scripts/inject_findings.py` modify 4 NvlBalance + 1 Norm trong DN_003 năm 2024:
     · DG: closing_qty 9468 → -150 (fire C2.3) + norm × 100 (kích C4.3 trên DD-2)
@@ -96,19 +102,16 @@ DB hiện ở **mode demo** (Company.code = DN_xxx). Pipeline `ingest` nhận ar
 
 ## Next Steps
 
-### Tuần 9 — Polish UI + xuất Excel kiến nghị + tổng duyệt nội bộ
+### Tuần 10 — Deploy + tổng duyệt + demo HQ (§7.5)
 
-Theo §7.5 đề án.
+1. **Wire `make publish`**: scp Docker image hoặc tarball lên Tinsu VPS, run docker compose up.
+2. **Cloudflare Tunnel ingress** thêm route `audit-hq-demo.tinsu.ai` → container port 8000 (qua `audit-hq/deploy/scripts/add-ingress.py` đã có).
+3. **Basic-auth runtime** đổi env vars `AUTH_USER`/`AUTH_PASSWORD`/`SESSION_SECRET` thành giá trị ngẫu nhiên mạnh cho production.
+4. **Run lại** ingest + run_checks + anonymize + inject để DB demo ở trạng thái sẵn sàng.
+5. **Tổng duyệt nội bộ Trọng Tín + Tinsu** — chạy kịch bản 5 phút §6.3 đầu cuối, ghi nhận điểm cần fix.
+6. **Demo cho HQ** — sau tuần này, đề án §7.7 (định hướng sau 10 tuần) bắt đầu phụ thuộc phản hồi HQ.
 
-1. **Trang chi tiết phát hiện** (`/findings/<id>`): hiển thị `details` JSON dạng bảng dễ đọc, link evidence_refs về Tầng 1 (vd: nhấn vào tên NVL → trang xem các dòng M15 + BCCT liên quan).
-2. **Xuất báo cáo Excel kiến nghị kiểm tra** (`/companies/<code>/export?year=YYYY`): file `.xlsx` với:
-   - Sheet 1: Tổng quan DN + danh sách findings (mã check, severity, đối tượng, mô tả).
-   - Sheet 2: Trích xuất các dòng BCCT/M15/M15a/M16 làm chứng cứ.
-   - Sheet 3: Trích yếu pháp lý (TT 39/2018, TT 38/2015, NĐ 154/2005…).
-3. **Trang xem dữ liệu gốc** (Tầng 1): bảng M15, M15a, M16, BCCT cho 1 (DN, năm) để chứng minh "không hộp đen".
-4. **Tổng duyệt nội bộ** Trọng Tín + Tinsu trước khi demo cho HQ.
-
-### Sau tuần 9 (lộ trình §7 đề án)
+### Sau tuần 10 (lộ trình §7 đề án)
 
 - Tuần 3-4 — Cài Nhóm 1 + Nhóm 2 (9 check MVP).
 - Tuần 5-6 — Cài Nhóm 3 + 4 + 5 + 6 MVP (7 check) + scoring.

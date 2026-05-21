@@ -6,7 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -15,7 +15,8 @@ from app.auth import require_user
 from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity
 from app.database import get_db
-from app.models import Company, Finding
+from app.models import Company, DeclarationLine, Finding, Norm, NvlBalance, SpBalance
+from app.pipeline.export import build_export
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -133,6 +134,185 @@ def company_detail(
             "combo_findings": combo_findings,
             "severity_totals": severity_totals,
             "total_findings": len(regular_findings),
+        },
+    )
+
+
+_EVIDENCE_MODELS = {
+    "nvl_balances": NvlBalance,
+    "sp_balances": SpBalance,
+    "norms": Norm,
+    "declaration_lines": DeclarationLine,
+    "findings": Finding,
+}
+
+
+def _resolve_evidence(db: Session, ref: dict) -> list[dict]:
+    """Resolve 1 evidence_ref (table + filter) thành list dòng dữ liệu Tầng 1."""
+    table = ref.get("table")
+    model = _EVIDENCE_MODELS.get(table)
+    if model is None:
+        return []
+    filt = ref.get("filter") or {}
+    stmt = select(model)
+    for key, value in filt.items():
+        # Handle "key__in" syntax for IN clauses.
+        if key.endswith("__in"):
+            real_key = key[:-4]
+            col = getattr(model, real_key, None)
+            if col is None:
+                continue
+            stmt = stmt.where(col.in_(value))
+        else:
+            col = getattr(model, key, None)
+            if col is None:
+                continue
+            stmt = stmt.where(col == value)
+    rows = db.scalars(stmt.limit(50)).all()
+    return [
+        {c.name: getattr(r, c.name, None) for c in r.__table__.columns}
+        for r in rows
+    ]
+
+
+@router.get("/companies/{code}/export")
+def export_recommendations(
+    code: str,
+    year: int = Query(...),
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    payload = build_export(db, company, year)
+    filename = f"audit-hq_{code}_{year}_kien-nghi-kiem-tra.xlsx"
+    return Response(
+        content=payload,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+_TABLE_CONFIG = {
+    "m15": {
+        "model": NvlBalance,
+        "label": "Mẫu 15 — Cân đối NVL",
+        "code_field": "material_code",
+        "code_label": "Mã NVL",
+    },
+    "m15a": {
+        "model": SpBalance,
+        "label": "Mẫu 15a — Cân đối TP",
+        "code_field": "product_code",
+        "code_label": "Mã TP",
+    },
+    "m16": {
+        "model": Norm,
+        "label": "Mẫu 16 — Định mức",
+        "code_field": "material_code",
+        "code_label": "Mã NVL",
+    },
+    "bcct": {
+        "model": DeclarationLine,
+        "label": "BCCT — Báo cáo hàng chi tiết",
+        "code_field": "item_code",
+        "code_label": "Mã hàng",
+    },
+}
+
+
+@router.get("/companies/{code}/data", response_class=HTMLResponse)
+def company_data(
+    code: str,
+    request: Request,
+    year: int = Query(...),
+    table: str = Query("m15"),
+    q: str = Query("", description="Lọc theo mã"),
+    page: int = Query(1, ge=1),
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+
+    config = _TABLE_CONFIG.get(table)
+    if config is None:
+        raise HTTPException(status_code=400, detail=f"Bảng không hợp lệ: {table}")
+
+    model = config["model"]
+    code_field = config["code_field"]
+    per_page = 50
+
+    stmt = select(model).where(model.company_id == company.id, model.period_year == year)
+    if q:
+        col = getattr(model, code_field)
+        stmt = stmt.where(col.contains(q))
+    stmt = stmt.order_by(getattr(model, code_field))
+
+    total = db.scalar(
+        select(func.count()).select_from(stmt.subquery())
+    ) or 0
+    rows = db.scalars(stmt.offset((page - 1) * per_page).limit(per_page)).all()
+
+    rows_dict = [
+        {c.name: getattr(r, c.name, None) for c in r.__table__.columns}
+        for r in rows
+    ]
+
+    return templates.TemplateResponse(
+        request,
+        "company_data.html",
+        {
+            "user": user,
+            "company": company,
+            "year": year,
+            "table_key": table,
+            "table_label": config["label"],
+            "code_label": config["code_label"],
+            "code_field": code_field,
+            "tables": list(_TABLE_CONFIG.items()),
+            "rows": rows_dict,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "q": q,
+        },
+    )
+
+
+@router.get("/findings/{finding_id}", response_class=HTMLResponse)
+def finding_detail(
+    finding_id: int,
+    request: Request,
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    finding = db.get(Finding, finding_id)
+    if finding is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phát hiện")
+    company = db.get(Company, finding.company_id)
+    is_combo = finding.check_code.startswith("COMBO_")
+    spec = COMBO_SPECS.get(finding.check_code) if is_combo else SPECS.get(finding.check_code)
+
+    evidence_blocks: list[dict] = []
+    for ref in (finding.evidence_refs or []):
+        evidence_blocks.append({
+            "ref": ref,
+            "rows": _resolve_evidence(db, ref),
+        })
+
+    return templates.TemplateResponse(
+        request,
+        "finding_detail.html",
+        {
+            "user": user,
+            "finding": finding,
+            "company": company,
+            "spec": spec,
+            "is_combo": is_combo,
+            "evidence_blocks": evidence_blocks,
         },
     )
 
