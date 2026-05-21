@@ -6,9 +6,12 @@
   {% if not summary %}
     <p class="hint">Chưa có DN nào. Chạy <code>python -m app.pipeline.ingest --company HONG_AN --year 2024</code> để nạp dữ liệu.</p>
   {% else %}
+  <p class="hint">Sắp xếp theo điểm rủi ro giảm dần (§2.6 đề án: 🔴=10đ · 🟡=3đ · 🔵=1đ · combo +20đ).</p>
   <table class="data-table">
     <thead>
       <tr>
+        <th>Hạng</th>
+        <th>Điểm rủi ro</th>
         <th>Mã DN</th>
         <th>Tên doanh nghiệp</th>
         <th>MST</th>
@@ -19,13 +22,16 @@
     <tbody>
       {% for item in summary %}
         {% set c = item.company %}
+        {% set rowspan = item.years | length if item.years else 1 %}
         {% if item.years %}
           {% for year, counts in item.years %}
           <tr>
             {% if loop.first %}
-              <td rowspan="{{ item.years | length }}"><a href="/companies/{{ c.code }}">{{ c.code }}</a></td>
-              <td rowspan="{{ item.years | length }}">{{ c.name or '—' }}</td>
-              <td rowspan="{{ item.years | length }}">{{ c.tax_id or '—' }}</td>
+              <td rowspan="{{ rowspan }}" class="rank">#{{ loop.index0 + loop.index }}</td>
+              <td rowspan="{{ rowspan }}"><span class="score-pill">{{ c.risk_score }} đ</span></td>
+              <td rowspan="{{ rowspan }}"><a href="/companies/{{ c.code }}">{{ c.code }}</a></td>
+              <td rowspan="{{ rowspan }}">{{ c.name or '—' }}</td>
+              <td rowspan="{{ rowspan }}">{{ c.tax_id or '—' }}</td>
             {% endif %}
             <td><a href="/companies/{{ c.code }}?year={{ year }}">{{ year }}</a></td>
             <td class="counts">
@@ -40,6 +46,8 @@
           {% endfor %}
         {% else %}
         <tr>
+          <td class="rank">—</td>
+          <td><span class="score-pill">0 đ</span></td>
           <td><a href="/companies/{{ c.code }}">{{ c.code }}</a></td>
           <td>{{ c.name or '—' }}</td>
           <td>{{ c.tax_id or '—' }}</td>

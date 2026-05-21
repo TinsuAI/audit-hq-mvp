@@ -8,6 +8,7 @@
     Mã: <strong>{{ company.code }}</strong>
     {% if company.tax_id %} · MST: {{ company.tax_id }}{% endif %}
     {% if company.address %} · {{ company.address }}{% endif %}
+    · Điểm rủi ro: <span class="score-pill">{{ company.risk_score }} đ</span>
   </p>
 
   {% if years %}
@@ -30,13 +31,32 @@
       {% if severity_totals.info %}<span class="badge info">🔵 Thông tin: {{ severity_totals.info }}</span>{% endif %}
     </div>
 
+    {% if combo_findings %}
+    <section class="combo-section">
+      <h3>⚡ Phát hiện kết hợp ({{ combo_findings | length }})</h3>
+      <p class="hint">Các combo dưới đây có ý nghĩa nghiệp vụ cao hơn tổng các phần — DN gần như chắc chắn có vấn đề khi nhiều check fire trên cùng một đối tượng.</p>
+      {% for f in combo_findings %}
+        {% set spec = COMBO_SPECS[f.check_code] %}
+        <div class="combo-card severity-{{ f.severity }}">
+          <div class="combo-head">
+            <span class="badge {{ f.severity }}">{{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}</span>
+            <strong>{{ spec.title }}</strong>
+            <code>{{ f.subject_key }}</code>
+          </div>
+          <p class="combo-desc">{{ spec.description }}</p>
+          <p class="combo-triggers">Triggers: {% for t in spec.triggers %}<a href="#group-{{ t }}">{{ t }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+        </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+
     {% if not ordered_groups %}
       <p class="hint">Năm {{ selected_year }} không có phát hiện nào.</p>
     {% endif %}
 
     {% for code, findings in ordered_groups %}
       {% set spec = SPECS[code] %}
-      <details class="finding-group" open>
+      <details class="finding-group" id="group-{{ code }}" open>
         <summary>
           <strong>{{ code }}</strong> — {{ spec.title }}
           <span class="group-count">({{ findings | length }})</span>

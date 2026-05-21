@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import require_user
+from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity
 from app.database import get_db
 from app.models import Company, Finding
@@ -23,6 +24,7 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals["SEVERITY_BADGE"] = {s.value: SEVERITY_BADGE[s] for s in Severity}
 templates.env.globals["SEVERITY_LABEL"] = {s.value: SEVERITY_LABEL_VI[s] for s in Severity}
 templates.env.globals["SPECS"] = {code: spec for code, spec in SPECS.items()}
+templates.env.globals["COMBO_SPECS"] = COMBO_SPECS
 
 _SEVERITY_ORDER = {Severity.CRITICAL.value: 0, Severity.WARNING.value: 1, Severity.INFO.value: 2}
 
@@ -47,7 +49,9 @@ def list_companies(
     user: str = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    companies = db.scalars(select(Company).order_by(Company.code)).all()
+    companies = db.scalars(
+        select(Company).order_by(Company.risk_score.desc(), Company.code)
+    ).all()
     summary = []
     for c in companies:
         counts_rows = db.execute(
@@ -98,9 +102,13 @@ def company_detail(
             .order_by(Finding.check_code, Finding.subject_key)
         ).all()
 
+    # Tách combo (meta-finding) khỏi findings thường để render riêng ở đầu trang.
+    combo_findings = [f for f in findings if f.check_code.startswith("COMBO_")]
+    regular_findings = [f for f in findings if not f.check_code.startswith("COMBO_")]
+
     grouped: dict[str, list[Finding]] = defaultdict(list)
     severity_totals = {"critical": 0, "warning": 0, "info": 0}
-    for f in findings:
+    for f in regular_findings:
         grouped[f.check_code].append(f)
         if f.severity in severity_totals:
             severity_totals[f.severity] += 1
@@ -122,8 +130,9 @@ def company_detail(
             "years": years,
             "selected_year": selected_year,
             "ordered_groups": ordered_groups,
+            "combo_findings": combo_findings,
             "severity_totals": severity_totals,
-            "total_findings": len(findings),
+            "total_findings": len(regular_findings),
         },
     )
 

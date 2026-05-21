@@ -189,3 +189,37 @@ tr.status-rejected td:not(:last-child) { text-decoration: line-through; }
   color: var(--c-muted);
   font-style: italic;
 }
+
+.score-pill {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 12px;
+  background: var(--c-accent);
+  color: white;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.rank { font-weight: bold; color: var(--c-muted); width: 3rem; }
+
+.combo-section {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  background: #fff8f0;
+  border: 1px solid #f0c080;
+  border-left: 4px solid var(--c-accent);
+  border-radius: 4px;
+}
+.combo-section h3 { margin-top: 0; }
+.combo-card {
+  background: var(--c-card);
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--c-border);
+  border-radius: 3px;
+  margin-top: 0.75rem;
+}
+.combo-head { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.combo-head code { background: #eee; padding: 0.1rem 0.4rem; border-radius: 2px; }
+.combo-desc { color: var(--c-fg); margin: 0.5rem 0; }
+.combo-triggers { color: var(--c-muted); font-size: 0.9rem; margin: 0; }
+.combo-triggers a { color: var(--c-accent); text-decoration: none; font-weight: bold; }
