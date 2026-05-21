@@ -1,6 +1,8 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái:** Tuần 10 hoàn tất (2026-05-21). Demo live tại **https://audit-hq-demo.tinsu.ai** (basic-auth admin/admin). Versioning system (semver + git SHA + build time) hiển thị ở footer. CI/CD GitHub Actions self-hosted runner trên Tinsu → auto deploy khi push main. Cloudflare Tunnel ingress active, port 8200 (port 8000 đã bị erpnext-frontend chiếm). 99 tests pass.
+> **Trạng thái (2026-05-21, cuối session):** MVP hoàn tất 10 tuần + UOM system. Demo live tại **https://audit-hq-demo.tinsu.ai** (build `fd263f6`, admin/admin). 16/16 MVP check + 4 combo signature + scoring + 7 trang UI + xuất Excel 7 sheet + admin `/admin/units` quản lý alias đơn vị tính. **113 tests pass**, ruff clean. CI/CD self-hosted runner trên Tinsu — push main → auto build + deploy.
+
+Live DN_003 2025 còn **4 finding C3.3 real** (sau khi UOM resolve compound separator `Cái/Chiếc`): 3 INFO (PR vs Cái/Chiếc+Đôi/Cặp) + 1 CRITICAL (UNA vs Chai/Lọ/Tuýp = count vs count_packaging). Đây là phát hiện thực, không phải false-positive.
 
 ## Current State
 
@@ -11,6 +13,16 @@
 
 ## Recent Changes
 
+- **2026-05-21 (cuối)** — UOM system + UI redesign + fix finding 782.
+  - **UOM canonical/alias DB** (port từ data-hub 2-layer): `uom_canonical` (25 row: MTR/KGM/PCE/PR/MTK/MTQ/ROL/SET/BOX/BTL/CTN/TOO/TAM…) + `uom_aliases` (129+ alias VN+EN). Family: length/mass/area/volume/count/count_packaging. base_factor cho conversion.
+  - **C3.3 severity ladder mới**: EQUIVALENT (alias cùng canonical) → skip; SAME_FAMILY (KG↔GAM convertible) → 🔵 Info; DIFFERENT (count vs mass) → 🔴 Critical. Trước đây tất cả mismatch là Critical → false-positive tràn (250+).
+  - **Compound separator support** (`Cái/Chiếc`, `KG/GAM`, `Chai/Lọ/Tuýp`): `resolve_canonical` split text trên `[/,;|]`, nếu mọi phần map cùng canonical → return canonical; lenient với unknown parts.
+  - **Cache in-memory** trong `app/checks/uom.py` cho hot path. `invalidate_cache()` khi admin sửa.
+  - **Admin UI `/admin/units`**: list canonical grouped by family, alias chips, filter family + lọc text. Form thêm alias + canonical mới (collapsible advanced). Link "⚙️ Đơn vị tính" header. Auto-seed `python -m scripts.seed_uom` mỗi container start (idempotent).
+  - **UI redesign /companies** (4 iterations qua self-screenshot Playwright): từ table rowspan layout (1 DN tốn 10 row) → 1-DN-1-row + year chips inline với severity dot + rank-badge circle (navy filled top-3). Modern Government design system (USWDS/GOV.UK inspired): brand navy header, font Inter+JetBrains Mono, score-pill 3-tier, stat-grid KPI tile, combo-section gradient warm. Install fonts-noto-color-emoji trên WSL để emoji render đúng.
+  - **Versioning + CI/CD + deploy**: file VERSION root + `app/version.py` (env > git > fallback), footer hiển thị `v0.1.0 · build <sha> · <time>`. GitHub Actions self-hosted runner trên Tinsu (label `tinsu-prod`), workflow test → deploy. Cloudflare Tunnel `audit-hq-demo.tinsu.ai` → port 8200 (port 8000 conflict erpnext-frontend). DB persistent ở `/home/tinsu/audit-hq-mvp-deploy/db-data/`.
+  - **Finding 782 fix**: user phát hiện C3.3 fire critical cho `KHUY` (M15='PCE' vs BCCT='Cái/Chiếc'). Nguyên nhân: `Cái/Chiếc` compound text không match alias riêng lẻ. Sau fix separator: re-run C3.3 trên live → từ 250+ false → 4 real finding only.
+  - +28 tests UOM/scoring/inject/UI route. Tổng 113 tests pass.
 - **2026-05-21 (chiều)** — Tuần 10: deploy live + CI/CD + versioning.
   - **Versioning** (semver + git SHA + build time): file `VERSION` (root) + `app/version.py` đọc env vars BUILD_SHA/BUILD_TIME/APP_VERSION (inject từ Docker build-args), fallback đọc git local. Footer hiển thị `v0.1.0 · build <sha> · <ISO time>`. `/healthz` response trả full metadata.
   - **Dockerfile production**: ARG BUILD_SHA/BUILD_TIME, locale C.UTF-8, TZ Asia/Ho_Chi_Minh, entrypoint.sh chạy `alembic upgrade head` trước uvicorn.
@@ -128,11 +140,19 @@ Runner persistence: hiện nohup, NOT survive reboot. Cần convert systemd serv
 
 ## Next Steps
 
-### Tuần 11+ (sau MVP § 7.7 đề án)
+### Ưu tiên trước khi demo HQ
 
-1. **Tổng duyệt nội bộ Trọng Tín + Tinsu** — share URL audit-hq-demo.tinsu.ai cho team, chạy thử kịch bản 5 phút §6.3, ghi nhận feedback.
-2. **Demo cho HQ** sau khi pass internal review.
-3. **Tuỳ phản hồi HQ** → lộ trình §7.7 (thí điểm Chi Cục Khu vực IV, mở Giai đoạn II, tích hợp VNACCS).
+1. **Tổng duyệt nội bộ Trọng Tín + Tinsu** — share URL `audit-hq-demo.tinsu.ai` (admin/admin), chạy kịch bản 5 phút §6.3, ghi feedback.
+2. **Test cá nhân khi gặp finding false-positive** — vào `/admin/units` thêm alias (không cần redeploy). Cache tự invalidate.
+3. **Convert runner sang systemd** (hiện nohup, không survive Tinsu reboot). Cần sudo password trên Tinsu.
+4. **Generate password mạnh** thay admin/admin cho prod (env vars `AUTH_USER`/`AUTH_PASSWORD`/`SESSION_SECRET` trong GitHub secrets).
+
+### Sau khi demo HQ (§7.7 đề án)
+
+- Thí điểm Chi Cục Hải Quan Khu vực IV với dữ liệu thực.
+- Cài 14 W.I.P còn lại (C1.5, C2.4, C4.2/4-8, C5.2-3, C6.2-5).
+- Mở Giai đoạn II (Nhóm 8-12, 16 check cần dữ liệu bổ sung).
+- Tích hợp VNACCS trực tiếp thay vì Excel.
 
 - Tuần 3-4 — Cài Nhóm 1 + Nhóm 2 (9 check MVP).
 - Tuần 5-6 — Cài Nhóm 3 + 4 + 5 + 6 MVP (7 check) + scoring.
