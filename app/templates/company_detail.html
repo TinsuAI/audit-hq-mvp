@@ -1,82 +1,111 @@
 {% extends "base.html" %}
 {% block title %}{{ company.code }} — Audit-HQ{% endblock %}
 {% block content %}
-<section class="company-detail">
-  <nav class="breadcrumbs"><a href="/companies">← Doanh nghiệp</a></nav>
-  <h2>{{ company.name or company.code }}</h2>
-  <p class="meta">
-    Mã: <strong>{{ company.code }}</strong>
-    {% if company.tax_id %} · MST: {{ company.tax_id }}{% endif %}
-    {% if company.address %} · {{ company.address }}{% endif %}
-    · Điểm rủi ro: <span class="score-pill">{{ company.risk_score }} đ</span>
-  </p>
 
-  {% if years %}
-  <div class="year-tabs">
-    Năm:
-    {% for y in years %}
-      <a href="/companies/{{ company.code }}?year={{ y }}"
-         class="{% if y == selected_year %}active{% endif %}">{{ y }}</a>
-    {% endfor %}
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  {{ company.code }}
+</nav>
+
+{% set score_class = "high" if company.risk_score > 500 else ("mid" if company.risk_score > 50 else "low") %}
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>{{ company.name or company.code }}</h1>
+    <p class="page-subtitle">
+      Mã: <strong class="text-mono">{{ company.code }}</strong>
+      {% if company.tax_id %} · MST: <span class="text-mono">{{ company.tax_id }}</span>{% endif %}
+      {% if company.address %} · {{ company.address }}{% endif %}
+    </p>
   </div>
-  {% endif %}
-
-  {% if selected_year %}
-  <div class="quick-actions">
-    <a href="/companies/{{ company.code }}/data?year={{ selected_year }}&table=m15" class="btn-link">📋 Dữ liệu gốc</a>
-    <a href="/companies/{{ company.code }}/export?year={{ selected_year }}" class="btn-link primary">📊 Xuất Excel kiến nghị</a>
+  <div class="btn-group">
+    {% if selected_year %}
+      <a href="/companies/{{ company.code }}/data?year={{ selected_year }}&table=m15" class="btn btn-secondary">📋 Dữ liệu gốc</a>
+      <a href="/companies/{{ company.code }}/export?year={{ selected_year }}" class="btn btn-primary">📊 Xuất Excel kiến nghị</a>
+    {% endif %}
   </div>
-  {% endif %}
+</div>
 
-  {% if selected_year is none %}
-    <p class="hint">Chưa có findings cho DN này. Chạy <code>python -m app.pipeline.run_checks --company {{ company.code }} --year YYYY</code>.</p>
-  {% else %}
-    <div class="summary-row">
-      <span class="summary-pill">Tổng: {{ total_findings }}</span>
-      {% if severity_totals.critical %}<span class="badge critical">🔴 Nghiêm trọng: {{ severity_totals.critical }}</span>{% endif %}
-      {% if severity_totals.warning %}<span class="badge warning">🟡 Cảnh báo: {{ severity_totals.warning }}</span>{% endif %}
-      {% if severity_totals.info %}<span class="badge info">🔵 Thông tin: {{ severity_totals.info }}</span>{% endif %}
-    </div>
+<div class="stat-grid">
+  <div class="stat">
+    <span class="stat-label">Điểm rủi ro DN</span>
+    <span class="stat-value">{{ company.risk_score }}</span>
+  </div>
+  <div class="stat critical">
+    <span class="stat-label">🔴 Nghiêm trọng</span>
+    <span class="stat-value">{{ severity_totals.critical if severity_totals else 0 }}</span>
+  </div>
+  <div class="stat warning">
+    <span class="stat-label">🟡 Cảnh báo</span>
+    <span class="stat-value">{{ severity_totals.warning if severity_totals else 0 }}</span>
+  </div>
+  <div class="stat info">
+    <span class="stat-label">🔵 Thông tin</span>
+    <span class="stat-value">{{ severity_totals.info if severity_totals else 0 }}</span>
+  </div>
+</div>
 
-    {% if combo_findings %}
-    <section class="combo-section">
-      <h3>⚡ Phát hiện kết hợp ({{ combo_findings | length }})</h3>
-      <p class="hint">Các combo dưới đây có ý nghĩa nghiệp vụ cao hơn tổng các phần — DN gần như chắc chắn có vấn đề khi nhiều check fire trên cùng một đối tượng.</p>
-      {% for f in combo_findings %}
-        {% set spec = COMBO_SPECS[f.check_code] %}
-        <div class="combo-card severity-{{ f.severity }}">
-          <div class="combo-head">
-            <span class="badge {{ f.severity }}">{{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}</span>
-            <strong>{{ spec.title }}</strong>
-            <code>{{ f.subject_key }}</code>
-          </div>
-          <p class="combo-desc">{{ spec.description }}</p>
-          <p class="combo-triggers">Triggers: {% for t in spec.triggers %}<a href="#group-{{ t }}">{{ t }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+{% if years %}
+<div class="tabs">
+  {% for y in years %}
+    <a href="/companies/{{ company.code }}?year={{ y }}" class="{% if y == selected_year %}active{% endif %}">{{ y }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if selected_year is none %}
+  <div class="card">
+    <p class="text-muted">Chưa có findings cho DN này. Chạy <code>python -m app.pipeline.run_checks --company {{ company.code }} --year YYYY</code>.</p>
+  </div>
+{% else %}
+
+  {% if combo_findings %}
+  <section class="combo-section">
+    <h2>⚡ Phát hiện kết hợp ({{ combo_findings | length }})</h2>
+    <p class="combo-sub">Các combo dưới đây có ý nghĩa nghiệp vụ cao hơn tổng các phần — DN gần như chắc chắn có vấn đề khi nhiều check fire trên cùng một đối tượng (§2.7 đề án).</p>
+    {% for f in combo_findings %}
+      {% set spec = COMBO_SPECS[f.check_code] %}
+      <div class="combo-card">
+        <div class="combo-card-head">
+          <span class="badge {{ f.severity }}">{{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}</span>
+          <span class="combo-card-title">{{ spec.title }}</span>
+          <code class="text-mono">{{ f.subject_key }}</code>
+          <a href="/findings/{{ f.id }}" class="btn btn-sm btn-secondary" style="margin-left:auto">Chi tiết →</a>
         </div>
-      {% endfor %}
-    </section>
-    {% endif %}
+        <p class="combo-card-desc">{{ spec.description }}</p>
+        <p class="combo-card-triggers">Triggers:
+          {% for t in spec.triggers %}<a href="#group-{{ t }}">{{ t }}</a>{% endfor %}
+        </p>
+      </div>
+    {% endfor %}
+  </section>
+  {% endif %}
 
-    {% if not ordered_groups %}
-      <p class="hint">Năm {{ selected_year }} không có phát hiện nào.</p>
-    {% endif %}
+  {% if not ordered_groups %}
+    <div class="card">
+      <p class="text-muted">Năm {{ selected_year }} không có phát hiện nào.</p>
+    </div>
+  {% endif %}
 
-    {% for code, findings in ordered_groups %}
-      {% set spec = SPECS[code] %}
-      <details class="finding-group" id="group-{{ code }}" open>
-        <summary>
-          <strong>{{ code }}</strong> — {{ spec.title }}
-          <span class="group-count">({{ findings | length }})</span>
-        </summary>
-        <p class="group-desc">{{ spec.description }}</p>
-        <table class="data-table findings">
+  {% for code, findings in ordered_groups %}
+    {% set spec = SPECS[code] %}
+    <details class="finding-group" id="group-{{ code }}" open>
+      <summary>
+        <span class="badge muted text-mono">{{ code }}</span>
+        <strong>{{ spec.title }}</strong>
+        <span class="group-meta">{{ findings | length }} phát hiện</span>
+      </summary>
+      <p class="group-desc">{{ spec.description }}</p>
+      <div class="table-overflow">
+        <table class="data-table compact">
           <thead>
             <tr>
               <th>Mức</th>
               <th>Đối tượng</th>
               <th>Mô tả</th>
               <th>Trạng thái</th>
-              <th>Thao tác</th>
+              <th>Thao tác cán bộ</th>
             </tr>
           </thead>
           <tbody>
@@ -87,14 +116,14 @@
                   {{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}
                 </span>
               </td>
-              <td><code>{{ f.subject_key or '—' }}</code></td>
+              <td class="code-cell">{{ f.subject_key or '—' }}</td>
               <td>
-                <a href="/findings/{{ f.id }}" class="finding-link">{{ f.title }}</a>
-                {% if f.notes %}<div class="finding-notes">📝 {{ f.notes }}</div>{% endif %}
+                <a href="/findings/{{ f.id }}" style="color:inherit">{{ f.title }}</a>
+                {% if f.notes %}<div class="text-subtle" style="font-size:var(--fs-xs);margin-top:4px">📝 {{ f.notes }}</div>{% endif %}
               </td>
               <td><span class="status-pill status-{{ f.status }}">{{ STATUS_LABEL[f.status] }}</span></td>
               <td>
-                <form method="post" action="/findings/{{ f.id }}/status" class="status-form">
+                <form method="post" action="/findings/{{ f.id }}/status" class="status-form-inline">
                   <select name="status">
                     {% for s in ALLOWED_STATUSES %}
                       <option value="{{ s }}" {% if f.status == s %}selected{% endif %}>{{ STATUS_LABEL[s] }}</option>
@@ -108,8 +137,10 @@
             {% endfor %}
           </tbody>
         </table>
-      </details>
-    {% endfor %}
-  {% endif %}
-</section>
+      </div>
+    </details>
+  {% endfor %}
+
+{% endif %}
+
 {% endblock %}

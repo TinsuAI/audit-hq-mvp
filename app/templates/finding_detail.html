@@ -1,79 +1,85 @@
 {% extends "base.html" %}
 {% block title %}{{ finding.check_code }} #{{ finding.id }} — Audit-HQ{% endblock %}
 {% block content %}
-<section class="finding-detail">
-  <nav class="breadcrumbs">
-    <a href="/companies">Doanh nghiệp</a> ›
-    <a href="/companies/{{ company.code }}?year={{ finding.period_year }}">{{ company.code }}</a> ›
-    Phát hiện #{{ finding.id }}
-  </nav>
 
-  <h2>
-    <span class="badge {{ finding.severity }}">
-      {{ SEVERITY_BADGE[finding.severity] }} {{ SEVERITY_LABEL[finding.severity] }}
-    </span>
-    {{ finding.check_code }}
-    {% if spec %}— {{ spec.title }}{% endif %}
-  </h2>
-  <p class="meta">
-    DN <a href="/companies/{{ company.code }}">{{ company.code }}</a>
-    · Kỳ {{ finding.period_year }}
-    {% if finding.subject_key %}· Đối tượng: <code>{{ finding.subject_key }}</code>{% endif %}
-    · Trạng thái: <span class="status-pill status-{{ finding.status }}">{{ STATUS_LABEL[finding.status] }}</span>
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  <a href="/companies/{{ company.code }}?year={{ finding.period_year }}">{{ company.code }}</a>
+  <span class="sep">›</span>
+  Phát hiện #{{ finding.id }}
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>
+      <span class="badge {{ finding.severity }}">{{ SEVERITY_BADGE[finding.severity] }} {{ SEVERITY_LABEL[finding.severity] }}</span>
+      <span class="text-mono" style="font-size:var(--fs-lg);color:var(--c-brand-500);margin-left:var(--space-2)">{{ finding.check_code }}</span>
+      {% if spec %}— {{ spec.title }}{% endif %}
+    </h1>
+    <p class="page-subtitle">
+      DN <a href="/companies/{{ company.code }}">{{ company.code }}</a>
+      · Kỳ {{ finding.period_year }}
+      {% if finding.subject_key %}· Đối tượng: <code class="text-mono">{{ finding.subject_key }}</code>{% endif %}
+      · <span class="status-pill status-{{ finding.status }}">{{ STATUS_LABEL[finding.status] }}</span>
+    </p>
+  </div>
+</div>
+
+{% if spec %}
+<div class="card">
+  <h3 class="card-title">Mô tả nghiệp vụ</h3>
+  <p>{{ spec.description }}</p>
+  {% if is_combo and spec.triggers %}
+  <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:0">
+    Combo trigger: {% for t in spec.triggers %}<code>{{ t }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
   </p>
-
-  {% if spec %}
-  <div class="spec-card">
-    <h3>Mô tả nghiệp vụ</h3>
-    <p>{{ spec.description }}</p>
-    {% if is_combo and spec.triggers %}
-      <p class="muted">Combo trigger: {% for t in spec.triggers %}<code>{{ t }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
-    {% endif %}
-  </div>
   {% endif %}
+</div>
+{% endif %}
 
-  <div class="finding-title-box">
-    <h3>Tiêu đề phát hiện</h3>
-    <p>{{ finding.title }}</p>
-  </div>
+<div class="card">
+  <h3 class="card-title">Tiêu đề phát hiện</h3>
+  <p style="margin-bottom:0;font-size:var(--fs-md)">{{ finding.title }}</p>
+</div>
 
-  {% if finding.details %}
-  <div class="details-card">
-    <h3>Chi tiết</h3>
-    <table class="data-table compact">
-      <tbody>
-        {% for k, v in finding.details.items() %}
-        <tr>
-          <th>{{ k }}</th>
-          <td>
-            {% if v is mapping or v is sequence and v is not string %}
-              <code>{{ v | tojson(indent=2) }}</code>
-            {% else %}
-              {{ v }}
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+{% if finding.details %}
+<div class="card">
+  <h3 class="card-title">Chi tiết</h3>
+  <table class="data-table compact kv-table">
+    <tbody>
+      {% for k, v in finding.details.items() %}
+      <tr>
+        <th>{{ k }}</th>
+        <td>
+          {% if v is mapping or v is sequence and v is not string %}
+            <code>{{ v | tojson }}</code>
+          {% else %}
+            {{ v }}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 class="card-title">Chứng cứ truy nguồn (Tầng 1)</h3>
+  <p class="text-subtle" style="font-size:var(--fs-xs)">Mỗi phát hiện phải truy nguồn được về dòng dữ liệu cụ thể (§2.2 đề án).</p>
+  {% if not evidence_blocks %}
+    <p class="text-muted">(Không có evidence_refs)</p>
   {% endif %}
-
-  <div class="evidence-card">
-    <h3>Chứng cứ truy nguồn (Tầng 1)</h3>
-    <p class="muted">Mỗi phát hiện phải truy nguồn được về dòng dữ liệu cụ thể (§2.2 đề án — không "hộp đen").</p>
-    {% if not evidence_blocks %}
-      <p class="muted">(Không có evidence_refs)</p>
-    {% endif %}
-    {% for block in evidence_blocks %}
-      <details open class="evidence-block">
-        <summary>
-          <strong>{{ block.ref.table }}</strong>
-          ·
-          <code>{{ block.ref.filter | tojson }}</code>
-          ({{ block.rows | length }} dòng)
-        </summary>
-        {% if block.rows %}
+  {% for block in evidence_blocks %}
+    <details open class="evidence-block">
+      <summary>
+        <strong class="text-mono">{{ block.ref.table }}</strong>
+        · <code>{{ block.ref.filter | tojson }}</code>
+        · {{ block.rows | length }} dòng
+      </summary>
+      {% if block.rows %}
+      <div class="table-overflow">
         <table class="data-table compact">
           <thead>
             <tr>
@@ -92,26 +98,31 @@
             {% endfor %}
           </tbody>
         </table>
-        {% endif %}
-      </details>
-    {% endfor %}
-  </div>
+      </div>
+      {% endif %}
+    </details>
+  {% endfor %}
+</div>
 
-  <div class="status-card">
-    <h3>Cập nhật trạng thái</h3>
-    <form method="post" action="/findings/{{ finding.id }}/status" class="status-form-large">
-      <label>Trạng thái
-        <select name="status">
-          {% for s in ALLOWED_STATUSES %}
-            <option value="{{ s }}" {% if finding.status == s %}selected{% endif %}>{{ STATUS_LABEL[s] }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Ghi chú cán bộ
-        <textarea name="notes" rows="3" placeholder="Vd: đã liên hệ DN làm rõ, cần kiểm tra thực địa…">{{ finding.notes or '' }}</textarea>
-      </label>
-      <button type="submit">Lưu</button>
-    </form>
-  </div>
-</section>
+<div class="card">
+  <h3 class="card-title">Cập nhật trạng thái (cán bộ)</h3>
+  <form method="post" action="/findings/{{ finding.id }}/status" class="form-stack" style="max-width:560px">
+    <div class="form-field">
+      <label class="form-label">Trạng thái</label>
+      <select name="status" class="form-select">
+        {% for s in ALLOWED_STATUSES %}
+          <option value="{{ s }}" {% if finding.status == s %}selected{% endif %}>{{ STATUS_LABEL[s] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Ghi chú</label>
+      <textarea name="notes" class="form-textarea" placeholder="Vd: đã liên hệ DN làm rõ, cần kiểm tra thực địa…">{{ finding.notes or '' }}</textarea>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary">Lưu cập nhật</button>
+    </div>
+  </form>
+</div>
+
 {% endblock %}

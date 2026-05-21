@@ -1,60 +1,77 @@
 {% extends "base.html" %}
 {% block title %}{{ company.code }} — {{ table_label }} — Audit-HQ{% endblock %}
 {% block content %}
-<section class="company-data">
-  <nav class="breadcrumbs">
-    <a href="/companies">Doanh nghiệp</a> ›
-    <a href="/companies/{{ company.code }}?year={{ year }}">{{ company.code }}</a> ›
-    Dữ liệu gốc
-  </nav>
 
-  <h2>{{ company.code }} — Dữ liệu gốc kỳ {{ year }}</h2>
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  <a href="/companies/{{ company.code }}?year={{ year }}">{{ company.code }}</a>
+  <span class="sep">›</span>
+  Dữ liệu gốc kỳ {{ year }}
+</nav>
 
-  <div class="table-tabs">
-    {% for key, conf in tables %}
-      <a href="/companies/{{ company.code }}/data?year={{ year }}&table={{ key }}"
-         class="{% if key == table_key %}active{% endif %}">{{ conf.label }}</a>
-    {% endfor %}
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>{{ company.code }} — Dữ liệu gốc</h1>
+    <p class="page-subtitle">
+      Bảng raw Tầng 1 — phục vụ kiểm tra nguyên trạng. Mọi phát hiện đều truy nguồn về dòng tại đây (§2.2 đề án — không "hộp đen").
+    </p>
   </div>
+</div>
 
-  <form method="get" class="filter-bar">
-    <input type="hidden" name="year" value="{{ year }}">
-    <input type="hidden" name="table" value="{{ table_key }}">
-    <input type="text" name="q" value="{{ q }}" placeholder="Lọc theo {{ code_label }}…">
-    <button type="submit">Lọc</button>
-    {% if q %}<a href="/companies/{{ company.code }}/data?year={{ year }}&table={{ table_key }}">Xoá lọc</a>{% endif %}
-  </form>
+<div class="tabs">
+  {% for key, conf in tables %}
+    <a href="/companies/{{ company.code }}/data?year={{ year }}&table={{ key }}"
+       class="{% if key == table_key %}active{% endif %}">{{ conf.label }}</a>
+  {% endfor %}
+</div>
 
-  <p class="meta">{{ total }} dòng · trang {{ page }}/{{ ((total - 1) // per_page) + 1 if total > 0 else 1 }}</p>
+<form method="get" class="form-row mb-3">
+  <input type="hidden" name="year" value="{{ year }}">
+  <input type="hidden" name="table" value="{{ table_key }}">
+  <div class="form-field" style="margin-bottom:0;flex:1">
+    <label class="form-label">Lọc theo {{ code_label }}</label>
+    <input type="text" name="q" value="{{ q }}" class="form-input" placeholder="Nhập một phần mã…">
+  </div>
+  <div>
+    <button type="submit" class="btn btn-primary">Lọc</button>
+    {% if q %}<a href="/companies/{{ company.code }}/data?year={{ year }}&table={{ table_key }}" class="btn btn-secondary">Xoá lọc</a>{% endif %}
+  </div>
+</form>
 
-  {% if rows %}
-  <div class="table-wrapper">
-    <table class="data-table compact">
-      <thead>
-        <tr>
-          {% for col in rows[0].keys() %}
-            <th>{{ col }}</th>
-          {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          {% for col, val in row.items() %}
-            <td>{{ val if val is not none else '' }}</td>
-          {% endfor %}
-        </tr>
+<p class="text-subtle">{{ total }} dòng · trang {{ page }}/{{ ((total - 1) // per_page) + 1 if total > 0 else 1 }}</p>
+
+{% if rows %}
+<div class="data-table-wrapper table-overflow">
+  <table class="data-table compact">
+    <thead>
+      <tr>
+        {% for col in rows[0].keys() %}
+          <th>{{ col }}</th>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-    <p class="muted">Không có dữ liệu.</p>
-  {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        {% for col, val in row.items() %}
+          <td>{{ val if val is not none else '' }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+  <div class="card"><p class="text-muted">Không có dữ liệu.</p></div>
+{% endif %}
 
-  <nav class="pagination">
+<nav class="pagination">
+  <span class="text-subtle">Hiển thị {{ rows | length }} / {{ total }} dòng</span>
+  <div class="links">
     {% if page > 1 %}<a href="?year={{ year }}&table={{ table_key }}&q={{ q }}&page={{ page - 1 }}">‹ Trang trước</a>{% endif %}
     {% if total > page * per_page %}<a href="?year={{ year }}&table={{ table_key }}&q={{ q }}&page={{ page + 1 }}">Trang sau ›</a>{% endif %}
-  </nav>
-</section>
+  </div>
+</nav>
+
 {% endblock %}

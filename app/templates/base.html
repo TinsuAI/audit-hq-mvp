@@ -4,23 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Audit-HQ{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header>
-  <h1><a href="/">Audit-HQ</a></h1>
-  {% if user %}
-    <form method="post" action="/logout" class="logout">
-      <span>{{ user }}</span>
-      <button type="submit">Đăng xuất</button>
+{% if user %}
+<header class="app-header">
+  <a href="/companies" class="brand">
+    <span class="brand-logo">A</span>
+    <span>
+      Audit-HQ
+      <span class="brand-sub">Quản lý rủi ro Hải quan</span>
+    </span>
+  </a>
+  <div class="user-menu">
+    <span class="user-name">👤 {{ user }}</span>
+    <form method="post" action="/logout" style="margin:0">
+      <button type="submit" class="logout-btn">Đăng xuất</button>
     </form>
-  {% endif %}
+  </div>
 </header>
-<main>
+{% endif %}
+
+<main class="app-main">
 {% block content %}{% endblock %}
 </main>
-<footer>
-  <small>Audit-HQ MVP — Tinsu AI × Trọng Tín. Bản demo.</small>
+
+<footer class="app-footer">
+  Audit-HQ MVP · Tinsu AI × Trọng Tín · Bản dùng cho thí điểm. Mọi quyết định cuối cùng thuộc thẩm quyền cán bộ Hải quan.
 </footer>
 </body>
 </html>
