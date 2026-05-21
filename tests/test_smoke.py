@@ -1,6 +1,17 @@
+import app.models  # noqa: F401  load metadata first (bind `app` package)
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.database import Base, engine
+from app.main import app  # rebinds `app` to FastAPI instance
+
+
+# Smoke tests dùng default engine (audit_hq.sqlite). CI khởi đầu trống nên
+# tạo schema 1 lần ở module setup.
+@pytest.fixture(scope="module", autouse=True)
+def _ensure_schema():
+    Base.metadata.create_all(engine)
+
 
 client = TestClient(app)
 
