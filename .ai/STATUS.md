@@ -1,6 +1,6 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái:** Tuần 9 hoàn tất (2026-05-21). 3 trang UI mới: trang chi tiết finding (`/findings/{id}`) với chứng cứ Tầng 1 resolved live, trang dữ liệu gốc M15/M15a/M16/BCCT (`/companies/{code}/data`) có lọc + paging, và xuất Excel kiến nghị (`/companies/{code}/export`) với 7 sheet (Tổng quan + Phát hiện + 4 chứng cứ + Pháp lý). 99 tests pass. Sẵn sàng tuần 10 (tổng duyệt nội bộ + deploy + demo cho HQ).
+> **Trạng thái:** Tuần 10 hoàn tất (2026-05-21). Demo live tại **https://audit-hq-demo.tinsu.ai** (basic-auth admin/admin). Versioning system (semver + git SHA + build time) hiển thị ở footer. CI/CD GitHub Actions self-hosted runner trên Tinsu → auto deploy khi push main. Cloudflare Tunnel ingress active, port 8200 (port 8000 đã bị erpnext-frontend chiếm). 99 tests pass.
 
 ## Current State
 
@@ -11,6 +11,15 @@
 
 ## Recent Changes
 
+- **2026-05-21 (chiều)** — Tuần 10: deploy live + CI/CD + versioning.
+  - **Versioning** (semver + git SHA + build time): file `VERSION` (root) + `app/version.py` đọc env vars BUILD_SHA/BUILD_TIME/APP_VERSION (inject từ Docker build-args), fallback đọc git local. Footer hiển thị `v0.1.0 · build <sha> · <ISO time>`. `/healthz` response trả full metadata.
+  - **Dockerfile production**: ARG BUILD_SHA/BUILD_TIME, locale C.UTF-8, TZ Asia/Ho_Chi_Minh, entrypoint.sh chạy `alembic upgrade head` trước uvicorn.
+  - **docker-compose**: bind `127.0.0.1:${HOST_PORT:-8200}:8000` (tunnel route đến port 8200 vì 8000 conflict erpnext-frontend), volume `${DB_DATA_PATH:-./db-data}:/db-data` (override path khi deploy), healthcheck mỗi 30s.
+  - **CI/CD** `.github/workflows/deploy.yml`: trigger push main + workflow_dispatch. Job test (uv venv + pytest + ruff) → Job deploy (build + restart + healthcheck wait + show version). runs-on `[self-hosted, tinsu-prod]`.
+  - **Self-hosted runner** đã setup trên Tinsu: `~/actions-runner-audit-hq`, label `tinsu-prod`, online qua nohup. Status check: `gh api /repos/TinsuAI/audit-hq-mvp/actions/runners`.
+  - **Cloudflare Tunnel ingress** active: `audit-hq-demo.tinsu.ai` → `http://localhost:8200` (tunnel version 30). DNS CNAME đã add qua `cloudflared tunnel route dns`. Script `deploy/scripts/add-tunnel-ingress.py` idempotent.
+  - **Persistent data trên Tinsu**: `/home/tinsu/audit-hq-mvp-deploy/db-data/audit_hq.sqlite` (18MB scp từ local, đã có anonymize + inject, 6 DN, score DN_003=7896, DN_005=3).
+  - Test fix CI: `test_smoke.py` thêm fixture `_ensure_schema` để CI runner DB trống vẫn pass; `test_healthz` check field version trong response.
 - **2026-05-21 (trưa)** — Tuần 9: UI polish + Excel export.
   - `GET /findings/{id}`: trang chi tiết phát hiện hiển thị spec nghiệp vụ, details JSON dạng bảng, **chứng cứ truy nguồn** — query Tầng 1 thật theo `evidence_refs` (NvlBalance/SpBalance/Norm/DeclarationLine/Finding) và render bảng kèm filter spec. Có inline form cập nhật trạng thái (status + notes lớn). Title click-through từ `/companies/{code}` table.
   - `GET /companies/{code}/data?year=YYYY&table=m15|m15a|m16|bcct&q=&page=`: trang xem dữ liệu Tầng 1 — bảng raw có tabs giữa 4 loại, ô lọc theo mã, pagination 50/trang. Đảm bảo "không hộp đen" theo §2.2 đề án.
@@ -100,18 +109,30 @@ DB hiện ở **mode demo** (Company.code = DN_xxx). Pipeline `ingest` nhận ar
 
 > "DN_005 đứng cuối với 3 điểm — DN này dataset không đầy đủ BCCT nên hệ thống bỏ qua các phát hiện không có căn cứ truy thu. Đây là minh chứng tool không phát hiện bừa."
 
+## Demo public
+
+- URL: **https://audit-hq-demo.tinsu.ai**
+- Auth: admin / admin (basic-auth, share OK cho teammate)
+- Healthcheck: `curl https://audit-hq-demo.tinsu.ai/healthz` trả `{"status":"ok","version":"...","build_sha":"...","build_time":"..."}`
+
+## Quy trình deploy
+
+1. Edit code + commit + push main → GitHub Actions tự trigger
+2. Job `test`: uv venv, pytest, ruff
+3. Job `deploy` (chỉ chạy khi test pass): docker build với BUILD_SHA/TIME, restart container, wait healthcheck
+4. Footer ở UI cập nhật phiên bản tự động: `v{VERSION} · build {SHA} · {TIME}`
+
+Manual deploy local: `make deploy` (build + up + show version).
+
+Runner persistence: hiện nohup, NOT survive reboot. Cần convert systemd service (sudo) — defer.
+
 ## Next Steps
 
-### Tuần 10 — Deploy + tổng duyệt + demo HQ (§7.5)
+### Tuần 11+ (sau MVP § 7.7 đề án)
 
-1. **Wire `make publish`**: scp Docker image hoặc tarball lên Tinsu VPS, run docker compose up.
-2. **Cloudflare Tunnel ingress** thêm route `audit-hq-demo.tinsu.ai` → container port 8000 (qua `audit-hq/deploy/scripts/add-ingress.py` đã có).
-3. **Basic-auth runtime** đổi env vars `AUTH_USER`/`AUTH_PASSWORD`/`SESSION_SECRET` thành giá trị ngẫu nhiên mạnh cho production.
-4. **Run lại** ingest + run_checks + anonymize + inject để DB demo ở trạng thái sẵn sàng.
-5. **Tổng duyệt nội bộ Trọng Tín + Tinsu** — chạy kịch bản 5 phút §6.3 đầu cuối, ghi nhận điểm cần fix.
-6. **Demo cho HQ** — sau tuần này, đề án §7.7 (định hướng sau 10 tuần) bắt đầu phụ thuộc phản hồi HQ.
-
-### Sau tuần 10 (lộ trình §7 đề án)
+1. **Tổng duyệt nội bộ Trọng Tín + Tinsu** — share URL audit-hq-demo.tinsu.ai cho team, chạy thử kịch bản 5 phút §6.3, ghi nhận feedback.
+2. **Demo cho HQ** sau khi pass internal review.
+3. **Tuỳ phản hồi HQ** → lộ trình §7.7 (thí điểm Chi Cục Khu vực IV, mở Giai đoạn II, tích hợp VNACCS).
 
 - Tuần 3-4 — Cài Nhóm 1 + Nhóm 2 (9 check MVP).
 - Tuần 5-6 — Cài Nhóm 3 + 4 + 5 + 6 MVP (7 check) + scoring.
