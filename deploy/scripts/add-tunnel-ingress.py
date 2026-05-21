@@ -21,7 +21,7 @@ import urllib.request
 CERT_PATH = "/home/tinsu/.cloudflared/cert.pem"
 TUNNEL_ID = "691a9772-3168-422e-81eb-7c26e1dec9ef"
 HOSTNAME = "audit-hq-demo.tinsu.ai"
-SERVICE = "http://localhost:8000"
+SERVICE = "http://localhost:8200"
 
 
 def load_credentials() -> tuple[str, str]:

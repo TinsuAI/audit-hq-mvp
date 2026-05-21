@@ -8,7 +8,7 @@ services:
     image: audit-hq-mvp:latest
     container_name: audit-hq-mvp
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${HOST_PORT:-8200}:8000"
     volumes:
       - ${DB_DATA_PATH:-./db-data}:/db-data
     environment:
