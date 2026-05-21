@@ -12,11 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup venv
+      - name: Setup venv (uv)
         run: |
-          python3 -m venv .venv
-          .venv/bin/pip install -U pip --quiet
-          .venv/bin/pip install -e ".[dev]" --quiet
+          uv venv --python python3.13 .venv
+          uv pip install -e ".[dev]" --python .venv/bin/python --quiet
 
       - name: Run tests
         run: .venv/bin/pytest -q
