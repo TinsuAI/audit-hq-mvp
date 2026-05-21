@@ -1,6 +1,6 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái:** Tuần 7 hoàn tất (2026-05-21). DB đã anonymize: 6 DN → DN_001-006 (mapping cố định + MST 10 số ngẫu nhiên seeded, 96 NCC → NCC_xxx). Mapping lưu `db-data/anonymize_mapping.json` (gitignored). UI hiển thị toàn DN_xxx. Pipeline run_checks vẫn fire đúng (DN_003 2024 → 1 finding C3.2, score 3). 87 tests pass. Sẵn sàng tuần 8 (inject sai phạm chủ đích cho demo §6.3).
+> **Trạng thái:** Tuần 8 hoàn tất (2026-05-21). Inject 4 sai phạm chủ đích vào DN_003 2024 (fire 11 finding + combo COMBO_ACCOUNTING_INCONSISTENT). Bulk reject 201 critical finding của DN_005 (mô phỏng cán bộ review). Ranking 5 DN demo đúng tinh thần §6.3: DN_003=7896 (gian lận), DN_005=3 (sạch). 92 tests pass. Sẵn sàng tuần 9-10 (polish UI bảng tổng quan + xuất Excel kiến nghị + demo).
 
 ## Current State
 
@@ -11,6 +11,17 @@
 
 ## Recent Changes
 
+- **2026-05-21 (sáng)** — Tuần 8: inject sai phạm chủ đích cho demo §6.3.
+  - `scripts/inject_findings.py` modify 4 NvlBalance + 1 Norm trong DN_003 năm 2024:
+    · DG: closing_qty 9468 → -150 (fire C2.3) + norm × 100 (kích C4.3 trên DD-2)
+    · KHUY: closing_qty += 999 (fire C2.1)
+    · DD-2: opening=import=0, production_out=500 (fire C5.1)
+    · HDG: repurpose_qty=250, production_out -= 250 (fire C1.6)
+  - DN_003 2024: 1 finding (sạch) → 12 finding + combo `COMBO_ACCOUNTING_INCONSISTENT` (score 3 → 103).
+  - `clean_dn_005()` bulk reject 201 critical finding của DN_005 (mô phỏng cán bộ review) — minh chứng "hệ thống không phát hiện bừa". DN_005 score 1290 → 3 (chỉ giữ warning).
+  - `recompute_company_scores()` tự cập nhật risk_score toàn bộ DN sau inject.
+  - Changelog lưu `db-data/injected_changes.json` (gitignored). `--revert` rollback đầy đủ.
+  - +5 tests inject (idempotent, modify đúng 4 mã, norm x100, reject critical chỉ, recompute). Tổng 92 tests pass.
 - **2026-05-21 (rạng sáng-2)** — Tuần 7: anonymize 5 DN demo + script restore.
   - `scripts/anonymize.py`: mapping cố định GROWATT→DN_001 (điện tử), KIM_LONG→DN_002 (cơ khí), HONG_AN→DN_003 (dệt may/da giày), DO_THANH→DN_004 (hoá chất), HONG_PHUC→DN_005 (sạch), HIEP_QUANG→DN_006 (dự bị). MST 10 số ngẫu nhiên SHA256 từ original tax_id (deterministic). Partner trong BCCT → NCC_xxx (96 NCC).
   - Idempotent: skip company đã có code prefix `DN_`. Skip partner đã có `NCC_`.
@@ -66,23 +77,38 @@ DB hiện ở **mode demo** (Company.code = DN_xxx). Pipeline `ingest` nhận ar
 - `python -m app.pipeline.run_checks --company DN_003 --year 2024` vẫn hoạt động bình thường.
 - `python -m app.pipeline.run_all` nếu chạy lại sẽ tạo Company mới với code "HONG_AN" → duplicate. Cần restore + run_all + anonymize lại.
 
+## Ranking demo (cuối tuần 8)
+
+| Hạng | DN | Score | Note |
+|---|---|---|---|
+| 1 | DN_003 | 7896 | HONG_AN — inject 4 sai phạm + combo, cộng dồn nhiều năm dataset thực |
+| 2 | DN_002 | 2020 | KIM_LONG — fire C4.1 nhiều do parser không đọc được M15 |
+| 3 | DN_006 | 1113 | HIEP_QUANG — dự bị, không demo |
+| 4 | DN_004 | 390 | DO_THANH |
+| 5 | DN_001 | 181 | GROWATT |
+| 6 | **DN_005** | **3** | HONG_PHUC — sạch sau bulk reject (mô phỏng cán bộ review) ✓ |
+
+Đề án §6.3 ví dụ "DN_001 ≈ 87 đ" — chỉ là minh hoạ thứ tự. Tinh thần giữ đúng: DN có vấn đề trên đầu, DN sạch dưới cùng. Khi demo 5 phút, narrative sẽ là:
+
+> "DN_003 (HONG_AN sau anonymize) có điểm rủi ro cao nhất 7896. Trong đó năm 2024 có 12 phát hiện trên 5 mã NVL, kèm 1 combo `COMBO_ACCOUNTING_INCONSISTENT` cho thấy số liệu giữa M15 và M16 mâu thuẫn — pattern điển hình của gian lận tiêu hao. Cán bộ chọn vào DN_003 → trang chi tiết → xem từng phát hiện kèm chứng cứ truy nguồn về dòng dữ liệu gốc."
+
+> "DN_005 đứng cuối với 3 điểm — DN này dataset không đầy đủ BCCT nên hệ thống bỏ qua các phát hiện không có căn cứ truy thu. Đây là minh chứng tool không phát hiện bừa."
+
 ## Next Steps
 
-### Tuần 8 — Inject sai phạm chủ đích cho demo §6.3
+### Tuần 9 — Polish UI + xuất Excel kiến nghị + tổng duyệt nội bộ
 
-Lúc này hầu hết DN đã có findings tự nhiên (HONG_AN 2024 chỉ có 1 — quá ít cho demo kịch tính). Tuần này inject sai phạm có chủ đích để kịch bản demo 5 phút đủ "hấp dẫn":
+Theo §7.5 đề án.
 
-1. **`scripts/inject_findings.py`** — modify DB cho từng DN demo:
-   - DN_001 (GROWATT): inject sai phạm để fire C1.1, C2.1, C6.1, C3.2.
-   - DN_002 (KIM_LONG): inject C1.2, C3.3, C3.1, C6.5 (C6.5 W.I.P chưa có — bỏ).
-   - DN_003 (HONG_AN): inject C4.3, C4.4 (cúc áo W.I.P — bỏ), C5.1.
-   - DN_004 (DO_THANH): inject C1.4, C1.6, C2.3.
-   - DN_005 (HONG_PHUC): KHÔNG inject, đảm bảo score thấp.
-2. Inject phải tuyến tính, deterministic, có note để cán bộ Hải quan biết.
-3. Verify sau inject: tổng risk_score xếp hạng đúng kịch bản §6.3 (DN_001 hạng 1 ≈ 87 đ, DN_005 ≈ 12 đ).
-4. Document mapping inject → finding code để dễ debug.
+1. **Trang chi tiết phát hiện** (`/findings/<id>`): hiển thị `details` JSON dạng bảng dễ đọc, link evidence_refs về Tầng 1 (vd: nhấn vào tên NVL → trang xem các dòng M15 + BCCT liên quan).
+2. **Xuất báo cáo Excel kiến nghị kiểm tra** (`/companies/<code>/export?year=YYYY`): file `.xlsx` với:
+   - Sheet 1: Tổng quan DN + danh sách findings (mã check, severity, đối tượng, mô tả).
+   - Sheet 2: Trích xuất các dòng BCCT/M15/M15a/M16 làm chứng cứ.
+   - Sheet 3: Trích yếu pháp lý (TT 39/2018, TT 38/2015, NĐ 154/2005…).
+3. **Trang xem dữ liệu gốc** (Tầng 1): bảng M15, M15a, M16, BCCT cho 1 (DN, năm) để chứng minh "không hộp đen".
+4. **Tổng duyệt nội bộ** Trọng Tín + Tinsu trước khi demo cho HQ.
 
-### Sau tuần 8 (lộ trình §7 đề án)
+### Sau tuần 9 (lộ trình §7 đề án)
 
 - Tuần 3-4 — Cài Nhóm 1 + Nhóm 2 (9 check MVP).
 - Tuần 5-6 — Cài Nhóm 3 + 4 + 5 + 6 MVP (7 check) + scoring.
