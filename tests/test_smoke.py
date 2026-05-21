@@ -1,9 +1,10 @@
-import app.models  # noqa: F401  load metadata first (bind `app` package)
+# ruff: noqa: I001
+import app.models  # noqa: F401  load metadata first (binds `app` to package)
 import pytest
 from fastapi.testclient import TestClient
 
 from app.database import Base, engine
-from app.main import app  # rebinds `app` to FastAPI instance
+from app.main import app  # then rebind `app` to FastAPI instance
 
 
 # Smoke tests dùng default engine (audit_hq.sqlite). CI khởi đầu trống nên
