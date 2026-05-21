@@ -114,6 +114,36 @@ register(CheckSpec(
 ))
 
 
+# --- Nhóm 2 — Cân bằng và tồn kho (3 MVP, C2.4 W.I.P) ---
+register(CheckSpec(
+    code="C2.1",
+    group=2,
+    title="Mất cân bằng phương trình M15 (NVL)",
+    description=(
+        "`tồn_cuối ≠ tồn_đầu + nhập − tái_xuất − chuyển_MĐSD − xuất_SX − xuất_khác` "
+        "(tolerance ±0.01). Bao gồm trường hợp tồn ảo: tồn_đầu = 0 nhưng tồn_cuối > nhập."
+    ),
+    default_severity=Severity.CRITICAL,
+))
+register(CheckSpec(
+    code="C2.2",
+    group=2,
+    title="Mất cân bằng phương trình M15a (TP)",
+    description=(
+        "`tồn_cuối ≠ tồn_đầu + nhập_kho − chuyển_MĐSD − xuất_khẩu − xuất_khác` "
+        "(tolerance ±0.01)."
+    ),
+    default_severity=Severity.CRITICAL,
+))
+register(CheckSpec(
+    code="C2.3",
+    group=2,
+    title="Tồn cuối NVL âm",
+    description="Bất kỳ mã NVL nào có `closing_qty < 0` trên M15 (tolerance ±0.01).",
+    default_severity=Severity.CRITICAL,
+))
+
+
 # --- Severity scales for rule with thresholds ---
 
 

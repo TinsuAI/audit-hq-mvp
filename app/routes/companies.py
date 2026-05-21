@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -25,6 +25,18 @@ templates.env.globals["SEVERITY_LABEL"] = {s.value: SEVERITY_LABEL_VI[s] for s i
 templates.env.globals["SPECS"] = {code: spec for code, spec in SPECS.items()}
 
 _SEVERITY_ORDER = {Severity.CRITICAL.value: 0, Severity.WARNING.value: 1, Severity.INFO.value: 2}
+
+ALLOWED_STATUSES = {"new", "confirmed", "rejected", "noted"}
+
+STATUS_LABEL_VI = {
+    "new": "Mới",
+    "confirmed": "Xác nhận",
+    "rejected": "Loại trừ",
+    "noted": "Đã ghi chú",
+}
+
+templates.env.globals["STATUS_LABEL"] = STATUS_LABEL_VI
+templates.env.globals["ALLOWED_STATUSES"] = sorted(ALLOWED_STATUSES)
 
 router = APIRouter()
 
@@ -113,4 +125,34 @@ def company_detail(
             "severity_totals": severity_totals,
             "total_findings": len(findings),
         },
+    )
+
+
+@router.post("/findings/{finding_id}/status")
+def update_finding_status(
+    finding_id: int,
+    request: Request,
+    status: str = Form(...),
+    notes: str = Form(""),
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    if status not in ALLOWED_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Trạng thái không hợp lệ: {status}")
+
+    finding = db.get(Finding, finding_id)
+    if finding is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phát hiện")
+
+    finding.status = status
+    finding.notes = notes.strip() or None
+    db.commit()
+
+    company = db.get(Company, finding.company_id)
+    code = company.code if company else None
+    if not code:
+        return RedirectResponse(url="/companies", status_code=303)
+    return RedirectResponse(
+        url=f"/companies/{code}?year={finding.period_year}#finding-{finding_id}",
+        status_code=303,
     )

@@ -143,3 +143,49 @@ footer { text-align: center; color: var(--c-muted); padding: 2rem; }
 .finding-group .group-count { color: var(--c-muted); font-weight: normal; margin-left: 0.5rem; }
 .finding-group .group-desc { color: var(--c-muted); font-size: 0.9rem; margin: 0.4rem 0 0.6rem; }
 .findings code { font-size: 0.85rem; background: #f0f0f0; padding: 0 0.3rem; border-radius: 2px; }
+
+.status-pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  background: #eee;
+  color: #444;
+}
+.status-pill.status-new       { background: #e0e0e0; color: #444; }
+.status-pill.status-confirmed { background: #ffd9d9; color: #8b1a1a; }
+.status-pill.status-rejected  { background: #d9eaff; color: #1c4e80; }
+.status-pill.status-noted     { background: #fff2c2; color: #6e5300; }
+
+tr.status-rejected { opacity: 0.5; }
+tr.status-rejected td:not(:last-child) { text-decoration: line-through; }
+
+.status-form {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin: 0;
+  align-items: center;
+}
+.status-form select, .status-form input[type=text] {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--c-border);
+  border-radius: 3px;
+}
+.status-form input[type=text] { min-width: 12rem; flex: 1; }
+.status-form button {
+  padding: 0.2rem 0.7rem;
+  font-size: 0.85rem;
+  background: var(--c-fg);
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.finding-notes {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--c-muted);
+  font-style: italic;
+}

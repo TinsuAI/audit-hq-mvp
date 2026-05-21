@@ -1,6 +1,6 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái:** Tuần 3 hoàn tất (2026-05-21). 6 check Nhóm 1 MVP cài đặt đầu cuối (C1.1 → C1.7 trừ C1.5 W.I.P). UI bảng tổng quan + trang chi tiết DN render được. Pipeline `run_checks` chạy trên HONG_AN 2024 → 0 findings (DN sạch). 31 tests pass (24 unit + 7 integration), ruff clean.
+> **Trạng thái:** Tuần 4 hoàn tất (2026-05-21). Tổng 9/16 MVP check đã cài đặt (Nhóm 1 + 2). Cơ chế đánh dấu finding (`new|confirmed|rejected|noted` + notes) chạy đầu cuối qua HTTP. 43 tests pass, ruff clean. Sẵn sàng tuần 5 (Nhóm 3 + 4 + 5 + 6 MVP, 7 check còn lại).
 
 ## Current State
 
@@ -11,31 +11,42 @@
 
 ## Recent Changes
 
+- **2026-05-21 (khuya)** — Tuần 4: 3 check Nhóm 2 (C2.1 cân bằng M15, C2.2 cân bằng M15a, C2.3 tồn cuối NVL âm). C2.1 phát hiện kèm pattern "tồn ảo" (opening=0, closing>import) ghi vào details. Cơ chế đánh dấu finding: POST `/findings/{id}/status` với 4 trạng thái (new/confirmed/rejected/noted) + ghi chú; UI có inline form trên mỗi row, anchor scroll về row vừa update. +12 unit test (9 C2.x + 3 status route).
 - **2026-05-21 (tối)** — Tuần 3: 6 check Nhóm 1 MVP (C1.1-C1.4, C1.6, C1.7) + registry với severity scale (🔴🟡🔵). Finding model (Tầng 2) với evidence_refs JSON. `detect_company_type` heuristic (SXXK/DNCX/Gia công từ mã loại hình BCCT). Pipeline `run_checks` CLI idempotent. UI: `/companies` (bảng tổng quan), `/companies/<code>?year=YYYY` (chi tiết findings group by check_code, collapsible, badge severity). 19 unit test mới cho check + scale + company_type detection.
 - **2026-05-21 (chiều)** — Tuần 2: 4 adapters (M15/M15a/M16/BCCT) chuẩn hoá vào dataclass; models Tầng 1; Alembic initial migration; pipeline `discover + ingest` (CLI `python -m app.pipeline.ingest --company HONG_AN --year 2024`); 7 tests mới (4 adapters + 3 discover). Verify HONG_AN 2024 — Công ty Cổ phần Giầy Hồng An, MST 5400273360, ngành giày dép (SXXK loại hình E31/E62).
 - **2026-05-21 (sáng)** — Scaffold tuần 1: pyproject, Makefile, Dockerfile, docker-compose, FastAPI hello + login + overview placeholder, alembic init, 5 smoke tests pass.
 
-## Insight nghiệp vụ (tuần 3)
+## Insight nghiệp vụ (tuần 3 + 4)
 
-HONG_AN 2024 chạy 6 check MVP → 0 findings. Dữ liệu DN này khớp số học rất tốt:
+HONG_AN 2024 chạy 9 check MVP → **0 findings**. Dữ liệu DN này khớp số học rất tốt:
 - M15.import_qty == Σ BCCT[E31] theo từng mã (Top 8 NVL kiểm tra: lệch 0.0%)
+- Phương trình M15 cân hoàn hảo (diff = 0.0000 mọi mã)
+- 0 mã NVL có tồn cuối âm
 - 44/44 mã NVL trong BCCT đều có trong M15
 - Không có chuyển MĐSD A42
 
-Đây là DN "đẹp" cho dataset baseline. Sẽ cần inject sai phạm chủ đích ở tuần 8 để demo (theo plan §6.3).
+Đây là DN "đẹp" cho dataset baseline. Sẽ cần inject sai phạm chủ đích ở tuần 8 để demo (theo plan §6.3). Kế toán + XNK của Giầy Hồng An làm rất bài bản — tốt cho regression test (đảm bảo rule không false-positive), nhưng không tốt để demo "kịch tính".
 
 ## Next Steps
 
-### Tuần 4 — Cài Nhóm 2 (3 check MVP) + đánh dấu
+### Tuần 5 — Cài Nhóm 3 + 4 + 5 + 6 MVP (7 check còn lại)
 
-1. `app/checks/c2_balance.py`:
-   - **C2.1** — Mất cân bằng phương trình M15: `tồn_cuối ≠ tồn_đầu + nhập − tái_xuất − chuyển_MĐSD − xuất_SX − xuất_khác`. Severity critical (chênh khác 0, tolerance ±0.01). Trường hợp đặc biệt: `tồn_đầu = 0` nhưng `tồn_cuối > nhập_trong_kỳ` (tồn ảo).
-   - **C2.2** — Mất cân bằng M15a: `tồn_cuối ≠ tồn_đầu + nhập_kho − chuyển_MĐSD − xuất_khẩu − xuất_khác`.
-   - **C2.3** — Tồn cuối NVL âm (M15): bất kỳ mã nào `closing_qty < 0`.
-2. Cơ chế đánh dấu cán bộ (xác nhận / loại trừ / ghi chú) — model `Finding.status` đã có (`new|confirmed|rejected|noted`). Thêm route POST `/findings/<id>/status` + form trên trang chi tiết.
-3. Test fixtures: 6 unit test (3 fire + 3 no-fire cho 3 rule).
+Lộ trình §7.3 đề án: gom MVP của 4 nhóm vào 1 tuần.
 
-### Sau tuần 4 (lộ trình §7 đề án)
+1. `app/checks/c3_classify.py` — Phân loại hàng hoá (3 check):
+   - **C3.1** — Cùng mã vật tư khai nhiều loại hình mâu thuẫn (NVL E11/E31/E21 + MMTB E13).
+   - **C3.2** — Mã HS không nhất quán trong kỳ (cùng `item_code` có ≥2 HS khác). Scale: khác phân nhóm 6 số (Thông tin) · khác nhóm 4 số (Cảnh báo) · khác chương 2 số (Nghiêm trọng).
+   - **C3.3** — Đơn vị tính không nhất quán (M15 vs BCCT cùng mã).
+2. `app/checks/c4_norm.py` — Định mức M16 (2 MVP):
+   - **C4.1** — NVL trong M16 không có nhập + không có tồn đầu.
+   - **C4.3** — Σ(định_mức × xuất_khẩu_M15a) > xuất_sản_xuất_M15 (Cảnh báo >5%, Nghiêm trọng >20%).
+3. `app/checks/c5_trace.py` — Truy nguồn NVL (1 MVP):
+   - **C5.1** — NVL có `xuất_sản_xuất > 0` nhưng nhập_trong_kỳ = 0 và opening = 0.
+4. `app/checks/c6_cross_period.py` — Liên kỳ (1 MVP):
+   - **C6.1** — Tồn đầu kỳ N ≠ tồn cuối kỳ N-1 cho từng NVL (cần ≥2 năm dữ liệu).
+5. Cần ingest thêm HONG_AN 2023 để chạy C6.1.
+
+### Sau tuần 5 (lộ trình §7 đề án)
 
 - Tuần 3-4 — Cài Nhóm 1 + Nhóm 2 (9 check MVP).
 - Tuần 5-6 — Cài Nhóm 3 + 4 + 5 + 6 MVP (7 check) + scoring.

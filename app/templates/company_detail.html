@@ -49,19 +49,34 @@
               <th>Đối tượng</th>
               <th>Mô tả</th>
               <th>Trạng thái</th>
+              <th>Thao tác</th>
             </tr>
           </thead>
           <tbody>
             {% for f in findings %}
-            <tr class="row-{{ f.severity }}">
+            <tr id="finding-{{ f.id }}" class="row-{{ f.severity }} status-{{ f.status }}">
               <td>
                 <span class="badge {{ f.severity }}">
                   {{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}
                 </span>
               </td>
               <td><code>{{ f.subject_key or '—' }}</code></td>
-              <td>{{ f.title }}</td>
-              <td>{{ f.status }}</td>
+              <td>
+                {{ f.title }}
+                {% if f.notes %}<div class="finding-notes">📝 {{ f.notes }}</div>{% endif %}
+              </td>
+              <td><span class="status-pill status-{{ f.status }}">{{ STATUS_LABEL[f.status] }}</span></td>
+              <td>
+                <form method="post" action="/findings/{{ f.id }}/status" class="status-form">
+                  <select name="status">
+                    {% for s in ALLOWED_STATUSES %}
+                      <option value="{{ s }}" {% if f.status == s %}selected{% endif %}>{{ STATUS_LABEL[s] }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="text" name="notes" value="{{ f.notes or '' }}" placeholder="Ghi chú (tuỳ chọn)" maxlength="500">
+                  <button type="submit">Lưu</button>
+                </form>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
