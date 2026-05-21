@@ -66,7 +66,7 @@ def list_companies(
                 years[year][sev] = n
         summary.append({
             "company": c,
-            "years": sorted(years.items()),
+            "years": sorted(years.items(), reverse=True),
         })
     return templates.TemplateResponse(
         request,

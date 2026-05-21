@@ -65,8 +65,8 @@
   --space-12: 3rem;    /* 48 */
 
   /* — Typography — */
-  --font-sans: "Inter", "Be Vietnam Pro", -apple-system, "Segoe UI", "Roboto", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, monospace;
+  --font-sans: "Inter", "Be Vietnam Pro", -apple-system, "Segoe UI", "Roboto", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", monospace;
 
   --fs-xs:   0.75rem;   /* 12 */
   --fs-sm:   0.8125rem; /* 13 */
@@ -340,17 +340,32 @@ p { margin: 0 0 var(--space-3); }
 .score-pill {
   display: inline-flex;
   align-items: center;
-  padding: 2px var(--space-3);
+  padding: 4px 10px;
   border-radius: var(--radius-sm);
   background: var(--c-brand-500);
   color: var(--c-text-inverse);
-  font-weight: 600;
+  font-weight: 700;
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+  min-width: 64px;
+  justify-content: center;
 }
-.score-pill.low    { background: var(--c-success-bg); color: var(--c-success-fg); }
-.score-pill.mid    { background: var(--c-warning-bg); color: var(--c-warning-fg); }
-.score-pill.high   { background: var(--c-critical-bg); color: var(--c-critical-fg); }
+.score-pill.low {
+  background: var(--c-success-bg);
+  color: var(--c-success-fg);
+  border-color: var(--c-success-border);
+}
+.score-pill.mid {
+  background: var(--c-warning-bg);
+  color: var(--c-warning-fg);
+  border-color: var(--c-warning-border);
+}
+.score-pill.high {
+  background: var(--c-critical-bg);
+  color: var(--c-critical-fg);
+  border-color: var(--c-critical-border);
+}
 
 /* — Stat / KPI tile — */
 .stat-grid {
@@ -405,7 +420,7 @@ p { margin: 0 0 var(--space-3); }
 .data-table th, .data-table td {
   padding: var(--space-3) var(--space-4);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
   border-bottom: 1px solid var(--c-border);
 }
 .data-table thead th {
@@ -433,9 +448,123 @@ p { margin: 0 0 var(--space-3); }
 .table-overflow { overflow-x: auto; }
 
 .data-table .num { font-variant-numeric: tabular-nums; text-align: right; }
-.data-table .rank { font-weight: 700; color: var(--c-text-subtle); text-align: center; width: 3rem; }
+.data-table .rank {
+  font-weight: 500;
+  color: var(--c-text-subtle);
+  text-align: center;
+  width: 3.5rem;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  background: var(--c-surface-alt);
+  color: var(--c-text-subtle);
+  border: 1px solid var(--c-border);
+  font-variant-numeric: tabular-nums;
+}
+.rank-badge.rank-1 { background: var(--c-brand-500); color: var(--c-text-inverse); border-color: var(--c-brand-500); box-shadow: var(--shadow-sm); }
+.rank-badge.rank-2 { background: var(--c-brand-100); color: var(--c-brand-700); border-color: var(--c-brand-100); }
+.rank-badge.rank-3 { background: var(--c-brand-50); color: var(--c-brand-600); border-color: var(--c-brand-100); }
 .data-table .code-cell { font-family: var(--font-mono); font-size: 0.85em; }
 .data-table .code-cell a { color: var(--c-brand-500); font-weight: 500; }
+
+/* Year chips trong company table */
+.year-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+}
+.year-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--c-surface-alt);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.year-chip:hover {
+  background: var(--c-brand-50);
+  border-color: var(--c-brand-100);
+  color: var(--c-brand-500);
+  text-decoration: none;
+}
+.year-chip .year-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.year-chip .sev-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+.year-chip .sev-dot.critical { background: #c1272d; }
+.year-chip .sev-dot.warning  { background: #d97706; }
+.year-chip .sev-dot.info     { background: #2563eb; }
+.year-chip.has-critical { background: var(--c-critical-bg); border-color: var(--c-critical-border); }
+.year-chip.has-critical .year-num { color: var(--c-critical-fg); }
+.year-chip.empty { opacity: 0.55; }
+.year-chip.empty .sev-dot { display: none; }
+
+.year-collapse {
+  font-size: var(--fs-xs);
+  color: var(--c-text-subtle);
+  margin-left: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+}
+.year-collapse:hover { color: var(--c-brand-500); }
+
+/* DN cell trong companies table */
+.dn-cell { display: flex; flex-direction: column; gap: 2px; }
+.dn-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-brand-500);
+}
+.dn-name { font-size: var(--fs-sm); color: var(--c-text); }
+
+/* Scoring info popover (details/summary) */
+.scoring-info {
+  position: relative;
+}
+.scoring-info summary {
+  list-style: none;
+}
+.scoring-info summary::-webkit-details-marker { display: none; }
+.scoring-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  min-width: 240px;
+  z-index: 30;
+}
+
+/* Companies table: row height comfortable, alternating subtle */
+.companies-table tbody tr { border-bottom: 1px solid var(--c-border); }
+.companies-table tbody tr:hover { background: var(--c-brand-50); }
+.companies-table td { padding-top: var(--space-3); padding-bottom: var(--space-3); }
 
 /* — Forms — */
 .form-field {

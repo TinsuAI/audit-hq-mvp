@@ -6,13 +6,21 @@
   <div class="page-title-group">
     <h1>Bảng tổng quan doanh nghiệp</h1>
     <p class="page-subtitle">
-      Xếp hạng theo điểm rủi ro · §2.6 đề án:
-      <span class="badge critical">🔴 Nghiêm trọng = 10đ</span>
-      <span class="badge warning">🟡 Cảnh báo = 3đ</span>
-      <span class="badge info">🔵 Thông tin = 1đ</span>
-      <span class="badge muted">Combo +20đ</span>
+      {{ summary | length }} doanh nghiệp · sắp xếp theo điểm rủi ro giảm dần
     </p>
   </div>
+  <details class="scoring-info">
+    <summary class="btn btn-secondary btn-sm">ℹ️ Cách tính điểm</summary>
+    <div class="scoring-popover">
+      <p class="text-mono text-subtle" style="margin-bottom:var(--space-2);font-size:var(--fs-xs)">§2.6 đề án</p>
+      <ul style="list-style:none;padding:0;margin:0;font-size:var(--fs-sm)">
+        <li><span class="badge critical">🔴 Nghiêm trọng</span> = 10 đ</li>
+        <li style="margin-top:6px"><span class="badge warning">🟡 Cảnh báo</span> = 3 đ</li>
+        <li style="margin-top:6px"><span class="badge info">🔵 Thông tin</span> = 1 đ</li>
+        <li style="margin-top:6px"><span class="badge muted">⚡ Combo signature</span> = +20 đ</li>
+      </ul>
+    </div>
+  </details>
 </div>
 
 {% if not summary %}
@@ -22,55 +30,56 @@
   </div>
 {% else %}
 <div class="data-table-wrapper table-overflow">
-  <table class="data-table">
+  <table class="data-table companies-table">
     <thead>
       <tr>
         <th>Hạng</th>
         <th>Điểm rủi ro</th>
-        <th>Mã DN</th>
-        <th>Tên doanh nghiệp</th>
+        <th>Doanh nghiệp</th>
         <th>MST</th>
-        <th>Năm</th>
-        <th>Phát hiện</th>
+        <th>Phát hiện theo năm</th>
       </tr>
     </thead>
     <tbody>
       {% for item in summary %}
         {% set c = item.company %}
-        {% set rowspan = item.years | length if item.years else 1 %}
         {% set rank = loop.index %}
         {% set score_class = "high" if c.risk_score > 500 else ("mid" if c.risk_score > 50 else "low") %}
-        {% if item.years %}
-          {% for year, counts in item.years %}
-          <tr>
-            {% if loop.first %}
-              <td rowspan="{{ rowspan }}" class="rank">#{{ rank }}</td>
-              <td rowspan="{{ rowspan }}" class="num"><span class="score-pill {{ score_class }}">{{ c.risk_score }} đ</span></td>
-              <td rowspan="{{ rowspan }}" class="code-cell"><a href="/companies/{{ c.code }}">{{ c.code }}</a></td>
-              <td rowspan="{{ rowspan }}">{{ c.name or '—' }}</td>
-              <td rowspan="{{ rowspan }}" class="code-cell">{{ c.tax_id or '—' }}</td>
-            {% endif %}
-            <td><a href="/companies/{{ c.code }}?year={{ year }}">{{ year }}</a></td>
-            <td>
-              {% if counts.critical %}<span class="badge critical">🔴 {{ counts.critical }}</span>{% endif %}
-              {% if counts.warning %}<span class="badge warning">🟡 {{ counts.warning }}</span>{% endif %}
-              {% if counts.info %}<span class="badge info">🔵 {{ counts.info }}</span>{% endif %}
-              {% if not counts.critical and not counts.warning and not counts.info %}
-                <span class="text-subtle">không có phát hiện</span>
+      <tr>
+        <td class="rank"><span class="rank-badge {% if rank <= 3 %}rank-{{ rank }}{% endif %}">{{ rank }}</span></td>
+        <td><span class="score-pill {{ score_class }}">{{ c.risk_score }} đ</span></td>
+        <td>
+          <div class="dn-cell">
+            <a href="/companies/{{ c.code }}" class="dn-code text-mono">{{ c.code }}</a>
+            <div class="dn-name">{{ c.name or '—' }}</div>
+          </div>
+        </td>
+        <td class="text-mono text-subtle">{{ c.tax_id or '—' }}</td>
+        <td>
+          {% if item.years %}
+            {% set max_show = 4 %}
+            <div class="year-chips">
+              {% for year, counts in item.years[:max_show] %}
+                {% set has_crit = counts.critical > 0 %}
+                {% set total = (counts.critical or 0) + (counts.warning or 0) + (counts.info or 0) %}
+                <a class="year-chip {% if has_crit %}has-critical{% endif %} {% if total == 0 %}empty{% endif %}"
+                   href="/companies/{{ c.code }}?year={{ year }}">
+                  <span class="year-num">{{ year }}</span>
+                  {% if counts.critical %}<span class="sev-dot critical"></span><span>{{ counts.critical }}</span>{% endif %}
+                  {% if counts.warning %}<span class="sev-dot warning"></span><span>{{ counts.warning }}</span>{% endif %}
+                  {% if counts.info %}<span class="sev-dot info"></span><span>{{ counts.info }}</span>{% endif %}
+                  {% if total == 0 %}<span class="text-subtle" style="font-size:0.9em">sạch</span>{% endif %}
+                </a>
+              {% endfor %}
+              {% if item.years | length > max_show %}
+                <span class="year-collapse">+{{ item.years | length - max_show }} năm khác</span>
               {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        {% else %}
-        <tr>
-          <td class="rank">—</td>
-          <td class="num"><span class="score-pill low">0 đ</span></td>
-          <td class="code-cell"><a href="/companies/{{ c.code }}">{{ c.code }}</a></td>
-          <td>{{ c.name or '—' }}</td>
-          <td class="code-cell">{{ c.tax_id or '—' }}</td>
-          <td colspan="2"><span class="text-subtle">chưa có findings — chạy <code>run_checks</code></span></td>
-        </tr>
-        {% endif %}
+            </div>
+          {% else %}
+            <span class="text-subtle">chưa có findings — chạy <code>run_checks</code></span>
+          {% endif %}
+        </td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
