@@ -32,9 +32,14 @@ def test_login_then_overview():
     )
     assert response.status_code == 303
 
-    home = fresh.get("/")
-    assert home.status_code == 200
-    assert "Tổng quan doanh nghiệp" in home.text
+    # `/` redirects to `/companies` after login.
+    home = fresh.get("/", follow_redirects=False)
+    assert home.status_code == 303
+    assert home.headers["location"] == "/companies"
+
+    page = fresh.get("/companies")
+    assert page.status_code == 200
+    assert "Bảng tổng quan doanh nghiệp" in page.text
 
 
 def test_login_wrong_password():

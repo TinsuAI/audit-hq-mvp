@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ company.code }} — Audit-HQ{% endblock %}
+{% block content %}
+<section class="company-detail">
+  <nav class="breadcrumbs"><a href="/companies">← Doanh nghiệp</a></nav>
+  <h2>{{ company.name or company.code }}</h2>
+  <p class="meta">
+    Mã: <strong>{{ company.code }}</strong>
+    {% if company.tax_id %} · MST: {{ company.tax_id }}{% endif %}
+    {% if company.address %} · {{ company.address }}{% endif %}
+  </p>
+
+  {% if years %}
+  <div class="year-tabs">
+    Năm:
+    {% for y in years %}
+      <a href="/companies/{{ company.code }}?year={{ y }}"
+         class="{% if y == selected_year %}active{% endif %}">{{ y }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if selected_year is none %}
+    <p class="hint">Chưa có findings cho DN này. Chạy <code>python -m app.pipeline.run_checks --company {{ company.code }} --year YYYY</code>.</p>
+  {% else %}
+    <div class="summary-row">
+      <span class="summary-pill">Tổng: {{ total_findings }}</span>
+      {% if severity_totals.critical %}<span class="badge critical">🔴 Nghiêm trọng: {{ severity_totals.critical }}</span>{% endif %}
+      {% if severity_totals.warning %}<span class="badge warning">🟡 Cảnh báo: {{ severity_totals.warning }}</span>{% endif %}
+      {% if severity_totals.info %}<span class="badge info">🔵 Thông tin: {{ severity_totals.info }}</span>{% endif %}
+    </div>
+
+    {% if not ordered_groups %}
+      <p class="hint">Năm {{ selected_year }} không có phát hiện nào.</p>
+    {% endif %}
+
+    {% for code, findings in ordered_groups %}
+      {% set spec = SPECS[code] %}
+      <details class="finding-group" open>
+        <summary>
+          <strong>{{ code }}</strong> — {{ spec.title }}
+          <span class="group-count">({{ findings | length }})</span>
+        </summary>
+        <p class="group-desc">{{ spec.description }}</p>
+        <table class="data-table findings">
+          <thead>
+            <tr>
+              <th>Mức</th>
+              <th>Đối tượng</th>
+              <th>Mô tả</th>
+              <th>Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in findings %}
+            <tr class="row-{{ f.severity }}">
+              <td>
+                <span class="badge {{ f.severity }}">
+                  {{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}
+                </span>
+              </td>
+              <td><code>{{ f.subject_key or '—' }}</code></td>
+              <td>{{ f.title }}</td>
+              <td>{{ f.status }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+    {% endfor %}
+  {% endif %}
+</section>
+{% endblock %}

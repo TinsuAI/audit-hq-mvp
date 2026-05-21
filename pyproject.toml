@@ -37,6 +37,10 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "B", "UP"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI Depends/Query/Form are intentional sentinels in defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Form", "fastapi.Header"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -q"

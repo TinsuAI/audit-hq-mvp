@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Doanh nghiệp — Audit-HQ{% endblock %}
+{% block content %}
+<section class="companies">
+  <h2>Bảng tổng quan doanh nghiệp</h2>
+  {% if not summary %}
+    <p class="hint">Chưa có DN nào. Chạy <code>python -m app.pipeline.ingest --company HONG_AN --year 2024</code> để nạp dữ liệu.</p>
+  {% else %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Mã DN</th>
+        <th>Tên doanh nghiệp</th>
+        <th>MST</th>
+        <th>Năm</th>
+        <th>Phát hiện</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in summary %}
+        {% set c = item.company %}
+        {% if item.years %}
+          {% for year, counts in item.years %}
+          <tr>
+            {% if loop.first %}
+              <td rowspan="{{ item.years | length }}"><a href="/companies/{{ c.code }}">{{ c.code }}</a></td>
+              <td rowspan="{{ item.years | length }}">{{ c.name or '—' }}</td>
+              <td rowspan="{{ item.years | length }}">{{ c.tax_id or '—' }}</td>
+            {% endif %}
+            <td><a href="/companies/{{ c.code }}?year={{ year }}">{{ year }}</a></td>
+            <td class="counts">
+              {% if counts.critical %}<span class="badge critical">🔴 {{ counts.critical }}</span>{% endif %}
+              {% if counts.warning %}<span class="badge warning">🟡 {{ counts.warning }}</span>{% endif %}
+              {% if counts.info %}<span class="badge info">🔵 {{ counts.info }}</span>{% endif %}
+              {% if not counts.critical and not counts.warning and not counts.info %}
+                <span class="muted">không có phát hiện</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+        <tr>
+          <td><a href="/companies/{{ c.code }}">{{ c.code }}</a></td>
+          <td>{{ c.name or '—' }}</td>
+          <td>{{ c.tax_id or '—' }}</td>
+          <td colspan="2"><span class="muted">chưa có findings — chạy `run_checks`</span></td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

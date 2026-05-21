@@ -67,6 +67,31 @@ Ghi lại các quyết định kiến trúc và phạm vi. Mỗi entry: ngày, q
 
 **Lý do:** Trong dev, sẽ tinker schema + chạy lại liên tục. Tránh dup data. Khi cần audit lịch sử, dùng git/snapshot.
 
+### 10. Severity là string column (không enum DB) (2026-05-21)
+
+**Quyết định:** `Finding.severity` lưu string (`critical`/`warning`/`info`). Python side dùng `StrEnum` cho type safety.
+
+**Lý do:** SQLite không có ENUM native; portable. Enum string nên `==` vẫn work giữa Python và DB.
+
+### 11. Detect loại hình DN bằng count BCCT, không hỏi user (2026-05-21)
+
+**Quyết định:** `detect_company_type(session, company_id, year)` đếm dòng BCCT theo mã loại hình → chọn nhóm SXXK/DNCX/Gia công có nhiều dòng nhất.
+
+**Lý do:** Auto-detection thuận tiện cho demo. HQ không phải khai báo. Đề án §4.0 đã list mã rõ ràng nên heuristic an toàn.
+
+**Hạn chế:** DN hỗn hợp (vd vừa SXXK vừa DNCX) sẽ bị classify theo loại lớn hơn. Khi xảy ra, sẽ thêm field `Company.company_type` override.
+
+### 12. Finding lưu evidence_refs dạng JSON filter, không dùng FK (2026-05-21)
+
+**Quyết định:** `Finding.evidence_refs` là JSON list, mỗi item dạng `{"table": "nvl_balances", "filter": {"company_id": 1, "period_year": 2024, "material_code": "X"}}`.
+
+**Lý do:**
+- Truy nguồn về dòng dữ liệu Tầng 1 (§2.2 đề án) nhưng tránh ràng buộc FK cứng — vì Finding có thể trỏ đến **nhiều** dòng (Σ tờ khai theo mã), không phải 1-1.
+- Filter dict tự document được — đọc finding biết ngay "truy nguồn ở đâu" mà không cần load row.
+- Khi xoá rows Tầng 1 + reingest, Finding cũ bị xoá trước (idempotent), không có FK orphan.
+
+**Trade-off:** Không kiểm tra integrity tự động. Test: viewer UI sẽ resolve filter → query → hiển thị.
+
 ### 9. Mẫu 16 hỗ trợ 2 format song song (2026-05-21)
 
 **Quyết định:** Adapter `parse_m16` tự detect format theo sheet name:

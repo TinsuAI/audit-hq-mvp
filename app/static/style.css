@@ -67,3 +67,79 @@ footer { text-align: center; color: var(--c-muted); padding: 2rem; }
 
 .hint { color: var(--c-muted); }
 .placeholder { color: var(--c-muted); }
+.muted { color: var(--c-muted); font-style: italic; }
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--c-card);
+  margin-top: 1rem;
+}
+.data-table th, .data-table td {
+  border: 1px solid var(--c-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.data-table thead { background: #f0f0f0; }
+.data-table tbody tr:hover { background: #f7f7f7; }
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  margin-right: 0.25rem;
+}
+.badge.critical { background: #fce4e4; color: #8b1a1a; }
+.badge.warning  { background: #fff4cc; color: #6e5300; }
+.badge.info     { background: #e3f0fd; color: #1c4e80; }
+
+.row-critical { background: #fff7f7; }
+.row-warning  { background: #fffcef; }
+
+.breadcrumbs { margin-bottom: 0.5rem; font-size: 0.9rem; }
+.breadcrumbs a { color: var(--c-muted); text-decoration: none; }
+
+.meta { color: var(--c-muted); font-size: 0.9rem; }
+
+.year-tabs { margin: 1rem 0; }
+.year-tabs a {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  margin-right: 0.25rem;
+  border: 1px solid var(--c-border);
+  border-radius: 3px;
+  text-decoration: none;
+  color: var(--c-fg);
+  background: var(--c-card);
+}
+.year-tabs a.active { background: var(--c-accent); color: white; border-color: var(--c-accent); }
+
+.summary-row {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: var(--c-card);
+  border-radius: 3px;
+  border: 1px solid var(--c-border);
+}
+.summary-pill {
+  background: #333;
+  color: white;
+  padding: 0.15rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  margin-right: 0.5rem;
+}
+
+.finding-group {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+}
+.finding-group summary { cursor: pointer; font-size: 1rem; }
+.finding-group .group-count { color: var(--c-muted); font-weight: normal; margin-left: 0.5rem; }
+.finding-group .group-desc { color: var(--c-muted); font-size: 0.9rem; margin: 0.4rem 0 0.6rem; }
+.findings code { font-size: 0.85rem; background: #f0f0f0; padding: 0 0.3rem; border-radius: 2px; }

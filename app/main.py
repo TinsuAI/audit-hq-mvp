@@ -11,12 +11,14 @@ from app.auth import (
     make_session_cookie,
     require_user,
 )
+from app.routes.companies import router as companies_router
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 app = FastAPI(title="Audit-HQ MVP", version="0.1.0")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+app.include_router(companies_router)
 
 
 @app.get("/healthz")
@@ -59,4 +61,4 @@ def logout() -> RedirectResponse:
 
 @app.get("/", response_class=HTMLResponse)
 def overview(request: Request, user: str = Depends(require_user)) -> HTMLResponse:
-    return templates.TemplateResponse(request, "overview.html", {"user": user})
+    return RedirectResponse(url="/companies", status_code=303)
