@@ -1,16 +1,28 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        BUILD_SHA: ${BUILD_SHA:-dev}
+        BUILD_TIME: ${BUILD_TIME:-}
+    image: audit-hq-mvp:latest
     container_name: audit-hq-mvp
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
-      - ./db-data:/data
-      - ./data:/raw-data:ro
+      - ${DB_DATA_PATH:-./db-data}:/db-data
     environment:
-      - DATABASE_URL=sqlite:////data/audit_hq.sqlite
+      - DATABASE_URL=sqlite:////db-data/audit_hq.sqlite
       - AUTH_USER=${AUTH_USER:-admin}
       - AUTH_PASSWORD=${AUTH_PASSWORD:-admin}
-      - SESSION_SECRET=${SESSION_SECRET:-dev-secret-change-me}
-      - RAW_DATA_PATH=/raw-data
+      - SESSION_SECRET=${SESSION_SECRET:-dev-secret-change-in-prod}
+      - BUILD_SHA=${BUILD_SHA:-dev}
+      - BUILD_TIME=${BUILD_TIME:-}
+      - APP_VERSION=${APP_VERSION:-}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

@@ -12,18 +12,28 @@ from app.auth import (
     require_user,
 )
 from app.routes.companies import router as companies_router
+from app.version import BUILD_SHA, BUILD_TIME, VERSION, version_string
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+templates.env.globals["app_version"] = VERSION
+templates.env.globals["app_version_string"] = version_string()
+templates.env.globals["app_build_sha"] = BUILD_SHA
+templates.env.globals["app_build_time"] = BUILD_TIME
 
-app = FastAPI(title="Audit-HQ MVP", version="0.1.0")
+app = FastAPI(title="Audit-HQ MVP", version=VERSION)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 app.include_router(companies_router)
 
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "version": VERSION,
+        "build_sha": BUILD_SHA,
+        "build_time": BUILD_TIME,
+    }
 
 
 @app.get("/login", response_class=HTMLResponse)

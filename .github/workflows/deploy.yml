@@ -1,0 +1,77 @@
+name: Test & Deploy to Tinsu
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: [self-hosted, tinsu-prod]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup venv
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -U pip --quiet
+          .venv/bin/pip install -e ".[dev]" --quiet
+
+      - name: Run tests
+        run: .venv/bin/pytest -q
+
+      - name: Lint
+        run: .venv/bin/ruff check app tests scripts
+
+  deploy:
+    needs: test
+    runs-on: [self-hosted, tinsu-prod]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute build metadata
+        id: meta
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+          echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        env:
+          BUILD_SHA: ${{ steps.meta.outputs.sha }}
+          BUILD_TIME: ${{ steps.meta.outputs.time }}
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+        run: docker compose build
+
+      - name: Restart container
+        env:
+          BUILD_SHA: ${{ steps.meta.outputs.sha }}
+          BUILD_TIME: ${{ steps.meta.outputs.time }}
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+          AUTH_USER: ${{ secrets.AUTH_USER || 'admin' }}
+          AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD || 'admin' }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'change-me-in-prod' }}
+          # Persistent DB path outside the runner workdir (workdir gets wiped on checkout).
+          DB_DATA_PATH: /home/tinsu/audit-hq-mvp-deploy/db-data
+        run: docker compose up -d --no-deps app
+
+      - name: Wait for healthcheck
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/healthz >/dev/null 2>&1; then
+              echo "✓ Service ready"
+              curl -s http://127.0.0.1:8000/healthz | head -1
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "✗ Service did not become ready in 60s"
+          docker compose logs --tail 50
+          exit 1
+
+      - name: Show deployed version
+        run: |
+          echo "Deployed: v${{ steps.meta.outputs.version }} · build ${{ steps.meta.outputs.sha }} · ${{ steps.meta.outputs.time }}"
+          docker compose ps
