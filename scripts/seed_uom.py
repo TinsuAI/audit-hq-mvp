@@ -45,12 +45,15 @@ CANONICALS: list[tuple[str, str, float, str, str]] = [
     ("PCE", "count",  1.0,    "Chiếc / cái", "Đơn vị đếm cá thể"),
     ("PR",  "count",  2.0,    "Đôi / cặp",   "1 pair = 2 cái"),
     ("DZN", "count",  12.0,   "Tá",          "1 dozen = 12 cái"),
+    # Sheet/board (đếm theo dạng phẳng)
+    ("TOO", "count_packaging", 1.0, "Tờ",     "Tờ giấy / vải / film"),
+    ("TAM", "count_packaging", 1.0, "Tấm",    "Tấm board / kim loại / nhựa"),
     # Packaging
     ("ROL", "count_packaging", 1.0, "Cuộn",   "Cuộn cuốn (chỉ, vải, giấy)"),
     ("SET", "count_packaging", 1.0, "Bộ",     "Bộ / set"),
     ("BOX", "count_packaging", 1.0, "Hộp",    "Hộp / box"),
     ("BAG", "count_packaging", 1.0, "Túi",    "Túi / bag"),
-    ("BTL", "count_packaging", 1.0, "Chai",   "Chai / bottle"),
+    ("BTL", "count_packaging", 1.0, "Chai / lọ / tuýp", "Chai / bottle / jar / tube"),
     ("CTN", "count_packaging", 1.0, "Thùng / carton", "Thùng carton"),
 ]
 
@@ -68,6 +71,7 @@ ALIASES: list[tuple[str, str]] = [
     # Mass
     ("KG", "KGM"), ("KGM", "KGM"), ("KILOGRAM", "KGM"), ("KILOGRAMS", "KGM"),
     ("KILOGAM", "KGM"), ("KÍLÔGAM", "KGM"),
+    ("KILO-GRAMME", "KGM"), ("KILO-GRAMMES", "KGM"), ("KILOGRAMME", "KGM"), ("KILOGRAMMES", "KGM"),
     ("G", "GRM"), ("GR", "GRM"), ("GRM", "GRM"), ("GAM", "GRM"), ("GRAM", "GRM"), ("GRAMS", "GRM"),
     ("T", "TNE"), ("TN", "TNE"), ("TNE", "TNE"), ("TON", "TNE"), ("TONS", "TNE"), ("TẤN", "TNE"),
     ("MG", "MGM"), ("MGM", "MGM"), ("MILLIGRAM", "MGM"),
@@ -86,22 +90,25 @@ ALIASES: list[tuple[str, str]] = [
     # Count
     ("PCE", "PCE"), ("PCS", "PCE"), ("PC", "PCE"), ("PIECE", "PCE"), ("PIECES", "PCE"),
     ("CAI", "PCE"), ("CÁI", "PCE"), ("CHIEC", "PCE"), ("CHIẾC", "PCE"),
-    ("UNIT", "PCE"), ("UNITS", "PCE"),
+    ("UNIT", "PCE"), ("UNITS", "PCE"), ("UN", "PCE"), ("UNA", "PCE"), ("U", "PCE"),
     ("PR", "PR"), ("PAIR", "PR"), ("PAIRS", "PR"), ("DOI", "PR"), ("ĐÔI", "PR"),
     ("CAP", "PR"), ("CẶP", "PR"),
     ("DZN", "DZN"), ("DZ", "DZN"), ("DOZEN", "DZN"), ("TÁ", "DZN"),
     # Packaging
     ("ROL", "ROL"), ("ROLL", "ROL"), ("ROLLS", "ROL"), ("CUON", "ROL"), ("CUỘN", "ROL"),
-    ("SET", "SET"), ("BO", "SET"), ("BỘ", "SET"),
+    ("SET", "SET"), ("SETS", "SET"), ("BO", "SET"), ("BỘ", "SET"),
+    ("TOO", "TOO"), ("TO", "TOO"), ("TỜ", "TOO"), ("SHEET", "TOO"), ("SHEETS", "TOO"),
+    ("TAM", "TAM"), ("TẤM", "TAM"), ("BOARD", "TAM"), ("PANEL", "TAM"), ("PANELS", "TAM"),
     ("BOX", "BOX"), ("BOXES", "BOX"), ("HOP", "BOX"), ("HỘP", "BOX"),
     ("BAG", "BAG"), ("BAGS", "BAG"), ("TUI", "BAG"), ("TÚI", "BAG"),
     ("BTL", "BTL"), ("BOTTLE", "BTL"), ("BOTTLES", "BTL"), ("CHAI", "BTL"),
+    ("LO", "BTL"), ("LỌ", "BTL"), ("JAR", "BTL"), ("TUYP", "BTL"), ("TUÝP", "BTL"), ("TUBE", "BTL"),
     ("CTN", "CTN"), ("CARTON", "CTN"), ("CARTONS", "CTN"), ("THUNG", "CTN"), ("THÙNG", "CTN"),
 ]
 
 
 def seed_canonicals(session) -> int:
-    existing = {c.code for c in session.scalars(select(UomCanonical.code)).all()}
+    existing = set(session.scalars(select(UomCanonical.code)).all())
     added = 0
     for code, family, factor, name_vi, desc in CANONICALS:
         if code in existing:
@@ -116,8 +123,8 @@ def seed_canonicals(session) -> int:
 
 
 def seed_aliases(session) -> int:
-    existing_aliases = {a.alias.upper() for a in session.scalars(select(UomAlias)).all()}
-    canonical_codes = {c for c in session.scalars(select(UomCanonical.code)).all()}
+    existing_aliases = {a.upper() for a in session.scalars(select(UomAlias.alias)).all()}
+    canonical_codes = set(session.scalars(select(UomCanonical.code)).all())
     added = 0
     for alias, code in ALIASES:
         alias_up = alias.upper()

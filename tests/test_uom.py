@@ -70,6 +70,32 @@ def test_compare_normalizes_case_and_whitespace(session):
     assert compare(session, "  mtr  ", "Metres") == UomMatch.EQUIVALENT
 
 
+def test_resolve_compound_with_separator(session):
+    # "Cái/Chiếc" — cả 2 phần đều map về PCE → resolve PCE.
+    _add_alias(session, "CHIẾC", "PCE")
+    _add_alias(session, "CÁI", "PCE")
+    assert resolve_canonical(session, "Cái/Chiếc") == "PCE"
+    assert resolve_canonical(session, "CHIẾC / CÁI") == "PCE"
+
+
+def test_compare_with_compound_unit(session):
+    _add_alias(session, "CHIẾC", "PCE")
+    _add_alias(session, "CÁI", "PCE")
+    # PCE vs "Cái/Chiếc" → EQUIVALENT
+    assert compare(session, "PCE", "Cái/Chiếc") == UomMatch.EQUIVALENT
+
+
+def test_resolve_compound_ambiguous_returns_none(session):
+    # "KG, GAM" — 2 canonical khác nhau → ambiguous → None
+    assert resolve_canonical(session, "KG, GAM") is None
+
+
+def test_resolve_compound_lenient_with_unknown_parts(session):
+    # "Cái/UNKNOWN_FOO" — 1 phần PCE, 1 unknown → resolve PCE (lenient).
+    _add_alias(session, "CÁI", "PCE")
+    assert resolve_canonical(session, "Cái/UNKNOWN_FOO") == "PCE"
+
+
 # --- C3.3 với UOM severity ladder ---
 
 

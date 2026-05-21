@@ -11,6 +11,7 @@ Cache invalidate khi admin sửa qua route /admin/units.
 
 from __future__ import annotations
 
+import re
 import threading
 from dataclasses import dataclass
 from enum import StrEnum
@@ -19,6 +20,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import UomAlias, UomCanonical
+
+# Separator chars dùng trong text đơn vị tính của user (Cái/Chiếc, KG, GAM...).
+_SEP_RE = re.compile(r"[/,;|]+")
 
 
 class UomMatch(StrEnum):
@@ -72,11 +76,27 @@ def normalize(unit: str | None) -> str | None:
 
 
 def resolve_canonical(session: Session, unit: str | None) -> str | None:
-    """Tìm canonical code từ raw unit. Trả None nếu không match."""
+    """Tìm canonical code từ raw unit. Trả None nếu không match.
+
+    Hỗ trợ compound unit text với separator (vd "Cái/Chiếc", "KG, GAM"):
+    nếu split ra mà mọi phần đều resolve về cùng canonical → trả canonical đó.
+    """
     norm = normalize(unit)
     if norm is None:
         return None
-    return get_cache(session).aliases.get(norm)
+    cache = get_cache(session)
+    # Direct alias hit.
+    direct = cache.aliases.get(norm)
+    if direct is not None:
+        return direct
+    # Compound text với separator: split → match từng phần.
+    if _SEP_RE.search(norm):
+        parts = [p.strip() for p in _SEP_RE.split(norm) if p.strip()]
+        canons = {cache.aliases.get(p) for p in parts}
+        canons.discard(None)
+        if len(canons) == 1:
+            return canons.pop()
+    return None
 
 
 def get_family(session: Session, unit: str | None) -> str | None:
@@ -95,18 +115,19 @@ def compare(session: Session, unit_a: str | None, unit_b: str | None) -> UomMatc
     if a_norm == b_norm:
         return UomMatch.EQUIVALENT
 
-    cache = get_cache(session)
-    canon_a = cache.aliases.get(a_norm) if a_norm else None
-    canon_b = cache.aliases.get(b_norm) if b_norm else None
+    # Dùng resolve_canonical (hỗ trợ separator split) thay vì lookup trực tiếp.
+    canon_a = resolve_canonical(session, unit_a)
+    canon_b = resolve_canonical(session, unit_b)
 
     if canon_a and canon_b:
         if canon_a == canon_b:
             return UomMatch.EQUIVALENT
+        cache = get_cache(session)
         fam_a = cache.canonical.get(canon_a).family if cache.canonical.get(canon_a) else None
         fam_b = cache.canonical.get(canon_b).family if cache.canonical.get(canon_b) else None
         if fam_a is not None and fam_a == fam_b:
             return UomMatch.SAME_FAMILY
         return UomMatch.DIFFERENT
 
-    # 1 trong 2 unit unknown — chỉ raw compare đã làm trên.
+    # 1 trong 2 unknown — không có đủ info → coi như DIFFERENT.
     return UomMatch.DIFFERENT
