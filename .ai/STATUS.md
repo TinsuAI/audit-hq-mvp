@@ -1,6 +1,6 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái:** Tuần 6 hoàn tất (2026-05-21). Risk scoring (§2.6, 10/3/1 + combo 20đ) + 4 combination signatures (§2.7) + CLI `run_all` orchestrate ingest+check toàn bộ 6 DN × 11 năm. Chạy `run_all` trên dataset thực sinh **1355 findings · 1 combo (COMBO_HS_GAMING trên HONG_AN 2025)**. 78 tests pass, ruff clean. Hoàn tất §7.3 (Tuần 5-6). Sẵn sàng tuần 7-8 (anonymize 5 DN demo + inject sai phạm chủ đích).
+> **Trạng thái:** Tuần 7 hoàn tất (2026-05-21). DB đã anonymize: 6 DN → DN_001-006 (mapping cố định + MST 10 số ngẫu nhiên seeded, 96 NCC → NCC_xxx). Mapping lưu `db-data/anonymize_mapping.json` (gitignored). UI hiển thị toàn DN_xxx. Pipeline run_checks vẫn fire đúng (DN_003 2024 → 1 finding C3.2, score 3). 87 tests pass. Sẵn sàng tuần 8 (inject sai phạm chủ đích cho demo §6.3).
 
 ## Current State
 
@@ -11,6 +11,13 @@
 
 ## Recent Changes
 
+- **2026-05-21 (rạng sáng-2)** — Tuần 7: anonymize 5 DN demo + script restore.
+  - `scripts/anonymize.py`: mapping cố định GROWATT→DN_001 (điện tử), KIM_LONG→DN_002 (cơ khí), HONG_AN→DN_003 (dệt may/da giày), DO_THANH→DN_004 (hoá chất), HONG_PHUC→DN_005 (sạch), HIEP_QUANG→DN_006 (dự bị). MST 10 số ngẫu nhiên SHA256 từ original tax_id (deterministic). Partner trong BCCT → NCC_xxx (96 NCC).
+  - Idempotent: skip company đã có code prefix `DN_`. Skip partner đã có `NCC_`.
+  - Modify in-place audit_hq.sqlite. Mapping lưu `db-data/anonymize_mapping.json` (gitignored, ngoài symlink `data/` để không lẫn với data thực).
+  - `scripts/restore.py`: rollback từ mapping file khi cần debug nội bộ.
+  - Verify: `run_checks --company DN_003 --year 2024` vẫn fire đúng 1 finding C3.2. UI `/companies` show DN_001-006 với rank theo risk_score.
+  - +9 tests (deterministic MST, idempotency, dry-run, partner alias, mapping coverage).
 - **2026-05-21 (rạng sáng)** — Tuần 6: scoring + combo + run_all.
   - `app/checks/scoring.py`: SEVERITY_POINTS (10/3/1), COMBO_BONUS=20, `compute_risk_score` bỏ findings status='rejected'.
   - `app/checks/combos.py`: 4 combo — `COMBO_FORGED_NORM` (C2.3+C4.3), `COMBO_UNDECLARED_SOURCE` (C1.3+C5.1), `COMBO_ACCOUNTING_INCONSISTENT` (C2.1+C4.3), `COMBO_HS_GAMING` (C3.2+C3.3). Trigger logic: cùng subject_key trên (company, year).
@@ -51,27 +58,31 @@ Chạy `run_all` trên 27/29 cặp (DN, năm) — 2 cặp lỗi `pd.ExcelFile` k
 
 **Đơn vị tính alias map** (`app/checks/c3_classify.py`) đã giảm false positive từ 43 → 0 trên HONG_AN. Sẽ mở rộng khi gặp DN mới.
 
+## Constraint sau anonymize
+
+DB hiện ở **mode demo** (Company.code = DN_xxx). Pipeline `ingest` nhận argument `--company HONG_AN` sẽ KHÔNG match với DN trong DB nữa, nên:
+
+- **Không re-ingest filesystem path "HONG_AN"** trừ khi `python -m scripts.restore` trước.
+- `python -m app.pipeline.run_checks --company DN_003 --year 2024` vẫn hoạt động bình thường.
+- `python -m app.pipeline.run_all` nếu chạy lại sẽ tạo Company mới với code "HONG_AN" → duplicate. Cần restore + run_all + anonymize lại.
+
 ## Next Steps
 
-### Tuần 7 — Anonymize 5 DN demo
+### Tuần 8 — Inject sai phạm chủ đích cho demo §6.3
 
-Theo `audit-hq/.ai/sessions/2026-05-21-demo-plan.md` mục 4.7.
+Lúc này hầu hết DN đã có findings tự nhiên (HONG_AN 2024 chỉ có 1 — quá ít cho demo kịch tính). Tuần này inject sai phạm có chủ đích để kịch bản demo 5 phút đủ "hấp dẫn":
 
-1. **Script `scripts/anonymize.py`** với mapping (đã chốt 2026-05-21):
-   - GROWATT → **DN_001** (điện tử HS 85 nominal — sẽ verify nội dung)
-   - KIM_LONG → **DN_002** (cơ khí HS 84)
-   - HONG_AN → **DN_003** (dệt may HS 61 — case study cúc áo C4.4 khi sang Giai đoạn II)
-   - DO_THANH → **DN_004** (hoá chất HS 39)
-   - HONG_PHUC → **DN_005** (sạch — không inject sai phạm)
-2. **Anonymize fields** theo §6.2 đề án:
-   - Tên DN → `DN_xxx` (chỉ trong DB; data/raw vẫn nguyên bản)
-   - MST → dãy 10 số ngẫu nhiên có seed cố định
-   - Partner (NCC) → `NCC_xxx`
-   - Giữ: mã HS, mã loại hình, số lượng/giá trị
-3. **Script idempotent** — chạy lại không lặp; lưu mapping vào file riêng để restore khi cần debug.
-4. **Verify run_checks vẫn fire đúng** sau anonymize (tránh anonymize phá quan hệ FK).
+1. **`scripts/inject_findings.py`** — modify DB cho từng DN demo:
+   - DN_001 (GROWATT): inject sai phạm để fire C1.1, C2.1, C6.1, C3.2.
+   - DN_002 (KIM_LONG): inject C1.2, C3.3, C3.1, C6.5 (C6.5 W.I.P chưa có — bỏ).
+   - DN_003 (HONG_AN): inject C4.3, C4.4 (cúc áo W.I.P — bỏ), C5.1.
+   - DN_004 (DO_THANH): inject C1.4, C1.6, C2.3.
+   - DN_005 (HONG_PHUC): KHÔNG inject, đảm bảo score thấp.
+2. Inject phải tuyến tính, deterministic, có note để cán bộ Hải quan biết.
+3. Verify sau inject: tổng risk_score xếp hạng đúng kịch bản §6.3 (DN_001 hạng 1 ≈ 87 đ, DN_005 ≈ 12 đ).
+4. Document mapping inject → finding code để dễ debug.
 
-### Sau tuần 7 (lộ trình §7 đề án)
+### Sau tuần 8 (lộ trình §7 đề án)
 
 - Tuần 3-4 — Cài Nhóm 1 + Nhóm 2 (9 check MVP).
 - Tuần 5-6 — Cài Nhóm 3 + 4 + 5 + 6 MVP (7 check) + scoring.
