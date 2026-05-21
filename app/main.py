@@ -11,6 +11,7 @@ from app.auth import (
     make_session_cookie,
     require_user,
 )
+from app.routes.admin import router as admin_router
 from app.routes.companies import router as companies_router
 from app.version import BUILD_SHA, BUILD_TIME, VERSION, version_string
 
@@ -24,6 +25,7 @@ templates.env.globals["app_build_time"] = BUILD_TIME
 app = FastAPI(title="Audit-HQ MVP", version=VERSION)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 app.include_router(companies_router)
+app.include_router(admin_router)
 
 
 @app.get("/healthz")

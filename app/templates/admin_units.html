@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Quản lý đơn vị tính — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Audit-HQ</a>
+  <span class="sep">›</span>
+  Quản trị
+  <span class="sep">›</span>
+  Đơn vị tính
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Quản lý đơn vị tính (UOM)</h1>
+    <p class="page-subtitle">
+      {{ total_canonical }} đơn vị chuẩn · {{ total_aliases }} alias
+      · dùng cho check C3.3 (đơn vị tính không nhất quán)
+    </p>
+  </div>
+</div>
+
+<div class="card">
+  <h3 class="card-title">Khái niệm</h3>
+  <p style="margin-bottom:0;font-size:var(--fs-sm);color:var(--c-text-muted)">
+    <strong>Canonical</strong> = đơn vị chuẩn (vd <code>MTR</code>, <code>KGM</code>, <code>PCE</code>).
+    <strong>Family</strong> = nhóm đơn vị cùng đo lượng gì (<code>length</code>, <code>mass</code>, <code>count</code>…).
+    <strong>Alias</strong> = các tên gọi khác nhau quy về cùng canonical (<code>Chiếc</code>, <code>PCS</code>, <code>PIECES</code> → <code>PCE</code>).
+    C3.3 fire <span class="badge info">🔵 Thông tin</span> khi 2 đơn vị cùng family (KG↔GAM quy đổi được),
+    <span class="badge critical">🔴 Nghiêm trọng</span> khi khác family hẳn (sai đơn vị ×1000).
+  </p>
+</div>
+
+<form method="get" class="form-row mb-3 mt-4">
+  <div class="form-field" style="margin-bottom:0">
+    <label class="form-label">Lọc theo family</label>
+    <select name="family" class="form-select">
+      <option value="">— Tất cả —</option>
+      {% for f in families %}
+        <option value="{{ f }}" {% if filter_family == f %}selected{% endif %}>{{ f }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-field" style="margin-bottom:0;flex:1">
+    <label class="form-label">Lọc theo code</label>
+    <input type="text" name="q" value="{{ q or '' }}" class="form-input" placeholder="MTR, KGM…">
+  </div>
+  <div>
+    <button type="submit" class="btn btn-primary">Lọc</button>
+    {% if filter_family or q %}<a href="/admin/units" class="btn btn-secondary">Xoá lọc</a>{% endif %}
+  </div>
+</form>
+
+{% for family, items in families_grouped | dictsort %}
+<div class="card mt-3">
+  <h3 class="card-title">
+    Family: <code class="text-mono">{{ family }}</code>
+    <span class="text-subtle" style="font-weight:400;text-transform:none">({{ items | length }} canonical)</span>
+  </h3>
+  <div class="table-overflow">
+    <table class="data-table compact">
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Tên VN</th>
+          <th>Base factor</th>
+          <th>Mô tả</th>
+          <th>Aliases</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="code-cell"><strong>{{ item.row.code }}</strong></td>
+          <td>{{ item.row.name_vi or '—' }}</td>
+          <td class="num text-mono">{{ item.row.base_factor }}</td>
+          <td class="text-subtle">{{ item.row.description or '—' }}</td>
+          <td class="alias-cell">
+            {% for a in item.aliases %}
+              {% if a != item.row.code %}<code class="alias-chip">{{ a }}</code>{% endif %}
+            {% endfor %}
+            {% if item.aliases | length <= 1 %}<span class="text-subtle" style="font-size:var(--fs-xs)">chưa có alias riêng</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+<div class="card mt-5">
+  <h3 class="card-title">Thêm alias mới</h3>
+  <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
+    Khi C3.3 báo false-positive, dùng form này để map đơn vị lạ về canonical phù hợp.
+  </p>
+  <form method="post" action="/admin/units/aliases" class="form-row">
+    <div class="form-field" style="margin-bottom:0;flex:1">
+      <label class="form-label">Alias (text raw)</label>
+      <input type="text" name="alias" class="form-input" placeholder="vd MÉT VUÔNG, CHIẾC" required>
+    </div>
+    <div class="form-field" style="margin-bottom:0">
+      <label class="form-label">Canonical</label>
+      <select name="canonical_code" class="form-select" required>
+        {% for family, items in families_grouped | dictsort %}
+          <optgroup label="{{ family }}">
+            {% for item in items %}
+              <option value="{{ item.row.code }}">{{ item.row.code }} — {{ item.row.name_vi or item.row.description or '' }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-field" style="margin-bottom:0;flex:2">
+      <label class="form-label">Ghi chú (tuỳ chọn)</label>
+      <input type="text" name="note" class="form-input" placeholder="vd: gặp ở DN_003 2024">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary">Thêm alias</button>
+    </div>
+  </form>
+</div>
+
+<details class="card mt-3">
+  <summary style="cursor:pointer;font-weight:600">⚙️ Thêm canonical mới (advanced)</summary>
+  <p class="text-subtle" style="font-size:var(--fs-xs);margin-top:var(--space-3)">
+    Chỉ thêm khi gặp đơn vị thật sự MỚI (không phải alias của canonical đã có).
+  </p>
+  <form method="post" action="/admin/units/canonical" class="form-stack" style="max-width:600px;margin-top:var(--space-3)">
+    <div class="form-row">
+      <div class="form-field" style="margin-bottom:0">
+        <label class="form-label">Code (3-4 ký tự)</label>
+        <input type="text" name="code" class="form-input text-mono" required maxlength="16">
+      </div>
+      <div class="form-field" style="margin-bottom:0">
+        <label class="form-label">Family</label>
+        <select name="family" class="form-select" required>
+          {% for f in families %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-field" style="margin-bottom:0">
+        <label class="form-label">Base factor</label>
+        <input type="number" name="base_factor" class="form-input" step="any" value="1.0" required>
+      </div>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Tên tiếng Việt</label>
+      <input type="text" name="name_vi" class="form-input" placeholder="vd Lít">
+    </div>
+    <div class="form-field">
+      <label class="form-label">Mô tả</label>
+      <input type="text" name="description" class="form-input">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary">Thêm canonical</button>
+    </div>
+  </form>
+</details>
+
+{% endblock %}

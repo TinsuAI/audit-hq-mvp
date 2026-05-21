@@ -172,7 +172,8 @@ register(CheckSpec(
     title="Đơn vị tính không nhất quán",
     description=(
         "Cùng mã NVL có ≥2 đơn vị khác nhau giữa M15 và BCCT. "
-        "Sai đơn vị ×1000 khiến nhập/xuất/tồn sai hệ thống."
+        "Cùng họ (KG↔GAM, M↔CM) → Thông tin; "
+        "khác họ (sai ×1000) → Nghiêm trọng."
     ),
     default_severity=Severity.CRITICAL,
 ))

@@ -9,18 +9,49 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import Base
-from app.models import Company, DeclarationLine, NvlBalance, SpBalance
+from app.models import (
+    Company,
+    DeclarationLine,
+    NvlBalance,
+    SpBalance,
+    UomAlias,
+    UomCanonical,
+)
 
 
 @pytest.fixture
 def session() -> Session:
-    """In-memory SQLite session — no migrations, schema from Base.metadata."""
+    """In-memory SQLite session — schema từ Base.metadata + seed minimum UOM."""
+    from app.checks.uom import invalidate_cache
+
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
     with SessionLocal() as s:
+        # Seed UOM cơ bản để C3.3 tests work without hardcoded dict.
+        s.add_all([
+            UomCanonical(code="MTR", family="length", base_factor=1.0),
+            UomCanonical(code="CMT", family="length", base_factor=0.01),
+            UomCanonical(code="KGM", family="mass", base_factor=1.0),
+            UomCanonical(code="GRM", family="mass", base_factor=0.001),
+            UomCanonical(code="PCE", family="count", base_factor=1.0),
+        ])
+        s.add_all([
+            UomAlias(alias="MTR", canonical_code="MTR"),
+            UomAlias(alias="METRES", canonical_code="MTR"),
+            UomAlias(alias="M", canonical_code="MTR"),
+            UomAlias(alias="CM", canonical_code="CMT"),
+            UomAlias(alias="KG", canonical_code="KGM"),
+            UomAlias(alias="KGM", canonical_code="KGM"),
+            UomAlias(alias="GAM", canonical_code="GRM"),
+            UomAlias(alias="PCE", canonical_code="PCE"),
+            UomAlias(alias="PIECES", canonical_code="PCE"),
+        ])
+        s.commit()
+        invalidate_cache()
         yield s
         s.rollback()
+        invalidate_cache()
 
 
 @pytest.fixture

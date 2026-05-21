@@ -11,46 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.checks.registry import Severity
+from app.checks.uom import UomMatch
+from app.checks.uom import compare as uom_compare
 from app.models import DeclarationLine, Finding, NvlBalance
-
-# Alias đơn vị tính giữa M15 (mã ngắn UN/CEFACT) và BCCT (tên dài từ ECUS).
-# Dùng để chuẩn hoá khi so sánh ở C3.3.
-_UNIT_ALIAS = {
-    # Mét / Metres
-    "MTR": "MTR", "METRES": "MTR", "METRE": "MTR", "METER": "MTR", "M": "MTR", "MET": "MTR",
-    # Đôi/cặp / Pair
-    "PR": "PR", "PAIR": "PR", "PAIRS": "PR", "DOI": "PR", "DÔI": "PR", "CAP": "PR", "CẶP": "PR",
-    # Chiếc / Piece
-    "PCE": "PCE", "PIECE": "PCE", "PIECES": "PCE", "PCS": "PCE", "CHIEC": "PCE", "CHIẾC": "PCE",
-    # Cuộn / Roll
-    "ROL": "ROL", "ROLL": "ROL", "ROLLS": "ROL", "CUON": "ROL", "CUỘN": "ROL",
-    # Kilogam
-    "KG": "KG", "KGM": "KG", "KILOGAM": "KG", "KILOGRAM": "KG", "KILOGRAMS": "KG",
-    # Lít / Litre
-    "LTR": "LTR", "LITRE": "LTR", "LITRES": "LTR", "LITER": "LTR", "LITERS": "LTR",
-    # Tấn
-    "TNE": "TNE", "TON": "TNE", "TONS": "TNE", "TAN": "TNE", "TẤN": "TNE",
-    # Bộ / Set
-    "SET": "SET", "BO": "SET", "BỘ": "SET",
-    # Hộp / Box
-    "BOX": "BOX", "HOP": "BOX", "HỘP": "BOX",
-    # Cm
-    "CM": "CM", "CENTIMETRE": "CM", "CENTIMETER": "CM", "CENTIMETRES": "CM",
-    # FTK (mét vuông da)
-    "FTK": "FTK",
-    # Mét vuông
-    "MTK": "MTK", "SQUARE METRES": "MTK", "SQUARE METRE": "MTK",
-    "SQM": "MTK", "M2": "MTK",
-    # Mét khối
-    "MTQ": "MTQ", "CUBIC METRES": "MTQ", "CUBIC METRE": "MTQ", "M3": "MTQ",
-}
-
-
-def _normalize_unit(unit: str | None) -> str | None:
-    if not unit:
-        return None
-    key = unit.strip().upper()
-    return _UNIT_ALIAS.get(key, key)
 
 # Loại hình NVL theo từng kiểu DN (§4.0 đề án).
 _NVL_CODES = {"E11", "E15", "E31", "E33", "E21", "E23"}
@@ -206,7 +169,13 @@ def check_c3_2(session: Session, company_id: int, year: int) -> list[Finding]:
 
 
 def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
-    """Đơn vị tính không nhất quán: cùng mã NVL có ≥2 đơn vị khác giữa M15 và BCCT."""
+    """Đơn vị tính không nhất quán giữa M15 và BCCT cùng mã NVL.
+
+    Severity ladder (qua DB UOM canonical/alias):
+    - Cùng canonical (alias resolve identical) → SKIP (không fire).
+    - Cùng family (convertible, vd KG↔GAM, M↔CM) → 🔵 Thông tin.
+    - Khác family hoặc unknown → 🔴 Nghiêm trọng (sai đơn vị ×1000 nguy hiểm).
+    """
     m15_units = dict(session.execute(
         select(NvlBalance.material_code, NvlBalance.unit).where(
             NvlBalance.company_id == company_id,
@@ -234,25 +203,45 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
         bcct_set = bcct_units.get(code, set())
         if not bcct_set:
             continue
-        all_units = bcct_set | {m15_unit}
-        normalized = {_normalize_unit(u) for u in all_units if u}
-        normalized.discard(None)
-        if len(normalized) <= 1:
-            continue
+
+        # So sánh M15 với từng BCCT unit; lấy match yếu nhất (worst case).
+        worst_match = UomMatch.EQUIVALENT
+        for bcct_unit in bcct_set:
+            m = uom_compare(session, m15_unit, bcct_unit)
+            if m == UomMatch.DIFFERENT:
+                worst_match = UomMatch.DIFFERENT
+                break
+            if m == UomMatch.SAME_FAMILY and worst_match == UomMatch.EQUIVALENT:
+                worst_match = UomMatch.SAME_FAMILY
+
+        if worst_match == UomMatch.EQUIVALENT:
+            continue  # Tất cả equivalent — skip.
+
+        if worst_match == UomMatch.SAME_FAMILY:
+            severity = Severity.INFO
+            title = (
+                f"Đơn vị tính NVL {code} dùng nhiều đơn vị cùng họ "
+                f"(có thể quy đổi): M15='{m15_unit}', BCCT={sorted(bcct_set)}"
+            )
+        else:
+            severity = Severity.CRITICAL
+            title = (
+                f"Đơn vị tính NVL {code} không nhất quán: "
+                f"M15='{m15_unit}', BCCT={sorted(bcct_set)}"
+            )
+
         findings.append(Finding(
             company_id=company_id,
             period_year=year,
             check_code="C3.3",
-            severity=Severity.CRITICAL.value,
+            severity=severity.value,
             subject_type="material_code",
             subject_key=code,
-            title=(
-                f"Đơn vị tính NVL {code} không nhất quán: "
-                f"M15='{m15_unit}', BCCT={sorted(bcct_set)}"
-            ),
+            title=title,
             details={
                 "m15_unit": m15_unit,
                 "bcct_units": sorted(bcct_set),
+                "uom_match": worst_match.value,
             },
             evidence_refs=[
                 {

@@ -1,0 +1,144 @@
+"""Seed bảng UOM canonical + aliases.
+
+Idempotent: skip nếu code/alias đã có. Chạy 1 lần sau migration, hoặc khi
+thêm canonical/alias mới trong code (commit thêm tuple vào CANONICALS hoặc
+ALIASES, chạy lại script).
+
+Usage:
+    python -m scripts.seed_uom
+"""
+
+from __future__ import annotations
+
+import sys
+
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.models import UomAlias, UomCanonical
+
+# (code, family, base_factor, name_vi, description)
+# Family: length, mass, area, volume, count, count_packaging, time, energy
+# base_factor: nhân vào để ra đơn vị gốc family (vd 1m=1.0, 1cm=0.01, 1km=1000)
+CANONICALS: list[tuple[str, str, float, str, str]] = [
+    # Length
+    ("MTR", "length", 1.0,    "Mét",         "Đơn vị độ dài chuẩn UN/CEFACT"),
+    ("CMT", "length", 0.01,   "Cen-ti-mét",  "1 cm = 0.01 m"),
+    ("MMT", "length", 0.001,  "Mi-li-mét",   "1 mm = 0.001 m"),
+    ("KMT", "length", 1000.0, "Ki-lô-mét",   "1 km = 1000 m"),
+    ("INH", "length", 0.0254, "Inch",        "1 inch = 0.0254 m"),
+    # Mass
+    ("KGM", "mass",   1.0,    "Ki-lô-gam",   "Đơn vị khối lượng chuẩn"),
+    ("GRM", "mass",   0.001,  "Gam",         "1 g = 0.001 kg"),
+    ("TNE", "mass",   1000.0, "Tấn (metric)","1 ton = 1000 kg"),
+    ("MGM", "mass",   1e-6,   "Mi-li-gam",   "1 mg = 0.000001 kg"),
+    ("LBR", "mass",   0.4536, "Pound",       "1 lb = 0.4536 kg"),
+    # Area
+    ("MTK", "area",   1.0,    "Mét vuông",   "Đơn vị diện tích chuẩn"),
+    ("CMK", "area",   0.0001, "Cen-ti-mét²", "1 cm² = 0.0001 m²"),
+    ("FTK", "area",   0.0929, "Foot²",       "Mét vuông da, đơn vị da giày"),
+    # Volume
+    ("MTQ", "volume", 1.0,    "Mét khối",    "Đơn vị thể tích chuẩn"),
+    ("LTR", "volume", 0.001,  "Lít",         "1 L = 0.001 m³"),
+    ("MLT", "volume", 1e-6,   "Mi-li-lít",   "1 ml = 0.000001 m³"),
+    # Count
+    ("PCE", "count",  1.0,    "Chiếc / cái", "Đơn vị đếm cá thể"),
+    ("PR",  "count",  2.0,    "Đôi / cặp",   "1 pair = 2 cái"),
+    ("DZN", "count",  12.0,   "Tá",          "1 dozen = 12 cái"),
+    # Packaging
+    ("ROL", "count_packaging", 1.0, "Cuộn",   "Cuộn cuốn (chỉ, vải, giấy)"),
+    ("SET", "count_packaging", 1.0, "Bộ",     "Bộ / set"),
+    ("BOX", "count_packaging", 1.0, "Hộp",    "Hộp / box"),
+    ("BAG", "count_packaging", 1.0, "Túi",    "Túi / bag"),
+    ("BTL", "count_packaging", 1.0, "Chai",   "Chai / bottle"),
+    ("CTN", "count_packaging", 1.0, "Thùng / carton", "Thùng carton"),
+]
+
+
+# (alias_text_uppercase, canonical_code)
+ALIASES: list[tuple[str, str]] = [
+    # Length
+    ("MTR", "MTR"), ("METRE", "MTR"), ("METRES", "MTR"), ("METER", "MTR"), ("METERS", "MTR"),
+    ("M", "MTR"), ("MÉT", "MTR"), ("MET", "MTR"),
+    ("CM", "CMT"), ("CMT", "CMT"), ("CENTIMETRE", "CMT"), ("CENTIMETER", "CMT"),
+    ("CENTIMETRES", "CMT"), ("CENTIMETERS", "CMT"),
+    ("MM", "MMT"), ("MMT", "MMT"), ("MILLIMETRE", "MMT"), ("MILLIMETER", "MMT"),
+    ("KM", "KMT"), ("KMT", "KMT"), ("KILOMETRE", "KMT"), ("KILOMETER", "KMT"),
+    ("INCH", "INH"), ("INH", "INH"), ('"', "INH"),
+    # Mass
+    ("KG", "KGM"), ("KGM", "KGM"), ("KILOGRAM", "KGM"), ("KILOGRAMS", "KGM"),
+    ("KILOGAM", "KGM"), ("KÍLÔGAM", "KGM"),
+    ("G", "GRM"), ("GR", "GRM"), ("GRM", "GRM"), ("GAM", "GRM"), ("GRAM", "GRM"), ("GRAMS", "GRM"),
+    ("T", "TNE"), ("TN", "TNE"), ("TNE", "TNE"), ("TON", "TNE"), ("TONS", "TNE"), ("TẤN", "TNE"),
+    ("MG", "MGM"), ("MGM", "MGM"), ("MILLIGRAM", "MGM"),
+    ("LB", "LBR"), ("LBR", "LBR"), ("POUND", "LBR"), ("POUNDS", "LBR"),
+    # Area
+    ("M2", "MTK"), ("MTK", "MTK"), ("SQM", "MTK"), ("SQUARE METRE", "MTK"),
+    ("SQUARE METRES", "MTK"), ("SQUARE METER", "MTK"), ("SQUARE METERS", "MTK"),
+    ("MÉT VUÔNG", "MTK"), ("M VUÔNG", "MTK"),
+    ("CM2", "CMK"), ("CMK", "CMK"), ("SQUARE CENTIMETRE", "CMK"),
+    ("FTK", "FTK"), ("FT2", "FTK"), ("SQ FT", "FTK"), ("SQFT", "FTK"),
+    # Volume
+    ("M3", "MTQ"), ("MTQ", "MTQ"), ("CUBIC METRE", "MTQ"), ("CUBIC METRES", "MTQ"),
+    ("L", "LTR"), ("LIT", "LTR"), ("LTR", "LTR"), ("LITRE", "LTR"), ("LITRES", "LTR"),
+    ("LITER", "LTR"), ("LITERS", "LTR"), ("LÍT", "LTR"),
+    ("ML", "MLT"), ("MLT", "MLT"), ("MILLILITRE", "MLT"), ("MILLILITER", "MLT"),
+    # Count
+    ("PCE", "PCE"), ("PCS", "PCE"), ("PC", "PCE"), ("PIECE", "PCE"), ("PIECES", "PCE"),
+    ("CAI", "PCE"), ("CÁI", "PCE"), ("CHIEC", "PCE"), ("CHIẾC", "PCE"),
+    ("UNIT", "PCE"), ("UNITS", "PCE"),
+    ("PR", "PR"), ("PAIR", "PR"), ("PAIRS", "PR"), ("DOI", "PR"), ("ĐÔI", "PR"),
+    ("CAP", "PR"), ("CẶP", "PR"),
+    ("DZN", "DZN"), ("DZ", "DZN"), ("DOZEN", "DZN"), ("TÁ", "DZN"),
+    # Packaging
+    ("ROL", "ROL"), ("ROLL", "ROL"), ("ROLLS", "ROL"), ("CUON", "ROL"), ("CUỘN", "ROL"),
+    ("SET", "SET"), ("BO", "SET"), ("BỘ", "SET"),
+    ("BOX", "BOX"), ("BOXES", "BOX"), ("HOP", "BOX"), ("HỘP", "BOX"),
+    ("BAG", "BAG"), ("BAGS", "BAG"), ("TUI", "BAG"), ("TÚI", "BAG"),
+    ("BTL", "BTL"), ("BOTTLE", "BTL"), ("BOTTLES", "BTL"), ("CHAI", "BTL"),
+    ("CTN", "CTN"), ("CARTON", "CTN"), ("CARTONS", "CTN"), ("THUNG", "CTN"), ("THÙNG", "CTN"),
+]
+
+
+def seed_canonicals(session) -> int:
+    existing = {c.code for c in session.scalars(select(UomCanonical.code)).all()}
+    added = 0
+    for code, family, factor, name_vi, desc in CANONICALS:
+        if code in existing:
+            continue
+        session.add(UomCanonical(
+            code=code, family=family, base_factor=factor,
+            name_vi=name_vi, description=desc,
+        ))
+        added += 1
+    session.commit()
+    return added
+
+
+def seed_aliases(session) -> int:
+    existing_aliases = {a.alias.upper() for a in session.scalars(select(UomAlias)).all()}
+    canonical_codes = {c for c in session.scalars(select(UomCanonical.code)).all()}
+    added = 0
+    for alias, code in ALIASES:
+        alias_up = alias.upper()
+        if alias_up in existing_aliases:
+            continue
+        if code not in canonical_codes:
+            print(f"  ⚠ Skip alias {alias!r} → unknown canonical {code!r}", file=sys.stderr)
+            continue
+        session.add(UomAlias(alias=alias_up, canonical_code=code))
+        added += 1
+    session.commit()
+    return added
+
+
+def main() -> int:
+    with SessionLocal() as session:
+        n_can = seed_canonicals(session)
+        n_alias = seed_aliases(session)
+    print(f"✓ Seeded {n_can} canonical + {n_alias} alias.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
