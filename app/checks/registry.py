@@ -144,6 +144,89 @@ register(CheckSpec(
 ))
 
 
+# --- Nhóm 3 — Phân loại hàng hoá (3 MVP) ---
+register(CheckSpec(
+    code="C3.1",
+    group=3,
+    title="Cùng mã vật tư khai nhiều loại hình mâu thuẫn",
+    description=(
+        "Mã có cả tờ khai NVL (E11/E15/E31/E33/E21/E23) và tờ khai MMTB (E13) "
+        "trong cùng kỳ. Cặp mâu thuẫn: E11+E13 · E31+E13 · E21+E13."
+    ),
+    default_severity=Severity.WARNING,
+))
+register(CheckSpec(
+    code="C3.2",
+    group=3,
+    title="Mã HS không nhất quán trong kỳ",
+    description=(
+        "Cùng mã vật tư có ≥2 mã HS khác nhau trên các tờ khai. "
+        "Khác phân nhóm 6 số → Thông tin · khác nhóm 4 số → Cảnh báo · "
+        "khác chương 2 số → Nghiêm trọng."
+    ),
+    default_severity=Severity.WARNING,
+))
+register(CheckSpec(
+    code="C3.3",
+    group=3,
+    title="Đơn vị tính không nhất quán",
+    description=(
+        "Cùng mã NVL có ≥2 đơn vị khác nhau giữa M15 và BCCT. "
+        "Sai đơn vị ×1000 khiến nhập/xuất/tồn sai hệ thống."
+    ),
+    default_severity=Severity.CRITICAL,
+))
+
+
+# --- Nhóm 4 — Định mức M16 (2 MVP, còn lại W.I.P) ---
+register(CheckSpec(
+    code="C4.1",
+    group=4,
+    title="NVL trong M16 không có nguồn",
+    description=(
+        "Mã NVL có trong M16 nhưng không có dòng M15, "
+        "hoặc M15 có nhưng `nhập_trong_kỳ = 0` và `tồn_đầu_kỳ = 0`."
+    ),
+    default_severity=Severity.CRITICAL,
+))
+register(CheckSpec(
+    code="C4.3",
+    group=4,
+    title="Tổng tiêu hao M16 vượt xuất sản xuất M15",
+    description=(
+        "Σ(định_mức × xuất_khẩu_M15a) theo NVL > `xuất_sản_xuất` trong M15. "
+        "Vượt >5% Cảnh báo · >20% Nghiêm trọng."
+    ),
+    default_severity=Severity.WARNING,
+))
+
+
+# --- Nhóm 5 — Truy nguồn NVL (1 MVP, còn lại W.I.P) ---
+register(CheckSpec(
+    code="C5.1",
+    group=5,
+    title="NVL có xuất SX nhưng không có nhập + không tồn đầu",
+    description=(
+        "M15 có `xuất_sản_xuất > 0` và `nhập_trong_kỳ = 0` và `tồn_đầu_kỳ = 0`. "
+        "Tiêu hao từ nguồn không khai báo."
+    ),
+    default_severity=Severity.CRITICAL,
+))
+
+
+# --- Nhóm 6 — Liên kỳ (1 MVP, còn lại W.I.P) ---
+register(CheckSpec(
+    code="C6.1",
+    group=6,
+    title="Tồn đầu kỳ N khác tồn cuối kỳ N-1 (NVL)",
+    description=(
+        "M15 tồn đầu kỳ N ≠ M15 tồn cuối kỳ N-1 theo từng mã NVL. "
+        "Cần ≥2 kỳ dữ liệu (tolerance ±0.01)."
+    ),
+    default_severity=Severity.CRITICAL,
+))
+
+
 # --- Severity scales for rule with thresholds ---
 
 
@@ -175,6 +258,13 @@ _C1_7 = _Scale(bands=(
     (float("inf"), Severity.CRITICAL),
 ))
 
+# C4.3: <5% (no fire — đã filter ở rule), 5–20% warning, >20% critical
+_C4_3 = _Scale(bands=(
+    (5.0, None),
+    (20.0, Severity.WARNING),
+    (float("inf"), Severity.CRITICAL),
+))
+
 
 def severity_for(check_code: str, pct: float) -> Severity | None:
     """Map % chênh lệch tuyệt đối sang severity theo scale của check.
@@ -185,6 +275,7 @@ def severity_for(check_code: str, pct: float) -> Severity | None:
         "C1.1": _C1_1,
         "C1.4": _C1_4,
         "C1.7": _C1_7,
+        "C4.3": _C4_3,
     }.get(check_code)
     if scale is None:
         return SPECS[check_code].default_severity
