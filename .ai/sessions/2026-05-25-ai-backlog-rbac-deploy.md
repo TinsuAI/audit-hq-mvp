@@ -59,6 +59,11 @@ Tiếp tục từ session Day 1-6 (AI assistant đã build xong). Session này h
 
 190 tests pass. Prod live với đầy đủ tính năng. Không còn TODO code nào blocking.
 
+## Sau handoff
+
+- README rewrite (`fbbef15`) — thêm đầy đủ 4 nhóm tính năng, env vars, bảng biến môi trường.
+- Soạn tin nhắn gửi team → `C:\temp\toss\audit-hq-demo-update.txt`.
+
 ## Open items
 
 - Theo dõi cost/latency thực tế sau khi cán bộ HQ dùng thử.
