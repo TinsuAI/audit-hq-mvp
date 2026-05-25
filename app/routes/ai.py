@@ -183,10 +183,12 @@ async def chat(
     total_out = 0
     tool_call_cap = int(get_setting("tool_call_cap"))
 
+    used_model = model  # Tracking nào provider thực sự trả lời (primary hay fallback).
+
     for _ in range(tool_call_cap):
         t0 = time.time()
         try:
-            resp = call_with_fallback(
+            resp, used_model = call_with_fallback(
                 primary_client=client,
                 primary_model=model,
                 fallback_client=fb_client,
@@ -195,6 +197,7 @@ async def chat(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 tools=TOOL_SCHEMAS,
+                return_model=True,
             )
         except APIStatusError as e:
             log.warning("LLM API status error: %s", e)
@@ -233,7 +236,7 @@ async def chat(
                 content=msg.content or "",
                 tool_args_json=json.dumps(tool_calls_payload, ensure_ascii=False),
                 tool_call_id="batch",  # marker để _load_history nhận biết
-                model=model,
+                model=used_model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 latency_ms=latency_ms,
@@ -274,7 +277,7 @@ async def chat(
         _save_msg(
             db, conv.id, "assistant",
             content=final_text,
-            model=model,
+            model=used_model,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             latency_ms=latency_ms,
@@ -293,7 +296,8 @@ async def chat(
         "message": final_text,
         "tool_calls": tool_trace,
         "usage": {
-            "model": model,
+            "model": used_model,
+            "fallback_used": used_model != model,
             "tokens_in": total_in,
             "tokens_out": total_out,
         },
@@ -470,12 +474,13 @@ async def chat_stream(
         # Reuse messages mutate-in-place qua các iteration tool loop.
         total_in = 0
         total_out = 0
+        used_model = model
         try:
             for _ in range(tool_call_cap):
                 t0 = time.time()
                 # Fallback chỉ kích hoạt nếu primary lỗi TRƯỚC khi stream bắt đầu.
                 # Khi stream đã yield chunk thì giữ nguyên — không retry mid-stream.
-                stream = call_with_fallback(
+                stream, used_model = call_with_fallback(
                     primary_client=client,
                     primary_model=model,
                     fallback_client=fb_client,
@@ -486,6 +491,7 @@ async def chat_stream(
                     tools=TOOL_SCHEMAS,
                     stream=True,
                     stream_options={"include_usage": True},
+                    return_model=True,
                 )
 
                 acc_text = ""
@@ -547,7 +553,7 @@ async def chat_stream(
                         content=acc_text,
                         tool_args_json=json.dumps(tool_calls_payload, ensure_ascii=False),
                         tool_call_id="batch",
-                        model=model,
+                        model=used_model,
                         tokens_in=tokens_in,
                         tokens_out=tokens_out,
                         latency_ms=latency_ms,
@@ -584,7 +590,7 @@ async def chat_stream(
                 _save_msg(
                     db, conv_id_resolved, "assistant",
                     content=clean_text,
-                    model=model,
+                    model=used_model,
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
                     latency_ms=latency_ms,
@@ -592,7 +598,12 @@ async def chat_stream(
                 db.commit()
                 yield _sse("done", {
                     "conversation_id": conv_id_resolved,
-                    "usage": {"model": model, "tokens_in": total_in, "tokens_out": total_out},
+                    "usage": {
+                        "model": used_model,
+                        "fallback_used": used_model != model,
+                        "tokens_in": total_in,
+                        "tokens_out": total_out,
+                    },
                 })
                 return
             yield _sse("error", {"detail": f"Vượt {tool_call_cap} vòng tool call."})

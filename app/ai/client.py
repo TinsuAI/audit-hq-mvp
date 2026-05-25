@@ -109,21 +109,26 @@ def call_with_fallback(
     messages: list[dict[str, Any]],
     temperature: float,
     max_tokens: int,
+    return_model: bool = False,
     **kwargs: Any,
 ) -> Any:
     """Gọi chat.completions.create với fallback chain.
 
     Forward toàn bộ `kwargs` (tools, stream, stream_options...) vào cả 2 lần gọi.
-    Trả về response của primary, hoặc của fallback nếu primary lỗi-có-thể-retry.
+
+    Mặc định trả về response (backward-compat). Với `return_model=True` trả về
+    tuple `(response, model_used)` để caller ghi audit chính xác provider nào
+    thực sự trả lời.
     """
     try:
-        return primary_client.chat.completions.create(
+        resp = primary_client.chat.completions.create(
             model=primary_model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
             **kwargs,
         )
+        return (resp, primary_model) if return_model else resp
     except Exception as exc:  # noqa: BLE001 — re-raise unless we choose fallback
         if not should_fallback(exc):
             raise
@@ -133,10 +138,11 @@ def call_with_fallback(
             "Primary LLM failed (%s); falling back to %s",
             type(exc).__name__, fallback_model,
         )
-        return fallback_client.chat.completions.create(
+        resp = fallback_client.chat.completions.create(
             model=fallback_model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
             **kwargs,
         )
+        return (resp, fallback_model) if return_model else resp

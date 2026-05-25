@@ -215,6 +215,73 @@ class TestCallWithFallback:
                 max_tokens=100,
             )
 
+    def test_returns_actual_model_used_primary(self):
+        from unittest.mock import MagicMock
+
+        from app.ai.client import call_with_fallback
+
+        primary = MagicMock()
+        primary.chat.completions.create.return_value = "OK"
+        resp, used_model = call_with_fallback(
+            primary_client=primary,
+            primary_model="m-primary",
+            fallback_client=None,
+            fallback_model=None,
+            messages=[],
+            temperature=0.2,
+            max_tokens=100,
+            return_model=True,
+        )
+        assert resp == "OK"
+        assert used_model == "m-primary"
+
+    def test_returns_actual_model_used_fallback(self):
+        from unittest.mock import MagicMock
+
+        from openai import RateLimitError
+
+        from app.ai.client import call_with_fallback
+
+        primary = MagicMock()
+        primary.chat.completions.create.side_effect = RateLimitError(
+            message="rate",
+            response=MagicMock(status_code=429, request=MagicMock()),
+            body=None,
+        )
+        fallback = MagicMock()
+        fallback.chat.completions.create.return_value = "OK"
+        resp, used_model = call_with_fallback(
+            primary_client=primary,
+            primary_model="m-primary",
+            fallback_client=fallback,
+            fallback_model="m-fallback",
+            messages=[],
+            temperature=0.2,
+            max_tokens=100,
+            return_model=True,
+        )
+        assert resp == "OK"
+        assert used_model == "m-fallback"
+
+    def test_default_behavior_returns_response_only(self):
+        """Backward-compat: without return_model=True, return just the response."""
+        from unittest.mock import MagicMock
+
+        from app.ai.client import call_with_fallback
+
+        primary = MagicMock()
+        primary.chat.completions.create.return_value = "OK"
+        out = call_with_fallback(
+            primary_client=primary,
+            primary_model="m",
+            fallback_client=None,
+            fallback_model=None,
+            messages=[],
+            temperature=0.2,
+            max_tokens=100,
+        )
+        assert out == "OK"  # not a tuple
+
     def test_stream_kwarg_forwarded(self):
         from unittest.mock import MagicMock
 
