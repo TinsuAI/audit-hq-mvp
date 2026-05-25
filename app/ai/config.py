@@ -90,6 +90,34 @@ def _cache_set(key: str, value: Any) -> None:
 def bust_cache() -> None:
     """Xoá toàn bộ cache — gọi sau khi set_setting hoặc seed_defaults."""
     _CACHE.clear()
+    _bust_models_cache()
+
+
+# Models list cache riêng (TTL dài hơn settings vì ít đổi).
+_MODELS_CACHE: tuple[float, list[str]] | None = None
+_MODELS_TTL_S = 300.0  # 5 phút
+
+
+def _bust_models_cache() -> None:
+    global _MODELS_CACHE
+    _MODELS_CACHE = None
+
+
+def get_available_models(refresh: bool = False) -> list[str] | None:
+    """Fetch danh sách model từ {base_url}/models. None nếu lỗi (key sai, network...).
+
+    Cache 5 phút. `refresh=True` để force fetch lại (vd sau khi đổi key).
+    """
+    global _MODELS_CACHE
+    if not refresh and _MODELS_CACHE is not None:
+        expires_at, models = _MODELS_CACHE
+        if time.time() < expires_at:
+            return models
+    result = test_connection(timeout_s=8)
+    if not result.ok or result.models is None:
+        return None
+    _MODELS_CACHE = (time.time() + _MODELS_TTL_S, result.models)
+    return result.models
 
 
 # ---------- (De)serialization ----------

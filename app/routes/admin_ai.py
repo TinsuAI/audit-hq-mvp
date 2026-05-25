@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from app.ai.config import (
     SETTINGS_REGISTRY,
     get_all_settings,
+    get_available_models,
     get_setting,
     set_setting,
     test_connection,
@@ -29,14 +30,36 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 router = APIRouter(prefix="/admin/ai")
 
 
+def _group_models_by_provider(models: list[str]) -> list[tuple[str, list[str]]]:
+    """Group `provider/model` thành list optgroup → (provider, [model_ids]).
+
+    Provider không có `/` → vào nhóm "khác". Sort theo prefix.
+    """
+    from collections import defaultdict
+    grouped: dict[str, list[str]] = defaultdict(list)
+    for m in models:
+        # Loại bỏ `~` prefix (OpenRouter alias) khỏi group key nhưng giữ trong value.
+        clean = m.lstrip("~")
+        provider, _, _ = clean.partition("/")
+        provider = provider or "khác"
+        grouped[provider].append(m)
+    for v in grouped.values():
+        v.sort()
+    return sorted(grouped.items())
+
+
 @router.get("", response_class=HTMLResponse)
 def admin_ai_page(
     request: Request,
     saved: str | None = Query(default=None),
     error: str | None = Query(default=None),
+    refresh_models: int = Query(default=0),
     user: str = Depends(require_user),
 ) -> HTMLResponse:
     settings = get_all_settings()
+    # Fetch model list từ provider để render dropdown. None nếu key sai / chưa cấu hình.
+    available = get_available_models(refresh=bool(refresh_models))
+    grouped_models = _group_models_by_provider(available) if available else None
     return templates.TemplateResponse(
         request,
         "admin_ai.html",
@@ -46,6 +69,8 @@ def admin_ai_page(
             "registry": {k: {"description": v.description} for k, v in SETTINGS_REGISTRY.items()},
             "saved": saved,
             "error": error,
+            "grouped_models": grouped_models,
+            "models_count": len(available) if available else 0,
         },
     )
 
