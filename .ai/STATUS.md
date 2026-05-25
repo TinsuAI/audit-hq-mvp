@@ -1,18 +1,32 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-05-21, cuối session):** MVP hoàn tất 10 tuần + UOM system. Demo live tại **https://audit-hq-demo.tinsu.ai** (build `fd263f6`, admin/admin). 16/16 MVP check + 4 combo signature + scoring + 7 trang UI + xuất Excel 7 sheet + admin `/admin/units` quản lý alias đơn vị tính. **113 tests pass**, ruff clean. CI/CD self-hosted runner trên Tinsu — push main → auto build + deploy.
-
-Live DN_003 2025 còn **4 finding C3.3 real** (sau khi UOM resolve compound separator `Cái/Chiếc`): 3 INFO (PR vs Cái/Chiếc+Đôi/Cặp) + 1 CRITICAL (UNA vs Chai/Lọ/Tuýp = count vs count_packaging). Đây là phát hiện thực, không phải false-positive.
+> **Trạng thái (2026-05-25, cuối session):** Live demo `https://audit-hq-demo.tinsu.ai` (build `cbc4c8f`, admin/admin) đã filter chỉ 4 DN có giai đoạn liền nhau BCQT+BCCT, tên DN giả lập "Công ty TNHH … (Demo)", banner vàng "🧪 Dữ liệu mẫu" trên top. UX bảng data toàn bộ đã curate cột (7-10 thay vì 14-19), line-clamp 2 dòng + tooltip cho text dài, format số/ngày, ẩn `source_file` để không leak DN gốc. **113 tests pass**, ruff clean.
 
 ## Current State
 
 - Stack: Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite, pandas + openpyxl/xlrd, Jinja2.
-- DB: SQLite (`audit_hq.sqlite`). 5 tables: `companies`, `nvl_balances`, `sp_balances`, `norms`, `declaration_lines`.
-- Auth: basic-auth (cookie-signed session). Mặc định `admin/admin` cho dev — thay env vars `AUTH_USER`/`AUTH_PASSWORD` cho demo.
+- DB: SQLite (`audit_hq.sqlite`). Tables: `companies`, `nvl_balances`, `sp_balances`, `norms`, `declaration_lines`, `findings`, `uom_canonical`, `uom_aliases`.
+- Auth: cookie session, default `admin/admin`. Env vars `AUTH_USER`/`AUTH_PASSWORD`/`SESSION_SECRET`.
 - Dữ liệu: symlink `data/` → `../audit-hq/data/raw/` (gitignored), 622 file thực 6 DN.
+- **4 DN trên prod**: DN_001 GROWATT (Điện Tử Phương Đông), DN_002 KIM_LONG (Cơ Khí Tiên Phong), DN_003 HONG_AN (May Mặc Hoa Sen), DN_004 DO_THANH (Hoá Chất Nam Tiến). DN_005 (HONG_PHUC) + DN_006 (HIEP_QUANG) đã loại do thiếu giai đoạn liền nhau BCQT+BCCT.
+- Demo banner amber trên mọi page (`base.html` + `.demo-banner` CSS).
+- Runner self-hosted `tinsu-runner-audit-hq` online qua `~/actions-runner-audit-hq/runner-loop.sh` watchdog (while-loop respawn nếu crash); cron user `tinsu` `@reboot` auto-start sau boot. Log: `/home/tinsu/runner-audit-hq.log`. KHÔNG dùng systemd vì cần sudo password (xem memory `tinsu-server`).
+- Cảnh báo: backup DB local `audit_hq.sqlite.bak-20260525-120743` (18M, DB cũ trước reseed) untracked nhưng KHÔNG gitignored (`*.sqlite` không match `.bak-…`). Xoá khi tiện.
 
 ## Recent Changes
 
+- **2026-05-25** — Filter 4 DN whitelist + UX polish toàn bộ bảng + realistic naming + deploy.
+  - **Filter pipeline**: `app/pipeline/run_all.py:DEMO_WHITELIST = {HONG_AN: 2021-25, GROWATT: 2023-25, DO_THANH: 2024-25, KIM_LONG: 2024-25}`. Thay `discover_company_years` quét toàn bộ bằng iterate qua whitelist. Loại HIEP_QUANG (đứt quãng), HONG_PHUC (1 năm).
+  - **discover.py**: thêm fallback BCCT `multi_year/HANG_CHI_TIET/` với `_filename_covers_year` regex `(20\d{2}|\b\d{2}\b)[-_–](20\d{2}|\b\d{2}\b)` cover khoảng năm trong tên file. Fix tt39 filter loại PDF, mở rộng M15/M15a regex bắt "Mẫu số 15".
+  - **uom.py bug fix**: cache giữ `families: dict[str, str]` thay vì ORM instance → fix `DetachedInstanceError` cross-session (lỗi tiềm tàng từ trước, lộ ra khi re-seed DB lần này).
+  - **UX bảng curated** (`routes/companies.py`): `_TABLE_CONFIG[*].view_cols` + `_VIEW_COLS_BY_TABLE` single source cho M15/M15a/M16/BCCT/Findings. `_format_cell` (num/date/wrap/code-cell). `_format_model_rows` helper dùng chung cho `/companies/{c}/data` lẫn evidence_blocks trong `/findings/{id}`. `?full=1` toggle xem tất cả cột (vẫn loại id/company_id/period_year/source_file).
+  - **Line-clamp wrap**: CSS `.cell-clamp` (`-webkit-line-clamp: 2`) + `.data-table td.wrap { max-width: 360px }`. Template render `<div class="cell-clamp" title="full text">…</div>` khi `cls == "wrap"`. Áp cho `material_name`/`product_name`/`item_name`/`f.title`/`description`.
+  - **Source_file ẩn khỏi mọi mode** (kể cả `full=1`) — path chứa tên DN gốc → leak qua DN_xxx mask.
+  - **Realistic DN names**: `COMPANY_MAPPING` đổi name → "Công ty TNHH \<Ngành\> \<Địa danh\> (Demo)". `anonymize()` idempotent refresh meta khi mapping đổi (giữ stable code+tax_id). +1 test (`test_anonymize_refreshes_name_when_mapping_changes`).
+  - **Demo banner vàng** trên top `base.html` (chỉ khi user logged in). CSS `.demo-banner` amber 50/100. User chọn banner > per-DN badge.
+  - **company_detail**: gỡ inline notes input để row gọn; giữ hidden field giữ data; thêm nút "Chi tiết →" link tới `/findings/{id}`.
+  - **Deploy**: commit `cbc4c8f` → CI Tinsu build ~1 phút sau khi restart runner. SCP local DB (26M, 4 DN, anonymize+inject) lên `/home/tinsu/audit-hq-mvp-deploy/db-data/audit_hq.sqlite`; backup file cũ `audit_hq.sqlite.bak-pre-filter-20260525-120046`; `docker restart audit-hq-mvp`.
+  - **Runner watchdog**: phát hiện `tinsu-runner-audit-hq` offline silently từ 2026-05-21 (process chết, không có monitoring). Tạo `runner-loop.sh` + crontab `@reboot`. Systemd thực thụ dành cho lúc có sudo. Pattern này nên áp cho 3 runners còn lại (`data-hub`, `co`, `bcqt-showcase`) nếu cũng từng silent-die.
 - **2026-05-21 (cuối)** — UOM system + UI redesign + fix finding 782.
   - **UOM canonical/alias DB** (port từ data-hub 2-layer): `uom_canonical` (25 row: MTR/KGM/PCE/PR/MTK/MTQ/ROL/SET/BOX/BTL/CTN/TOO/TAM…) + `uom_aliases` (129+ alias VN+EN). Family: length/mass/area/volume/count/count_packaging. base_factor cho conversion.
   - **C3.3 severity ladder mới**: EQUIVALENT (alias cùng canonical) → skip; SAME_FAMILY (KG↔GAM convertible) → 🔵 Info; DIFFERENT (count vs mass) → 🔴 Critical. Trước đây tất cả mismatch là Critical → false-positive tràn (250+).
