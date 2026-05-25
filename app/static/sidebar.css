@@ -81,6 +81,10 @@
   flex-direction: column;
   border-top: 1px solid var(--c-border, #e5e7eb);
 }
+/* `[hidden]` attribute mặc định = display:none, nhưng `.ai-history-panel`
+   class với display:flex có cùng specificity và thắng vì khai báo sau.
+   Quy tắc selector kết hợp đảm bảo `hidden` thực sự ẩn. */
+.ai-history-panel[hidden] { display: none; }
 .ai-history-head {
   display: flex;
   justify-content: space-between;
