@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as _json
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -99,8 +100,10 @@ def _heatmap_payload(yearly: list[dict], kind: str) -> list[dict]:
     ]
 
 
-templates.env.filters["tojson_timeline"] = lambda lines: __import__("json").dumps(_timeline_payload(lines))
-templates.env.filters["tojson_heatmap"] = lambda yearly, kind: __import__("json").dumps(_heatmap_payload(yearly, kind))
+templates.env.filters["tojson_timeline"] = lambda lines: _json.dumps(_timeline_payload(lines))
+templates.env.filters["tojson_heatmap"] = lambda yearly, kind: _json.dumps(
+    _heatmap_payload(yearly, kind)
+)
 
 router = APIRouter()
 
@@ -730,7 +733,11 @@ def item_detail(
     # Hero band totals across all years.
     total_import_qty = sum(r.get("bcct_import_qty", 0.0) for r in yearly)
     total_export_qty = sum(r.get("bcct_export_qty", 0.0) for r in yearly)
-    total_production = sum(r.get("production_out_qty", 0.0) for r in yearly) if effective_kind == "nvl" else 0.0
+    total_production = (
+        sum(r.get("production_out_qty", 0.0) for r in yearly)
+        if effective_kind == "nvl"
+        else 0.0
+    )
     last_closing = yearly[-1]["closing_qty"] if yearly else 0.0
     prev_closing = yearly[-2]["closing_qty"] if len(yearly) >= 2 else None
     closing_delta_pct = None
@@ -774,7 +781,12 @@ def item_detail(
     # BCCT-only items (no BCQT row anywhere) → warn banner.
     bcct_only = detected_kind == "unknown" and bool(years)
     # Mismatch counts for cross-year section.
-    mismatch_years = [r["year"] for r in yearly if not r.get("import_match", True) or not r.get("balance_match", True)] if effective_kind == "nvl" else [r["year"] for r in yearly if not r.get("export_match", True) or not r.get("balance_match", True)]
+    io_field = "export_match" if effective_kind == "tp" else "import_match"
+    mismatch_years = [
+        r["year"]
+        for r in yearly
+        if not r.get(io_field, True) or not r.get("balance_match", True)
+    ]
 
     return templates.TemplateResponse(
         request,

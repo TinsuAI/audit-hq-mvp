@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from tests.conftest import add_decl, add_nvl, add_sp
 
-
 # ─────────────────────────── operation classifier ───────────────────────────
 
 class TestClassifyOperation:
@@ -546,7 +545,8 @@ class TestChartPayloads:
             assert "bcct-timeline" in r.text
             assert "data-points" in r.text
             # JSON payload contains declaration + classification (HTML-escaped in attr)
-            import html, re
+            import html
+            import re
             m = re.search(r"data-points='([^']+)'", r.text)
             assert m, "data-points attribute missing"
             payload = html.unescape(m.group(1))

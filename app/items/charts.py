@@ -89,7 +89,13 @@ def waterfall_layout(
             "cx": round(x + bw / 2, 1),
             # Endpoint of running total after this step (for connector lines).
             "end_x": round(x + bw, 1),
-            "end_y": round(pad_top + plot_h * (mx - (top if v >= 0 or kind in ('opening', 'closing') else bot)) / rng, 1),
+            "end_y": round(
+                pad_top
+                + plot_h
+                * (mx - (top if v >= 0 or kind in ("opening", "closing") else bot))
+                / rng,
+                1,
+            ),
         })
 
     zero_y = pad_top + plot_h * (mx - 0) / rng

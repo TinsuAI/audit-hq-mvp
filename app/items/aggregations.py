@@ -128,7 +128,8 @@ def nvl_yearly_summary(session: Session, company_id: int, material_code: str) ->
             "import_diff": m15_import - bc["bcct_import_qty"],
             "import_match": _match(m15_import, bc["bcct_import_qty"]),
         }
-        # Reconciliation phương trình kho: opening + import − (reexport + repurpose + prod_out + other) = closing
+        # Reconciliation phương trình kho:
+        # opening + import − (reexport + repurpose + prod_out + other) = closing
         if m is not None:
             expected_closing = (
                 row["opening_qty"] + row["import_qty"]
