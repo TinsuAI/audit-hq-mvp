@@ -49,8 +49,14 @@
 
   // ───────────── Citation parser ─────────────
   // [finding:123] → link tới /findings/123
-  // [nvl_balances:row_no=88] / [m15:row_no=88] / [declaration_lines:item_code=ABC] → link viewer
-  // [check:C2.3] → link tới /companies (no per-check page yet)
+  // [m15:row_no=88] / [nvl_balances:row_no=88] → link /companies/{code}/data?year=Y&table=m15&q=88
+  // [check:C2.3] → badge
+  const TABLE_ALIASES = {
+    nvl_balances: 'm15', sp_balances: 'm15a', norms: 'm16', bcct: 'bcct',
+    m15: 'm15', m15a: 'm15a', m16: 'm16',
+    declaration_lines: 'declaration_lines',
+  };
+
   function parseCitations(html) {
     return html.replace(/\[([a-z_]+):([^\]]+)\]/gi, (full, kind, val) => {
       const safeVal = val.replace(/"/g, '&quot;');
@@ -60,7 +66,18 @@
       if (kind === 'check') {
         return `<span class="cite" title="Mã kiểm tra">${kind}:${safeVal}</span>`;
       }
-      // table:filter — chỉ hiện badge (chưa có page truy thẳng row)
+      // Table citation — build link to data viewer if page context available
+      const tbl = TABLE_ALIASES[kind.toLowerCase()];
+      if (tbl) {
+        const ctx = getPageContext();
+        const m = val.match(/(?:row_no|row_id|item_code|material_code)=([^,\s]+)/i);
+        const qVal = m ? m[1] : val;
+        if (ctx.dn_code && ctx.year && tbl !== 'declaration_lines') {
+          const href = `/companies/${encodeURIComponent(ctx.dn_code)}/data?year=${ctx.year}&table=${tbl}&q=${encodeURIComponent(qVal)}`;
+          return `<a href="${href}" class="cite" title="Xem dữ liệu nguồn (${kind})">📊 ${kind}:${safeVal}</a>`;
+        }
+        return `<span class="cite" title="Nguồn dữ liệu: ${kind}">📊 ${kind}:${safeVal}</span>`;
+      }
       return `<span class="cite" title="Nguồn dữ liệu">${kind}:${safeVal}</span>`;
     });
   }
@@ -214,11 +231,14 @@
         appendText(data.text || '');
         break;
       case 'tool_call':
-        addMessage('tool', '⏳ đang gọi tool...', { toolName: data.name });
+        if (metaCache && metaCache.is_admin) {
+          addMessage('tool', '⏳ đang gọi tool...', { toolName: data.name });
+        }
         break;
       case 'tool_result':
-        // Append result preview vào tool message gần nhất
-        addMessage('tool', data.preview || '(no preview)', { toolName: `${data.name} ✓` });
+        if (metaCache && metaCache.is_admin) {
+          addMessage('tool', data.preview || '(no preview)', { toolName: `${data.name} ✓` });
+        }
         break;
       case 'done':
         convId = data.conversation_id;

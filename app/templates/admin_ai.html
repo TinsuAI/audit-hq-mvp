@@ -290,6 +290,7 @@
             <th class="num">Msg</th>
             <th class="num">Tokens (in+out)</th>
             <th class="num">Cost</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -302,6 +303,7 @@
             <td class="num">{{ c.msg_count }}</td>
             <td class="num text-mono" style="font-size:var(--fs-xs)">{{ "{:,}".format(c.tokens_in) }} + {{ "{:,}".format(c.tokens_out) }}</td>
             <td class="num text-mono">${{ "%.4f" | format(c.cost_usd) }}</td>
+            <td><a href="/admin/ai/conversations/{{ c.id }}" class="btn btn-secondary btn-sm">Xem</a></td>
           </tr>
           {% endfor %}
         </tbody>

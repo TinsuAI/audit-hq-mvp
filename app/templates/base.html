@@ -27,8 +27,11 @@
     </span>
   </a>
   <div class="user-menu">
+    {% if user.is_admin %}
     <a href="/admin/units" class="header-link">⚙️ Đơn vị tính</a>
     <a href="/admin/ai" class="header-link">🤖 AI</a>
+    <a href="/admin/users" class="header-link">👥 Người dùng</a>
+    {% endif %}
     <span class="user-name">👤 {{ user }}</span>
     <form method="post" action="/logout" style="margin:0">
       <button type="submit" class="logout-btn">Đăng xuất</button>

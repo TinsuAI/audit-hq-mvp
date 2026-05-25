@@ -16,6 +16,7 @@ from app.models import Company, DeclarationLine, Finding, NvlBalance
 
 def _setup_db():
     import app.database as dbmod
+    from app.auth_users import seed_default_admin
 
     new_engine = dbmod.create_engine(
         "sqlite://",
@@ -27,6 +28,8 @@ def _setup_db():
     dbmod.engine = new_engine
     dbmod.SessionLocal = new_session
     Base.metadata.create_all(new_engine)
+    with new_session() as db:
+        seed_default_admin(db, "admin", "admin")
     return new_engine, new_session
 
 

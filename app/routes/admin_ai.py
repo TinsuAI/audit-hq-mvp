@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, func, select
@@ -25,7 +25,7 @@ from app.ai.config import (
     test_connection,
 )
 from app.ai.limits import usage_today
-from app.auth import require_user
+from app.auth import SessionUser, require_admin
 from app.database import get_db
 from app.models import AiConversation, AiMessage
 
@@ -59,7 +59,7 @@ def admin_ai_page(
     saved: str | None = Query(default=None),
     error: str | None = Query(default=None),
     refresh_models: int = Query(default=0),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     settings = get_all_settings()
@@ -129,7 +129,7 @@ def save_connection(
     base_url: str = Form(...),
     api_key: str = Form(""),  # rỗng = giữ key cũ
     extra_headers: str = Form("{}"),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
 ) -> RedirectResponse:
     base_url = base_url.strip()
     if not base_url:
@@ -147,11 +147,11 @@ def save_connection(
     except (json.JSONDecodeError, ValueError) as e:
         return _flash_redirect(error=f"Extra headers không hợp lệ: {e}")
 
-    set_setting("base_url", base_url, user)
-    set_setting("extra_headers", headers_dict, user)
+    set_setting("base_url", base_url, user.name)
+    set_setting("extra_headers", headers_dict, user.name)
     # API key: empty = không đổi (giữ giá trị cũ).
     if api_key.strip():
-        set_setting("api_key", api_key.strip(), user)
+        set_setting("api_key", api_key.strip(), user.name)
 
     return _flash_redirect(saved="connection")
 
@@ -163,7 +163,7 @@ def save_models(
     model_deep: str = Form(...),
     temperature: float = Form(...),
     max_tokens: int = Form(...),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
 ) -> RedirectResponse:
     if not (0.0 <= temperature <= 2.0):
         return _flash_redirect(error="Temperature phải trong [0.0, 2.0]")
@@ -173,11 +173,11 @@ def save_models(
         if not m.strip():
             return _flash_redirect(error="Tên model không được trống")
 
-    set_setting("model_default", model_default.strip(), user)
-    set_setting("model_fast", model_fast.strip(), user)
-    set_setting("model_deep", model_deep.strip(), user)
-    set_setting("temperature", temperature, user)
-    set_setting("max_tokens", max_tokens, user)
+    set_setting("model_default", model_default.strip(), user.name)
+    set_setting("model_fast", model_fast.strip(), user.name)
+    set_setting("model_deep", model_deep.strip(), user.name)
+    set_setting("temperature", temperature, user.name)
+    set_setting("max_tokens", max_tokens, user.name)
 
     return _flash_redirect(saved="models")
 
@@ -189,7 +189,7 @@ def save_limits(
     request_timeout_s: int = Form(...),
     history_retention_days: int = Form(...),
     audit_retention_days: int = Form(...),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
 ) -> RedirectResponse:
     if daily_budget_usd < 0 or daily_budget_usd > 10000:
         return _flash_redirect(error="Daily budget phải trong [0, 10000] USD.")
@@ -200,11 +200,11 @@ def save_limits(
     if history_retention_days < 1 or audit_retention_days < 1:
         return _flash_redirect(error="Retention phải >= 1 ngày.")
 
-    set_setting("daily_budget_usd", daily_budget_usd, user)
-    set_setting("rate_limit_per_hour", rate_limit_per_hour, user)
-    set_setting("request_timeout_s", request_timeout_s, user)
-    set_setting("history_retention_days", history_retention_days, user)
-    set_setting("audit_retention_days", audit_retention_days, user)
+    set_setting("daily_budget_usd", daily_budget_usd, user.name)
+    set_setting("rate_limit_per_hour", rate_limit_per_hour, user.name)
+    set_setting("request_timeout_s", request_timeout_s, user.name)
+    set_setting("history_retention_days", history_retention_days, user.name)
+    set_setting("audit_retention_days", audit_retention_days, user.name)
     return _flash_redirect(saved="limits")
 
 
@@ -212,10 +212,10 @@ def save_limits(
 def save_flags(
     enabled: str = Form(default=""),  # checkbox: "on" khi tích, rỗng khi không
     prompt_cache_enabled: str = Form(default=""),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
 ) -> RedirectResponse:
-    set_setting("enabled", enabled == "on", user)
-    set_setting("prompt_cache_enabled", prompt_cache_enabled == "on", user)
+    set_setting("enabled", enabled == "on", user.name)
+    set_setting("prompt_cache_enabled", prompt_cache_enabled == "on", user.name)
     return _flash_redirect(saved="flags")
 
 
@@ -224,7 +224,7 @@ def admin_test_connection(
     base_url: str = Form(...),
     api_key: str = Form(""),
     extra_headers: str = Form("{}"),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
 ) -> JSONResponse:
     """Test ping với credential từ form (chưa save).
 
@@ -265,3 +265,36 @@ def admin_test_connection(
         "latency_ms": result.latency_ms,
         "total_models": len(result.models) if result.models else 0,
     })
+
+
+@router.get("/conversations/{conv_id}", response_class=HTMLResponse)
+def admin_conversation_detail(
+    conv_id: int,
+    request: Request,
+    user: SessionUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Full transcript của 1 conversation — debug khi AI sai / user complain."""
+    conv = db.get(AiConversation, conv_id)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="Conversation không tồn tại")
+    msgs = db.scalars(
+        select(AiMessage)
+        .where(AiMessage.conversation_id == conv_id)
+        .order_by(AiMessage.id)
+    ).all()
+    cost_total = sum(m.cost_usd or 0.0 for m in msgs)
+    tokens_total_in = sum(m.tokens_in or 0 for m in msgs)
+    tokens_total_out = sum(m.tokens_out or 0 for m in msgs)
+    return templates.TemplateResponse(
+        request,
+        "admin_ai_conversation.html",
+        {
+            "user": user,
+            "conv": conv,
+            "msgs": msgs,
+            "cost_total": round(cost_total, 4),
+            "tokens_total_in": tokens_total_in,
+            "tokens_total_out": tokens_total_out,
+        },
+    )

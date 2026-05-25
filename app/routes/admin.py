@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import require_user
+from app.auth import SessionUser, require_admin
 from app.checks.uom import invalidate_cache
 from app.database import get_db
 from app.models import UomAlias, UomCanonical
@@ -38,7 +38,7 @@ def units_list(
     request: Request,
     family: str | None = Query(default=None),
     q: str | None = Query(default=None),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """List canonical units (grouped by family) + alias count per canonical."""
@@ -88,7 +88,7 @@ def units_add_alias(
     alias: str = Form(...),
     canonical_code: str = Form(...),
     note: str = Form(""),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     """Thêm alias mới. Nếu alias đã tồn tại → 400."""
@@ -115,7 +115,7 @@ def units_add_alias(
 @router.post("/units/aliases/{alias_id}/delete")
 def units_delete_alias(
     alias_id: int,
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     row = db.get(UomAlias, alias_id)
@@ -134,7 +134,7 @@ def units_add_canonical(
     base_factor: float = Form(1.0),
     name_vi: str = Form(""),
     description: str = Form(""),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     code_norm = code.strip().upper()

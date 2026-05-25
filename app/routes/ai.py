@@ -26,10 +26,11 @@ from sqlalchemy.orm import Session
 from app.ai.client import cache_supports_anthropic, make_client
 from app.ai.config import get_setting
 from app.ai.cost import estimate_cost
+from app.ai.guardrails import apply_guardrails
 from app.ai.limits import check_daily_budget, check_rate_limit
 from app.ai.system_prompt import build_messages_system
 from app.ai.tools import TOOL_SCHEMAS, run_tool
-from app.auth import require_user
+from app.auth import SessionUser, require_user
 from app.database import get_db
 from app.models import AiConversation, AiMessage
 
@@ -116,14 +117,14 @@ def _save_msg(
 @router.post("/chat")
 async def chat(
     request: Request,
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
     if not get_setting("enabled"):
         raise HTTPException(status_code=503, detail="AI assistant đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
         raise HTTPException(status_code=503, detail="Chưa cấu hình API key. Cấu hình ở /admin/ai.")
-    check_rate_limit(user, db)
+    check_rate_limit(user.name, db)
     check_daily_budget(db)
 
     try:
@@ -141,11 +142,11 @@ async def chat(
     # Resume hay tạo mới conversation
     if conv_id:
         conv = db.get(AiConversation, conv_id)
-        if conv is None or conv.user != user:
+        if conv is None or conv.user != user.name:
             raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
     else:
         conv = AiConversation(
-            user=user,
+            user=user.name,
             page_url_seed=page_context.get("url"),
             title=user_message[:80],
         )
@@ -258,7 +259,7 @@ async def chat(
             continue  # loop tiếp để LLM consume tool results
 
         # finish_reason in ("stop", "length", ...) — break loop
-        final_text = msg.content or ""
+        final_text = apply_guardrails(msg.content or "", conv_id=conv.id)
         _save_msg(
             db, conv.id, "assistant",
             content=final_text,
@@ -290,13 +291,13 @@ async def chat(
 
 @router.get("/chat/conversations")
 def list_conversations(
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
     """List conversation của user — 30 cái gần nhất."""
     convs = db.scalars(
         select(AiConversation)
-        .where(AiConversation.user == user)
+        .where(AiConversation.user == user.name)
         .order_by(AiConversation.id.desc())
         .limit(30)
     ).all()
@@ -329,12 +330,12 @@ def list_conversations(
 @router.get("/chat/conversations/{conv_id}/messages")
 def get_conversation_messages(
     conv_id: int,
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
     """Resume — render full transcript của 1 conversation."""
     conv = db.get(AiConversation, conv_id)
-    if conv is None or conv.user != user:
+    if conv is None or conv.user != user.name:
         raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
     msgs = db.scalars(
         select(AiMessage)
@@ -363,11 +364,11 @@ def get_conversation_messages(
 @router.delete("/chat/conversations/{conv_id}")
 def delete_conversation(
     conv_id: int,
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
     conv = db.get(AiConversation, conv_id)
-    if conv is None or conv.user != user:
+    if conv is None or conv.user != user.name:
         raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
     db.delete(conv)  # cascade xoá messages
     db.commit()
@@ -375,12 +376,13 @@ def delete_conversation(
 
 
 @router.get("/ai/meta")
-def ai_meta(user: str = Depends(require_user)) -> dict:
+def ai_meta(user: SessionUser = Depends(require_user)) -> dict:
     """Frontend dùng để biết có nên render sidebar không."""
     return {
         "enabled": bool(get_setting("enabled")),
         "configured": bool(get_setting("api_key")),
         "model": get_setting("model_default"),
+        "is_admin": user.is_admin,
     }
 
 
@@ -392,7 +394,7 @@ def _sse(event: str, data: Any) -> str:
 @router.post("/chat/stream")
 async def chat_stream(
     request: Request,
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Streaming version of /api/chat — Server-Sent Events.
@@ -422,11 +424,11 @@ async def chat_stream(
 
     if conv_id:
         conv = db.get(AiConversation, conv_id)
-        if conv is None or conv.user != user:
+        if conv is None or conv.user != user.name:
             raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
     else:
         conv = AiConversation(
-            user=user,
+            user=user.name,
             page_url_seed=page_context.get("url"),
             title=user_message[:80],
         )
@@ -558,9 +560,10 @@ async def chat_stream(
                     continue
 
                 # finish_reason in ("stop", "length") → final answer
+                clean_text = apply_guardrails(acc_text, conv_id=conv_id_resolved)
                 _save_msg(
                     db, conv_id_resolved, "assistant",
-                    content=acc_text,
+                    content=clean_text,
                     model=model,
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
