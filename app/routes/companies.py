@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -17,6 +18,9 @@ from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severi
 from app.database import get_db
 from app.models import Company, DeclarationLine, Finding, Norm, NvlBalance, SpBalance
 from app.pipeline.export import build_export
+from app.pipeline.ingest import ingest as run_ingest
+from app.pipeline.run_checks import run_checks as run_check_pipeline
+from app.settings import settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -73,6 +77,186 @@ def list_companies(
         "companies_list.html",
         {"user": user, "summary": summary},
     )
+
+
+CODE_RE = re.compile(r"^[A-Z][A-Z0-9_-]{1,30}$")
+DEMO_SUFFIX = "(Demo)"
+YEAR_MIN, YEAR_MAX = 2015, 2030
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB per file
+
+# Mỗi slot → (subdir, fixed filename stem). Stem để tên match discover() patterns.
+_UPLOAD_SLOTS = {
+    "m15": ("BCQT", "M15_NVL"),
+    "m15a": ("BCQT", "M15a_SP"),
+    "m16": ("DINH_MUC", "BCDM_TT39"),
+    "bcct": ("HANG_CHI_TIET", "BCCT"),
+}
+
+
+def _save_upload(upload: UploadFile, dest: Path) -> int:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # Wipe other files in cùng subdir cùng slot (tránh discover pick file cũ).
+    for sibling in dest.parent.glob(f"{dest.stem.split('_')[0]}*{dest.suffix}"):
+        if sibling != dest:
+            try:
+                sibling.unlink()
+            except OSError:
+                pass
+    written = 0
+    with dest.open("wb") as f:
+        while chunk := upload.file.read(1024 * 1024):
+            written += len(chunk)
+            if written > MAX_UPLOAD_BYTES:
+                f.close()
+                dest.unlink(missing_ok=True)
+                limit_mb = MAX_UPLOAD_BYTES // 1024 // 1024
+                raise HTTPException(status_code=413, detail=f"File quá lớn (>{limit_mb}MB)")
+            f.write(chunk)
+    return written
+
+
+@router.get("/companies/new", response_class=HTMLResponse)
+def new_company_form(
+    request: Request,
+    error: str | None = Query(default=None),
+    user: str = Depends(require_user),
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request, "new_company.html", {"user": user, "error": error, "form": {}}
+    )
+
+
+@router.post("/companies", response_model=None)
+def create_company(
+    request: Request,
+    code: str = Form(...),
+    name: str = Form(""),
+    tax_id: str = Form(""),
+    address: str = Form(""),
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse | RedirectResponse:
+    code = code.strip().upper()
+    name = name.strip()
+    tax_id = tax_id.strip() or None
+    address = address.strip() or None
+
+    form_state = {"code": code, "name": name, "tax_id": tax_id or "", "address": address or ""}
+
+    def _err(msg: str) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "new_company.html",
+            {"user": user, "error": msg, "form": form_state},
+            status_code=400,
+        )
+
+    if not CODE_RE.match(code):
+        return _err("Mã DN không hợp lệ. Chỉ dùng chữ HOA + số + _ - (bắt đầu bằng chữ, tối đa 31 ký tự).")
+    if db.scalar(select(Company).where(Company.code == code)) is not None:
+        return _err(f"Mã DN '{code}' đã tồn tại.")
+
+    # Demo mode: force (Demo) suffix vào tên — tránh nhầm với DN thật.
+    display_name = name or code
+    if DEMO_SUFFIX not in display_name:
+        display_name = f"{display_name} {DEMO_SUFFIX}"
+
+    company = Company(code=code, name=display_name, tax_id=tax_id, address=address, risk_score=0)
+    db.add(company)
+    db.commit()
+
+    return RedirectResponse(url=f"/companies/{code}/upload", status_code=303)
+
+
+@router.get("/companies/{code}/upload", response_class=HTMLResponse)
+def upload_form(
+    code: str,
+    request: Request,
+    year: int | None = Query(default=None),
+    error: str | None = Query(default=None),
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    return templates.TemplateResponse(
+        request, "upload_data.html",
+        {
+            "user": user,
+            "company": company,
+            "year": year or 2024,
+            "year_min": YEAR_MIN,
+            "year_max": YEAR_MAX,
+            "error": error,
+        },
+    )
+
+
+@router.post("/companies/{code}/upload", response_model=None)
+def upload_data(
+    code: str,
+    request: Request,
+    year: int = Form(...),
+    m15: UploadFile | None = File(default=None),
+    m15a: UploadFile | None = File(default=None),
+    m16: UploadFile | None = File(default=None),
+    bcct: UploadFile | None = File(default=None),
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    if not (YEAR_MIN <= year <= YEAR_MAX):
+        raise HTTPException(status_code=400, detail=f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
+
+    base = Path(settings.raw_data_path) / code / str(year)
+    saved_any = False
+    uploads = {"m15": m15, "m15a": m15a, "m16": m16, "bcct": bcct}
+    for slot, upload in uploads.items():
+        if not upload or not upload.filename:
+            continue
+        ext = Path(upload.filename).suffix.lower()
+        if ext not in {".xls", ".xlsx"}:
+            raise HTTPException(status_code=400, detail=f"{slot}: chỉ chấp nhận .xls / .xlsx (gặp {ext})")
+        subdir, stem = _UPLOAD_SLOTS[slot]
+        dest = base / subdir / f"{stem}_{year}{ext}"
+        _save_upload(upload, dest)
+        saved_any = True
+
+    if not saved_any:
+        return RedirectResponse(
+            url=f"/companies/{code}/upload?year={year}&error=Ch%C6%B0a+ch%E1%BB%8Dn+file+n%C3%A0o",
+            status_code=303,
+        )
+
+    # Ingest + run checks ngay (sync, vài giây với 16 check).
+    try:
+        run_ingest(code, year, raw_root=Path(settings.raw_data_path))
+        run_check_pipeline(code, year)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=f"Discover lỗi: {e}") from e
+    except Exception as e:  # noqa: BLE001 — show parser/check errors back to user
+        raise HTTPException(status_code=500, detail=f"Pipeline lỗi: {type(e).__name__}: {e}") from e
+
+    return RedirectResponse(url=f"/companies/{code}?year={year}", status_code=303)
+
+
+@router.post("/companies/{code}/run-checks", response_model=None)
+def rerun_checks(
+    code: str,
+    year: int = Form(...),
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    try:
+        run_check_pipeline(code, year)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return RedirectResponse(url=f"/companies/{code}?year={year}", status_code=303)
 
 
 @router.get("/companies/{code}", response_class=HTMLResponse)

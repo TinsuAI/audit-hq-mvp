@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Thêm doanh nghiệp mới — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  Thêm mới
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Thêm doanh nghiệp mới</h1>
+    <p class="page-subtitle">Tạo hồ sơ DN mẫu để chạy thử quy trình BCQT. Tên DN sẽ tự động gắn hậu tố <strong>(Demo)</strong>.</p>
+  </div>
+</div>
+
+{% if error %}
+<div class="card" style="border-left:4px solid var(--c-danger,#b91c1c);background:#fef2f2">
+  <p style="color:#b91c1c;margin:0"><strong>Lỗi:</strong> {{ error }}</p>
+</div>
+{% endif %}
+
+<form method="post" action="/companies" class="card" style="max-width:640px">
+  <div class="card-section">
+    <label for="code" style="display:block;font-weight:600;margin-bottom:var(--space-2)">
+      Mã DN <span style="color:#b91c1c">*</span>
+    </label>
+    <input type="text" id="code" name="code" required
+           value="{{ form.code or '' }}"
+           pattern="[A-Z][A-Z0-9_\-]{1,30}"
+           placeholder="VD: DN_007, CONG_TY_XYZ"
+           style="width:100%;padding:var(--space-2) var(--space-3);font-family:var(--font-mono,monospace);text-transform:uppercase"
+           autofocus>
+    <p class="text-subtle" style="font-size:var(--fs-xs);margin-top:var(--space-1)">
+      Chữ HOA + số + dấu _ -, bắt đầu bằng chữ, tối đa 31 ký tự. Dùng làm thư mục lưu file.
+    </p>
+  </div>
+
+  <div class="card-section">
+    <label for="name" style="display:block;font-weight:600;margin-bottom:var(--space-2)">Tên DN</label>
+    <input type="text" id="name" name="name"
+           value="{{ form.name or '' }}"
+           placeholder="VD: Công ty TNHH May Mặc ABC"
+           style="width:100%;padding:var(--space-2) var(--space-3)">
+    <p class="text-subtle" style="font-size:var(--fs-xs);margin-top:var(--space-1)">
+      Hệ thống sẽ tự thêm <code>(Demo)</code> nếu chưa có.
+    </p>
+  </div>
+
+  <div class="card-section">
+    <label for="tax_id" style="display:block;font-weight:600;margin-bottom:var(--space-2)">MST</label>
+    <input type="text" id="tax_id" name="tax_id"
+           value="{{ form.tax_id or '' }}"
+           placeholder="VD: 0123456789"
+           style="width:100%;padding:var(--space-2) var(--space-3);font-family:var(--font-mono,monospace)">
+  </div>
+
+  <div class="card-section">
+    <label for="address" style="display:block;font-weight:600;margin-bottom:var(--space-2)">Địa chỉ</label>
+    <input type="text" id="address" name="address"
+           value="{{ form.address or '' }}"
+           placeholder="VD: KCN Tân Tạo, Q. Bình Tân, TP.HCM"
+           style="width:100%;padding:var(--space-2) var(--space-3)">
+  </div>
+
+  <div class="card-section" style="display:flex;gap:var(--space-3);justify-content:flex-end">
+    <a href="/companies" class="btn btn-secondary">Huỷ</a>
+    <button type="submit" class="btn btn-primary">Tạo DN & chuyển sang upload →</button>
+  </div>
+</form>
+
+{% endblock %}

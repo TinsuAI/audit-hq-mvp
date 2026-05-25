@@ -9,6 +9,8 @@
       {{ summary | length }} doanh nghiệp · sắp xếp theo điểm rủi ro giảm dần
     </p>
   </div>
+  <div class="btn-group">
+    <a href="/companies/new" class="btn btn-primary">+ Thêm DN mới</a>
   <details class="scoring-info">
     <summary class="btn btn-secondary btn-sm">ℹ️ Cách tính điểm</summary>
     <div class="scoring-popover">
@@ -21,12 +23,13 @@
       </ul>
     </div>
   </details>
+  </div>
 </div>
 
 {% if not summary %}
   <div class="card">
     <p class="text-muted">Chưa có doanh nghiệp nào trong hệ thống.</p>
-    <p>Chạy <code>python -m app.pipeline.ingest --company HONG_AN --year 2024</code> để nạp dữ liệu.</p>
+    <p><a href="/companies/new" class="btn btn-primary">+ Thêm DN mới</a> hoặc chạy <code>python -m app.pipeline.ingest --company HONG_AN --year 2024</code>.</p>
   </div>
 {% else %}
 <div class="data-table-wrapper table-overflow">

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Upload dữ liệu — {{ company.code }}{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  <a href="/companies/{{ company.code }}">{{ company.code }}</a>
+  <span class="sep">›</span>
+  Upload dữ liệu
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Upload dữ liệu BCQT</h1>
+    <p class="page-subtitle">
+      DN <strong class="text-mono">{{ company.code }}</strong>
+      {% if company.name %} · {{ company.name }}{% endif %}
+    </p>
+  </div>
+</div>
+
+{% if error %}
+<div class="card" style="border-left:4px solid var(--c-danger,#b91c1c);background:#fef2f2">
+  <p style="color:#b91c1c;margin:0"><strong>Lỗi:</strong> {{ error }}</p>
+</div>
+{% endif %}
+
+<form method="post" action="/companies/{{ company.code }}/upload" enctype="multipart/form-data" class="card" style="max-width:760px">
+
+  <div class="card-section">
+    <label for="year" style="display:block;font-weight:600;margin-bottom:var(--space-2)">
+      Kỳ báo cáo (năm) <span style="color:#b91c1c">*</span>
+    </label>
+    <input type="number" id="year" name="year" required
+           value="{{ year }}" min="{{ year_min }}" max="{{ year_max }}"
+           style="width:160px;padding:var(--space-2) var(--space-3);font-family:var(--font-mono,monospace)">
+  </div>
+
+  <div class="card-section">
+    <h3 style="margin-top:0;margin-bottom:var(--space-2)">File Excel BCQT</h3>
+    <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
+      Có thể bỏ trống slot nào không có dữ liệu. Hệ thống sẽ chạy ingest + 16 kiểm tra ngay sau khi upload xong (vài giây).
+    </p>
+
+    {% set slots = [
+      ('m15', 'Mẫu 15 — Cân đối NVL/NPL', 'BCQT/NhapXuatTon_NVL_*.xlsx'),
+      ('m15a', 'Mẫu 15a — Cân đối SP', 'BCQT/NhapXuatTon_SP_*.xlsx'),
+      ('m16', 'Mẫu 16 — Định mức', 'DINH_MUC/BCDM_TT39_*.xlsx'),
+      ('bcct', 'BCCT — Báo cáo hàng chi tiết', 'HANG_CHI_TIET/BaoCaoHangChiTiet_*.xlsx')
+    ] %}
+    {% for slot, label, sample in slots %}
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:var(--space-3);align-items:center;padding:var(--space-2) 0;border-bottom:1px solid var(--c-border,#e5e7eb)">
+      <label for="file_{{ slot }}" style="font-weight:500">
+        {{ label }}
+        <div class="text-subtle text-mono" style="font-size:var(--fs-xs);font-weight:400">{{ sample }}</div>
+      </label>
+      <input type="file" id="file_{{ slot }}" name="{{ slot }}" accept=".xls,.xlsx">
+    </div>
+    {% endfor %}
+
+    <p class="text-subtle" style="font-size:var(--fs-xs);margin-top:var(--space-3)">
+      Giới hạn 100MB/file. Định dạng: <code>.xls</code> / <code>.xlsx</code>.
+    </p>
+  </div>
+
+  <div class="card-section" style="display:flex;gap:var(--space-3);justify-content:space-between;align-items:center">
+    <a href="/companies/{{ company.code }}" class="btn btn-secondary">← Quay về</a>
+    <button type="submit" class="btn btn-primary">📥 Upload & chạy kiểm tra</button>
+  </div>
+</form>
+
+{% endblock %}
