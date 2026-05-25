@@ -9,8 +9,20 @@
       <h3 id="ai-title">🤖 Trợ lý AI</h3>
       <span id="ai-model" class="ai-meta"></span>
     </div>
-    <button id="ai-close" aria-label="Đóng">×</button>
+    <div class="ai-header-actions">
+      <button id="ai-history" type="button" aria-label="Lịch sử" title="Lịch sử trò chuyện">📜</button>
+      <button id="ai-new" type="button" aria-label="Cuộc trò chuyện mới" title="Mới">+</button>
+      <button id="ai-close" aria-label="Đóng">×</button>
+    </div>
   </header>
+
+  <div id="ai-history-panel" class="ai-history-panel" hidden>
+    <div class="ai-history-head">
+      <span>📜 Lịch sử (30 gần nhất)</span>
+      <button id="ai-history-close" type="button" aria-label="Đóng lịch sử">×</button>
+    </div>
+    <div id="ai-history-list" class="ai-history-list"></div>
+  </div>
   <div id="ai-messages" class="ai-messages">
     <div class="ai-empty">
       <p><strong>Hỏi tôi về dữ liệu hệ thống.</strong></p>

@@ -29,6 +29,7 @@ def session() -> Session:
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
     with SessionLocal() as s:
         # Seed UOM cơ bản để C3.3 tests work without hardcoded dict.
+        # Flush canonical trước aliases vì FK constraint enabled (PRAGMA fk=ON).
         s.add_all([
             UomCanonical(code="MTR", family="length", base_factor=1.0),
             UomCanonical(code="CMT", family="length", base_factor=0.01),
@@ -36,6 +37,7 @@ def session() -> Session:
             UomCanonical(code="GRM", family="mass", base_factor=0.001),
             UomCanonical(code="PCE", family="count", base_factor=1.0),
         ])
+        s.flush()
         s.add_all([
             UomAlias(alias="MTR", canonical_code="MTR"),
             UomAlias(alias="METRES", canonical_code="MTR"),

@@ -120,11 +120,12 @@
   }
 
   // ───────────── Streaming send ─────────────
-  async function sendMessage(text) {
+  async function sendMessage(text, _retryWithoutConv = false) {
     if (isStreaming || !text.trim()) return;
     isStreaming = true;
     clearEmpty();
-    addMessage('user', text);
+    // Trên retry, đã add user message rồi — đừng add lần 2.
+    if (!_retryWithoutConv) addMessage('user', text);
 
     const submitBtn = document.getElementById('ai-submit');
     const input = document.getElementById('ai-input');
@@ -140,11 +141,22 @@
         headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
         body: JSON.stringify({
           message: text,
-          conversation_id: convId,
+          conversation_id: _retryWithoutConv ? null : convId,
           page_context: getPageContext(),
         }),
         credentials: 'same-origin',
       });
+
+      // 404 = conv_id stale (server đã xoá). Reset rồi retry 1 lần với conv mới.
+      if (resp.status === 404 && convId && !_retryWithoutConv) {
+        convId = null;
+        sessionStorage.removeItem(STORAGE_KEY);
+        assistantNode.remove();
+        isStreaming = false;
+        submitBtn.disabled = false;
+        input.disabled = false;
+        return sendMessage(text, true);
+      }
 
       if (!resp.ok) {
         const errText = await resp.text();
@@ -225,6 +237,102 @@
     }
   }
 
+  // ───────────── History panel ─────────────
+  async function openHistory() {
+    const panel = document.getElementById('ai-history-panel');
+    panel.hidden = false;
+    const listBox = document.getElementById('ai-history-list');
+    listBox.innerHTML = '<div class="ai-history-empty">Đang tải...</div>';
+    try {
+      const r = await fetch('/api/chat/conversations', { credentials: 'same-origin' });
+      const data = await r.json();
+      const convs = data.conversations || [];
+      if (convs.length === 0) {
+        listBox.innerHTML = '<div class="ai-history-empty">Chưa có cuộc trò chuyện nào.<br>Hỏi gì đó để bắt đầu.</div>';
+        return;
+      }
+      listBox.innerHTML = '';
+      for (const c of convs) {
+        const item = el('div', {
+          class: 'ai-history-item' + (c.id === convId ? ' active' : ''),
+          'data-conv-id': String(c.id),
+        });
+        const title = el('div', { class: 'h-title', text: c.title });
+        const meta = el('div', { class: 'h-meta' });
+        const date = c.started_at ? new Date(c.started_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '';
+        meta.textContent = `${c.msg_count} tin nhắn · ${date}`;
+        const del = el('button', { class: 'h-delete', type: 'button', 'aria-label': 'Xoá', title: 'Xoá', text: '🗑' });
+        del.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm('Xoá cuộc trò chuyện này?')) return;
+          const dr = await fetch(`/api/chat/conversations/${c.id}`, { method: 'DELETE', credentials: 'same-origin' });
+          if (dr.ok) {
+            if (c.id === convId) {
+              convId = null;
+              sessionStorage.removeItem(STORAGE_KEY);
+              clearChat();
+            }
+            openHistory();  // refresh list
+          }
+        });
+        item.appendChild(title);
+        item.appendChild(meta);
+        item.appendChild(del);
+        item.addEventListener('click', () => loadConversation(c.id));
+        listBox.appendChild(item);
+      }
+    } catch (e) {
+      listBox.innerHTML = `<div class="ai-history-empty">Lỗi tải lịch sử: ${e.message}</div>`;
+    }
+  }
+
+  function closeHistory() {
+    document.getElementById('ai-history-panel').hidden = true;
+  }
+
+  async function loadConversation(id) {
+    closeHistory();
+    try {
+      const r = await fetch(`/api/chat/conversations/${id}/messages`, { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      convId = data.conversation_id;
+      sessionStorage.setItem(STORAGE_KEY, convId);
+      clearChat();
+      for (const m of data.messages) {
+        if (m.role === 'user') {
+          addMessage('user', m.content);
+        } else if (m.role === 'assistant' && m.content) {
+          addMessage('assistant', renderMarkdown(m.content), { html: true });
+        } else if (m.role === 'tool') {
+          const preview = m.content.length > 200 ? m.content.slice(0, 200) + '…' : m.content;
+          addMessage('tool', preview, { toolName: `${m.tool_name || 'tool'} ✓` });
+        }
+      }
+    } catch (e) {
+      addMessage('error', `❌ Không tải được conversation: ${e.message}`);
+    }
+  }
+
+  function clearChat() {
+    document.getElementById('ai-messages').innerHTML = '';
+  }
+
+  function startNewConversation() {
+    convId = null;
+    sessionStorage.removeItem(STORAGE_KEY);
+    closeHistory();
+    clearChat();
+    // Reset empty state + suggestions
+    const box = document.getElementById('ai-messages');
+    box.innerHTML = `
+      <div class="ai-empty">
+        <p><strong>Cuộc trò chuyện mới.</strong></p>
+        <div id="ai-suggestions" class="ai-suggestions"></div>
+      </div>`;
+    renderSuggestions();
+  }
+
   // ───────────── Suggestion buttons ─────────────
   function renderSuggestions() {
     const box = document.getElementById('ai-suggestions');
@@ -266,10 +374,26 @@
 
     fab.addEventListener('click', openPanel);
     document.getElementById('ai-close').addEventListener('click', closePanel);
+    document.getElementById('ai-history').addEventListener('click', openHistory);
+    document.getElementById('ai-history-close').addEventListener('click', closeHistory);
+    document.getElementById('ai-new').addEventListener('click', startNewConversation);
 
     // Restore conv_id từ sessionStorage (resume sau page refresh trong cùng tab)
     const savedConv = sessionStorage.getItem(STORAGE_KEY);
-    if (savedConv) convId = parseInt(savedConv, 10);
+    if (savedConv) {
+      const id = parseInt(savedConv, 10);
+      // Validate: nếu server đã xoá → clear silent. Nếu tồn tại → load transcript.
+      try {
+        const r = await fetch(`/api/chat/conversations/${id}/messages`, { credentials: 'same-origin' });
+        if (r.ok) {
+          await loadConversation(id);
+        } else {
+          sessionStorage.removeItem(STORAGE_KEY);
+        }
+      } catch {
+        sessionStorage.removeItem(STORAGE_KEY);
+      }
+    }
 
     renderSuggestions();
 

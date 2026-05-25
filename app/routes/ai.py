@@ -20,7 +20,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from openai import APIError, APIStatusError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.client import cache_supports_anthropic, make_client
@@ -135,7 +135,11 @@ async def chat(
         if conv is None or conv.user != user:
             raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
     else:
-        conv = AiConversation(user=user, page_url_seed=page_context.get("url"))
+        conv = AiConversation(
+            user=user,
+            page_url_seed=page_context.get("url"),
+            title=user_message[:80],
+        )
         db.add(conv)
         db.flush()
 
@@ -275,6 +279,92 @@ async def chat(
     }
 
 
+@router.get("/chat/conversations")
+def list_conversations(
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List conversation của user — 30 cái gần nhất."""
+    convs = db.scalars(
+        select(AiConversation)
+        .where(AiConversation.user == user)
+        .order_by(AiConversation.id.desc())
+        .limit(30)
+    ).all()
+    out = []
+    for c in convs:
+        # Count messages
+        msg_count = db.scalar(
+            select(func.count())
+            .select_from(AiMessage)
+            .where(AiMessage.conversation_id == c.id)
+        ) or 0
+        # First user msg để làm preview/title fallback
+        first_user_msg = db.scalar(
+            select(AiMessage)
+            .where(AiMessage.conversation_id == c.id, AiMessage.role == "user")
+            .order_by(AiMessage.id)
+            .limit(1)
+        )
+        title = c.title or (first_user_msg.content[:80] if first_user_msg else "(trống)")
+        out.append({
+            "id": c.id,
+            "title": title,
+            "started_at": c.started_at.isoformat() if c.started_at else None,
+            "msg_count": msg_count,
+            "page_url_seed": c.page_url_seed,
+        })
+    return {"conversations": out}
+
+
+@router.get("/chat/conversations/{conv_id}/messages")
+def get_conversation_messages(
+    conv_id: int,
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Resume — render full transcript của 1 conversation."""
+    conv = db.get(AiConversation, conv_id)
+    if conv is None or conv.user != user:
+        raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+    msgs = db.scalars(
+        select(AiMessage)
+        .where(AiMessage.conversation_id == conv.id)
+        .order_by(AiMessage.id)
+    ).all()
+    return {
+        "conversation_id": conv.id,
+        "title": conv.title,
+        "started_at": conv.started_at.isoformat() if conv.started_at else None,
+        "messages": [
+            {
+                "role": m.role,
+                "content": m.content,
+                "tool_name": m.tool_name,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in msgs
+            # Skip internal "batch" assistant marker — UI chỉ cần message
+            # có content (user/assistant text + tool result).
+            if not (m.role == "assistant" and m.tool_call_id == "batch" and not m.content)
+        ],
+    }
+
+
+@router.delete("/chat/conversations/{conv_id}")
+def delete_conversation(
+    conv_id: int,
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    conv = db.get(AiConversation, conv_id)
+    if conv is None or conv.user != user:
+        raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+    db.delete(conv)  # cascade xoá messages
+    db.commit()
+    return {"deleted": conv_id}
+
+
 @router.get("/ai/meta")
 def ai_meta(user: str = Depends(require_user)) -> dict:
     """Frontend dùng để biết có nên render sidebar không."""
@@ -326,7 +416,11 @@ async def chat_stream(
         if conv is None or conv.user != user:
             raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
     else:
-        conv = AiConversation(user=user, page_url_seed=page_context.get("url"))
+        conv = AiConversation(
+            user=user,
+            page_url_seed=page_context.get("url"),
+            title=user_message[:80],
+        )
         db.add(conv)
         db.flush()
 
