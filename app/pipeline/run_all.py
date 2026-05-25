@@ -16,20 +16,28 @@ from app.pipeline.ingest import ingest
 from app.pipeline.run_checks import run_checks
 from app.settings import settings
 
+# Whitelist DN × giai đoạn liền nhau có cả BCQT và BCCT (BCCT có thể nằm trong
+# multi_year — discover.py tự fallback). DN khác bị loại do thiếu BCCT ≥1 năm.
+DEMO_WHITELIST: dict[str, range] = {
+    "HONG_AN": range(2021, 2026),     # 2021-2025
+    "GROWATT": range(2023, 2026),     # 2023-2025
+    "DO_THANH": range(2024, 2026),    # 2024-2025
+    "KIM_LONG": range(2024, 2026),    # 2024-2025
+}
+
 
 def discover_company_years(raw_root: Path) -> list[tuple[str, int]]:
-    """Quét data/raw/<DN>/<năm>/ và trả list (DN, year) đã sắp xếp."""
+    """Trả list (DN, year) chỉ chứa các cặp trong DEMO_WHITELIST có thư mục năm tồn tại."""
     pairs: list[tuple[str, int]] = []
     if not raw_root.exists():
         return pairs
-    for company_dir in sorted(raw_root.iterdir()):
-        if not company_dir.is_dir() or company_dir.name.startswith("."):
+    for company in sorted(DEMO_WHITELIST):
+        company_dir = raw_root / company
+        if not company_dir.is_dir():
             continue
-        for year_dir in sorted(company_dir.iterdir()):
-            if not year_dir.is_dir() or not year_dir.name.isdigit():
-                continue
-            year = int(year_dir.name)
-            pairs.append((company_dir.name, year))
+        for year in DEMO_WHITELIST[company]:
+            if (company_dir / str(year)).is_dir():
+                pairs.append((company, year))
     return pairs
 
 

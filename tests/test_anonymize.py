@@ -44,7 +44,7 @@ def test_anonymize_replaces_company_fields(session, company):
 
     refreshed = session.scalar(select(Company).where(Company.code == "DN_003"))
     assert refreshed is not None
-    assert refreshed.name == "Doanh nghiệp DN_003"
+    assert refreshed.name == COMPANY_MAPPING["HONG_AN"]["name"]
     assert refreshed.tax_id != "5400273360"
     assert len(refreshed.tax_id) == 10
     assert refreshed.tax_id.isdigit()
@@ -87,10 +87,29 @@ def test_anonymize_replaces_partners(session, company):
 
 
 def test_anonymize_skips_already_anonymized(session, company):
+    # DN đã anonymize + meta khớp COMPANY_MAPPING → không có gì để làm.
     company.code = "DN_003"
+    company.name = COMPANY_MAPPING["HONG_AN"]["name"]
+    company.address = COMPANY_MAPPING["HONG_AN"]["address"]
     session.commit()
     mapping = anonymize(session)
     assert mapping["companies"] == {}
+
+
+def test_anonymize_refreshes_name_when_mapping_changes(session, company):
+    # DN đã anonymize nhưng meta lệch (vd: đã đổi COMPANY_MAPPING) → refresh name/address.
+    company.code = "DN_003"
+    company.name = "Tên cũ"
+    company.address = "Địa chỉ cũ"
+    session.commit()
+
+    mapping = anonymize(session)
+
+    assert "DN_003" in mapping["companies"]
+    assert mapping["companies"]["DN_003"]["refresh"] is True
+    refreshed = session.scalar(select(Company).where(Company.code == "DN_003"))
+    assert refreshed.name == COMPANY_MAPPING["HONG_AN"]["name"]
+    assert refreshed.address == COMPANY_MAPPING["HONG_AN"]["address"]
 
 
 def test_anonymize_dry_run_does_not_modify(session, company):

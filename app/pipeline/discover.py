@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +23,22 @@ _DUP_HINTS = ("__dup", "__rec")
 def _is_draft(name: str) -> bool:
     lower = name.lower()
     return any(h in lower for h in _DRAFT_HINTS) or any(h in name for h in _DUP_HINTS)
+
+
+_YEAR_RANGE_RE = re.compile(r"(20\d{2}|\b\d{2}\b)\s*[-_–]\s*(20\d{2}|\b\d{2}\b)")
+
+
+def _filename_covers_year(name: str, year: int) -> bool:
+    """Tên file dạng `... 2023-2025 ...` hoặc `... 23-25 ...` có cover `year` không."""
+    m = _YEAR_RANGE_RE.search(name)
+    if not m:
+        return False
+    a, b = m.group(1), m.group(2)
+    start = int(a) + 2000 if len(a) == 2 else int(a)
+    end = int(b) + 2000 if len(b) == 2 else int(b)
+    if start > end:
+        start, end = end, start
+    return start <= year <= end
 
 
 def _pick_best(candidates: list[Path]) -> Path | None:
@@ -50,9 +67,10 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
             if not p.is_file() or p.suffix.lower() not in {".xls", ".xlsx"}:
                 continue
             name = p.name.lower()
-            if "_nvl" in name.replace(" ", "_") or "nvl " in name or "_npl" in name.replace(" ", "_"):
+            normalized = name.replace(" ", "_").replace(".", "_").replace("-", "_")
+            if "nvl" in normalized or "npl" in normalized:
                 m15_candidates.append(p)
-            elif "_sp" in name.replace(" ", "_") or " sp " in f" {name} ":
+            elif "_sp" in normalized or normalized.startswith("sp_") or "spgsql" in normalized:
                 m15a_candidates.append(p)
             else:
                 # Older mẫu cũ (TT38) — may contain both; skip for MVP
@@ -60,15 +78,13 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
 
     dm_dir = base / "DINH_MUC"
     if dm_dir.exists():
-        # Prefer BCDM_TT39_* (mẫu 16 chính); fallback DINHMUC_*.xlsx
-        tt39 = [p for p in dm_dir.iterdir() if p.is_file() and p.name.lower().startswith("bcdm_tt39")]
-        if tt39:
-            m16_candidates.extend(tt39)
-        else:
-            m16_candidates.extend(
-                p for p in dm_dir.iterdir()
-                if p.is_file() and p.suffix.lower() in {".xls", ".xlsx"}
-            )
+        excel_files = [
+            p for p in dm_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in {".xls", ".xlsx"}
+        ]
+        # Prefer BCDM_TT39_* (mẫu 16 chính); fallback bất kỳ excel còn lại.
+        tt39 = [p for p in excel_files if p.name.lower().startswith("bcdm_tt39")]
+        m16_candidates.extend(tt39 or excel_files)
 
     hct_dir = base / "HANG_CHI_TIET"
     if hct_dir.exists():
@@ -76,6 +92,18 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
             p for p in hct_dir.iterdir()
             if p.is_file() and p.suffix.lower() in {".xls", ".xlsx"}
         )
+
+    # Fallback: BCCT cho nhiều năm gộp 1 file (`<DN>/multi_year/HANG_CHI_TIET/`).
+    # Chỉ dùng khi tên file khớp khoảng năm cover năm cần ingest, vì 1 file BCCT
+    # multi-year chứa tất cả tờ khai của khoảng đó.
+    if not bcct_candidates:
+        multi_dir = raw_root / company / "multi_year" / "HANG_CHI_TIET"
+        if multi_dir.exists():
+            for p in multi_dir.iterdir():
+                if not p.is_file() or p.suffix.lower() not in {".xls", ".xlsx"}:
+                    continue
+                if _filename_covers_year(p.name, year):
+                    bcct_candidates.append(p)
 
     return DiscoveredFiles(
         m15=_pick_best(m15_candidates),

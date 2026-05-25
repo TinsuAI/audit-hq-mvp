@@ -33,8 +33,8 @@ class UomMatch(StrEnum):
 
 @dataclass
 class _UomCache:
-    aliases: dict[str, str]            # raw_upper → canonical_code
-    canonical: dict[str, UomCanonical]  # code → row
+    aliases: dict[str, str]    # raw_upper → canonical_code
+    families: dict[str, str]   # canonical_code → family
 
 
 _cache: _UomCache | None = None
@@ -46,11 +46,14 @@ def _load_cache(session: Session) -> _UomCache:
         a.alias.strip().upper(): a.canonical_code
         for a in session.scalars(select(UomAlias)).all()
     }
-    canonical = {c.code: c for c in session.scalars(select(UomCanonical)).all()}
+    families = {
+        c.code: c.family
+        for c in session.scalars(select(UomCanonical)).all()
+    }
     # Mỗi canonical code cũng là alias của chính nó.
-    for code in canonical:
+    for code in families:
         aliases.setdefault(code.upper(), code)
-    return _UomCache(aliases=aliases, canonical=canonical)
+    return _UomCache(aliases=aliases, families=families)
 
 
 def get_cache(session: Session) -> _UomCache:
@@ -104,8 +107,7 @@ def get_family(session: Session, unit: str | None) -> str | None:
     code = resolve_canonical(session, unit)
     if code is None:
         return None
-    row = get_cache(session).canonical.get(code)
-    return row.family if row else None
+    return get_cache(session).families.get(code)
 
 
 def compare(session: Session, unit_a: str | None, unit_b: str | None) -> UomMatch:
@@ -123,8 +125,8 @@ def compare(session: Session, unit_a: str | None, unit_b: str | None) -> UomMatc
         if canon_a == canon_b:
             return UomMatch.EQUIVALENT
         cache = get_cache(session)
-        fam_a = cache.canonical.get(canon_a).family if cache.canonical.get(canon_a) else None
-        fam_b = cache.canonical.get(canon_b).family if cache.canonical.get(canon_b) else None
+        fam_a = cache.families.get(canon_a)
+        fam_b = cache.families.get(canon_b)
         if fam_a is not None and fam_a == fam_b:
             return UomMatch.SAME_FAMILY
         return UomMatch.DIFFERENT

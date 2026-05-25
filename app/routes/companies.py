@@ -147,12 +147,16 @@ _EVIDENCE_MODELS = {
 }
 
 
-def _resolve_evidence(db: Session, ref: dict) -> list[dict]:
-    """Resolve 1 evidence_ref (table + filter) thành list dòng dữ liệu Tầng 1."""
+def _resolve_evidence(db: Session, ref: dict) -> tuple[list[tuple[str, str, str]], list[list[tuple]]]:
+    """Resolve 1 evidence_ref (table + filter) → (view_cols, rows_view).
+
+    rows_view: list dòng, mỗi dòng là list (display_value, css_class) đã format.
+    Dùng đồng nhất với company_data view, có wrap/format số/date.
+    """
     table = ref.get("table")
     model = _EVIDENCE_MODELS.get(table)
     if model is None:
-        return []
+        return [], []
     filt = ref.get("filter") or {}
     stmt = select(model)
     for key, value in filt.items():
@@ -169,10 +173,7 @@ def _resolve_evidence(db: Session, ref: dict) -> list[dict]:
                 continue
             stmt = stmt.where(col == value)
     rows = db.scalars(stmt.limit(50)).all()
-    return [
-        {c.name: getattr(r, c.name, None) for c in r.__table__.columns}
-        for r in rows
-    ]
+    return _format_model_rows(model, rows)
 
 
 @router.get("/companies/{code}/export")
@@ -200,26 +201,121 @@ _TABLE_CONFIG = {
         "label": "Mẫu 15 — Cân đối NVL",
         "code_field": "material_code",
         "code_label": "Mã NVL",
+        # (field, label, cell_class). Chỉ các cột thực sự cần để rà cân đối M15.
+        # cls: num/date/code-cell/wrap/"" — quyết định alignment + format + clamp.
+        "view_cols": [
+            ("row_no", "STT", "num"),
+            ("material_code", "Mã NVL", "code-cell"),
+            ("material_name", "Tên NVL", "wrap"),
+            ("unit", "ĐVT", ""),
+            ("opening_qty", "Tồn đầu", "num"),
+            ("import_qty", "Nhập", "num"),
+            ("production_out_qty", "Xuất SX", "num"),
+            ("closing_qty", "Tồn cuối", "num"),
+        ],
     },
     "m15a": {
         "model": SpBalance,
         "label": "Mẫu 15a — Cân đối TP",
         "code_field": "product_code",
         "code_label": "Mã TP",
+        "view_cols": [
+            ("row_no", "STT", "num"),
+            ("product_code", "Mã TP", "code-cell"),
+            ("product_name", "Tên TP", "wrap"),
+            ("unit", "ĐVT", ""),
+            ("opening_qty", "Tồn đầu", "num"),
+            ("intake_qty", "Nhập kho SX", "num"),
+            ("export_qty", "Xuất", "num"),
+            ("closing_qty", "Tồn cuối", "num"),
+        ],
     },
     "m16": {
         "model": Norm,
         "label": "Mẫu 16 — Định mức",
         "code_field": "material_code",
         "code_label": "Mã NVL",
+        "view_cols": [
+            ("product_code", "Mã SP", "code-cell"),
+            ("product_name", "Tên SP", "wrap"),
+            ("product_unit", "ĐVT SP", ""),
+            ("material_code", "Mã NVL", "code-cell"),
+            ("material_name", "Tên NVL", "wrap"),
+            ("material_unit", "ĐVT NVL", ""),
+            ("norm_qty", "Định mức", "num"),
+        ],
     },
     "bcct": {
         "model": DeclarationLine,
         "label": "BCCT — Báo cáo hàng chi tiết",
         "code_field": "item_code",
         "code_label": "Mã hàng",
+        "view_cols": [
+            ("declaration_no", "Số TK", "code-cell"),
+            ("declaration_date", "Ngày", "date"),
+            ("customs_code", "Loại hình", "code-cell"),
+            ("item_code", "Mã hàng", "code-cell"),
+            ("item_name", "Tên hàng", "wrap"),
+            ("hs_code", "Mã HS", "code-cell"),
+            ("quantity", "SL", "num"),
+            ("unit", "ĐVT", ""),
+            ("value_total", "Trị giá (VND)", "num"),
+            ("partner", "Đối tác", ""),
+        ],
     },
 }
+
+# Map tablename → view_cols dùng cho evidence_blocks ở finding_detail.html
+# (giữ đồng nhất với cột curated của company_data).
+_VIEW_COLS_BY_TABLE = {
+    "nvl_balances": _TABLE_CONFIG["m15"]["view_cols"],
+    "sp_balances": _TABLE_CONFIG["m15a"]["view_cols"],
+    "norms": _TABLE_CONFIG["m16"]["view_cols"],
+    "declaration_lines": _TABLE_CONFIG["bcct"]["view_cols"],
+    "findings": [
+        ("check_code", "Mã check", "code-cell"),
+        ("severity", "Mức", "code-cell"),
+        ("subject_key", "Đối tượng", "code-cell"),
+        ("title", "Tiêu đề", "wrap"),
+        ("status", "Trạng thái", ""),
+    ],
+}
+
+
+def _format_cell(value, cls: str):
+    """Format value theo loại cột để gọn và dễ đọc."""
+    if value is None:
+        return ""
+    if cls == "num" and isinstance(value, (int, float)) and not isinstance(value, bool):
+        # Bỏ .0 cho số nguyên; số thập phân giữ tối đa 2 chữ số.
+        if float(value).is_integer():
+            return f"{int(value):,}"
+        return f"{value:,.2f}"
+    if cls == "date" and hasattr(value, "strftime"):
+        return value.strftime("%d/%m/%Y")
+    return value
+
+
+def _format_model_rows(model, rows, full: bool = False):
+    """Format ORM rows for display: pick curated cols (or all) and format values.
+
+    Trả về (view_cols, rows_view). Dùng cho cả company_data và evidence_blocks.
+    """
+    tablename = model.__tablename__
+    if full or tablename not in _VIEW_COLS_BY_TABLE:
+        exclude = {"id", "company_id", "period_year", "source_file"}
+        view_cols = [
+            (c.name, c.name, "")
+            for c in model.__table__.columns
+            if c.name not in exclude
+        ]
+    else:
+        view_cols = _VIEW_COLS_BY_TABLE[tablename]
+    rows_view = [
+        [(_format_cell(getattr(r, field, None), cls), cls) for field, _label, cls in view_cols]
+        for r in rows
+    ]
+    return view_cols, rows_view
 
 
 @router.get("/companies/{code}/data", response_class=HTMLResponse)
@@ -230,6 +326,7 @@ def company_data(
     table: str = Query("m15"),
     q: str = Query("", description="Lọc theo mã"),
     page: int = Query(1, ge=1),
+    full: int = Query(0, description="1 = hiện toàn bộ cột DB"),
     user: str = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -256,10 +353,7 @@ def company_data(
     ) or 0
     rows = db.scalars(stmt.offset((page - 1) * per_page).limit(per_page)).all()
 
-    rows_dict = [
-        {c.name: getattr(r, c.name, None) for c in r.__table__.columns}
-        for r in rows
-    ]
+    view_cols, rows_view = _format_model_rows(model, rows, full=bool(full))
 
     return templates.TemplateResponse(
         request,
@@ -273,11 +367,13 @@ def company_data(
             "code_label": config["code_label"],
             "code_field": code_field,
             "tables": list(_TABLE_CONFIG.items()),
-            "rows": rows_dict,
+            "view_cols": view_cols,
+            "rows": rows_view,
             "total": total,
             "page": page,
             "per_page": per_page,
             "q": q,
+            "full": full,
         },
     )
 
@@ -298,9 +394,11 @@ def finding_detail(
 
     evidence_blocks: list[dict] = []
     for ref in (finding.evidence_refs or []):
+        view_cols, rows_view = _resolve_evidence(db, ref)
         evidence_blocks.append({
             "ref": ref,
-            "rows": _resolve_evidence(db, ref),
+            "view_cols": view_cols,
+            "rows": rows_view,
         })
 
     return templates.TemplateResponse(

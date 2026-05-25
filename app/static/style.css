@@ -132,6 +132,21 @@ h4 { font-size: var(--fs-md); }
 
 p { margin: 0 0 var(--space-3); }
 
+/* — Demo data banner — */
+.demo-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px var(--space-6);
+  background: #fef3c7;
+  color: #78350f;
+  border-bottom: 1px solid #fcd34d;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+.demo-banner-icon { font-size: 1.1em; }
+.demo-banner em { font-style: normal; color: #92400e; }
+
 /* — Layout — */
 .app-header {
   position: sticky;
@@ -482,7 +497,24 @@ p { margin: 0 0 var(--space-3); }
 
 .table-overflow { overflow-x: auto; }
 
-.data-table .num { font-variant-numeric: tabular-nums; text-align: right; }
+.data-table .num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.data-table .date { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--c-text-muted); }
+
+/* Wrap cells: text dài như Tên hàng, Mô tả — clamp 2 dòng + tooltip xem full */
+.data-table td.wrap, .data-table th.wrap { max-width: 360px; }
+.data-table td.wrap .cell-clamp,
+.data-table td.wrap {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.cell-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: help;
+}
 .data-table .rank {
   font-weight: 500;
   color: var(--c-text-subtle);

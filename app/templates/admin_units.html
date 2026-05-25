@@ -57,14 +57,14 @@
     Family: <code class="text-mono">{{ family }}</code>
     <span class="text-subtle" style="font-weight:400;text-transform:none">({{ items | length }} canonical)</span>
   </h3>
-  <div class="table-overflow">
+  <div class="data-table-wrapper">
     <table class="data-table compact">
       <thead>
         <tr>
           <th>Code</th>
           <th>Tên VN</th>
-          <th>Base factor</th>
-          <th>Mô tả</th>
+          <th class="num">Base factor</th>
+          <th class="wrap">Mô tả</th>
           <th>Aliases</th>
         </tr>
       </thead>
@@ -74,7 +74,11 @@
           <td class="code-cell"><strong>{{ item.row.code }}</strong></td>
           <td>{{ item.row.name_vi or '—' }}</td>
           <td class="num text-mono">{{ item.row.base_factor }}</td>
-          <td class="text-subtle">{{ item.row.description or '—' }}</td>
+          <td class="wrap text-subtle">
+            {% if item.row.description %}
+              <div class="cell-clamp" title="{{ item.row.description }}">{{ item.row.description }}</div>
+            {% else %}—{% endif %}
+          </td>
           <td class="alias-cell">
             {% for a in item.aliases %}
               {% if a != item.row.code %}<code class="alias-chip">{{ a }}</code>{% endif %}

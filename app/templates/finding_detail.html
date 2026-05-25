@@ -51,9 +51,11 @@
       {% for k, v in finding.details.items() %}
       <tr>
         <th>{{ k }}</th>
-        <td>
+        <td class="wrap">
           {% if v is mapping or v is sequence and v is not string %}
-            <code>{{ v | tojson }}</code>
+            <code class="text-mono" style="word-break:break-all">{{ v | tojson }}</code>
+          {% elif v is number %}
+            <span class="num text-mono">{{ '{:,}'.format(v) if v == v|int else '{:,.4f}'.format(v) }}</span>
           {% else %}
             {{ v }}
           {% endif %}
@@ -79,20 +81,24 @@
         · {{ block.rows | length }} dòng
       </summary>
       {% if block.rows %}
-      <div class="table-overflow">
+      <div class="data-table-wrapper">
         <table class="data-table compact">
           <thead>
             <tr>
-              {% for col in block.rows[0].keys() %}
-                <th>{{ col }}</th>
+              {% for field, label, cls in block.view_cols %}
+                <th class="{{ cls }}">{{ label }}</th>
               {% endfor %}
             </tr>
           </thead>
           <tbody>
             {% for row in block.rows %}
             <tr>
-              {% for col, val in row.items() %}
-                <td>{{ val if val is not none else '' }}</td>
+              {% for value, cls in row %}
+                {% if cls == "wrap" and value %}
+                  <td class="wrap"><div class="cell-clamp" title="{{ value }}">{{ value }}</div></td>
+                {% else %}
+                  <td class="{{ cls }}">{{ value }}</td>
+                {% endif %}
               {% endfor %}
             </tr>
             {% endfor %}

@@ -29,33 +29,47 @@
 <form method="get" class="form-row mb-3">
   <input type="hidden" name="year" value="{{ year }}">
   <input type="hidden" name="table" value="{{ table_key }}">
+  {% if full %}<input type="hidden" name="full" value="1">{% endif %}
   <div class="form-field" style="margin-bottom:0;flex:1">
     <label class="form-label">Lọc theo {{ code_label }}</label>
     <input type="text" name="q" value="{{ q }}" class="form-input" placeholder="Nhập một phần mã…">
   </div>
   <div>
     <button type="submit" class="btn btn-primary">Lọc</button>
-    {% if q %}<a href="/companies/{{ company.code }}/data?year={{ year }}&table={{ table_key }}" class="btn btn-secondary">Xoá lọc</a>{% endif %}
+    {% if q %}<a href="/companies/{{ company.code }}/data?year={{ year }}&table={{ table_key }}{% if full %}&full=1{% endif %}" class="btn btn-secondary">Xoá lọc</a>{% endif %}
   </div>
 </form>
 
-<p class="text-subtle">{{ total }} dòng · trang {{ page }}/{{ ((total - 1) // per_page) + 1 if total > 0 else 1 }}</p>
+<div class="form-row mb-3" style="align-items:center;gap:var(--space-3)">
+  <span class="text-subtle">{{ total }} dòng · trang {{ page }}/{{ ((total - 1) // per_page) + 1 if total > 0 else 1 }}</span>
+  <div style="margin-left:auto">
+    {% if full %}
+      <a class="btn btn-secondary btn-sm" href="?year={{ year }}&table={{ table_key }}&q={{ q }}">← Cột chính</a>
+    {% else %}
+      <a class="btn btn-secondary btn-sm" href="?year={{ year }}&table={{ table_key }}&q={{ q }}&full=1">Xem tất cả cột →</a>
+    {% endif %}
+  </div>
+</div>
 
 {% if rows %}
-<div class="data-table-wrapper table-overflow">
+<div class="data-table-wrapper{% if full %} table-overflow{% endif %}">
   <table class="data-table compact">
     <thead>
       <tr>
-        {% for col in rows[0].keys() %}
-          <th>{{ col }}</th>
+        {% for field, label, cls in view_cols %}
+          <th class="{{ cls }}">{{ label }}</th>
         {% endfor %}
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
       <tr>
-        {% for col, val in row.items() %}
-          <td>{{ val if val is not none else '' }}</td>
+        {% for value, cls in row %}
+          {% if cls == "wrap" and value %}
+            <td class="wrap"><div class="cell-clamp" title="{{ value }}">{{ value }}</div></td>
+          {% else %}
+            <td class="{{ cls }}">{{ value }}</td>
+          {% endif %}
         {% endfor %}
       </tr>
       {% endfor %}
@@ -69,8 +83,8 @@
 <nav class="pagination">
   <span class="text-subtle">Hiển thị {{ rows | length }} / {{ total }} dòng</span>
   <div class="links">
-    {% if page > 1 %}<a href="?year={{ year }}&table={{ table_key }}&q={{ q }}&page={{ page - 1 }}">‹ Trang trước</a>{% endif %}
-    {% if total > page * per_page %}<a href="?year={{ year }}&table={{ table_key }}&q={{ q }}&page={{ page + 1 }}">Trang sau ›</a>{% endif %}
+    {% if page > 1 %}<a href="?year={{ year }}&table={{ table_key }}&q={{ q }}{% if full %}&full=1{% endif %}&page={{ page - 1 }}">‹ Trang trước</a>{% endif %}
+    {% if total > page * per_page %}<a href="?year={{ year }}&table={{ table_key }}&q={{ q }}{% if full %}&full=1{% endif %}&page={{ page + 1 }}">Trang sau ›</a>{% endif %}
   </div>
 </nav>
 

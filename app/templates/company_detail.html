@@ -97,15 +97,15 @@
         <span class="group-meta">{{ findings | length }} phát hiện</span>
       </summary>
       <p class="group-desc">{{ spec.description }}</p>
-      <div class="table-overflow">
+      <div class="data-table-wrapper">
         <table class="data-table compact">
           <thead>
             <tr>
               <th>Mức</th>
               <th>Đối tượng</th>
-              <th>Mô tả</th>
+              <th class="wrap">Mô tả</th>
               <th>Trạng thái</th>
-              <th>Thao tác cán bộ</th>
+              <th>Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -117,21 +117,24 @@
                 </span>
               </td>
               <td class="code-cell">{{ f.subject_key or '—' }}</td>
-              <td>
-                <a href="/findings/{{ f.id }}" style="color:inherit">{{ f.title }}</a>
-                {% if f.notes %}<div class="text-subtle" style="font-size:var(--fs-xs);margin-top:4px">📝 {{ f.notes }}</div>{% endif %}
+              <td class="wrap">
+                <div class="cell-clamp" title="{{ f.title }}{% if f.notes %} — 📝 {{ f.notes }}{% endif %}">
+                  <a href="/findings/{{ f.id }}" style="color:inherit">{{ f.title }}</a>
+                  {% if f.notes %}<span class="text-subtle" style="font-size:var(--fs-xs)"> · 📝 {{ f.notes }}</span>{% endif %}
+                </div>
               </td>
               <td><span class="status-pill status-{{ f.status }}">{{ STATUS_LABEL[f.status] }}</span></td>
               <td>
                 <form method="post" action="/findings/{{ f.id }}/status" class="status-form-inline">
-                  <select name="status">
+                  <select name="status" aria-label="Đổi trạng thái">
                     {% for s in ALLOWED_STATUSES %}
                       <option value="{{ s }}" {% if f.status == s %}selected{% endif %}>{{ STATUS_LABEL[s] }}</option>
                     {% endfor %}
                   </select>
-                  <input type="text" name="notes" value="{{ f.notes or '' }}" placeholder="Ghi chú (tuỳ chọn)" maxlength="500">
+                  <input type="hidden" name="notes" value="{{ f.notes or '' }}">
                   <button type="submit">Lưu</button>
                 </form>
+                <a href="/findings/{{ f.id }}" class="btn btn-sm btn-secondary" style="margin-top:4px;display:inline-block">Chi tiết →</a>
               </td>
             </tr>
             {% endfor %}

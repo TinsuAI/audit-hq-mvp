@@ -30,41 +30,42 @@ from app.models import Company, DeclarationLine
 
 MAPPING_FILE = Path(__file__).resolve().parent.parent / "db-data" / "anonymize_mapping.json"
 
-# Mapping cố định DN thực → mã demo (chốt 2026-05-21 trong demo plan §6.1).
+# Mapping cố định DN thực → mã demo (chốt 2026-05-21, đổi tên 2026-05-25 §6.1).
+# Tên DN giả lập có hậu tố "(Demo)" để cán bộ HQ luôn nhận diện được đây là dữ liệu mẫu.
 COMPANY_MAPPING: dict[str, dict[str, str]] = {
     "GROWATT": {
         "code": "DN_001",
-        "name": "Doanh nghiệp DN_001",
+        "name": "Công ty TNHH Điện Tử Phương Đông (Demo)",
         "industry": "Điện tử (HS 85)",
         "address": "Khu công nghiệp tỉnh A",
     },
     "KIM_LONG": {
         "code": "DN_002",
-        "name": "Doanh nghiệp DN_002",
+        "name": "Công ty TNHH Cơ Khí Tiên Phong (Demo)",
         "industry": "Cơ khí (HS 84)",
         "address": "Khu công nghiệp tỉnh B",
     },
     "HONG_AN": {
         "code": "DN_003",
-        "name": "Doanh nghiệp DN_003",
+        "name": "Công ty TNHH May Mặc Hoa Sen (Demo)",
         "industry": "Dệt may / Da giày (HS 61, 64)",
         "address": "Khu công nghiệp tỉnh C",
     },
     "DO_THANH": {
         "code": "DN_004",
-        "name": "Doanh nghiệp DN_004",
+        "name": "Công ty TNHH Hoá Chất Nam Tiến (Demo)",
         "industry": "Hoá chất (HS 39)",
         "address": "Khu công nghiệp tỉnh D",
     },
     "HONG_PHUC": {
         "code": "DN_005",
-        "name": "Doanh nghiệp DN_005",
+        "name": "Công ty TNHH Cơ Khí Phụ Trợ Bình Minh (Demo)",
         "industry": "Cơ khí phụ trợ",
         "address": "Khu công nghiệp tỉnh E",
     },
     "HIEP_QUANG": {
         "code": "DN_006",
-        "name": "Doanh nghiệp DN_006 (dự bị, không demo)",
+        "name": "Công ty TNHH Dệt May Sao Khuê (Demo)",
         "industry": "Dệt may",
         "address": "Khu công nghiệp tỉnh F",
     },
@@ -86,14 +87,36 @@ def _ncc_alias(seed: str, idx: int) -> str:
 
 
 def anonymize(session: Session, dry_run: bool = False) -> dict:
-    """Anonymize DB; trả về mapping dict đã apply."""
+    """Anonymize DB; trả về mapping dict đã apply.
+
+    Idempotent: lần thứ 2+ trở đi chỉ refresh name/address/industry (cho phép sửa
+    nhãn DN demo mà không cần wipe DB), giữ nguyên code và tax_id để URL ổn định.
+    """
     mapping: dict = {"companies": {}, "partners": {}}
+    by_demo_code = {v["code"]: (orig, v) for orig, v in COMPANY_MAPPING.items()}
 
     # Bước 1: companies
     companies = session.scalars(select(Company)).all()
     for c in companies:
-        # Idempotent: skip nếu code đã được ẩn danh (DN_xxx).
         if c.code.startswith("DN_"):
+            # Đã anonymize — refresh meta nếu COMPANY_MAPPING có thay đổi name/address.
+            entry = by_demo_code.get(c.code)
+            if entry is None:
+                continue
+            orig_code, target = entry
+            if c.name != target["name"] or c.address != target["address"]:
+                mapping["companies"][c.code] = {
+                    "original_code": orig_code,
+                    "refresh": True,
+                    "old_name": c.name,
+                    "new_name": target["name"],
+                    "old_address": c.address,
+                    "new_address": target["address"],
+                    "industry": target["industry"],
+                }
+                if not dry_run:
+                    c.name = target["name"]
+                    c.address = target["address"]
             continue
         target = COMPANY_MAPPING.get(c.code)
         if target is None:
@@ -162,11 +185,17 @@ def main(argv: list[str] | None = None) -> int:
     if not mapping["companies"]:
         print("Không có DN nào cần anonymize (có thể đã làm rồi).")
     for new_code, info in sorted(mapping["companies"].items()):
-        print(
-            f"  {info['original_code']:12s} → {new_code} | "
-            f"MST {info['original_tax_id'] or '—'} → {info['new_tax_id']} | "
-            f"{info['industry']}"
-        )
+        if info.get("refresh"):
+            print(
+                f"  {info['original_code']:12s} → {new_code} | "
+                f"refresh name: {info['old_name']!r} → {info['new_name']!r}"
+            )
+        else:
+            print(
+                f"  {info['original_code']:12s} → {new_code} | "
+                f"MST {info['original_tax_id'] or '—'} → {info['new_tax_id']} | "
+                f"{info['industry']}"
+            )
     if mapping["partners"]:
         print(f"\nĐã anonymize {len(mapping['partners'])} NCC.")
 
