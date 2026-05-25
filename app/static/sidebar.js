@@ -325,7 +325,7 @@
           addMessage('user', m.content);
         } else if (m.role === 'assistant' && m.content) {
           addMessage('assistant', renderMarkdown(m.content), { html: true });
-        } else if (m.role === 'tool') {
+        } else if (m.role === 'tool' && metaCache && metaCache.is_admin) {
           const preview = m.content.length > 200 ? m.content.slice(0, 200) + '…' : m.content;
           addMessage('tool', preview, { toolName: `${m.tool_name || 'tool'} ✓` });
         }
