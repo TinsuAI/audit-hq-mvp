@@ -41,6 +41,10 @@
 {% block content %}{% endblock %}
 </main>
 
+{% if user %}
+{% include "_ai_sidebar.html" %}
+{% endif %}
+
 <footer class="app-footer">
   <div class="footer-line">
     Audit-HQ MVP · Tinsu AI × Trọng Tín · Bản dùng cho thí điểm. Mọi quyết định cuối cùng thuộc thẩm quyền cán bộ Hải quan.

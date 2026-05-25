@@ -14,9 +14,11 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Iterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from openai import APIError, APIStatusError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -271,3 +273,219 @@ async def chat(
             "tokens_out": total_out,
         },
     }
+
+
+@router.get("/ai/meta")
+def ai_meta(user: str = Depends(require_user)) -> dict:
+    """Frontend dùng để biết có nên render sidebar không."""
+    return {
+        "enabled": bool(get_setting("enabled")),
+        "configured": bool(get_setting("api_key")),
+        "model": get_setting("model_default"),
+    }
+
+
+def _sse(event: str, data: Any) -> str:
+    """Format 1 SSE event."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    request: Request,
+    user: str = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Streaming version of /api/chat — Server-Sent Events.
+
+    Events:
+      content     {"text": str}         — token delta cho assistant reply
+      tool_call   {"name", "args"}      — model bắt đầu gọi tool (sau finish_reason=tool_calls)
+      tool_result {"name", "preview"}   — tool executed, preview cho UI
+      done        {conversation_id, usage}
+      error       {"detail": str}
+    """
+    if not get_setting("enabled"):
+        raise HTTPException(status_code=503, detail="AI assistant đang tắt.")
+    if not get_setting("api_key"):
+        raise HTTPException(status_code=503, detail="Chưa cấu hình API key.")
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+    user_message: str = (body.get("message") or "").strip()
+    conv_id: int | None = body.get("conversation_id")
+    page_context: dict = body.get("page_context") or {}
+
+    if not user_message:
+        raise HTTPException(status_code=400, detail="Message không được trống.")
+
+    if conv_id:
+        conv = db.get(AiConversation, conv_id)
+        if conv is None or conv.user != user:
+            raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+    else:
+        conv = AiConversation(user=user, page_url_seed=page_context.get("url"))
+        db.add(conv)
+        db.flush()
+
+    _save_msg(db, conv.id, "user", user_message)
+    db.commit()
+    conv_id_resolved = conv.id
+
+    system_msgs = build_messages_system(
+        page_context=page_context,
+        enable_cache=get_setting("prompt_cache_enabled") and cache_supports_anthropic(),
+    )
+    history = _load_history(db, conv.id)
+    messages = system_msgs + history
+
+    client = make_client()
+    model = get_setting("model_default")
+    temperature = float(get_setting("temperature"))
+    max_tokens = int(get_setting("max_tokens"))
+
+    def event_gen() -> Iterator[str]:
+        # Reuse messages mutate-in-place qua các iteration tool loop.
+        total_in = 0
+        total_out = 0
+        try:
+            for _ in range(MAX_TOOL_LOOP):
+                t0 = time.time()
+                stream = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    tools=TOOL_SCHEMAS,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+
+                acc_text = ""
+                # Accumulate tool calls by index — chunks gửi delta arguments.
+                acc_tool_calls: dict[int, dict] = {}
+                finish_reason: str | None = None
+                tokens_in = 0
+                tokens_out = 0
+
+                for chunk in stream:
+                    # Usage info trên chunk cuối (khi include_usage=True).
+                    usage = getattr(chunk, "usage", None)
+                    if usage is not None:
+                        tokens_in = usage.prompt_tokens or 0
+                        tokens_out = usage.completion_tokens or 0
+
+                    if not chunk.choices:
+                        continue
+                    choice = chunk.choices[0]
+                    delta = choice.delta
+
+                    if delta and delta.content:
+                        acc_text += delta.content
+                        yield _sse("content", {"text": delta.content})
+
+                    if delta and delta.tool_calls:
+                        for tc in delta.tool_calls:
+                            idx = tc.index
+                            slot = acc_tool_calls.setdefault(
+                                idx, {"id": "", "name": "", "arguments": ""}
+                            )
+                            if tc.id:
+                                slot["id"] = tc.id
+                            if tc.function:
+                                if tc.function.name:
+                                    slot["name"] = tc.function.name
+                                if tc.function.arguments:
+                                    slot["arguments"] += tc.function.arguments
+
+                    if choice.finish_reason:
+                        finish_reason = choice.finish_reason
+
+                latency_ms = int((time.time() - t0) * 1000)
+                total_in += tokens_in
+                total_out += tokens_out
+
+                if finish_reason == "tool_calls" and acc_tool_calls:
+                    tool_calls_payload = [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                        }
+                        for tc in sorted(acc_tool_calls.values(), key=lambda x: x.get("id", ""))
+                    ]
+                    # Append assistant turn vào messages history + audit.
+                    _save_msg(
+                        db, conv_id_resolved, "assistant",
+                        content=acc_text,
+                        tool_args_json=json.dumps(tool_calls_payload, ensure_ascii=False),
+                        tool_call_id="batch",
+                        model=model,
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                        latency_ms=latency_ms,
+                    )
+                    messages.append({
+                        "role": "assistant",
+                        "content": acc_text or None,
+                        "tool_calls": tool_calls_payload,
+                    })
+
+                    for tc in tool_calls_payload:
+                        name = tc["function"]["name"]
+                        args = tc["function"]["arguments"] or "{}"
+                        yield _sse("tool_call", {"name": name, "args": args})
+                        result_str = run_tool(name, args, db)
+                        _save_msg(
+                            db, conv_id_resolved, "tool",
+                            content=result_str,
+                            tool_call_id=tc["id"],
+                            tool_name=name,
+                            tool_args_json=args,
+                        )
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": result_str,
+                        })
+                        yield _sse("tool_result", {"name": name, "preview": result_str[:300]})
+                    db.commit()
+                    continue
+
+                # finish_reason in ("stop", "length") → final answer
+                _save_msg(
+                    db, conv_id_resolved, "assistant",
+                    content=acc_text,
+                    model=model,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    latency_ms=latency_ms,
+                )
+                db.commit()
+                yield _sse("done", {
+                    "conversation_id": conv_id_resolved,
+                    "usage": {"model": model, "tokens_in": total_in, "tokens_out": total_out},
+                })
+                return
+            # exceeded MAX_TOOL_LOOP
+            yield _sse("error", {"detail": f"Vượt {MAX_TOOL_LOOP} vòng tool call."})
+        except APIStatusError as e:
+            log.warning("LLM API status error: %s", e)
+            yield _sse("error", {"detail": f"Provider lỗi {e.status_code}: {str(e)[:200]}"})
+        except APIError as e:
+            log.warning("LLM API error: %s", e)
+            yield _sse("error", {"detail": f"Lỗi LLM: {e}"})
+        except Exception as e:  # noqa: BLE001
+            log.exception("Unexpected error in chat_stream")
+            yield _sse("error", {"detail": f"{type(e).__name__}: {e}"})
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable nginx buffering nếu sau này có
+        },
+    )
