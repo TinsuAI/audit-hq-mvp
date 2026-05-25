@@ -23,7 +23,13 @@ from openai import APIError, APIStatusError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.ai.client import cache_supports_anthropic, make_client
+from app.ai.client import (
+    cache_supports_anthropic,
+    call_with_fallback,
+    fallback_model_for,
+    make_client,
+    make_fallback_client,
+)
 from app.ai.config import get_setting
 from app.ai.cost import estimate_cost
 from app.ai.guardrails import apply_guardrails
@@ -165,6 +171,8 @@ async def chat(
     messages = system_msgs + history
 
     client = make_client()
+    fb_client = make_fallback_client()
+    fb_model = fallback_model_for("default")
     model = get_setting("model_default")
     temperature = float(get_setting("temperature"))
     max_tokens = int(get_setting("max_tokens"))
@@ -178,12 +186,15 @@ async def chat(
     for _ in range(tool_call_cap):
         t0 = time.time()
         try:
-            resp = client.chat.completions.create(
-                model=model,
+            resp = call_with_fallback(
+                primary_client=client,
+                primary_model=model,
+                fallback_client=fb_client,
+                fallback_model=fb_model,
                 messages=messages,
-                tools=TOOL_SCHEMAS,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                tools=TOOL_SCHEMAS,
             )
         except APIStatusError as e:
             log.warning("LLM API status error: %s", e)
@@ -447,6 +458,8 @@ async def chat_stream(
     messages = system_msgs + history
 
     client = make_client()
+    fb_client = make_fallback_client()
+    fb_model = fallback_model_for("default")
     model = get_setting("model_default")
     temperature = float(get_setting("temperature"))
     max_tokens = int(get_setting("max_tokens"))
@@ -460,12 +473,17 @@ async def chat_stream(
         try:
             for _ in range(tool_call_cap):
                 t0 = time.time()
-                stream = client.chat.completions.create(
-                    model=model,
+                # Fallback chỉ kích hoạt nếu primary lỗi TRƯỚC khi stream bắt đầu.
+                # Khi stream đã yield chunk thì giữ nguyên — không retry mid-stream.
+                stream = call_with_fallback(
+                    primary_client=client,
+                    primary_model=model,
+                    fallback_client=fb_client,
+                    fallback_model=fb_model,
                     messages=messages,
-                    tools=TOOL_SCHEMAS,
                     temperature=temperature,
                     max_tokens=max_tokens,
+                    tools=TOOL_SCHEMAS,
                     stream=True,
                     stream_options={"include_usage": True},
                 )

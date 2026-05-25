@@ -158,6 +158,60 @@
   </div>
 </form>
 
+<!-- ───────────────── Section 2b: Fallback Provider ───────────────── -->
+<form method="post" action="/admin/ai/fallback" class="card mt-3">
+  <h3 class="card-title">2b. Fallback Provider (provider phụ)</h3>
+  <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
+    Khi primary trả 429/5xx/timeout/connection error → tự động retry trên provider phụ.
+    Không kích hoạt với lỗi 400/401/403 (vấn đề config, đổi provider vô ích).
+    Mặc định cấu hình NVIDIA NIM + DeepSeek làm fallback (free, 40 RPM, không giới hạn ngày).
+  </p>
+
+  <div class="form-field">
+    <label class="form-label">
+      <input type="checkbox" name="fallback_enabled" value="on"
+             {% if settings.fallback_enabled.value %}checked{% endif %}>
+      Bật fallback
+    </label>
+  </div>
+
+  <div class="form-field">
+    <label class="form-label" for="fallback_base_url">Base URL phụ</label>
+    <input type="text" id="fallback_base_url" name="fallback_base_url" class="form-input text-mono"
+           value="{{ settings.fallback_base_url.value }}" required>
+  </div>
+
+  <div class="form-field">
+    <label class="form-label" for="fallback_api_key">
+      API key phụ {% if settings.fallback_api_key.has_value %}<span class="text-subtle">(đã lưu: {{ settings.fallback_api_key.value }} — bỏ trống để giữ)</span>{% endif %}
+    </label>
+    <input type="password" id="fallback_api_key" name="fallback_api_key" class="form-input text-mono"
+           placeholder="{% if settings.fallback_api_key.has_value %}••• đã lưu •••{% else %}Dán API key fallback{% endif %}">
+  </div>
+
+  <div class="form-row">
+    <div class="form-field" style="flex:1">
+      <label class="form-label" for="fallback_model_default">Default</label>
+      <input type="text" id="fallback_model_default" name="fallback_model_default" class="form-input text-mono"
+             value="{{ settings.fallback_model_default.value }}" required>
+    </div>
+    <div class="form-field" style="flex:1">
+      <label class="form-label" for="fallback_model_fast">Fast</label>
+      <input type="text" id="fallback_model_fast" name="fallback_model_fast" class="form-input text-mono"
+             value="{{ settings.fallback_model_fast.value }}" required>
+    </div>
+    <div class="form-field" style="flex:1">
+      <label class="form-label" for="fallback_model_deep">Deep</label>
+      <input type="text" id="fallback_model_deep" name="fallback_model_deep" class="form-input text-mono"
+             value="{{ settings.fallback_model_deep.value }}" required>
+    </div>
+  </div>
+
+  <div style="margin-top:var(--space-3)">
+    <button type="submit" class="btn btn-primary">💾 Lưu fallback</button>
+  </div>
+</form>
+
 <!-- ───────────────── Section 3: Giới hạn & Retention ───────────────── -->
 <form method="post" action="/admin/ai/limits" class="card mt-3">
   <h3 class="card-title">3. Giới hạn & Retention</h3>

@@ -218,6 +218,34 @@ def save_limits(
     return _flash_redirect(saved="limits")
 
 
+@router.post("/fallback", response_model=None)
+def save_fallback(
+    fallback_enabled: str = Form(default=""),
+    fallback_base_url: str = Form(...),
+    fallback_api_key: str = Form(""),
+    fallback_model_default: str = Form(...),
+    fallback_model_fast: str = Form(...),
+    fallback_model_deep: str = Form(...),
+    user: SessionUser = Depends(require_admin),
+) -> RedirectResponse:
+    enabled = fallback_enabled.lower() in ("on", "true", "1", "yes")
+    base_url = fallback_base_url.strip()
+    if enabled and not base_url.startswith(("http://", "https://")):
+        return _flash_redirect(error="Fallback base URL phải bắt đầu bằng http:// hoặc https://")
+    for m in (fallback_model_default, fallback_model_fast, fallback_model_deep):
+        if not m.strip():
+            return _flash_redirect(error="Tên fallback model không được trống")
+
+    set_setting("fallback_enabled", enabled, user.name)
+    set_setting("fallback_base_url", base_url, user.name)
+    if fallback_api_key.strip():
+        set_setting("fallback_api_key", fallback_api_key.strip(), user.name)
+    set_setting("fallback_model_default", fallback_model_default.strip(), user.name)
+    set_setting("fallback_model_fast", fallback_model_fast.strip(), user.name)
+    set_setting("fallback_model_deep", fallback_model_deep.strip(), user.name)
+    return _flash_redirect(saved="fallback")
+
+
 @router.post("/flags", response_model=None)
 def save_flags(
     enabled: str = Form(default=""),  # checkbox: "on" khi tích, rỗng khi không

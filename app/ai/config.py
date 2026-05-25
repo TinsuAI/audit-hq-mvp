@@ -61,6 +61,25 @@ SETTINGS_REGISTRY: dict[str, SettingSpec] = {
     "audit_retention_days": SettingSpec(int, 365, "Giữ audit log"),
     # Flags
     "prompt_cache_enabled": SettingSpec(bool, True, "Bật prompt caching khi provider hỗ trợ"),
+    # Fallback provider — kích hoạt khi primary trả 429/5xx/connection error.
+    "fallback_enabled": SettingSpec(bool, False, "Bật fallback sang provider phụ khi primary lỗi/quota"),
+    "fallback_base_url": SettingSpec(
+        str, "https://integrate.api.nvidia.com/v1",
+        "Base URL provider phụ (mặc định NVIDIA NIM)"
+    ),
+    "fallback_api_key": SettingSpec(str, "", "API key provider phụ", is_secret=True),
+    "fallback_model_default": SettingSpec(
+        str, "deepseek-ai/deepseek-v4-pro",
+        "Model fallback cho slot default"
+    ),
+    "fallback_model_fast": SettingSpec(
+        str, "deepseek-ai/deepseek-v4-flash",
+        "Model fallback cho slot fast"
+    ),
+    "fallback_model_deep": SettingSpec(
+        str, "deepseek-ai/deepseek-v4-pro",
+        "Model fallback cho slot deep"
+    ),
 }
 
 # Env var prefix dùng cho seed lần đầu.
