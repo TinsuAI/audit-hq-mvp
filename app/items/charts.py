@@ -117,44 +117,86 @@ def sankey_layout(
     width: int = 720,
     height_per_node: int = 28,
     pad: int = 16,
+    max_nodes: int = 15,
+    min_thickness: float = 1.5,
 ) -> dict:
+    """Sankey 2 cấp, đọc được khi có nhiều mã.
+
+    - Sort theo qty giảm dần.
+    - Cap ở max_nodes; phần đuôi gộp thành 1 node "+N khác" với tổng qty.
+    - Ribbon origin được stack theo tỷ lệ qty trên thanh center (không cùng 1 điểm).
+    - Thickness có floor để mã nhỏ vẫn nhìn thấy.
+    """
     if not nodes:
         return {"nodes": [], "width": width, "height": pad * 2}
-    n = len(nodes)
+
+    # Sort by qty desc; lift None to 0.
+    sorted_nodes = sorted(nodes, key=lambda t: -max(0.0, float(t[1] or 0)))
+
+    # Cap + lump tail.
+    if len(sorted_nodes) > max_nodes:
+        visible = sorted_nodes[: max_nodes - 1]
+        hidden = sorted_nodes[max_nodes - 1 :]
+        hidden_qty = sum(max(0.0, float(q or 0)) for _, q, _ in hidden)
+        visible.append((f"+{len(hidden)} mã khác", hidden_qty, "đã gộp"))
+        sorted_nodes = visible
+
+    n = len(sorted_nodes)
     height = n * height_per_node + pad * 2
-    total = sum(max(0.0, q) for _, q, _ in nodes) or 1e-9
+    qtys = [max(0.0, float(q or 0)) for _, q, _ in sorted_nodes]
+    total = sum(qtys) or 1e-9
 
     cx_center = pad + 16 if direction == "out" else width - pad - 16
     cx_side = width - pad - 220 if direction == "out" else pad + 220
-    cy_center = height / 2
+
+    # Center bar spans the chart vertical area; ribbons attach at cumulative
+    # Y proportional to each node's qty (real sankey stacking).
+    center_top = pad
+    center_bot = height - pad
+    center_span = center_bot - center_top
 
     rendered = []
-    for i, (code, qty, name) in enumerate(nodes):
-        cy = pad + (i + 0.5) * height_per_node + 4
-        thickness = 4 + (max(qty, 0.0) / total) * 24
+    cum = 0.0
+    for i, ((code, qty_raw, name), qty) in enumerate(zip(sorted_nodes, qtys, strict=False)):
+        cy_side = pad + (i + 0.5) * height_per_node + 4
+        # Ribbon origin Y on center bar = midpoint of this node's allocated slice.
+        slice_top = center_top + (cum / total) * center_span
+        slice_h = (qty / total) * center_span
+        cy_origin = slice_top + slice_h / 2
+        cum += qty
+
+        thickness = max(min_thickness, (qty / total) * 28)
         mid_x = (cx_center + cx_side) / 2
+
         if direction == "out":
             path = (
-                f"M{cx_center + 8},{cy_center} "
-                f"C{mid_x},{cy_center} {mid_x},{cy} {cx_side},{cy}"
+                f"M{cx_center + 8},{round(cy_origin, 1)} "
+                f"C{mid_x},{round(cy_origin, 1)} {mid_x},{round(cy_side, 1)} {cx_side},{round(cy_side, 1)}"
             )
             label_x = cx_side + 8
             text_anchor = "start"
         else:
             path = (
-                f"M{cx_side},{cy} C{mid_x},{cy} {mid_x},{cy_center} {cx_center - 8},{cy_center}"
+                f"M{cx_side},{round(cy_side, 1)} "
+                f"C{mid_x},{round(cy_side, 1)} {mid_x},{round(cy_origin, 1)} "
+                f"{cx_center - 8},{round(cy_origin, 1)}"
             )
             label_x = cx_side - 8
             text_anchor = "end"
+
+        is_other = code.startswith("+") and "khác" in code
+        share_pct = (qty / total * 100) if total > 0 else 0.0
         rendered.append({
             "code": code,
             "name": name,
-            "qty": qty,
+            "qty": qty_raw if not is_other else qty,
+            "share_pct": round(share_pct, 1),
             "path": path,
             "thickness": round(thickness, 1),
             "label_x": round(label_x, 1),
-            "label_y": round(cy, 1),
+            "label_y": round(cy_side, 1),
             "text_anchor": text_anchor,
+            "is_other": is_other,
         })
 
     return {
@@ -163,7 +205,8 @@ def sankey_layout(
         "height": height,
         "pad": pad,
         "cx_center": cx_center,
-        "cy_center": cy_center,
+        "cy_center": height / 2,
         "center_label": center_label,
         "direction": direction,
+        "total_qty": total,
     }

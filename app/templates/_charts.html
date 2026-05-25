@@ -54,14 +54,15 @@
             text-anchor="{{ 'start' if layout.direction == 'out' else 'end' }}"
             dominant-baseline="middle">{{ layout.center_label }}</text>
       {% for n in layout.nodes %}
-        <path d="{{ n.path }}" class="sankey-ribbon" fill="none" stroke-width="{{ n.thickness }}" />
-        <text x="{{ n.label_x }}" y="{{ n.label_y }}" class="sankey-side-label"
+        <path d="{{ n.path }}" class="sankey-ribbon{% if n.is_other %} sankey-other{% endif %}"
+              fill="none" stroke-width="{{ n.thickness }}" />
+        <text x="{{ n.label_x }}" y="{{ n.label_y }}" class="sankey-side-label{% if n.is_other %} sankey-other-label{% endif %}"
               text-anchor="{{ n.text_anchor }}" dominant-baseline="middle">
           {% if layout.direction == 'out' %}
             <tspan class="text-mono">{{ n.code }}</tspan>
-            <tspan dx="6" class="text-subtle">{{ "{:,.4f}".format(n.qty) }}</tspan>
+            <tspan dx="6" class="text-subtle">{{ "{:,.4f}".format(n.qty) }} ({{ n.share_pct }}%)</tspan>
           {% else %}
-            <tspan class="text-subtle">{{ "{:,.4f}".format(n.qty) }}</tspan>
+            <tspan class="text-subtle">{{ n.share_pct }}% · {{ "{:,.4f}".format(n.qty) }}</tspan>
             <tspan dx="6" class="text-mono">{{ n.code }}</tspan>
           {% endif %}
         </text>

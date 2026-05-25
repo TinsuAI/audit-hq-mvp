@@ -1066,3 +1066,10 @@ p { margin: 0 0 var(--space-3); }
   .finding-row { grid-template-columns: auto 1fr; }
   .finding-row .text-mono, .finding-row .finding-status { display: none; }
 }
+
+/* Sankey "+N khác" group rendered distinctly so users know it's an aggregate */
+.chart-sankey .sankey-other { stroke: #94a3b8; stroke-dasharray: 4 3; stroke-opacity: 0.45; }
+.chart-sankey .sankey-other-label .text-mono { fill: var(--c-text-muted); font-style: italic; }
+.chart-sankey .sankey-ribbon { stroke-linecap: round; }
+.chart-sankey:hover .sankey-ribbon { stroke-opacity: 0.25; transition: stroke-opacity 0.15s; }
+.chart-sankey .sankey-ribbon:hover { stroke-opacity: 0.9; }

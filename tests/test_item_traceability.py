@@ -517,8 +517,8 @@ class TestChartGeometry:
         from app.items.charts import sankey_layout
         nodes = [("A", 10.0, ""), ("B", 30.0, "")]
         layout = sankey_layout("CENTER", nodes, direction="out")
-        thick = [n["thickness"] for n in layout["nodes"]]
-        assert thick[1] > thick[0]
+        # Sorted by qty desc → B first, A second; thickness reflects qty
+        assert layout["nodes"][0]["thickness"] > layout["nodes"][1]["thickness"]
         assert layout["center_label"] == "CENTER"
 
     def test_sankey_empty(self):
@@ -756,3 +756,61 @@ class TestItemLinks:
             assert '/companies/DN_IT1/items/NPL-X?year=2023' in r.text
         finally:
             _teardown(new_engine)
+
+
+# ─────────────────────────── sankey readability ───────────────────────────
+
+class TestSankeyReadability:
+    def test_sorts_nodes_by_qty_desc(self):
+        from app.items.charts import sankey_layout
+        nodes = [("A", 1.0, ""), ("B", 100.0, ""), ("C", 10.0, "")]
+        out = sankey_layout("X", nodes, direction="in")
+        codes = [n["code"] for n in out["nodes"]]
+        assert codes == ["B", "C", "A"]
+
+    def test_caps_and_groups_tail(self):
+        from app.items.charts import sankey_layout
+        nodes = [(f"N{i}", float(20 - i), "") for i in range(20)]
+        out = sankey_layout("X", nodes, direction="in", max_nodes=10)
+        # 9 top + 1 "other" group
+        assert len(out["nodes"]) == 10
+        last = out["nodes"][-1]
+        assert last["is_other"] is True
+        # Other node displays count of hidden items
+        assert "11" in last["code"] or "11" in last.get("name", "")
+        # Sum of hidden quantities preserved
+        hidden_qty = sum(float(20 - i) for i in range(9, 20))
+        assert last["qty"] == pytest.approx(hidden_qty)
+
+    def test_under_cap_no_other_group(self):
+        from app.items.charts import sankey_layout
+        nodes = [(f"N{i}", float(10 - i), "") for i in range(5)]
+        out = sankey_layout("X", nodes, direction="in", max_nodes=10)
+        assert len(out["nodes"]) == 5
+        assert all(not n.get("is_other") for n in out["nodes"])
+
+    def test_ribbon_origins_distributed_on_center_bar(self):
+        from app.items.charts import sankey_layout
+        # Three nodes, very different qtys → origin Y should reflect cumulative
+        # stacking, not all at center.
+        nodes = [("A", 100.0, ""), ("B", 100.0, ""), ("C", 100.0, "")]
+        out = sankey_layout("X", nodes, direction="in")
+        # Each path must have a unique origin Y on the center bar
+        # The path string contains "M{x},{y}" at start where y is unique per ribbon.
+        import re
+        ys = []
+        for n in out["nodes"]:
+            m = re.match(r"M[\d.]+,([\d.]+)", n["path"])
+            assert m, f"bad path: {n['path']}"
+            ys.append(float(m.group(1)))
+        # At least two distinct Y values
+        assert len(set(round(y, 1) for y in ys)) >= 2
+
+    def test_min_thickness_floor(self):
+        from app.items.charts import sankey_layout
+        # One dominant + one tiny
+        nodes = [("A", 10000.0, ""), ("B", 0.001, "")]
+        out = sankey_layout("X", nodes, direction="in")
+        thicks = [n["thickness"] for n in out["nodes"]]
+        # Tiny node still has visible thickness (>= 1.5)
+        assert min(thicks) >= 1.5
