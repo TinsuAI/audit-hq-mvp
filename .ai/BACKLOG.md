@@ -22,7 +22,7 @@
 - **`officer` được phép**:
   - `/companies`, `/companies/{code}`, `/findings/{id}`, `/companies/{code}/data`, `/companies/{code}/export`
   - Sidebar AI assistant + chat — nhưng có giới hạn (xem dưới)
-- **Officer KHÔNG được phép tạo DN / upload data**: hiện UI cho phép. Nên restrict cho admin. (Khả thi: officer chỉ làm việc trên data admin đã chuẩn bị sẵn.)
+- **Officer được phép tạo DN + upload data + run-checks**: theo quyết định 2026-05-25 (user xác nhận). Chỉ `/admin/*` mới cần admin.
 - **Implementation**: decorator `@require_role("admin")` cho các route admin. Sidebar template kiểm tra `user.role` trước khi render link.
 
 ### Tool-use UI chỉ cho admin
