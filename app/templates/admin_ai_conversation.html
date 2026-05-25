@@ -8,7 +8,7 @@
       {{ conv.user }} ·
       {{ conv.started_at.strftime('%d/%m/%Y %H:%M') if conv.started_at else '' }} ·
       {{ msgs | length }} message ·
-      ${{ cost_total }} ·
+      {% if show_cost %}${{ cost_total }} ·{% endif %}
       {{ tokens_total_in }}+{{ tokens_total_out }} tokens
     </p>
   </div>
@@ -41,7 +41,7 @@
         <span class="text-subtle" style="font-size:var(--fs-xs)">
           {% if m.created_at %}{{ m.created_at.strftime('%H:%M:%S') }}{% endif %}
           {% if m.tokens_in or m.tokens_out %} · {{ m.tokens_in or 0 }}+{{ m.tokens_out or 0 }} tok{% endif %}
-          {% if m.cost_usd %} · ${{ "%.4f"|format(m.cost_usd) }}{% endif %}
+          {% if show_cost and m.cost_usd %} · ${{ "%.4f"|format(m.cost_usd) }}{% endif %}
           {% if m.latency_ms %} · {{ m.latency_ms }}ms{% endif %}
         </span>
       </div>

@@ -112,6 +112,9 @@ def admin_ai_page(
             "models_count": len(available) if available else 0,
             "usage": usage,
             "recent_convs": recent_convs,
+            # Tạm ẩn cost UI khỏi admin/ai — số chi phí dễ gây hiểu nhầm trong giai
+            # đoạn demo HQ. Đổi về True để hiển thị lại.
+            "show_cost": False,
         },
     )
 
@@ -303,5 +306,6 @@ def admin_conversation_detail(
             "cost_total": round(cost_total, 4),
             "tokens_total_in": tokens_total_in,
             "tokens_total_out": tokens_total_out,
+            "show_cost": False,
         },
     )

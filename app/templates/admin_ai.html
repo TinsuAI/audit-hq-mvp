@@ -243,12 +243,15 @@
   </div>
 </form>
 
-<!-- ───────────────── Section 5: Audit & Cost (read-only) ───────────────── -->
+<!-- ───────────────── Section 5: Audit (read-only) ───────────────── -->
 <div class="card mt-3">
-  <h3 class="card-title">5. Audit & Cost (hôm nay)</h3>
+  <h3 class="card-title">5. Audit{% if show_cost %} & Cost{% endif %} (hôm nay)</h3>
 
+  {% if show_cost %}
   {% set budget_pct = (usage.cost_usd / usage.budget_usd * 100) if usage.budget_usd > 0 else 0 %}
+  {% endif %}
   <div class="stat-grid" style="margin-bottom:var(--space-3)">
+    {% if show_cost %}
     <div class="stat">
       <span class="stat-label">💰 Chi phí</span>
       <span class="stat-value">${{ "%.4f" | format(usage.cost_usd) }}</span>
@@ -256,6 +259,7 @@
         <span class="text-subtle" style="font-size:var(--fs-xs)">/ ${{ "%.2f" | format(usage.budget_usd) }} ({{ "%.1f" | format(budget_pct) }}%)</span>
       {% endif %}
     </div>
+    {% endif %}
     <div class="stat">
       <span class="stat-label">📥 Token in</span>
       <span class="stat-value">{{ "{:,}".format(usage.tokens_in) }}</span>
@@ -274,7 +278,7 @@
     </div>
   </div>
 
-  {% if usage.budget_usd > 0 %}
+  {% if show_cost and usage.budget_usd > 0 %}
   <div style="background:var(--c-surface-alt,#f3f4f6);border-radius:6px;height:8px;overflow:hidden;margin-bottom:var(--space-3)">
     <div style="background:{% if budget_pct > 80 %}#dc2626{% elif budget_pct > 50 %}#f59e0b{% else %}#16a34a{% endif %};height:100%;width:{{ [budget_pct, 100] | min }}%;transition:width 0.3s"></div>
   </div>
@@ -295,7 +299,7 @@
             <th>Bắt đầu</th>
             <th class="num">Msg</th>
             <th class="num">Tokens (in+out)</th>
-            <th class="num">Cost</th>
+            {% if show_cost %}<th class="num">Cost</th>{% endif %}
             <th></th>
           </tr>
         </thead>
@@ -308,7 +312,7 @@
             <td class="text-subtle" style="font-size:var(--fs-xs)">{{ c.started_at.strftime('%d/%m %H:%M') if c.started_at else '—' }}</td>
             <td class="num">{{ c.msg_count }}</td>
             <td class="num text-mono" style="font-size:var(--fs-xs)">{{ "{:,}".format(c.tokens_in) }} + {{ "{:,}".format(c.tokens_out) }}</td>
-            <td class="num text-mono">${{ "%.4f" | format(c.cost_usd) }}</td>
+            {% if show_cost %}<td class="num text-mono">${{ "%.4f" | format(c.cost_usd) }}</td>{% endif %}
             <td><a href="/admin/ai/conversations/{{ c.id }}" class="btn btn-secondary btn-sm">Xem</a></td>
           </tr>
           {% endfor %}
