@@ -17,9 +17,12 @@ from app.auth import SessionUser, require_admin
 from app.auth_users import count_admins, create_user, hash_password
 from app.database import get_db
 from app.models import VALID_ROLES, User
+from app.version import VERSION, version_string
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+templates.env.globals["app_version_string"] = version_string()
+templates.env.globals["app_version"] = VERSION
 
 router = APIRouter(prefix="/admin/users")
 

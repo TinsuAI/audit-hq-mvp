@@ -33,6 +33,7 @@ from app.pipeline.export import build_export
 from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.run_checks import run_checks as run_check_pipeline
 from app.settings import settings
+from app.version import VERSION, version_string
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -56,6 +57,8 @@ STATUS_LABEL_VI = {
 
 templates.env.globals["STATUS_LABEL"] = STATUS_LABEL_VI
 templates.env.globals["ALLOWED_STATUSES"] = sorted(ALLOWED_STATUSES)
+templates.env.globals["app_version"] = VERSION
+templates.env.globals["app_version_string"] = version_string()
 
 
 def _timeline_payload(lines: list) -> list[dict]:
