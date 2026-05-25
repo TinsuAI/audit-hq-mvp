@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Cấu hình AI — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Audit-HQ</a>
+  <span class="sep">›</span>
+  Quản trị
+  <span class="sep">›</span>
+  Cấu hình AI
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Cấu hình AI Assistant</h1>
+    <p class="page-subtitle">
+      OpenAI-compatible API (OpenRouter / OpenAI / Anthropic compat / self-host). Settings áp dụng ngay không cần redeploy.
+    </p>
+  </div>
+  <div class="btn-group">
+    <span class="badge {% if settings.enabled.value %}critical{% else %}muted{% endif %}">
+      {% if settings.enabled.value %}🟢 Đang bật{% else %}⚫ Đang tắt{% endif %}
+    </span>
+  </div>
+</div>
+
+{% if saved %}
+<div class="card" style="border-left:4px solid #16a34a;background:#f0fdf4">
+  <p style="color:#15803d;margin:0">✓ Đã lưu mục <strong>{{ saved }}</strong>. Áp dụng ngay từ request tiếp theo.</p>
+</div>
+{% endif %}
+{% if error %}
+<div class="card" style="border-left:4px solid #b91c1c;background:#fef2f2">
+  <p style="color:#b91c1c;margin:0"><strong>Lỗi:</strong> {{ error }}</p>
+</div>
+{% endif %}
+
+<!-- ───────────────── Section 1: Kết nối ───────────────── -->
+<form method="post" action="/admin/ai/connection" id="conn-form" class="card mt-3">
+  <h3 class="card-title">1. Kết nối Provider</h3>
+  <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
+    Khuyến nghị OpenRouter: 1 API key dùng được hầu hết model phổ biến,
+    có dashboard usage. Đăng ký tại <code>openrouter.ai</code>.
+  </p>
+
+  <div class="form-field">
+    <label class="form-label" for="base_url">Base URL</label>
+    <input type="text" id="base_url" name="base_url" class="form-input text-mono"
+           value="{{ settings.base_url.value }}" required>
+    <small class="text-subtle">VD: <code>https://openrouter.ai/api/v1</code>, <code>https://api.openai.com/v1</code></small>
+  </div>
+
+  <div class="form-field">
+    <label class="form-label" for="api_key">API Key</label>
+    {% if settings.api_key.has_value %}
+      <p class="text-subtle text-mono" style="margin:0 0 var(--space-1) 0;font-size:var(--fs-xs)">
+        Hiện tại: <strong>{{ settings.api_key.value }}</strong> — để trống nếu không đổi
+      </p>
+    {% endif %}
+    <input type="password" id="api_key" name="api_key" class="form-input text-mono"
+           placeholder="{% if settings.api_key.has_value %}•••• để trống = giữ key cũ{% else %}sk-or-v1-...{% endif %}"
+           autocomplete="off">
+  </div>
+
+  <div class="form-field">
+    <label class="form-label" for="extra_headers">Extra headers (JSON)</label>
+    <textarea id="extra_headers" name="extra_headers" class="form-input text-mono" rows="3"
+              style="font-size:var(--fs-xs)">{{ settings.extra_headers.value | tojson(indent=2) }}</textarea>
+    <small class="text-subtle">OpenRouter dùng <code>HTTP-Referer</code> + <code>X-Title</code> để ranking. Có thể để rỗng <code>{}</code>.</small>
+  </div>
+
+  <div style="display:flex;gap:var(--space-3);align-items:center;margin-top:var(--space-3)">
+    <button type="submit" class="btn btn-primary">💾 Lưu kết nối</button>
+    <button type="button" class="btn btn-secondary" onclick="testConnection()">🔌 Test connection</button>
+    <span id="test-status" class="text-subtle" style="font-size:var(--fs-sm)"></span>
+  </div>
+
+  <div id="test-result" style="margin-top:var(--space-3);display:none"></div>
+</form>
+
+<!-- ───────────────── Section 2: Models ───────────────── -->
+<form method="post" action="/admin/ai/models" class="card mt-3">
+  <h3 class="card-title">2. Models</h3>
+  <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
+    Tên model theo provider. OpenRouter format <code>provider/model</code> (vd <code>anthropic/claude-sonnet-4</code>).
+  </p>
+
+  <div class="form-row">
+    <div class="form-field" style="flex:2;margin-bottom:0">
+      <label class="form-label" for="model_default">Model default</label>
+      <input type="text" id="model_default" name="model_default" class="form-input text-mono"
+             value="{{ settings.model_default.value }}" list="model-suggestions" required>
+      <small class="text-subtle">Cho chat free-form. Sonnet/GPT-4o class.</small>
+    </div>
+    <div class="form-field" style="flex:2;margin-bottom:0">
+      <label class="form-label" for="model_fast">Model fast</label>
+      <input type="text" id="model_fast" name="model_fast" class="form-input text-mono"
+             value="{{ settings.model_fast.value }}" list="model-suggestions" required>
+      <small class="text-subtle">Cho summarize/explain ngắn. Haiku/mini class.</small>
+    </div>
+    <div class="form-field" style="flex:2;margin-bottom:0">
+      <label class="form-label" for="model_deep">Model deep</label>
+      <input type="text" id="model_deep" name="model_deep" class="form-input text-mono"
+             value="{{ settings.model_deep.value }}" list="model-suggestions" required>
+      <small class="text-subtle">Reasoning sâu, gated. Opus/o1 class.</small>
+    </div>
+  </div>
+  <datalist id="model-suggestions"></datalist>
+
+  <div class="form-row" style="margin-top:var(--space-3)">
+    <div class="form-field" style="margin-bottom:0">
+      <label class="form-label" for="temperature">Temperature</label>
+      <input type="number" id="temperature" name="temperature" class="form-input"
+             value="{{ settings.temperature.value }}" step="0.05" min="0" max="2" required>
+      <small class="text-subtle">0.0-2.0. Mặc định 0.2 (analytic).</small>
+    </div>
+    <div class="form-field" style="margin-bottom:0">
+      <label class="form-label" for="max_tokens">Max tokens (response)</label>
+      <input type="number" id="max_tokens" name="max_tokens" class="form-input"
+             value="{{ settings.max_tokens.value }}" min="16" max="16384" step="64" required>
+      <small class="text-subtle">Cap output. Default 1024.</small>
+    </div>
+  </div>
+
+  <div style="margin-top:var(--space-3)">
+    <button type="submit" class="btn btn-primary">💾 Lưu models</button>
+  </div>
+</form>
+
+<!-- ───────────────── Section 3: Flags ───────────────── -->
+<form method="post" action="/admin/ai/flags" class="card mt-3">
+  <h3 class="card-title">3. Bật/Tắt</h3>
+
+  <div class="form-field" style="display:flex;align-items:flex-start;gap:var(--space-3);margin-bottom:var(--space-3)">
+    <input type="checkbox" id="enabled" name="enabled" value="on" style="margin-top:5px"
+           {% if settings.enabled.value %}checked{% endif %}>
+    <div>
+      <label for="enabled" style="font-weight:600;cursor:pointer">Bật AI assistant (master switch)</label>
+      <div class="text-subtle" style="font-size:var(--fs-xs)">
+        Off → sidebar chat ẩn hoàn toàn, endpoint /api/chat trả 503.
+      </div>
+    </div>
+  </div>
+
+  <div class="form-field" style="display:flex;align-items:flex-start;gap:var(--space-3);margin-bottom:0">
+    <input type="checkbox" id="prompt_cache_enabled" name="prompt_cache_enabled" value="on" style="margin-top:5px"
+           {% if settings.prompt_cache_enabled.value %}checked{% endif %}>
+    <div>
+      <label for="prompt_cache_enabled" style="font-weight:600;cursor:pointer">Prompt caching</label>
+      <div class="text-subtle" style="font-size:var(--fs-xs)">
+        Bật cache_control khi provider hỗ trợ (OpenRouter+Claude, Anthropic compat). Tắt để debug.
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:var(--space-3)">
+    <button type="submit" class="btn btn-primary">💾 Lưu cài đặt</button>
+  </div>
+</form>
+
+<!-- ───────────────── Read-only summary ───────────────── -->
+<details class="card mt-3">
+  <summary style="cursor:pointer;font-weight:600">📋 Toàn bộ settings hiện tại (debug)</summary>
+  <table class="data-table compact mt-3">
+    <thead>
+      <tr><th>Key</th><th>Value</th><th class="wrap">Mô tả</th></tr>
+    </thead>
+    <tbody>
+      {% for key, entry in settings.items() %}
+      <tr>
+        <td class="code-cell">{{ key }}</td>
+        <td class="text-mono" style="font-size:var(--fs-xs)">
+          {% if entry.is_secret %}
+            {% if entry.has_value %}{{ entry.value }}{% else %}<span class="text-subtle">(chưa có)</span>{% endif %}
+          {% elif entry.type == 'dict' %}
+            <code>{{ entry.value | tojson }}</code>
+          {% else %}{{ entry.value }}{% endif %}
+        </td>
+        <td class="wrap text-subtle">{{ entry.description }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+
+<script>
+async function testConnection() {
+  const form = document.getElementById('conn-form');
+  const status = document.getElementById('test-status');
+  const result = document.getElementById('test-result');
+
+  status.textContent = '⏳ Đang test...';
+  status.style.color = '';
+  result.style.display = 'none';
+  result.innerHTML = '';
+
+  const data = new FormData();
+  data.append('base_url', form.base_url.value);
+  data.append('api_key', form.api_key.value);
+  data.append('extra_headers', form.extra_headers.value);
+
+  try {
+    const r = await fetch('/admin/ai/test-connection', { method: 'POST', body: data });
+    const j = await r.json();
+    if (j.ok) {
+      status.innerHTML = `✅ OK · ${j.latency_ms}ms`;
+      status.style.color = '#15803d';
+      let html = '<div class="card" style="border-left:4px solid #16a34a;background:#f0fdf4;margin:0">';
+      html += `<p style="margin:0 0 8px 0;color:#15803d"><strong>${j.total_models} model phát hiện.</strong> Click model để copy vào Section 2:</p>`;
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+      (j.models || []).forEach(m => {
+        html += `<code class="alias-chip" style="cursor:pointer" onclick="copyModelName('${m.replace(/'/g, "\\'")}')">${m}</code>`;
+      });
+      html += '</div></div>';
+      result.innerHTML = html;
+      result.style.display = 'block';
+      // Populate datalist for auto-complete in section 2
+      const dl = document.getElementById('model-suggestions');
+      dl.innerHTML = '';
+      (j.models || []).forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        dl.appendChild(opt);
+      });
+    } else {
+      status.innerHTML = `❌ Lỗi`;
+      status.style.color = '#b91c1c';
+      result.innerHTML = `<div class="card" style="border-left:4px solid #b91c1c;background:#fef2f2;margin:0"><p style="margin:0;color:#b91c1c"><strong>Lỗi:</strong> ${j.error || 'unknown'}</p></div>`;
+      result.style.display = 'block';
+    }
+  } catch (e) {
+    status.innerHTML = `❌ Lỗi mạng`;
+    status.style.color = '#b91c1c';
+    result.innerHTML = `<div class="card" style="border-left:4px solid #b91c1c;background:#fef2f2;margin:0"><p style="margin:0;color:#b91c1c">${e.message}</p></div>`;
+    result.style.display = 'block';
+  }
+}
+
+function copyModelName(name) {
+  navigator.clipboard.writeText(name).then(() => {
+    // Brief flash
+    const el = event.target;
+    const orig = el.style.background;
+    el.style.background = '#bbf7d0';
+    setTimeout(() => { el.style.background = orig; }, 500);
+  });
+}
+</script>
+
+{% endblock %}
