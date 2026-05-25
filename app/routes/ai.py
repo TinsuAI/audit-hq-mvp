@@ -25,6 +25,8 @@ from sqlalchemy.orm import Session
 
 from app.ai.client import cache_supports_anthropic, make_client
 from app.ai.config import get_setting
+from app.ai.cost import estimate_cost
+from app.ai.limits import check_daily_budget, check_rate_limit
 from app.ai.system_prompt import build_messages_system
 from app.ai.tools import TOOL_SCHEMAS, run_tool
 from app.auth import require_user
@@ -88,7 +90,11 @@ def _save_msg(
     tokens_in: int | None = None,
     tokens_out: int | None = None,
     latency_ms: int | None = None,
+    cost_usd: float | None = None,
 ) -> AiMessage:
+    # Auto-estimate cost nếu chưa cung cấp (role=assistant + có model + tokens).
+    if cost_usd is None and role == "assistant" and model and (tokens_in or tokens_out):
+        cost_usd = estimate_cost(model, tokens_in or 0, tokens_out or 0).total_usd
     msg = AiMessage(
         conversation_id=conv_id,
         role=role,
@@ -100,6 +106,7 @@ def _save_msg(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         latency_ms=latency_ms,
+        cost_usd=cost_usd,
     )
     db.add(msg)
     db.flush()
@@ -116,6 +123,8 @@ async def chat(
         raise HTTPException(status_code=503, detail="AI assistant đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
         raise HTTPException(status_code=503, detail="Chưa cấu hình API key. Cấu hình ở /admin/ai.")
+    check_rate_limit(user, db)
+    check_daily_budget(db)
 
     try:
         body = await request.json()

@@ -158,9 +158,57 @@
   </div>
 </form>
 
-<!-- ───────────────── Section 3: Flags ───────────────── -->
+<!-- ───────────────── Section 3: Giới hạn & Retention ───────────────── -->
+<form method="post" action="/admin/ai/limits" class="card mt-3">
+  <h3 class="card-title">3. Giới hạn & Retention</h3>
+  <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
+    Hard cap chi phí + rate limit để tránh abuse hoặc lỡ tay. Retention quyết định
+    khi nào cron xoá conversation cũ.
+  </p>
+
+  <div class="form-row">
+    <div class="form-field" style="margin-bottom:0">
+      <label class="form-label" for="daily_budget_usd">Daily budget (USD)</label>
+      <input type="number" id="daily_budget_usd" name="daily_budget_usd" class="form-input"
+             value="{{ settings.daily_budget_usd.value }}" step="0.5" min="0" max="10000" required>
+      <small class="text-subtle">0 = tắt cap. Vượt → 503.</small>
+    </div>
+    <div class="form-field" style="margin-bottom:0">
+      <label class="form-label" for="rate_limit_per_hour">Rate limit (msg/user/giờ)</label>
+      <input type="number" id="rate_limit_per_hour" name="rate_limit_per_hour" class="form-input"
+             value="{{ settings.rate_limit_per_hour.value }}" min="0" max="10000" required>
+      <small class="text-subtle">0 = tắt. Vượt → 429.</small>
+    </div>
+    <div class="form-field" style="margin-bottom:0">
+      <label class="form-label" for="request_timeout_s">Request timeout (s)</label>
+      <input type="number" id="request_timeout_s" name="request_timeout_s" class="form-input"
+             value="{{ settings.request_timeout_s.value }}" min="5" max="600" required>
+    </div>
+  </div>
+
+  <div class="form-row" style="margin-top:var(--space-3)">
+    <div class="form-field" style="margin-bottom:0">
+      <label class="form-label" for="history_retention_days">History retention (ngày)</label>
+      <input type="number" id="history_retention_days" name="history_retention_days" class="form-input"
+             value="{{ settings.history_retention_days.value }}" min="1" max="3650" required>
+      <small class="text-subtle">Conversation user cũ → cron xoá</small>
+    </div>
+    <div class="form-field" style="margin-bottom:0">
+      <label class="form-label" for="audit_retention_days">Audit retention (ngày)</label>
+      <input type="number" id="audit_retention_days" name="audit_retention_days" class="form-input"
+             value="{{ settings.audit_retention_days.value }}" min="1" max="3650" required>
+      <small class="text-subtle">Audit log admin giữ riêng</small>
+    </div>
+  </div>
+
+  <div style="margin-top:var(--space-3)">
+    <button type="submit" class="btn btn-primary">💾 Lưu giới hạn</button>
+  </div>
+</form>
+
+<!-- ───────────────── Section 4: Flags ───────────────── -->
 <form method="post" action="/admin/ai/flags" class="card mt-3">
-  <h3 class="card-title">3. Bật/Tắt</h3>
+  <h3 class="card-title">4. Bật/Tắt</h3>
 
   <div class="form-field" style="display:flex;align-items:flex-start;gap:var(--space-3);margin-bottom:var(--space-3)">
     <input type="checkbox" id="enabled" name="enabled" value="on" style="margin-top:5px"
@@ -188,6 +236,79 @@
     <button type="submit" class="btn btn-primary">💾 Lưu cài đặt</button>
   </div>
 </form>
+
+<!-- ───────────────── Section 5: Audit & Cost (read-only) ───────────────── -->
+<div class="card mt-3">
+  <h3 class="card-title">5. Audit & Cost (hôm nay)</h3>
+
+  {% set budget_pct = (usage.cost_usd / usage.budget_usd * 100) if usage.budget_usd > 0 else 0 %}
+  <div class="stat-grid" style="margin-bottom:var(--space-3)">
+    <div class="stat">
+      <span class="stat-label">💰 Chi phí</span>
+      <span class="stat-value">${{ "%.4f" | format(usage.cost_usd) }}</span>
+      {% if usage.budget_usd > 0 %}
+        <span class="text-subtle" style="font-size:var(--fs-xs)">/ ${{ "%.2f" | format(usage.budget_usd) }} ({{ "%.1f" | format(budget_pct) }}%)</span>
+      {% endif %}
+    </div>
+    <div class="stat">
+      <span class="stat-label">📥 Token in</span>
+      <span class="stat-value">{{ "{:,}".format(usage.tokens_in) }}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">📤 Token out</span>
+      <span class="stat-value">{{ "{:,}".format(usage.tokens_out) }}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">💬 Tin nhắn</span>
+      <span class="stat-value">{{ usage.messages }}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">👤 Người dùng</span>
+      <span class="stat-value">{{ usage.users }}</span>
+    </div>
+  </div>
+
+  {% if usage.budget_usd > 0 %}
+  <div style="background:var(--c-surface-alt,#f3f4f6);border-radius:6px;height:8px;overflow:hidden;margin-bottom:var(--space-3)">
+    <div style="background:{% if budget_pct > 80 %}#dc2626{% elif budget_pct > 50 %}#f59e0b{% else %}#16a34a{% endif %};height:100%;width:{{ [budget_pct, 100] | min }}%;transition:width 0.3s"></div>
+  </div>
+  {% endif %}
+
+  <h4 style="font-size:var(--fs-sm);margin:var(--space-3) 0 var(--space-2)">📋 20 cuộc trò chuyện gần nhất</h4>
+
+  {% if not recent_convs %}
+    <p class="text-subtle">Chưa có cuộc trò chuyện nào.</p>
+  {% else %}
+    <div class="data-table-wrapper">
+      <table class="data-table compact">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>User</th>
+            <th class="wrap">Tiêu đề</th>
+            <th>Bắt đầu</th>
+            <th class="num">Msg</th>
+            <th class="num">Tokens (in+out)</th>
+            <th class="num">Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in recent_convs %}
+          <tr>
+            <td class="text-mono">{{ c.id }}</td>
+            <td>{{ c.user }}</td>
+            <td class="wrap"><div class="cell-clamp" title="{{ c.title }}">{{ c.title }}</div></td>
+            <td class="text-subtle" style="font-size:var(--fs-xs)">{{ c.started_at.strftime('%d/%m %H:%M') if c.started_at else '—' }}</td>
+            <td class="num">{{ c.msg_count }}</td>
+            <td class="num text-mono" style="font-size:var(--fs-xs)">{{ "{:,}".format(c.tokens_in) }} + {{ "{:,}".format(c.tokens_out) }}</td>
+            <td class="num text-mono">${{ "%.4f" | format(c.cost_usd) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
 
 <!-- ───────────────── Read-only summary ───────────────── -->
 <details class="card mt-3">

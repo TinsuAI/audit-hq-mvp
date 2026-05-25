@@ -13,6 +13,8 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import desc, func, select
+from sqlalchemy.orm import Session
 
 from app.ai.config import (
     SETTINGS_REGISTRY,
@@ -22,7 +24,10 @@ from app.ai.config import (
     set_setting,
     test_connection,
 )
+from app.ai.limits import usage_today
 from app.auth import require_user
+from app.database import get_db
+from app.models import AiConversation, AiMessage
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -55,11 +60,42 @@ def admin_ai_page(
     error: str | None = Query(default=None),
     refresh_models: int = Query(default=0),
     user: str = Depends(require_user),
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
     settings = get_all_settings()
     # Fetch model list từ provider để render dropdown. None nếu key sai / chưa cấu hình.
     available = get_available_models(refresh=bool(refresh_models))
     grouped_models = _group_models_by_provider(available) if available else None
+
+    # Audit section 5: KPI hôm nay + 20 conversation gần nhất.
+    usage = usage_today(db)
+    recent_convs_rows = db.execute(
+        select(
+            AiConversation,
+            func.count(AiMessage.id),
+            func.coalesce(func.sum(AiMessage.cost_usd), 0.0),
+            func.coalesce(func.sum(AiMessage.tokens_in), 0),
+            func.coalesce(func.sum(AiMessage.tokens_out), 0),
+        )
+        .outerjoin(AiMessage, AiMessage.conversation_id == AiConversation.id)
+        .group_by(AiConversation.id)
+        .order_by(desc(AiConversation.started_at))
+        .limit(20)
+    ).all()
+    recent_convs = [
+        {
+            "id": conv.id,
+            "user": conv.user,
+            "title": (conv.title or "(chưa đặt)")[:60],
+            "started_at": conv.started_at,
+            "msg_count": int(n),
+            "cost_usd": round(float(cost), 4),
+            "tokens_in": int(t_in),
+            "tokens_out": int(t_out),
+        }
+        for conv, n, cost, t_in, t_out in recent_convs_rows
+    ]
+
     return templates.TemplateResponse(
         request,
         "admin_ai.html",
@@ -71,6 +107,8 @@ def admin_ai_page(
             "error": error,
             "grouped_models": grouped_models,
             "models_count": len(available) if available else 0,
+            "usage": usage,
+            "recent_convs": recent_convs,
         },
     )
 
@@ -142,6 +180,32 @@ def save_models(
     set_setting("max_tokens", max_tokens, user)
 
     return _flash_redirect(saved="models")
+
+
+@router.post("/limits", response_model=None)
+def save_limits(
+    daily_budget_usd: float = Form(...),
+    rate_limit_per_hour: int = Form(...),
+    request_timeout_s: int = Form(...),
+    history_retention_days: int = Form(...),
+    audit_retention_days: int = Form(...),
+    user: str = Depends(require_user),
+) -> RedirectResponse:
+    if daily_budget_usd < 0 or daily_budget_usd > 10000:
+        return _flash_redirect(error="Daily budget phải trong [0, 10000] USD.")
+    if rate_limit_per_hour < 0 or rate_limit_per_hour > 10000:
+        return _flash_redirect(error="Rate limit phải trong [0, 10000].")
+    if request_timeout_s < 5 or request_timeout_s > 600:
+        return _flash_redirect(error="Timeout phải trong [5, 600] giây.")
+    if history_retention_days < 1 or audit_retention_days < 1:
+        return _flash_redirect(error="Retention phải >= 1 ngày.")
+
+    set_setting("daily_budget_usd", daily_budget_usd, user)
+    set_setting("rate_limit_per_hour", rate_limit_per_hour, user)
+    set_setting("request_timeout_s", request_timeout_s, user)
+    set_setting("history_retention_days", history_retention_days, user)
+    set_setting("audit_retention_days", audit_retention_days, user)
+    return _flash_redirect(saved="limits")
 
 
 @router.post("/flags", response_model=None)
