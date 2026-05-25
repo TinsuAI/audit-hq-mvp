@@ -1,3 +1,5 @@
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, Request
@@ -5,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.ai.config import seed_defaults as seed_ai_defaults
 from app.auth import (
     SESSION_COOKIE_NAME,
     check_credentials,
@@ -15,6 +18,8 @@ from app.routes.admin import router as admin_router
 from app.routes.companies import router as companies_router
 from app.version import BUILD_SHA, BUILD_TIME, VERSION, version_string
 
+log = logging.getLogger(__name__)
+
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals["app_version"] = VERSION
@@ -22,7 +27,20 @@ templates.env.globals["app_version_string"] = version_string()
 templates.env.globals["app_build_sha"] = BUILD_SHA
 templates.env.globals["app_build_time"] = BUILD_TIME
 
-app = FastAPI(title="Audit-HQ MVP", version=VERSION)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Seed AI settings từ env vars khi bảng trống. Idempotent.
+    try:
+        inserted = seed_ai_defaults()
+        if inserted:
+            log.info("Seeded %d default AI settings", inserted)
+    except Exception:
+        log.exception("AI seed_defaults failed (continuing without AI)")
+    yield
+
+
+app = FastAPI(title="Audit-HQ MVP", version=VERSION, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 app.include_router(companies_router)
 app.include_router(admin_router)
