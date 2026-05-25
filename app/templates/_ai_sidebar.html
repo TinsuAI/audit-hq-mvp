@@ -1,0 +1,43 @@
+{# AI assistant sidebar — partial inject vào base.html khi user logged in.
+   JS sidebar.js sẽ fetch /api/ai/meta để biết có hiển thị FAB hay không. #}
+
+<button id="ai-fab" class="ai-fab hidden" aria-label="Mở trợ lý AI" title="Trợ lý AI">💬</button>
+
+<aside id="ai-panel" class="ai-panel" role="dialog" aria-labelledby="ai-title" aria-hidden="true">
+  <header class="ai-header">
+    <div>
+      <h3 id="ai-title">🤖 Trợ lý AI</h3>
+      <span id="ai-model" class="ai-meta"></span>
+    </div>
+    <div class="ai-header-actions">
+      <button id="ai-history" type="button" aria-label="Lịch sử" title="Lịch sử trò chuyện">📜</button>
+      <button id="ai-new" type="button" aria-label="Cuộc trò chuyện mới" title="Mới">+</button>
+      <button id="ai-expand" type="button" aria-label="Phóng to" title="Phóng to / Thu nhỏ">⛶</button>
+      <button id="ai-close" aria-label="Đóng">×</button>
+    </div>
+  </header>
+
+  <div id="ai-history-panel" class="ai-history-panel" hidden>
+    <div class="ai-history-head">
+      <span>📜 Lịch sử (30 gần nhất)</span>
+      <button id="ai-history-close" type="button" aria-label="Đóng lịch sử">×</button>
+    </div>
+    <div id="ai-history-list" class="ai-history-list"></div>
+  </div>
+  <div id="ai-messages" class="ai-messages">
+    <div class="ai-empty">
+      <p><strong>Hỏi tôi về dữ liệu hệ thống.</strong></p>
+      <p style="font-size:11px">Tôi tra cứu DB read-only và cite nguồn. Quyết định cuối thuộc cán bộ Hải quan.</p>
+      <div id="ai-suggestions" class="ai-suggestions"></div>
+    </div>
+  </div>
+  <form id="ai-form" class="ai-form">
+    <textarea id="ai-input" placeholder="Hỏi gì đó về DN, findings, pháp lý..." rows="1" aria-label="Câu hỏi"></textarea>
+    <button id="ai-submit" type="submit">Gửi</button>
+  </form>
+</aside>
+
+<link rel="stylesheet" href="/static/sidebar.css">
+<script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" defer></script>
+<script src="/static/sidebar.js" defer></script>

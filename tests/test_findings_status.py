@@ -12,8 +12,8 @@ from app.models import Company, Finding
 
 def _setup_db():
     """In-memory SQLite shared across the test client and direct queries."""
-    # Override the running app's engine with an in-memory DB for this test.
     import app.database as dbmod
+    from app.auth_users import seed_default_admin
 
     new_engine = dbmod.create_engine(
         "sqlite://",
@@ -28,6 +28,8 @@ def _setup_db():
     dbmod.SessionLocal = new_session
 
     Base.metadata.create_all(new_engine)
+    with new_session() as db:
+        seed_default_admin(db, "admin", "admin")
     return new_engine, new_session
 
 

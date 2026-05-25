@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import require_user
+from app.auth import SessionUser, require_user
 from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity
 from app.database import get_db
@@ -51,7 +51,7 @@ router = APIRouter()
 @router.get("/companies", response_class=HTMLResponse)
 def list_companies(
     request: Request,
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     companies = db.scalars(
@@ -119,7 +119,7 @@ def _save_upload(upload: UploadFile, dest: Path) -> int:
 def new_company_form(
     request: Request,
     error: str | None = Query(default=None),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         request, "new_company.html", {"user": user, "error": error, "form": {}}
@@ -133,7 +133,7 @@ def create_company(
     name: str = Form(""),
     tax_id: str = Form(""),
     address: str = Form(""),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse | RedirectResponse:
     code = code.strip().upper()
@@ -173,7 +173,7 @@ def upload_form(
     request: Request,
     year: int | None = Query(default=None),
     error: str | None = Query(default=None),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     company = db.scalar(select(Company).where(Company.code == code))
@@ -201,7 +201,7 @@ def upload_data(
     m15a: UploadFile | None = File(default=None),
     m16: UploadFile | None = File(default=None),
     bcct: UploadFile | None = File(default=None),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     company = db.scalar(select(Company).where(Company.code == code))
@@ -246,7 +246,7 @@ def upload_data(
 def rerun_checks(
     code: str,
     year: int = Form(...),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     company = db.scalar(select(Company).where(Company.code == code))
@@ -264,7 +264,7 @@ def company_detail(
     code: str,
     request: Request,
     year: int | None = Query(default=None),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     company = db.scalar(select(Company).where(Company.code == code))
@@ -364,7 +364,7 @@ def _resolve_evidence(db: Session, ref: dict) -> tuple[list[tuple[str, str, str]
 def export_recommendations(
     code: str,
     year: int = Query(...),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
     company = db.scalar(select(Company).where(Company.code == code))
@@ -511,7 +511,7 @@ def company_data(
     q: str = Query("", description="Lọc theo mã"),
     page: int = Query(1, ge=1),
     full: int = Query(0, description="1 = hiện toàn bộ cột DB"),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     company = db.scalar(select(Company).where(Company.code == code))
@@ -566,7 +566,7 @@ def company_data(
 def finding_detail(
     finding_id: int,
     request: Request,
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     finding = db.get(Finding, finding_id)
@@ -605,7 +605,7 @@ def update_finding_status(
     request: Request,
     status: str = Form(...),
     notes: str = Form(""),
-    user: str = Depends(require_user),
+    user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     if status not in ALLOWED_STATUSES:

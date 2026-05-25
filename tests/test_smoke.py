@@ -11,7 +11,11 @@ from app.main import app  # then rebind `app` to FastAPI instance
 # tạo schema 1 lần ở module setup.
 @pytest.fixture(scope="module", autouse=True)
 def _ensure_schema():
+    from app.auth_users import seed_default_admin
+    from app.database import SessionLocal
     Base.metadata.create_all(engine)
+    with SessionLocal() as db:
+        seed_default_admin(db, "admin", "admin")
 
 
 client = TestClient(app)

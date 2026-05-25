@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Cuộc trò chuyện #{{ conv.id }} — Audit-HQ{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>🤖 Cuộc trò chuyện #{{ conv.id }}</h1>
+    <p class="page-subtitle">
+      {{ conv.user }} ·
+      {{ conv.started_at.strftime('%d/%m/%Y %H:%M') if conv.started_at else '' }} ·
+      {{ msgs | length }} message ·
+      ${{ cost_total }} ·
+      {{ tokens_total_in }}+{{ tokens_total_out }} tokens
+    </p>
+  </div>
+  <a href="/admin/ai" class="btn btn-secondary">← Về danh sách</a>
+</div>
+
+<div class="card">
+  {% if conv.title %}<h2 class="card-title" style="margin-bottom:var(--space-4)">{{ conv.title }}</h2>{% endif %}
+  {% if conv.page_url_seed %}
+  <p class="text-subtle text-mono" style="font-size:var(--fs-sm);margin-bottom:var(--space-4)">
+    Bắt đầu từ trang: {{ conv.page_url_seed }}
+  </p>
+  {% endif %}
+
+  <div class="transcript" style="display:flex;flex-direction:column;gap:var(--space-3)">
+    {% for m in msgs %}
+    <div class="transcript-msg transcript-{{ m.role }}"
+         style="padding:var(--space-3);border-radius:var(--radius);
+                {% if m.role == 'user' %}background:#f0f9ff;border-left:3px solid #38bdf8;
+                {% elif m.role == 'assistant' %}background:#f0fdf4;border-left:3px solid #4ade80;
+                {% elif m.role == 'tool' %}background:#fffbeb;border-left:3px solid #fbbf24;font-size:var(--fs-sm);
+                {% else %}background:#f8fafc;border-left:3px solid #cbd5e1;{% endif %}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span class="text-mono" style="font-size:var(--fs-xs);font-weight:600;color:#374151">
+          {% if m.role == 'user' %}👤 Người dùng
+          {% elif m.role == 'assistant' %}🤖 AI{% if m.model %} <span class="text-subtle">({{ m.model }})</span>{% endif %}
+          {% elif m.role == 'tool' %}🔧 Tool{% if m.tool_name %}: {{ m.tool_name }}{% endif %}
+          {% else %}{{ m.role }}{% endif %}
+        </span>
+        <span class="text-subtle" style="font-size:var(--fs-xs)">
+          {% if m.created_at %}{{ m.created_at.strftime('%H:%M:%S') }}{% endif %}
+          {% if m.tokens_in or m.tokens_out %} · {{ m.tokens_in or 0 }}+{{ m.tokens_out or 0 }} tok{% endif %}
+          {% if m.cost_usd %} · ${{ "%.4f"|format(m.cost_usd) }}{% endif %}
+          {% if m.latency_ms %} · {{ m.latency_ms }}ms{% endif %}
+        </span>
+      </div>
+      {% if m.role == 'assistant' and m.tool_call_id == 'batch' and m.tool_args_json %}
+      <details>
+        <summary class="text-subtle" style="font-size:var(--fs-sm);cursor:pointer">Tool calls JSON</summary>
+        <pre class="text-mono" style="font-size:var(--fs-xs);overflow-x:auto;margin-top:4px;white-space:pre-wrap">{{ m.tool_args_json }}</pre>
+      </details>
+      {% elif m.role == 'tool' and m.tool_args_json %}
+      <details>
+        <summary class="text-subtle" style="font-size:var(--fs-sm);cursor:pointer">Args: {{ m.tool_args_json[:80] }}{% if m.tool_args_json|length > 80 %}…{% endif %}</summary>
+        <pre class="text-mono" style="font-size:var(--fs-xs);overflow-x:auto;margin-top:4px;white-space:pre-wrap">{{ m.content }}</pre>
+      </details>
+      {% else %}
+      <div style="white-space:pre-wrap;font-size:var(--fs-sm)">{{ m.content }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

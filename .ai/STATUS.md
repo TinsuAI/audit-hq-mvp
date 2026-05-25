@@ -1,93 +1,89 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-05-25, cuối session self-service):** Live demo `https://audit-hq-demo.tinsu.ai` đang chạy build `8f7c394` (chưa deploy thay đổi session này). Local dev (`http://127.0.0.1:8200`) đã có 3 luồng self-service: **tạo DN mới**, **upload 4 file BCQT**, **chạy lại kiểm tra**. End-to-end verify với HONG_AN 2024 thật → 1 finding C3.2 / score 3 (khớp baseline). 113 tests pass, ruff clean.
+> **Trạng thái (2026-05-25, cuối session AI + Backlog):**
+> Branch `feat/ai-assistant` — 15 commit ahead of main, 190 tests pass.
+> AI assistant V1 hoàn chỉnh + multi-user RBAC + tech debt cleared.
+> **Sẵn sàng deploy** — chờ user confirm Day 8.
 
 ## Current State
 
-- Stack: Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite, pandas + openpyxl/xlrd, Jinja2.
-- DB: SQLite (`audit_hq.sqlite`). Tables: `companies`, `nvl_balances`, `sp_balances`, `norms`, `declaration_lines`, `findings`, `uom_canonical`, `uom_aliases`.
-- Auth: cookie session, default `admin/admin`. Env vars `AUTH_USER`/`AUTH_PASSWORD`/`SESSION_SECRET`.
-- Dữ liệu: symlink `data/` → `../audit-hq/data/raw/` (gitignored), 622 file thực 6 DN. DN mới tạo qua UI sẽ ghi vào cùng folder này theo path `<code>/<year>/{BCQT,DINH_MUC,HANG_CHI_TIET}/`.
-- **4 DN demo trên prod**: DN_001 GROWATT (Điện Tử Phương Đông), DN_002 KIM_LONG (Cơ Khí Tiên Phong), DN_003 HONG_AN (May Mặc Hoa Sen), DN_004 DO_THANH (Hoá Chất Nam Tiến).
-- Demo banner amber vẫn fire trên mọi page. DN mới tạo qua UI bị ép hậu tố `(Demo)` vào name.
-- Runner self-hosted `tinsu-runner-audit-hq` online qua watchdog + crontab `@reboot`.
-- Backup DB cũ untracked: `audit_hq.sqlite.bak-20260525-120743` (18M). Xoá khi tiện.
+### Branch `feat/ai-assistant` (chưa merge/push)
+15 commit ahead of main. Tất cả feature đã code + test. Không còn hardcoded TODO nào blocking deploy.
 
-## Recent Changes
+**AI Assistant V1** (Day 1-6):
+- 6 tool read-only: `search_findings`, `get_finding`, `query_raw_data`, `explain_check`, `list_companies`, `get_legal_context`.
+- Streaming SSE chat, citation parser link đến `/companies/{code}/data`.
+- DB-backed settings (15 key), configurable qua `/admin/ai` không cần redeploy.
+- Cost tracking + rate limit + daily budget cap + retention cron.
+- Guardrails: forbidden phrase redaction + missing citation warning.
 
-- **2026-05-25 (cuối)** — Self-service: tạo DN + upload + chạy lại kiểm tra qua UI.
-  - 5 routes mới trong `app/routes/companies.py`: `GET /companies/new`, `POST /companies`, `GET/POST /companies/{code}/upload`, `POST /companies/{code}/run-checks`. Đăng ký TRƯỚC `/companies/{code}` để `new` không bị catch.
-  - Templates mới: `new_company.html` (form 4 trường), `upload_data.html` (form 4 slot + year).
-  - Cập nhật: `companies_list.html` (nút "+ Thêm DN mới"), `company_detail.html` (nút "📥 Upload dữ liệu" + "🔄 Chạy lại kiểm tra"; empty-state CTA thay vì hint CLI).
-  - Helper `_save_upload`: stream 1MB chunk, limit 100MB, wipe sibling cũ trong subdir để discover không pick outdated.
-  - Pyproject: thêm `fastapi.File` vào `extend-immutable-calls`.
-  - Verify E2E qua httpx: 4 file HONG_AN 2024 → 99 M15 / 75 M15a / 476 norm / 246 BCCT / 1 finding / score 3 — khớp baseline. Tổng upload+ingest+run 0.7s.
-  - Chi tiết: `.ai/sessions/2026-05-25-user-create-upload-rerun.md`.
-- **2026-05-25 (sáng)** — MVP demo polish: filter 4 DN whitelist, realistic names "(Demo)", banner amber, UX bảng curated. Build `cbc4c8f` live. Chi tiết: `.ai/sessions/2026-05-25-filter-4dn-ux-rename-deploy.md`.
-- **2026-05-21 (cuối)** — MVP build xong 10 tuần + UOM admin + deploy. Build `fd263f6` → `cbc4c8f`. Demo public `audit-hq-demo.tinsu.ai` (admin/admin). Chi tiết: `.ai/sessions/2026-05-21-mvp-build-deploy.md`.
+**Multi-user RBAC** (Backlog):
+- Bảng `users(id, username, password_hash, role, created_at, last_login_at)`. Migration `b7e91f4d2a13`.
+- PBKDF2-SHA256 password hash (stdlib, no new dep). Seed admin từ env `AUTH_USER`/`AUTH_PASSWORD`.
+- `SessionUser(name, role)` với `is_admin`, `is_officer` property. Cookie stores `{u, r}` signed.
+- `require_user` cho officer routes, `require_admin` cho `/admin/*`.
+- Officer được: `/companies`, DN creation, upload, run-checks, AI chat.
+- Officer KHÔNG thấy: `/admin/units`, `/admin/ai`, `/admin/users`, tool_call/tool_result events trong sidebar.
+- Admin UI `/admin/users`: list/create/change-password/delete, guard last-admin + self-delete.
+
+**Tech debt cleared**:
+- Tool call cap configurable: `tool_call_cap` DB setting (default 10, admin đổi qua `/admin/ai` Section 3).
+- Retention cron: asyncio task 24h interval, xoá conversation + orphan messages theo settings.
+- Admin conversation drill-in: `/admin/ai/conversations/{id}` full transcript + cost metadata.
+- Citation badge → link `/companies/{code}/data?year=Y&table=m15`.
+
+### Branch `main` (prod live `audit-hq-demo.tinsu.ai`, build `a9700d0`)
+- Day 0 self-service. Chưa có AI, chưa có multi-user.
+- 4 DN demo: GROWATT, KIM_LONG, HONG_AN (score 3836), DO_THANH.
+
+### Stack
+- Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite.
+- AI: OpenAI SDK 2.38, OpenRouter base URL.
+- Auth: itsdangerous signed cookie, role baked-in at login.
+- 190 tests pass (15 warnings, no failures).
 
 ## Next Steps
 
-### Ưu tiên ngắn hạn
+### Day 8 — Deploy prod (chờ user confirm)
+1. `git checkout main && git merge feat/ai-assistant && git push origin main`
+2. CI deploy → `audit-hq-demo.tinsu.ai`.
+3. Vào prod `/admin/ai` paste OpenRouter API key (local DB key KHÔNG tự copy lên).
+4. Tạo tài khoản cán bộ HQ thử nghiệm qua `/admin/users`.
+5. Watch audit page 24h.
 
-1. **Test thử bằng tay**: vào `http://127.0.0.1:8200` (đang chạy ở port 8200), login admin/admin, vào `/companies` → "+ Thêm DN mới" → upload 4 file → xem findings. Pipeline đã verify qua API, nhưng test bằng tay để bắt UX bug.
-2. **Quyết định deploy hay không**: commit + push main sẽ trigger runner tự build/deploy. Self-service routes không có guard gì thêm so với local — nếu deploy live, ai vào URL admin/admin cũng tạo được DN mới ghi file lên server thật. Cân nhắc đổi password trước.
-3. **(Optional) Thêm route delete DN**: hiện chỉ có create. Nếu test sai phải xoá tay qua DB + filesystem.
+### QA trước deploy (optional, không blocking)
+- Chuẩn bị 20-30 câu hỏi điển hình cán bộ HQ → chạy thực với OpenRouter key, đo latency/cost.
+- Verify citation click đúng trang data.
+- Kiểm tra `+` new conv, `⛶` full-screen, tool_call ẩn khi đăng nhập officer.
 
-### Trước demo HQ
-
-1. **Tổng duyệt nội bộ Trọng Tín + Tinsu** — chạy kịch bản 5 phút §6.3.
-2. **Convert runner sang systemd** (hiện watchdog + cron, không phải systemd thật).
-3. **Generate password mạnh** thay admin/admin.
-
-### Sau demo HQ (§7.7 đề án)
-
-- Thí điểm Chi Cục Hải Quan Khu vực IV với dữ liệu thực.
-- Cài 14 W.I.P còn lại (C1.5, C2.4, C4.2/4-8, C5.2-3, C6.2-5).
-- Mở Giai đoạn II (Nhóm 8-12, 16 check cần dữ liệu bổ sung).
-- Tích hợp VNACCS trực tiếp thay vì Excel.
-
-## Notes for Next AI Session
-
-### Dev server đang chạy
-
-- Port `8200` (port 8000 conflict với `BCQT-System` local). Log: `/tmp/audit-hq-dev.log`. Start lại: `nohup .venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8200 > /tmp/audit-hq-dev.log 2>&1 &`.
-- Process PID có thể xem bằng `lsof -i :8200`. Reload tự khi sửa `app/**/*.py` hoặc template.
-
-### Self-service flow vừa thêm
-
-- File: chỉ sửa `app/routes/companies.py` (thêm 5 routes + helper, không tách module mới), `app/templates/*.html`, `pyproject.toml`. Không động vào pipeline/models/checks.
-- Demo posture: vẫn ép `(Demo)` suffix + giữ banner. Nếu chuyển sang prod thật, sửa hằng `DEMO_SUFFIX` ở `companies.py` hoặc gắn env-var toggle.
-- File size limit 100MB ở `MAX_UPLOAD_BYTES` (companies.py:67). BCCT đa kỳ có thể vượt.
-- Filename stem cố định khi save (`M15_NVL_<year>.xlsx`, v.v.) — không preserve tên gốc. Đổi nếu cần audit trail bằng tên gốc.
-
-### Đề án vẫn là source of truth
-
-- Catalog 49 kiểm tra ở `../audit-hq/de-an-audit-hq.md`. Mọi thay đổi nghiệp vụ phải update đề án TRƯỚC, MVP follow.
-- Demo plan chi tiết: `../audit-hq/.ai/sessions/2026-05-21-demo-plan.md`.
-
-### Quy trình deploy
-
-1. Edit code + commit + push main → GitHub Actions tự trigger
-2. Job `test`: uv venv, pytest, ruff
-3. Job `deploy` (chỉ chạy khi test pass): docker build với BUILD_SHA/TIME, restart container, wait healthcheck
-4. Footer ở UI cập nhật phiên bản tự động: `v{VERSION} · build {SHA} · {TIME}`
-5. Local manual: `make deploy`.
-
-### Constraint sau anonymize
-
-DB hiện ở **mode demo** (Company.code = DN_xxx). DN mới tạo qua UI sẽ có code do user nhập (validate regex `^[A-Z][A-Z0-9_-]{1,30}$`).
-
-- **Không re-ingest filesystem path "HONG_AN"** trừ khi `python -m scripts.restore` trước.
-- `python -m app.pipeline.run_checks --company DN_003 --year 2024` vẫn hoạt động bình thường.
-- `python -m app.pipeline.run_all` nếu chạy lại sẽ tạo Company mới với code "HONG_AN" → duplicate. Cần restore + run_all + anonymize lại.
-
-### Hạ tầng kỹ thuật
-
-- Server: `tinsu` (Tailscale 100.84.189.87). WSL `ssh` lỗi → dùng `ssh.exe -F …` (xem memory `tinsu-server`).
-- Cloudflare Tunnel `audit-hq-demo.tinsu.ai` → port 8200 (port 8000 conflict erpnext-frontend).
-- Runner watchdog `runner-loop.sh` + cron `@reboot`. KHÔNG dùng systemd vì cần sudo password.
+### Còn nhỏ
+- Xoá `audit_hq.sqlite.bak-20260525-120743` (18M untracked) — `rm audit_hq.sqlite.bak-*`.
+- Session log chi tiết: viết `.ai/sessions/2026-05-25-ai-backlog-rbac.md`.
 
 ## Blockers
+Không có.
 
-Không có. Sẵn sàng deploy nếu user duyệt; hoặc tiếp tục thêm tính năng (delete DN, edit DN, UOM tự seed cho DN mới).
+## Key Files
+
+| Area | Files |
+|------|-------|
+| AI core | `app/ai/{config,client,system_prompt,tools,cost,limits,guardrails,retention}.py` |
+| Routes | `app/routes/{ai,admin_ai,admin_users}.py` |
+| Auth | `app/auth.py`, `app/auth_users.py` |
+| UI | `app/static/sidebar.{css,js}`, `app/templates/{_ai_sidebar,admin_ai,admin_users}.html` |
+| Migrations | `migrations/versions/{a3c48313dddf,b7e91f4d2a13}*.py` |
+| Tests | `tests/test_{users_auth,guardrails,smoke,routes_week9,findings_status}.py` |
+
+## Dev Server
+- Port `8200`. Log: `/tmp/audit-hq-dev.log`.
+- Start: `cd /home/vp/workspace/client/audit-hq-mvp && nohup .venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8200 > /tmp/audit-hq-dev.log 2>&1 &`
+- OpenRouter key trong `audit_hq.sqlite` local (masked qua admin UI). `enabled=true`.
+
+## Notes
+
+- Settings: DB > env. Env chỉ seed lần đầu khi bảng trống.
+- Tool registry read-only — không có write tool. Confirm/reject finding thuộc người dùng.
+- Citation format: `[finding:N]` / `[m15:row_no=88]` / `[check:Cx.y]` — sidebar.js parse regex.
+- Role baked-in cookie at login. Stale role → re-login.
+- `~anthropic/claude-sonnet-latest` (tilde prefix): OpenRouter alias convention.
+- SQLite FK: `PRAGMA foreign_keys=ON` explicit (event listener trong `database.py`).
