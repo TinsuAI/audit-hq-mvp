@@ -6,6 +6,7 @@
   'use strict';
 
   const STORAGE_KEY = 'audit_hq_ai_conv_id';
+  const FULL_KEY = 'audit_hq_ai_full';
 
   let convId = null;
   let isStreaming = false;
@@ -348,13 +349,29 @@
 
   // ───────────── Panel toggle ─────────────
   function openPanel() {
-    document.getElementById('ai-panel').classList.add('open');
-    document.getElementById('ai-panel').setAttribute('aria-hidden', 'false');
+    const panel = document.getElementById('ai-panel');
+    panel.classList.add('open');
+    panel.setAttribute('aria-hidden', 'false');
+    // Restore full-screen state
+    if (sessionStorage.getItem(FULL_KEY) === '1') panel.classList.add('full');
+    updateExpandButton();
     setTimeout(() => document.getElementById('ai-input').focus(), 250);
   }
   function closePanel() {
     document.getElementById('ai-panel').classList.remove('open');
     document.getElementById('ai-panel').setAttribute('aria-hidden', 'true');
+  }
+  function toggleFull() {
+    const panel = document.getElementById('ai-panel');
+    const isFull = panel.classList.toggle('full');
+    sessionStorage.setItem(FULL_KEY, isFull ? '1' : '0');
+    updateExpandButton();
+  }
+  function updateExpandButton() {
+    const btn = document.getElementById('ai-expand');
+    const isFull = document.getElementById('ai-panel').classList.contains('full');
+    btn.textContent = isFull ? '⊟' : '⛶';
+    btn.setAttribute('title', isFull ? 'Thu nhỏ' : 'Phóng to');
   }
 
   // ───────────── Init ─────────────
@@ -377,6 +394,7 @@
     document.getElementById('ai-history').addEventListener('click', openHistory);
     document.getElementById('ai-history-close').addEventListener('click', closeHistory);
     document.getElementById('ai-new').addEventListener('click', startNewConversation);
+    document.getElementById('ai-expand').addEventListener('click', toggleFull);
 
     // Restore conv_id từ sessionStorage (resume sau page refresh trong cùng tab)
     const savedConv = sessionStorage.getItem(STORAGE_KEY);

@@ -40,6 +40,21 @@
   transition: transform 0.2s ease-out;
 }
 .ai-panel.open { transform: translateX(0); }
+.ai-panel.full {
+  width: 100vw;
+  max-width: 100vw;
+  border-left: none;
+}
+/* Full mode: chat bubble rộng hơn + content căn giữa cho dễ đọc */
+.ai-panel.full .ai-messages,
+.ai-panel.full .ai-form {
+  max-width: 920px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+.ai-panel.full .ai-msg { max-width: 80%; }
+.ai-panel.full .ai-history-panel { left: 50%; transform: translateX(-50%); width: 920px; max-width: 100%; }
 
 .ai-header {
   display: flex;
