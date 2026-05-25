@@ -56,6 +56,7 @@ SETTINGS_REGISTRY: dict[str, SettingSpec] = {
     "request_timeout_s": SettingSpec(int, 60, "Timeout 1 API call"),
     "daily_budget_usd": SettingSpec(float, 20.0, "Hard cap chi phí AI/ngày"),
     "rate_limit_per_hour": SettingSpec(int, 50, "Số message tối đa/user/giờ"),
+    "tool_call_cap": SettingSpec(int, 10, "Số vòng tool call tối đa / turn (tăng cho query phức tạp)"),
     "history_retention_days": SettingSpec(int, 30, "Giữ conversation cũ"),
     "audit_retention_days": SettingSpec(int, 365, "Giữ audit log"),
     # Flags

@@ -187,6 +187,7 @@ def save_limits(
     daily_budget_usd: float = Form(...),
     rate_limit_per_hour: int = Form(...),
     request_timeout_s: int = Form(...),
+    tool_call_cap: int = Form(...),
     history_retention_days: int = Form(...),
     audit_retention_days: int = Form(...),
     user: SessionUser = Depends(require_admin),
@@ -197,12 +198,15 @@ def save_limits(
         return _flash_redirect(error="Rate limit phải trong [0, 10000].")
     if request_timeout_s < 5 or request_timeout_s > 600:
         return _flash_redirect(error="Timeout phải trong [5, 600] giây.")
+    if tool_call_cap < 1 or tool_call_cap > 50:
+        return _flash_redirect(error="Tool call cap phải trong [1, 50].")
     if history_retention_days < 1 or audit_retention_days < 1:
         return _flash_redirect(error="Retention phải >= 1 ngày.")
 
     set_setting("daily_budget_usd", daily_budget_usd, user.name)
     set_setting("rate_limit_per_hour", rate_limit_per_hour, user.name)
     set_setting("request_timeout_s", request_timeout_s, user.name)
+    set_setting("tool_call_cap", tool_call_cap, user.name)
     set_setting("history_retention_days", history_retention_days, user.name)
     set_setting("audit_retention_days", audit_retention_days, user.name)
     return _flash_redirect(saved="limits")

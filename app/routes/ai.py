@@ -4,7 +4,7 @@ Flow (Day 3, non-streaming):
 1. Auth + check master switch.
 2. Resume/create conversation. Verify ownership.
 3. Load history (last N turns) + build system prompt với page context.
-4. Tool-call loop tối đa MAX_TOOL_LOOP iterations.
+4. Tool-call loop tối đa `tool_call_cap` iterations (DB setting, default 10).
 5. Save user/assistant/tool messages vào audit log.
 6. Return JSON với content + tool_calls trace.
 """
@@ -38,7 +38,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
-MAX_TOOL_LOOP = 5
 HISTORY_TURN_LIMIT = 20  # message count, not round-trip
 
 
@@ -174,8 +173,9 @@ async def chat(
     final_text = ""
     total_in = 0
     total_out = 0
+    tool_call_cap = int(get_setting("tool_call_cap"))
 
-    for _ in range(MAX_TOOL_LOOP):
+    for _ in range(tool_call_cap):
         t0 = time.time()
         try:
             resp = client.chat.completions.create(
@@ -271,10 +271,10 @@ async def chat(
         db.commit()
         break
     else:
-        # Hit MAX_TOOL_LOOP without "stop" — chắc model loop. Refuse.
+        # Exceeded tool_call_cap without a stop — model is looping.
         raise HTTPException(
             status_code=500,
-            detail=f"Model vượt {MAX_TOOL_LOOP} vòng tool call mà chưa trả lời.",
+            detail=f"Model vượt {tool_call_cap} vòng tool call mà chưa trả lời.",
         )
 
     return {
@@ -451,12 +451,14 @@ async def chat_stream(
     temperature = float(get_setting("temperature"))
     max_tokens = int(get_setting("max_tokens"))
 
+    tool_call_cap = int(get_setting("tool_call_cap"))
+
     def event_gen() -> Iterator[str]:
         # Reuse messages mutate-in-place qua các iteration tool loop.
         total_in = 0
         total_out = 0
         try:
-            for _ in range(MAX_TOOL_LOOP):
+            for _ in range(tool_call_cap):
                 t0 = time.time()
                 stream = client.chat.completions.create(
                     model=model,
@@ -575,8 +577,7 @@ async def chat_stream(
                     "usage": {"model": model, "tokens_in": total_in, "tokens_out": total_out},
                 })
                 return
-            # exceeded MAX_TOOL_LOOP
-            yield _sse("error", {"detail": f"Vượt {MAX_TOOL_LOOP} vòng tool call."})
+            yield _sse("error", {"detail": f"Vượt {tool_call_cap} vòng tool call."})
         except APIStatusError as e:
             log.warning("LLM API status error: %s", e)
             yield _sse("error", {"detail": f"Provider lỗi {e.status_code}: {str(e)[:200]}"})

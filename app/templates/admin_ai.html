@@ -184,6 +184,12 @@
       <input type="number" id="request_timeout_s" name="request_timeout_s" class="form-input"
              value="{{ settings.request_timeout_s.value }}" min="5" max="600" required>
     </div>
+    <div class="form-field" style="margin-bottom:0">
+      <label class="form-label" for="tool_call_cap">Tool call cap (vòng/turn)</label>
+      <input type="number" id="tool_call_cap" name="tool_call_cap" class="form-input"
+             value="{{ settings.tool_call_cap.value }}" min="1" max="50" required>
+      <small class="text-subtle">Tăng nếu query phức tạp cần nhiều tool. Default: 10.</small>
+    </div>
   </div>
 
   <div class="form-row" style="margin-top:var(--space-3)">
