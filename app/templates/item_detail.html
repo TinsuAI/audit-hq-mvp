@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% from "_charts.html" import sparkline, waterfall, sankey %}
+{% block title %}{{ item_code }} — {{ company.code }} — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  <a href="/companies/{{ company.code }}{% if selected_year %}?year={{ selected_year }}{% endif %}">{{ company.code }}</a>
+  <span class="sep">›</span>
+  <span class="text-mono">{{ item_code }}</span>
+</nav>
+
+{% if bcct_only %}
+<div class="alert alert-warning mb-3">
+  <strong>⚠️ Chỉ có ở BCCT, không có ở BCQT</strong> — mã <code>{{ item_code }}</code> xuất hiện trong tờ khai
+  nhưng không có dòng tương ứng trong Mẫu 15 / 15a. Có thể DN sử dụng mã khác giữa hai báo cáo.
+  Trang này chỉ liệt kê giao dịch BCCT.
+</div>
+{% endif %}
+
+{# ─────────────────── HERO BAND ─────────────────── #}
+<div class="item-hero" data-selected-year="{{ selected_year or '' }}">
+  <div class="item-hero-main">
+    <div class="item-hero-title">
+      <span class="item-kind-badge item-kind-{{ kind }}">{{ kind_label }}</span>
+      <h1 class="text-mono">{{ item_code }}</h1>
+      {% if item_name %}<p class="item-hero-name">{{ item_name }}</p>{% endif %}
+      <p class="page-subtitle">
+        {{ company.name or company.code }}
+        {% if unit %} · Đơn vị: <strong>{{ unit }}</strong>{% endif %}
+        {% if kinds_available %}
+          · <a href="?kind=nvl" class="{% if kind == 'nvl' %}text-mono{% endif %}">NVL</a>
+          / <a href="?kind=tp" class="{% if kind == 'tp' %}text-mono{% endif %}">TP</a>
+        {% endif %}
+      </p>
+    </div>
+
+    <div class="item-hero-metrics">
+      <div class="metric">
+        <div class="metric-label">Tồn cuối {{ yearly[-1].year if yearly else '' }}</div>
+        <div class="metric-value">{{ "{:,.0f}".format(last_closing) }}{% if unit %} <small>{{ unit }}</small>{% endif %}</div>
+        {% if closing_delta_pct is not none %}
+        <div class="metric-delta {% if closing_delta_pct < 0 %}neg{% else %}pos{% endif %}">
+          {{ "▲" if closing_delta_pct >= 0 else "▼" }} {{ "{:+.1f}".format(closing_delta_pct) }}% so với năm trước
+        </div>
+        {% endif %}
+      </div>
+      <div class="metric">
+        <div class="metric-label">Tổng nhập (BCCT)</div>
+        <div class="metric-value">{{ "{:,.0f}".format(total_import_qty) }}</div>
+        <div class="metric-sub">{{ yearly|length }} năm có dữ liệu</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Tổng xuất (BCCT)</div>
+        <div class="metric-value">{{ "{:,.0f}".format(total_export_qty) }}</div>
+      </div>
+      {% if kind == 'nvl' %}
+      <div class="metric">
+        <div class="metric-label">Tổng đưa vào SX</div>
+        <div class="metric-value">{{ "{:,.0f}".format(total_production) }}</div>
+      </div>
+      {% endif %}
+      {% if mismatch_years %}
+      <div class="metric metric-warn">
+        <div class="metric-label">Năm có lệch</div>
+        <div class="metric-value">{{ mismatch_years|length }}</div>
+        <div class="metric-sub">{{ mismatch_years|join(', ') }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if sparkline_layout %}
+  <div class="item-hero-spark">
+    <div class="spark-label">Tồn cuối qua các năm</div>
+    {{ sparkline(sparkline_layout) }}
+    <div class="spark-xlabels">
+      {% for r in yearly %}<span>{{ r.year }}</span>{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# ─────────────────── YEAR TABS ─────────────────── #}
+<div class="tabs item-year-tabs">
+  {% for y in years %}
+    <a href="?year={{ y }}{% if kind != detected_kind %}&kind={{ kind }}{% endif %}"
+       class="{% if y == selected_year %}active{% endif %}">{{ y }}</a>
+  {% endfor %}
+  <a href="?year=all{% if kind != detected_kind %}&kind={{ kind }}{% endif %}"
+     class="{% if selected_year is none %}active{% endif %}">Tất cả</a>
+</div>
+
+{% if selected_yearly %}
+{% set sy = selected_yearly %}
+
+{# ─────────────────── SECTION 1: BALANCE (M15/M15a) ─────────────────── #}
+<section class="card item-section">
+  <div class="card-header">
+    <h2>Cân đối kho — {{ selected_year }}</h2>
+    {% if sy.balance_match %}
+      <span class="badge badge-success">✅ Khớp phương trình kho</span>
+    {% else %}
+      <span class="badge badge-warning">⚠️ Lệch {{ "{:+,.1f}".format(sy.balance_diff) }} {{ unit or '' }}</span>
+    {% endif %}
+  </div>
+
+  {% if not sy.get('has_m15') and not sy.get('has_m15a') %}
+    <p class="text-subtle">Không có dòng Mẫu 15/15a cho năm này.</p>
+  {% elif waterfall_layout %}
+    {{ waterfall(waterfall_layout) }}
+  {% endif %}
+
+  {% if kind == 'nvl' and sy.import_match == false %}
+  <div class="reconcile-note">
+    📊 <strong>Đối chiếu BCCT vs Mẫu 15:</strong>
+    BCCT cộng dồn <strong>{{ "{:,.0f}".format(sy.bcct_import_qty) }}</strong>,
+    Mẫu 15 nhập <strong>{{ "{:,.0f}".format(sy.import_qty) }}</strong>,
+    chênh <strong class="text-warn">{{ "{:+,.0f}".format(sy.import_diff) }}</strong>.
+  </div>
+  {% endif %}
+  {% if kind == 'tp' and sy.export_match == false %}
+  <div class="reconcile-note">
+    📊 <strong>Đối chiếu BCCT vs Mẫu 15a:</strong>
+    BCCT cộng dồn <strong>{{ "{:,.0f}".format(sy.bcct_export_qty) }}</strong>,
+    Mẫu 15a xuất <strong>{{ "{:,.0f}".format(sy.export_qty) }}</strong>,
+    chênh <strong class="text-warn">{{ "{:+,.0f}".format(sy.export_diff) }}</strong>.
+  </div>
+  {% endif %}
+</section>
+
+{# ─────────────────── SECTION 2: BCCT lines ─────────────────── #}
+<section class="card item-section">
+  <div class="card-header">
+    <h2>Giao dịch BCCT — {{ selected_year }}</h2>
+    <span class="text-subtle">{{ bcct_lines|length }} dòng (hiển thị tối đa 200)</span>
+  </div>
+
+  {% if bcct_lines %}
+  <div id="bcct-timeline" class="bcct-timeline" data-points='{{ bcct_lines | tojson_timeline }}'></div>
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Ngày</th>
+          <th>Số TK</th>
+          <th>Loại hình</th>
+          <th>Đối tác</th>
+          <th class="num">Lượng</th>
+          <th>Đơn vị</th>
+          <th class="num">Đơn giá</th>
+          <th class="num">Trị giá</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in bcct_lines %}
+        {% set op = classify_operation(line.customs_code) %}
+        <tr>
+          <td>{{ line.declaration_date.strftime("%d/%m/%Y") if line.declaration_date else '—' }}</td>
+          <td class="text-mono">{{ line.declaration_no }}</td>
+          <td>
+            <span class="badge badge-op-{{ op }}" title="{{ operation_label(line.customs_code) }}">
+              {{ line.customs_code or '—' }}
+            </span>
+          </td>
+          <td>{{ line.partner or '—' }}</td>
+          <td class="num">{{ "{:,.2f}".format(line.quantity) if line.quantity is not none else '—' }}</td>
+          <td>{{ line.unit or '—' }}</td>
+          <td class="num">{{ "{:,.4f}".format(line.unit_price) if line.unit_price is not none else '—' }}</td>
+          <td class="num">{{ "{:,.0f}".format(line.value_total) if line.value_total is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="text-subtle">Không có dòng BCCT trong năm này.</p>
+  {% endif %}
+</section>
+
+{# ─────────────────── SECTION 3: BOM ─────────────────── #}
+<section class="card item-section">
+  <div class="card-header">
+    <h2>
+      {% if kind == 'tp' %}
+        Cấu thành — BOM ({{ selected_year }})
+      {% else %}
+        Là đầu vào của thành phẩm — {{ selected_year }}
+      {% endif %}
+    </h2>
+    <span class="text-subtle">{{ bom_rows|length }} mối liên kết</span>
+  </div>
+
+  {% if bom_rows %}
+    {% if kind == 'tp' %}
+      {% if sankey_layout %}{{ sankey(sankey_layout) }}{% endif %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Mã NVL</th><th>Tên</th><th class="num">Định mức / 1 SP</th><th>Đơn vị NVL</th></tr></thead>
+          <tbody>
+            {% for b in bom_rows %}
+            <tr>
+              <td class="text-mono"><a href="/companies/{{ company.code }}/items/{{ b.material_code }}?year={{ selected_year }}">{{ b.material_code }}</a></td>
+              <td>{{ b.material_name or '—' }}</td>
+              <td class="num">{{ "{:,.4f}".format(b.norm_qty) }}</td>
+              <td>{{ b.material_unit or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      {% if sankey_layout %}{{ sankey(sankey_layout) }}{% endif %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Mã TP</th><th>Tên</th><th class="num">Định mức (NVL / 1 TP)</th><th>Đơn vị TP</th></tr></thead>
+          <tbody>
+            {% for b in bom_rows %}
+            <tr>
+              <td class="text-mono"><a href="/companies/{{ company.code }}/items/{{ b.product_code }}?year={{ selected_year }}">{{ b.product_code }}</a></td>
+              <td>{{ b.product_name or '—' }}</td>
+              <td class="num">{{ "{:,.4f}".format(b.norm_qty) }}</td>
+              <td>{{ b.product_unit or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  {% else %}
+    <p class="text-subtle">Không có dòng định mức (Mẫu 16) cho mã này năm {{ selected_year }}.</p>
+  {% endif %}
+</section>
+
+{# ─────────────────── SECTION 4: FINDINGS ─────────────────── #}
+{% if findings_rows %}
+<section class="card item-section">
+  <div class="card-header">
+    <h2>Phát hiện liên quan — {{ selected_year }}</h2>
+    <span class="text-subtle">{{ findings_rows|length }} phát hiện</span>
+  </div>
+  <div class="finding-list">
+    {% for f in findings_rows %}
+    <a class="finding-row sev-{{ f.severity }}" href="/findings/{{ f.id }}">
+      <span class="sev-dot">{{ SEVERITY_BADGE.get(f.severity, '·') }}</span>
+      <span class="text-mono">{{ f.check_code }}</span>
+      <span class="finding-title">{{ f.title }}</span>
+      <span class="finding-status">{{ STATUS_LABEL.get(f.status, f.status) }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{# ─────────────────── AI QUICK PROMPT ─────────────────── #}
+<div class="ai-quick-prompt">
+  <button type="button" class="btn btn-primary"
+          data-ai-prompt="Giải thích bất thường (nếu có) của mã {{ item_code }} tại DN {{ company.code }} năm {{ selected_year }}. Đối chiếu BCCT vs Mẫu 15{% if kind == 'tp' %}a{% endif %}, BOM và các phát hiện đã có.">
+    🤖 Hỏi trợ lý AI về mã này
+  </button>
+</div>
+
+{% else %}
+{# selected_year is None → "Tất cả" view #}
+<section class="card item-section">
+  <div class="card-header"><h2>Toàn cảnh qua các năm</h2></div>
+  <div id="item-heatmap" class="item-heatmap"
+       data-series='{{ yearly | tojson_heatmap(kind) }}'></div>
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Năm</th>
+          <th class="num">Đầu kỳ</th>
+          <th class="num">{% if kind == 'tp' %}Nhập kho{% else %}Nhập{% endif %}</th>
+          <th class="num">BCCT nhập</th>
+          <th class="num">{% if kind == 'tp' %}Xuất{% else %}Đưa vào SX{% endif %}</th>
+          <th class="num">BCCT xuất</th>
+          <th class="num">Cuối kỳ</th>
+          <th>Đối chiếu</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in yearly %}
+        <tr>
+          <td><a href="?year={{ r.year }}">{{ r.year }}</a></td>
+          <td class="num">{{ "{:,.0f}".format(r.opening_qty) }}</td>
+          <td class="num">{{ "{:,.0f}".format(r.intake_qty if kind == 'tp' else r.import_qty) }}</td>
+          <td class="num">{{ "{:,.0f}".format(r.bcct_import_qty) }}</td>
+          <td class="num">{{ "{:,.0f}".format(r.export_qty if kind == 'tp' else r.production_out_qty) }}</td>
+          <td class="num">{{ "{:,.0f}".format(r.bcct_export_qty) }}</td>
+          <td class="num">{{ "{:,.0f}".format(r.closing_qty) }}</td>
+          <td>
+            {% set ok_io = r.export_match if kind == 'tp' else r.import_match %}
+            {% if r.balance_match and ok_io %}
+              <span class="badge badge-success">Khớp</span>
+            {% else %}
+              <span class="badge badge-warning">Lệch</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<script src="/static/item_detail.js" defer></script>
+{% endblock %}

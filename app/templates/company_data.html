@@ -67,6 +67,8 @@
         {% for value, cls in row %}
           {% if cls == "wrap" and value %}
             <td class="wrap"><div class="cell-clamp" title="{{ value }}">{{ value }}</div></td>
+          {% elif cls == "item-link" and value %}
+            <td class="code-cell"><a href="/companies/{{ company.code }}/items/{{ value }}?year={{ year }}" title="Mở trang chi tiết mã {{ value }}">{{ value }}</a></td>
           {% else %}
             <td class="{{ cls }}">{{ value }}</td>
           {% endif %}

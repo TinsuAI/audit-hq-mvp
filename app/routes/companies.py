@@ -16,6 +16,17 @@ from app.auth import SessionUser, require_user
 from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity
 from app.database import get_db
+from app.items.aggregations import (
+    bcct_lines_for_item,
+    bom_edges_for_nvl,
+    bom_edges_for_tp,
+    detect_item_kind,
+    item_years,
+    nvl_yearly_summary,
+    sp_yearly_summary,
+)
+from app.items.charts import sankey_layout, sparkline_points, waterfall_layout
+from app.items.operations import classify_operation, operation_label
 from app.models import Company, DeclarationLine, Finding, Norm, NvlBalance, SpBalance
 from app.pipeline.export import build_export
 from app.pipeline.ingest import ingest as run_ingest
@@ -44,6 +55,52 @@ STATUS_LABEL_VI = {
 
 templates.env.globals["STATUS_LABEL"] = STATUS_LABEL_VI
 templates.env.globals["ALLOWED_STATUSES"] = sorted(ALLOWED_STATUSES)
+
+
+def _timeline_payload(lines: list) -> list[dict]:
+    """Serialize BCCT lines to a minimal payload for the timeline chart."""
+    out: list[dict] = []
+    for ln in lines:
+        if ln.declaration_date is None:
+            continue
+        out.append({
+            "date": ln.declaration_date.isoformat(),
+            "qty": float(ln.quantity or 0),
+            "op": classify_operation(ln.customs_code),
+            "customs_code": ln.customs_code or "",
+            "declaration_no": ln.declaration_no,
+            "partner": ln.partner or "",
+        })
+    return out
+
+
+def _heatmap_payload(yearly: list[dict], kind: str) -> list[dict]:
+    """Year × metric series for the cross-year heatmap."""
+    metrics_nvl = [
+        ("BCCT nhập", "bcct_import_qty"),
+        ("BCCT xuất", "bcct_export_qty"),
+        ("M15 nhập", "import_qty"),
+        ("Đưa vào SX", "production_out_qty"),
+        ("Tồn cuối", "closing_qty"),
+    ]
+    metrics_tp = [
+        ("BCCT xuất", "bcct_export_qty"),
+        ("M15a nhập kho", "intake_qty"),
+        ("M15a xuất", "export_qty"),
+        ("Tồn cuối", "closing_qty"),
+    ]
+    metrics = metrics_tp if kind == "tp" else metrics_nvl
+    return [
+        {
+            "name": label,
+            "data": [{"x": str(r["year"]), "y": float(r.get(field, 0) or 0)} for r in yearly],
+        }
+        for label, field in metrics
+    ]
+
+
+templates.env.filters["tojson_timeline"] = lambda lines: __import__("json").dumps(_timeline_payload(lines))
+templates.env.filters["tojson_heatmap"] = lambda yearly, kind: __import__("json").dumps(_heatmap_payload(yearly, kind))
 
 router = APIRouter()
 
@@ -386,10 +443,11 @@ _TABLE_CONFIG = {
         "code_field": "material_code",
         "code_label": "Mã NVL",
         # (field, label, cell_class). Chỉ các cột thực sự cần để rà cân đối M15.
-        # cls: num/date/code-cell/wrap/"" — quyết định alignment + format + clamp.
+        # cls: num/date/code-cell/item-link/wrap/"" — quyết định alignment + format + clamp.
+        # item-link: code-cell + link đến /companies/{code}/items/{value} page.
         "view_cols": [
             ("row_no", "STT", "num"),
-            ("material_code", "Mã NVL", "code-cell"),
+            ("material_code", "Mã NVL", "item-link"),
             ("material_name", "Tên NVL", "wrap"),
             ("unit", "ĐVT", ""),
             ("opening_qty", "Tồn đầu", "num"),
@@ -405,7 +463,7 @@ _TABLE_CONFIG = {
         "code_label": "Mã TP",
         "view_cols": [
             ("row_no", "STT", "num"),
-            ("product_code", "Mã TP", "code-cell"),
+            ("product_code", "Mã TP", "item-link"),
             ("product_name", "Tên TP", "wrap"),
             ("unit", "ĐVT", ""),
             ("opening_qty", "Tồn đầu", "num"),
@@ -420,10 +478,10 @@ _TABLE_CONFIG = {
         "code_field": "material_code",
         "code_label": "Mã NVL",
         "view_cols": [
-            ("product_code", "Mã SP", "code-cell"),
+            ("product_code", "Mã SP", "item-link"),
             ("product_name", "Tên SP", "wrap"),
             ("product_unit", "ĐVT SP", ""),
-            ("material_code", "Mã NVL", "code-cell"),
+            ("material_code", "Mã NVL", "item-link"),
             ("material_name", "Tên NVL", "wrap"),
             ("material_unit", "ĐVT NVL", ""),
             ("norm_qty", "Định mức", "num"),
@@ -438,7 +496,7 @@ _TABLE_CONFIG = {
             ("declaration_no", "Số TK", "code-cell"),
             ("declaration_date", "Ngày", "date"),
             ("customs_code", "Loại hình", "code-cell"),
-            ("item_code", "Mã hàng", "code-cell"),
+            ("item_code", "Mã hàng", "item-link"),
             ("item_name", "Tên hàng", "wrap"),
             ("hs_code", "Mã HS", "code-cell"),
             ("quantity", "SL", "num"),
@@ -558,6 +616,199 @@ def company_data(
             "per_page": per_page,
             "q": q,
             "full": full,
+        },
+    )
+
+
+_KIND_LABEL_VI = {
+    "nvl": "Nguyên vật liệu",
+    "tp": "Thành phẩm",
+    "both": "Nguyên vật liệu & Thành phẩm",
+    "unknown": "Chưa xác định loại",
+}
+
+
+@router.get("/companies/{code}/items/{item_code}", response_class=HTMLResponse)
+def item_detail(
+    code: str,
+    item_code: str,
+    request: Request,
+    year: str | None = Query(default=None, description='Năm hoặc "all" để xem toàn bộ'),
+    kind: str | None = Query(default=None, description="Override: nvl|tp khi mã trùng"),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+
+    detected_kind = detect_item_kind(db, company.id, item_code)
+    years = item_years(db, company.id, item_code)
+    # Nếu cả BCQT lẫn BCCT đều rỗng → 404 thật.
+    if detected_kind == "unknown" and not years:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy mã {item_code} ở DN {code}")
+
+    # Resolve display kind: override → detected → fallback to nvl/tp ordering.
+    effective_kind = kind if kind in ("nvl", "tp") else detected_kind
+    if effective_kind == "both":
+        effective_kind = "nvl"  # default tab when both; UI offers toggle.
+
+    if year == "all":
+        selected_year: int | None = None
+    elif year is None:
+        selected_year = years[-1] if years else None
+    else:
+        try:
+            selected_year = int(year)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Năm không hợp lệ: {year}") from None
+
+    # Build per-year summary (full series for sparkline + cross-year tables).
+    if effective_kind == "tp":
+        yearly = sp_yearly_summary(db, company.id, item_code)
+        item_name_row = db.scalar(
+            select(SpBalance).where(
+                SpBalance.company_id == company.id,
+                SpBalance.product_code == item_code,
+            )
+        )
+    else:
+        yearly = nvl_yearly_summary(db, company.id, item_code)
+        item_name_row = db.scalar(
+            select(NvlBalance).where(
+                NvlBalance.company_id == company.id,
+                NvlBalance.material_code == item_code,
+            )
+        )
+
+    item_name = None
+    unit = None
+    if item_name_row is not None:
+        item_name = getattr(item_name_row, "material_name", None) or getattr(
+            item_name_row, "product_name", None
+        )
+        unit = item_name_row.unit
+
+    selected_yearly = next((r for r in yearly if r["year"] == selected_year), None)
+
+    # BCCT detail lines for selected year (limit 200 to keep page light).
+    bcct_lines: list = []
+    if selected_year is not None:
+        all_lines = bcct_lines_for_item(db, company.id, item_code, year=selected_year)
+        bcct_lines = all_lines[:200]
+
+    # BOM edges per year for selected_year.
+    bom_rows: list[dict] = []
+    bom_sankey: list[tuple[str, float, str]] = []
+    if selected_year is not None:
+        if effective_kind == "tp":
+            bom_rows = bom_edges_for_tp(db, company.id, item_code, year=selected_year)
+            bom_sankey = [
+                (b["material_code"], b["norm_qty"], b.get("material_name") or "")
+                for b in bom_rows
+            ]
+        else:
+            bom_rows = bom_edges_for_nvl(db, company.id, item_code, year=selected_year)
+            bom_sankey = [
+                (b["product_code"], b["norm_qty"], b.get("product_name") or "")
+                for b in bom_rows
+            ]
+
+    # Findings keyed by subject_key = item_code in selected year.
+    findings_rows: list[Finding] = []
+    if selected_year is not None:
+        findings_rows = list(
+            db.scalars(
+                select(Finding).where(
+                    Finding.company_id == company.id,
+                    Finding.period_year == selected_year,
+                    Finding.subject_key == item_code,
+                )
+            ).all()
+        )
+
+    # Hero band totals across all years.
+    total_import_qty = sum(r.get("bcct_import_qty", 0.0) for r in yearly)
+    total_export_qty = sum(r.get("bcct_export_qty", 0.0) for r in yearly)
+    total_production = sum(r.get("production_out_qty", 0.0) for r in yearly) if effective_kind == "nvl" else 0.0
+    last_closing = yearly[-1]["closing_qty"] if yearly else 0.0
+    prev_closing = yearly[-2]["closing_qty"] if len(yearly) >= 2 else None
+    closing_delta_pct = None
+    if prev_closing is not None and prev_closing != 0:
+        closing_delta_pct = (last_closing - prev_closing) / abs(prev_closing) * 100
+
+    # Chart layouts (server-rendered SVG).
+    sparkline = sparkline_points([r["closing_qty"] for r in yearly]) if len(yearly) >= 2 else None
+    waterfall = None
+    if selected_yearly is not None:
+        sy = selected_yearly
+        if effective_kind == "tp":
+            steps = [
+                ("Đầu kỳ", sy["opening_qty"], "opening"),
+                ("Nhập kho", sy["intake_qty"], "in"),
+                ("Tự CN khác", -sy["repurpose_qty"], "out"),
+                ("Xuất khẩu", -sy["export_qty"], "out"),
+                ("Khác", -sy["other_out_qty"], "out"),
+                ("Cuối kỳ", sy["closing_qty"], "closing"),
+            ]
+        else:
+            steps = [
+                ("Đầu kỳ", sy["opening_qty"], "opening"),
+                ("Nhập", sy["import_qty"], "in"),
+                ("Tái xuất", -sy["reexport_qty"], "out"),
+                ("Tự CN", -sy["repurpose_qty"], "out"),
+                ("Đưa vào SX", -sy["production_out_qty"], "out"),
+                ("Khác", -sy["other_out_qty"], "out"),
+                ("Cuối kỳ", sy["closing_qty"], "closing"),
+            ]
+        waterfall = waterfall_layout(steps)
+
+    sankey = None
+    if bom_sankey:
+        sankey = sankey_layout(
+            item_code,
+            bom_sankey,
+            direction="in" if effective_kind == "tp" else "out",
+        )
+
+    # BCCT-only items (no BCQT row anywhere) → warn banner.
+    bcct_only = detected_kind == "unknown" and bool(years)
+    # Mismatch counts for cross-year section.
+    mismatch_years = [r["year"] for r in yearly if not r.get("import_match", True) or not r.get("balance_match", True)] if effective_kind == "nvl" else [r["year"] for r in yearly if not r.get("export_match", True) or not r.get("balance_match", True)]
+
+    return templates.TemplateResponse(
+        request,
+        "item_detail.html",
+        {
+            "user": user,
+            "company": company,
+            "item_code": item_code,
+            "item_name": item_name,
+            "unit": unit,
+            "kind": effective_kind,
+            "detected_kind": detected_kind,
+            "kind_label": _KIND_LABEL_VI.get(effective_kind, effective_kind),
+            "years": years,
+            "selected_year": selected_year,
+            "yearly": yearly,
+            "selected_yearly": selected_yearly,
+            "bcct_lines": bcct_lines,
+            "bom_rows": bom_rows,
+            "bom_sankey": bom_sankey,
+            "sparkline_layout": sparkline,
+            "waterfall_layout": waterfall,
+            "sankey_layout": sankey,
+            "findings_rows": findings_rows,
+            "total_import_qty": total_import_qty,
+            "total_export_qty": total_export_qty,
+            "total_production": total_production,
+            "last_closing": last_closing,
+            "closing_delta_pct": closing_delta_pct,
+            "bcct_only": bcct_only,
+            "mismatch_years": mismatch_years,
+            "classify_operation": classify_operation,
+            "operation_label": operation_label,
+            "kinds_available": ["nvl", "tp"] if detected_kind == "both" else [],
         },
     )
 

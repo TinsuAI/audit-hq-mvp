@@ -77,7 +77,7 @@
         <div class="combo-card-head">
           <span class="badge {{ f.severity }}">{{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}</span>
           <span class="combo-card-title">{{ spec.title }}</span>
-          <code class="text-mono">{{ f.subject_key }}</code>
+          {% if f.subject_key %}<a class="text-mono" href="/companies/{{ company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% endif %}
           <a href="/findings/{{ f.id }}" class="btn btn-sm btn-secondary" style="margin-left:auto">Chi tiết →</a>
         </div>
         <p class="combo-card-desc">{{ spec.description }}</p>
@@ -97,7 +97,7 @@
 
   {% for code, findings in ordered_groups %}
     {% set spec = SPECS[code] %}
-    <details class="finding-group" id="group-{{ code }}" open>
+    <details class="finding-group" id="group-{{ code }}">
       <summary>
         <span class="badge muted text-mono">{{ code }}</span>
         <strong>{{ spec.title }}</strong>
@@ -123,7 +123,7 @@
                   {{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}
                 </span>
               </td>
-              <td class="code-cell">{{ f.subject_key or '—' }}</td>
+              <td class="code-cell">{% if f.subject_key %}<a href="/companies/{{ company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% else %}—{% endif %}</td>
               <td class="wrap">
                 <div class="cell-clamp" title="{{ f.title }}{% if f.notes %} — 📝 {{ f.notes }}{% endif %}">
                   <a href="/findings/{{ f.id }}" style="color:inherit">{{ f.title }}</a>

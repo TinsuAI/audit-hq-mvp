@@ -1,0 +1,71 @@
+{# Server-rendered SVG charts. Geometry pre-computed in app/items/charts.py. #}
+
+{% macro sparkline(layout) %}
+  {%- if not layout.points -%}
+    <span class="text-subtle">Không có dữ liệu</span>
+  {%- else -%}
+    <svg class="chart chart-sparkline" viewBox="0 0 {{ layout.width }} {{ layout.height }}"
+         role="img" aria-label="Sparkline" preserveAspectRatio="none">
+      <polyline points="{% for p in layout.points %}{{ p[0] }},{{ p[1] }} {% endfor %}"
+                fill="none" stroke="currentColor" stroke-width="2" />
+      {% for p in layout.points %}
+        <circle cx="{{ p[0] }}" cy="{{ p[1] }}" r="2.5" fill="currentColor" />
+      {% endfor %}
+    </svg>
+  {%- endif -%}
+{% endmacro %}
+
+
+{% macro waterfall(layout) %}
+  {%- if not layout.bars -%}
+    <span class="text-subtle">Không có dữ liệu</span>
+  {%- else -%}
+    <svg class="chart chart-waterfall" viewBox="0 0 {{ layout.width }} {{ layout.height }}"
+         role="img" aria-label="Cân đối kho — waterfall" preserveAspectRatio="xMidYMid meet">
+      <line x1="{{ layout.pad_x }}" x2="{{ layout.width - layout.pad_x }}"
+            y1="{{ layout.zero_y }}" y2="{{ layout.zero_y }}"
+            class="wf-axis" stroke-dasharray="2,3" />
+      {% for b in layout.bars %}
+        <g class="wf-bar wf-{{ b.kind }}">
+          <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="3" />
+          <text x="{{ b.cx }}" y="{{ b.value_y }}" text-anchor="middle" class="wf-value">
+            {% if b.kind in ('in', 'out') %}{{ "{:+,.0f}".format(b.value) }}{% else %}{{ "{:,.0f}".format(b.value) }}{% endif %}
+          </text>
+          <text x="{{ b.cx }}" y="{{ b.label_y }}" text-anchor="middle" class="wf-label">{{ b.label }}</text>
+        </g>
+      {% endfor %}
+    </svg>
+  {%- endif -%}
+{% endmacro %}
+
+
+{% macro sankey(layout) %}
+  {%- if not layout.nodes -%}
+    <span class="text-subtle">Không có liên kết.</span>
+  {%- else -%}
+    <svg class="chart chart-sankey" viewBox="0 0 {{ layout.width }} {{ layout.height }}"
+         role="img" aria-label="Sơ đồ luồng định mức" preserveAspectRatio="xMinYMid meet">
+      <rect x="{{ layout.cx_center - 8 }}" y="{{ layout.pad }}"
+            width="16" height="{{ layout.height - layout.pad * 2 }}"
+            class="sankey-center" rx="4" />
+      <text x="{{ layout.cx_center + (12 if layout.direction == 'out' else -12) }}"
+            y="{{ layout.cy_center }}"
+            class="sankey-center-label"
+            text-anchor="{{ 'start' if layout.direction == 'out' else 'end' }}"
+            dominant-baseline="middle">{{ layout.center_label }}</text>
+      {% for n in layout.nodes %}
+        <path d="{{ n.path }}" class="sankey-ribbon" fill="none" stroke-width="{{ n.thickness }}" />
+        <text x="{{ n.label_x }}" y="{{ n.label_y }}" class="sankey-side-label"
+              text-anchor="{{ n.text_anchor }}" dominant-baseline="middle">
+          {% if layout.direction == 'out' %}
+            <tspan class="text-mono">{{ n.code }}</tspan>
+            <tspan dx="6" class="text-subtle">{{ "{:,.4f}".format(n.qty) }}</tspan>
+          {% else %}
+            <tspan class="text-subtle">{{ "{:,.4f}".format(n.qty) }}</tspan>
+            <tspan dx="6" class="text-mono">{{ n.code }}</tspan>
+          {% endif %}
+        </text>
+      {% endfor %}
+    </svg>
+  {%- endif -%}
+{% endmacro %}

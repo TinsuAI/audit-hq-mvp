@@ -66,6 +66,15 @@
       if (kind === 'check') {
         return `<span class="cite" title="Mã kiểm tra">${kind}:${safeVal}</span>`;
       }
+      if (kind === 'item') {
+        const ctx = getPageContext();
+        if (ctx.dn_code) {
+          const yearPart = ctx.year ? `?year=${ctx.year}` : '';
+          const href = `/companies/${encodeURIComponent(ctx.dn_code)}/items/${encodeURIComponent(val)}${yearPart}`;
+          return `<a href="${href}" class="cite" title="Trang chi tiết mã ${safeVal}">🔎 ${safeVal}</a>`;
+        }
+        return `<span class="cite" title="Mã hàng">🔎 ${safeVal}</span>`;
+      }
       // Table citation — build link to data viewer if page context available
       const tbl = TABLE_ALIASES[kind.toLowerCase()];
       if (tbl) {
