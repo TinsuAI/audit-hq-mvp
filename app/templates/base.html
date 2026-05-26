@@ -32,6 +32,9 @@
     <a href="/admin/ai" class="header-link">🤖 AI</a>
     <a href="/admin/users" class="header-link">👥 Người dùng</a>
     {% endif %}
+    <a href="/jobs" class="header-link" id="jobs-badge-link" title="Hàng đợi công việc">
+      📋 Công việc <span class="jobs-badge" id="jobs-badge" style="display:none"></span>
+    </a>
     <span class="user-name">👤 {{ user }}</span>
     <form method="post" action="/logout" style="margin:0">
       <button type="submit" class="logout-btn">Đăng xuất</button>
@@ -46,6 +49,30 @@
 
 {% if user %}
 {% include "_ai_sidebar.html" %}
+<script>
+(function pollJobsBadge() {
+  function update() {
+    fetch("/jobs/unread.json", {credentials: "same-origin"})
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        var badge = document.getElementById("jobs-badge");
+        if (!badge) return;
+        var total = (data.unread || 0) + (data.running || 0);
+        if (total > 0) {
+          badge.textContent = total;
+          badge.style.display = "inline-block";
+          badge.className = "jobs-badge" + (data.running > 0 ? " jobs-badge-running" : "");
+        } else {
+          badge.style.display = "none";
+        }
+      })
+      .catch(() => {});
+  }
+  update();
+  setInterval(update, 10000);
+})();
+</script>
 {% endif %}
 
 <footer class="app-footer">

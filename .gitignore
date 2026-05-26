@@ -36,3 +36,6 @@ htmlcov/
 .DS_Store
 
 deploy/htpasswd
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite.bak-*

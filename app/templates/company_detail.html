@@ -8,7 +8,9 @@
   {{ company.code }}
 </nav>
 
-{% set score_class = "high" if company.risk_score > 500 else ("mid" if company.risk_score > 50 else "low") %}
+{% set ys_score = year_score.score if year_score else 0 %}
+{% set ys_tier = year_score.tier if year_score else tier_for(0) %}
+{% set ys_css = tier_css_for(ys_score) %}
 
 <div class="page-header">
   <div class="page-title-group">
@@ -21,11 +23,10 @@
   </div>
   <div class="btn-group">
     <a href="/companies/{{ company.code }}/upload{% if selected_year %}?year={{ selected_year }}{% endif %}" class="btn btn-secondary">📥 Upload dữ liệu</a>
+    <form method="post" action="/companies/{{ company.code }}/run-checks" style="display:inline;margin:0">
+      <button type="submit" class="btn btn-secondary" title="Chạy lại 16 kiểm tra cho tất cả năm có dữ liệu">🔄 Chạy lại tất cả năm</button>
+    </form>
     {% if selected_year %}
-      <form method="post" action="/companies/{{ company.code }}/run-checks" style="display:inline;margin:0">
-        <input type="hidden" name="year" value="{{ selected_year }}">
-        <button type="submit" class="btn btn-secondary" title="Chạy lại 16 kiểm tra cho năm {{ selected_year }}">🔄 Chạy lại kiểm tra</button>
-      </form>
       <a href="/companies/{{ company.code }}/data?year={{ selected_year }}&table=m15" class="btn btn-secondary">📋 Dữ liệu gốc</a>
       <a href="/companies/{{ company.code }}/export?year={{ selected_year }}" class="btn btn-primary">📊 Xuất Excel kiến nghị</a>
     {% endif %}
@@ -33,9 +34,12 @@
 </div>
 
 <div class="stat-grid">
-  <div class="stat">
-    <span class="stat-label">Điểm rủi ro DN</span>
-    <span class="stat-value">{{ company.risk_score }}</span>
+  <div class="stat tier-stat {{ ys_css }}">
+    <span class="stat-label">
+      Rủi ro dữ liệu {% if selected_year %}({{ selected_year }}){% endif %}
+    </span>
+    <span class="stat-value">{{ ys_score }}<span class="stat-unit">/1000</span></span>
+    <span class="tier-label">{{ ys_tier }}</span>
   </div>
   <div class="stat critical">
     <span class="stat-label">🔴 Nghiêm trọng</span>
@@ -152,5 +156,15 @@
   {% endfor %}
 
 {% endif %}
+
+<aside class="legal-disclaimer">
+  <p>
+    <strong>Lưu ý pháp lý:</strong> Chỉ số rủi ro dữ liệu trên trang này được Audit-HQ
+    tính từ phát hiện chênh lệch giữa các báo cáo BCQT/BCCT/M16. <strong>Không phải</strong>
+    đánh giá mức tuân thủ pháp luật theo Thông tư 81/2019/TT-BTC. Phân loại tuân thủ chính
+    thức thuộc thẩm quyền Tổng cục Hải quan.
+    <a href="/tai-lieu/scoring-methodology">Xem cách tính điểm →</a>
+  </p>
+</aside>
 
 {% endblock %}

@@ -18,7 +18,7 @@ install:
 	$(PIP) install -e ".[dev]"
 
 dev:
-	$(UVICORN) app.main:app --reload --host 0.0.0.0 --port 8000
+	$(UVICORN) app.main:app --reload --host 0.0.0.0 --port 8200
 
 test:
 	$(PYTEST)

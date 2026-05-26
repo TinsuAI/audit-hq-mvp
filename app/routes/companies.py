@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.auth import SessionUser, require_user
 from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity
+from app.checks.scoring import tier_css_for, tier_for
 from app.database import get_db
 from app.items.aggregations import (
     bcct_lines_for_item,
@@ -28,7 +29,15 @@ from app.items.aggregations import (
 )
 from app.items.charts import sankey_layout, sparkline_points, waterfall_layout
 from app.items.operations import classify_operation, operation_label
-from app.models import Company, DeclarationLine, Finding, Norm, NvlBalance, SpBalance
+from app.models import (
+    Company,
+    CompanyYearScore,
+    DeclarationLine,
+    Finding,
+    Norm,
+    NvlBalance,
+    SpBalance,
+)
 from app.pipeline.export import build_export
 from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.run_checks import run_checks as run_check_pipeline
@@ -43,6 +52,8 @@ templates.env.globals["SEVERITY_BADGE"] = {s.value: SEVERITY_BADGE[s] for s in S
 templates.env.globals["SEVERITY_LABEL"] = {s.value: SEVERITY_LABEL_VI[s] for s in Severity}
 templates.env.globals["SPECS"] = {code: spec for code, spec in SPECS.items()}
 templates.env.globals["COMBO_SPECS"] = COMBO_SPECS
+templates.env.globals["tier_css_for"] = tier_css_for
+templates.env.globals["tier_for"] = tier_for
 
 _SEVERITY_ORDER = {Severity.CRITICAL.value: 0, Severity.WARNING.value: 1, Severity.INFO.value: 2}
 
@@ -308,18 +319,46 @@ def upload_data(
 @router.post("/companies/{code}/run-checks", response_model=None)
 def rerun_checks(
     code: str,
-    year: int = Form(...),
+    year: int | None = Form(default=None),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    """Enqueue job chạy checks.
+
+    Nếu có `year` → RUN_CHECKS đơn lẻ (CLI/dev). Mặc định không gửi year →
+    BATCH_RUN chạy tất cả năm có dữ liệu (UI default per design 2026-05-26).
+    """
+    from app.auth_users import get_user_by_username
+    from app.jobs import enqueue_job
+    from app.models.job import JobKind
+
     company = db.scalar(select(Company).where(Company.code == code))
     if company is None:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
-    try:
-        run_check_pipeline(code, year)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    return RedirectResponse(url=f"/companies/{code}?year={year}", status_code=303)
+
+    user_row = get_user_by_username(db, user.name)
+    if user_row is None:
+        raise HTTPException(status_code=403, detail="Session user không tồn tại")
+
+    if year is None:
+        job = enqueue_job(
+            db,
+            kind=JobKind.BATCH_RUN,
+            payload={"company_code": code},
+            created_by=user_row.id,
+            company_id=company.id,
+            period_year=None,
+        )
+    else:
+        job = enqueue_job(
+            db,
+            kind=JobKind.RUN_CHECKS,
+            payload={"company_code": code, "year": year},
+            created_by=user_row.id,
+            company_id=company.id,
+            period_year=year,
+        )
+    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
 @router.get("/companies/{code}", response_class=HTMLResponse)
@@ -369,6 +408,15 @@ def company_detail(
         ),
     )
 
+    year_score = None
+    if selected_year is not None:
+        year_score = db.scalar(
+            select(CompanyYearScore).where(
+                CompanyYearScore.company_id == company.id,
+                CompanyYearScore.period_year == selected_year,
+            )
+        )
+
     return templates.TemplateResponse(
         request,
         "company_detail.html",
@@ -381,6 +429,7 @@ def company_detail(
             "combo_findings": combo_findings,
             "severity_totals": severity_totals,
             "total_findings": len(regular_findings),
+            "year_score": year_score,
         },
     )
 

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Hàng đợi công việc — Audit-HQ{% endblock %}
+
+{% block content %}
+<section class="page-section">
+  <header class="page-header">
+    <h1>Hàng đợi công việc</h1>
+    <p class="page-sub">Các tác vụ chạy nền của bạn (gần nhất trước).</p>
+  </header>
+
+  <nav class="job-filters">
+    <a href="/jobs" class="job-filter {% if not selected_status %}is-active{% endif %}">
+      Tất cả <span class="job-filter-count">{{ jobs|length }}</span>
+    </a>
+    {% for st in all_statuses %}
+    <a href="/jobs?status={{ st }}" class="job-filter {% if selected_status == st %}is-active{% endif %}">
+      {{ JOB_STATUS_LABEL[st] }}
+      {% if counts.get(st) %}<span class="job-filter-count">{{ counts[st] }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </nav>
+
+  {% if jobs %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Loại</th>
+        <th>Doanh nghiệp / Năm</th>
+        <th>Trạng thái</th>
+        <th>Tạo lúc</th>
+        <th>Hoàn tất lúc</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for j in jobs %}
+      <tr>
+        <td class="text-mono">#{{ j.id }}</td>
+        <td>{{ j.kind }}</td>
+        <td>
+          {% if j.payload and j.payload.get("company_code") %}{{ j.payload["company_code"] }}{% endif %}
+          {% if j.period_year %} · {{ j.period_year }}{% endif %}
+        </td>
+        <td>
+          <span class="job-status job-status-{{ j.status }}">{{ JOB_STATUS_LABEL[j.status] }}</span>
+        </td>
+        <td class="text-mono">{{ j.created_at.strftime("%Y-%m-%d %H:%M") if j.created_at else "" }}</td>
+        <td class="text-mono">{{ j.finished_at.strftime("%Y-%m-%d %H:%M") if j.finished_at else "—" }}</td>
+        <td><a href="/jobs/{{ j.id }}" class="btn-link">Xem</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">Chưa có công việc nào.</p>
+  {% endif %}
+</section>
+{% endblock %}

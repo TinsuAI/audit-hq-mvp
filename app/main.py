@@ -20,11 +20,17 @@ from app.auth import (
 )
 from app.auth_users import seed_default_admin
 from app.database import SessionLocal, get_db
+from app.jobs import register_handler
+from app.jobs.handlers import run_batch_handler, run_checks_handler
+from app.jobs.worker import JobWorker, recover_zombie_jobs
+from app.models.job import JobKind
 from app.routes.admin import router as admin_router
 from app.routes.admin_ai import router as admin_ai_router
 from app.routes.admin_users import router as admin_users_router
 from app.routes.ai import router as ai_router
 from app.routes.companies import router as companies_router
+from app.routes.docs import router as docs_router
+from app.routes.jobs import router as jobs_router
 from app.settings import settings
 from app.version import BUILD_SHA, BUILD_TIME, VERSION, version_string
 
@@ -60,8 +66,28 @@ async def lifespan(app: FastAPI):
     # Retention cleanup loop — non-critical, failure logged not raised.
     retention_task = asyncio.create_task(run_retention_loop())
 
+    # Async job runner: recover zombies + start worker thread.
+    try:
+        register_handler(JobKind.RUN_CHECKS, run_checks_handler)
+    except ValueError:
+        pass  # idempotent: tests có thể đã register
+    try:
+        register_handler(JobKind.BATCH_RUN, run_batch_handler)
+    except ValueError:
+        pass
+    try:
+        with SessionLocal() as db:
+            n = recover_zombie_jobs(db)
+            if n:
+                log.warning("Recovered %d zombie job(s) at startup", n)
+    except Exception:
+        log.exception("Zombie recovery failed (continuing)")
+    job_worker = JobWorker(SessionLocal)
+    job_worker.start()
+
     yield
 
+    job_worker.stop()
     retention_task.cancel()
     try:
         await retention_task
@@ -76,6 +102,8 @@ app.include_router(admin_router)
 app.include_router(admin_ai_router)
 app.include_router(admin_users_router)
 app.include_router(ai_router)
+app.include_router(jobs_router)
+app.include_router(docs_router)
 
 
 @app.get("/healthz")

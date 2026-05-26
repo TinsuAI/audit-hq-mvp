@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from app.checks import ALL_CHECKS
 from app.checks.combos import detect_combos
 from app.checks.company_type import CompanyType, detect_company_type
-from app.checks.scoring import compute_risk_score
 from app.database import SessionLocal
 from app.models import Company, Finding
 
@@ -90,21 +89,47 @@ def run_checks(
             stats.combos_fired = sorted({c.check_code for c in combos})
             run_findings.extend(combos)
 
-        # Cập nhật risk_score cho Company (tổng cả 16 check + combo).
+        # Tính điểm rate-based + lưu CompanyYearScore + cập nhật company.risk_score.
+        s.flush()
         all_year_findings = s.scalars(
             select(Finding).where(
                 Finding.company_id == company.id,
                 Finding.period_year == year,
             )
         ).all()
-        # Tổng score xét trên toàn bộ năm, không chỉ run này (để giữ ổn định
-        # khi --check 1 rule).
-        latest_company_score = max(
-            company.risk_score or 0,
-            compute_risk_score(all_year_findings),
-        ) if only else compute_risk_score(all_year_findings)
-        company.risk_score = latest_company_score
-        stats.risk_score = latest_company_score
+
+        from app.checks.denominators import compute_denominators
+        from app.checks.scoring import compute_company_year_score
+        from app.models import CompanyYearScore
+
+        denominators = compute_denominators(s, company.id, year)
+        breakdown = compute_company_year_score(all_year_findings, denominators)
+        year_score = breakdown["score"]
+
+        # Upsert CompanyYearScore cho (DN, năm).
+        existing = s.scalar(
+            select(CompanyYearScore).where(
+                CompanyYearScore.company_id == company.id,
+                CompanyYearScore.period_year == year,
+            )
+        )
+        if existing is None:
+            s.add(CompanyYearScore(
+                company_id=company.id, period_year=year,
+                score=year_score, tier=breakdown["tier"], breakdown=breakdown,
+            ))
+        else:
+            existing.score = year_score
+            existing.tier = breakdown["tier"]
+            existing.breakdown = breakdown
+
+        # `company.risk_score` = max điểm qua các năm (cho ranking trang danh sách).
+        all_year_scores = s.scalars(
+            select(CompanyYearScore.score).where(CompanyYearScore.company_id == company.id)
+        ).all()
+        all_scores_with_current = list(all_year_scores) + [year_score]
+        company.risk_score = max(all_scores_with_current) if all_scores_with_current else 0
+        stats.risk_score = company.risk_score
 
         s.commit()
         return stats

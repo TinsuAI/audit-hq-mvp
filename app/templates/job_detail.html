@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Công việc #{{ job.id }} — Audit-HQ{% endblock %}
+
+{% block content %}
+{% if auto_refresh %}
+<meta http-equiv="refresh" content="2">
+{% endif %}
+
+<section class="page-section">
+  <header class="page-header">
+    <h1>Công việc #{{ job.id }}</h1>
+    <p class="page-sub">
+      <span class="job-status job-status-{{ job.status }}">{{ JOB_STATUS_LABEL[job.status] }}</span>
+      · {{ job.kind }}
+    </p>
+  </header>
+
+  <div class="data-grid">
+    <div>
+      <strong>Doanh nghiệp:</strong>
+      {{ job.payload.get("company_code", "—") if job.payload else "—" }}
+    </div>
+    <div><strong>Năm:</strong> {{ job.period_year or "—" }}</div>
+    <div><strong>Tạo lúc:</strong> {{ job.created_at.strftime("%Y-%m-%d %H:%M:%S") if job.created_at else "—" }}</div>
+    <div><strong>Bắt đầu:</strong> {{ job.started_at.strftime("%Y-%m-%d %H:%M:%S") if job.started_at else "—" }}</div>
+    <div><strong>Hoàn tất:</strong> {{ job.finished_at.strftime("%Y-%m-%d %H:%M:%S") if job.finished_at else "—" }}</div>
+  </div>
+
+  {% if job.status == "done" and job.result %}
+  <h3>Kết quả</h3>
+  <pre class="data-mono">{{ job.result | tojson(indent=2) }}</pre>
+  {% if job.payload and job.payload.get("company_code") %}
+  <p>
+    <a href="/companies/{{ job.payload['company_code'] }}?year={{ job.period_year or '' }}" class="btn-link">
+      → Xem kết quả kiểm tra cho {{ job.payload["company_code"] }}
+    </a>
+  </p>
+  {% endif %}
+  {% endif %}
+
+  {% if job.status == "failed" and job.error %}
+  <h3>Lỗi</h3>
+  <pre class="data-mono error-trace">{{ job.error }}</pre>
+  {% endif %}
+
+  {% if auto_refresh %}
+  <p class="page-sub"><em>Trang sẽ tự cập nhật mỗi 2 giây cho đến khi công việc hoàn tất.</em></p>
+  {% endif %}
+
+  <p><a href="/jobs" class="btn-link">← Hàng đợi công việc</a></p>
+</section>
+{% endblock %}

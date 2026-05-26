@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — Audit-HQ{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  Tài liệu
+  <span class="sep">›</span>
+  {{ title }}
+</nav>
+
+<article class="docs-article">
+  {{ html_body | safe }}
+</article>
+{% endblock %}

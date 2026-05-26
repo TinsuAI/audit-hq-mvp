@@ -37,7 +37,8 @@
     <thead>
       <tr>
         <th>Hạng</th>
-        <th>Điểm rủi ro</th>
+        <th>Điểm rủi ro DL <small style="font-weight:normal">(0-1000)</small></th>
+        <th>Mức cảnh báo</th>
         <th>Doanh nghiệp</th>
         <th>MST</th>
         <th>Phát hiện theo năm</th>
@@ -47,10 +48,13 @@
       {% for item in summary %}
         {% set c = item.company %}
         {% set rank = loop.index %}
-        {% set score_class = "high" if c.risk_score > 500 else ("mid" if c.risk_score > 50 else "low") %}
+        {% set score = c.risk_score or 0 %}
+        {% set tier_css = tier_css_for(score) %}
+        {% set tier_label = tier_for(score) %}
       <tr>
         <td class="rank"><span class="rank-badge {% if rank <= 3 %}rank-{{ rank }}{% endif %}">{{ rank }}</span></td>
-        <td><span class="score-pill {{ score_class }}">{{ c.risk_score }} đ</span></td>
+        <td><span class="score-pill {{ tier_css }}">{{ score }}</span></td>
+        <td><span class="tier-pill {{ tier_css }}">{{ tier_label }}</span></td>
         <td>
           <div class="dn-cell">
             <a href="/companies/{{ c.code }}" class="dn-code text-mono">{{ c.code }}</a>
@@ -88,5 +92,14 @@
   </table>
 </div>
 {% endif %}
+
+<aside class="legal-disclaimer">
+  <p>
+    <strong>Lưu ý:</strong> Điểm rủi ro dữ liệu là chỉ số phân tích nội bộ tính trên
+    chất lượng BCQT/M15/M16, <strong>không phải</strong> đánh giá tuân thủ pháp luật
+    theo Thông tư 81/2019/TT-BTC. Cán bộ Hải quan quyết định cuối cùng dựa trên đánh giá toàn diện.
+    <a href="/tai-lieu/scoring-methodology">Xem cách tính điểm →</a>
+  </p>
+</aside>
 
 {% endblock %}
