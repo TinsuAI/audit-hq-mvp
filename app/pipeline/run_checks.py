@@ -17,8 +17,10 @@ from sqlalchemy.orm import Session
 from app.checks import ALL_CHECKS
 from app.checks.combos import detect_combos
 from app.checks.company_type import CompanyType, detect_company_type
+from app.checks.dynamic_runner import DynamicCheckRunner
 from app.database import SessionLocal
 from app.models import Company, Finding
+from app.models.check_definition import CheckDefinition, CheckStatus
 
 
 @dataclass
@@ -62,6 +64,15 @@ def run_checks(
                     Finding.check_code.in_(codes_to_run | {"COMBO_*"}),
                 )
             )
+        # Wipe dynamic check findings (X.*) khi chạy full (không filter --check).
+        if only is None:
+            s.execute(
+                delete(Finding).where(
+                    Finding.company_id == company.id,
+                    Finding.period_year == year,
+                    Finding.check_code.like("X.%"),
+                )
+            )
         # Wipe combos riêng vì check_code COMBO_* không match in_().
         s.execute(
             delete(Finding).where(
@@ -71,10 +82,27 @@ def run_checks(
             )
         )
 
+        # Load dynamic checks (published) từ DB.
+        from sqlalchemy import select as _select
+        dynamic_rows = s.scalars(
+            _select(CheckDefinition).where(CheckDefinition.status == CheckStatus.PUBLISHED)
+        ).all()
+        dynamic_checks = {row.code: DynamicCheckRunner(row.code, row.spec) for row in dynamic_rows}
+
+        # Merge: built-in + dynamic. Built-in codes có priority nếu conflict.
+        all_codes = set(codes_to_run) | set(dynamic_checks)
+        if only is not None:
+            all_codes = all_codes & only
+
         run_findings: list[Finding] = []
-        for code in sorted(codes_to_run):
-            fn = ALL_CHECKS[code]
-            findings = fn(s, company.id, year)
+        for code in sorted(all_codes):
+            if code in ALL_CHECKS:
+                fn = ALL_CHECKS[code]
+                findings = fn(s, company.id, year)
+            elif code in dynamic_checks:
+                findings = dynamic_checks[code].run(s, company.id, year)
+            else:
+                continue
             for f in findings:
                 s.add(f)
             run_findings.extend(findings)

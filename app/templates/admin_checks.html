@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Kiểm tra mở rộng — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Audit-HQ</a>
+  <span class="sep">›</span>
+  Quản trị
+  <span class="sep">›</span>
+  Kiểm tra mở rộng
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Kiểm tra mở rộng (catalog động)</h1>
+    <p class="page-subtitle">
+      Check do admin tạo qua DSL khai báo — nằm ngoài catalog 49 chính thức của đề án.
+      Chỉ check <span class="badge published">published</span> mới chạy trong pipeline.
+    </p>
+  </div>
+  <a href="/admin/checks/new" class="btn btn-primary">+ Tạo check mới</a>
+</div>
+
+{% if checks %}
+<div class="card" style="overflow:auto">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Mã</th>
+        <th>Tiêu đề</th>
+        <th>Loại (kind)</th>
+        <th>Trạng thái</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in checks %}
+      <tr>
+        <td><code>{{ c.code }}</code></td>
+        <td>{{ c.title }}</td>
+        <td>{{ kind_labels.get(c.kind, c.kind) }}</td>
+        <td>
+          {% if c.status == CheckStatus.PUBLISHED %}
+            <span class="badge published">✅ Published</span>
+          {% elif c.status == CheckStatus.DRAFT %}
+            <span class="badge draft">📝 Draft</span>
+          {% else %}
+            <span class="badge disabled">⏸ Disabled</span>
+          {% endif %}
+        </td>
+        <td><a href="/admin/checks/{{ c.id }}">Chi tiết →</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:2rem;color:var(--c-text-muted)">
+  <p>Chưa có check mở rộng nào. <a href="/admin/checks/new">Tạo check đầu tiên →</a></p>
+</div>
+{% endif %}
+
+<div class="card mt-3">
+  <h3 class="card-title">Hướng dẫn nhanh</h3>
+  <ul style="font-size:var(--fs-sm);margin:0;padding-left:1.5rem">
+    <li><strong>Draft</strong>: đã lưu, chưa chạy. Admin có thể chỉnh spec và xem trước.</li>
+    <li><strong>Published</strong>: sẽ chạy tự động trong lần "Chạy kiểm tra" kế tiếp.</li>
+    <li><strong>Disabled</strong>: tắt tạm thời, không xóa, có thể bật lại.</li>
+    <li>Check mở rộng có mã prefix <code>X.*</code> — phân biệt với catalog <code>C1.*…C6.*</code>.</li>
+  </ul>
+</div>
+
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Tạo check mới — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Audit-HQ</a>
+  <span class="sep">›</span>
+  <a href="/admin/checks">Kiểm tra mở rộng</a>
+  <span class="sep">›</span>
+  Tạo mới
+</nav>
+
+<div class="page-header">
+  <h1>Tạo check mở rộng</h1>
+</div>
+
+{% if error %}
+<div class="alert alert-error" style="margin-bottom:1rem">
+  ⚠️ {{ error }}
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="/admin/checks">
+    <div class="form-field">
+      <label class="form-label">Tiêu đề <span class="required">*</span></label>
+      <input type="text" name="title" class="form-input" required
+             value="{{ form.get('title', '') }}" placeholder="Ví dụ: Tồn cuối NVL âm (mở rộng)">
+    </div>
+    <div class="form-field">
+      <label class="form-label">Mô tả</label>
+      <textarea name="description" class="form-input" rows="2"
+                placeholder="Mô tả ngắn nghiệp vụ kiểm tra">{{ form.get('description', '') }}</textarea>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Loại kiểm tra (kind) <span class="required">*</span></label>
+      <select name="kind" class="form-select" required>
+        {% for k, label in kind_labels.items() %}
+          <option value="{{ k }}" {% if form.get('kind') == k %}selected{% endif %}>{{ k }} — {{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Spec JSON <span class="required">*</span></label>
+      <textarea name="spec_json" class="form-input" rows="12" required
+                style="font-family:monospace;font-size:var(--fs-sm)"
+                placeholder='{"kind": "threshold_compare", "table": "nvl_balances", ...}'>{{ form.get('spec_json', '') }}</textarea>
+      <p class="form-hint">
+        Xem <a href="/tai-lieu/scoring-methodology" target="_blank">tài liệu phương pháp luận</a>
+        và ví dụ bên dưới.
+      </p>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Nhóm (group)</label>
+      <input type="number" name="group" class="form-input" value="{{ form.get('group', 99) }}"
+             style="max-width:8rem"> <small style="color:var(--c-text-muted)">99 = Kiểm tra mở rộng (mặc định)</small>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Mức độ mặc định</label>
+      <select name="default_severity" class="form-select" style="max-width:16rem">
+        <option value="warning" {% if form.get('default_severity','warning') == 'warning' %}selected{% endif %}>Cảnh báo</option>
+        <option value="critical" {% if form.get('default_severity') == 'critical' %}selected{% endif %}>Nghiêm trọng</option>
+        <option value="info" {% if form.get('default_severity') == 'info' %}selected{% endif %}>Thông tin</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <button type="submit" class="btn btn-primary">Lưu Draft</button>
+      <a href="/admin/checks" class="btn btn-secondary">Hủy</a>
+    </div>
+  </form>
+</div>
+
+<div class="card mt-3">
+  <h3 class="card-title">Ví dụ spec (threshold_compare)</h3>
+  <pre style="font-size:var(--fs-sm);overflow:auto;margin:0">{
+  "kind": "threshold_compare",
+  "table": "nvl_balances",
+  "subject_col": "material_code",
+  "metric_col": "closing_qty",
+  "thresholds": [
+    {"lt": 0, "severity": "critical"}
+  ],
+  "title_template": "Tồn cuối {subject_key} âm ({value:.2f})"
+}</pre>
+  <h3 class="card-title mt-3">Bảng được phép (table)</h3>
+  <ul style="font-size:var(--fs-sm);margin:0;padding-left:1.5rem">
+    <li><code>nvl_balances</code> — M15 cân đối NVL</li>
+    <li><code>sp_balances</code> — M15a cân đối TP</li>
+    <li><code>declaration_lines</code> — BCCT tờ khai XNK</li>
+    <li><code>norms</code> — M16 định mức</li>
+  </ul>
+  <h3 class="card-title mt-3">Format threshold (lt-ascending, first-match wins)</h3>
+  <pre style="font-size:var(--fs-sm);margin:0">[
+  {"lt": 5,  "severity": null},      // &lt; 5% → không fire
+  {"lt": 20, "severity": "info"},    // 5–20% → Thông tin
+  {"gte": 20, "severity": "warning"} // ≥ 20% → Cảnh báo
+]</pre>
+</div>
+
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ check.code }} — {{ check.title }} — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Audit-HQ</a>
+  <span class="sep">›</span>
+  <a href="/admin/checks">Kiểm tra mở rộng</a>
+  <span class="sep">›</span>
+  {{ check.code }}
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1><code>{{ check.code }}</code> — {{ check.title }}</h1>
+    <p class="page-subtitle">
+      {{ kind_labels.get(check.kind, check.kind) }} ·
+      {% if check.status == CheckStatus.PUBLISHED %}
+        <span class="badge published">✅ Published — đang chạy trong pipeline</span>
+      {% elif check.status == CheckStatus.DRAFT %}
+        <span class="badge draft">📝 Draft — chưa chạy</span>
+      {% else %}
+        <span class="badge disabled">⏸ Disabled</span>
+      {% endif %}
+    </p>
+  </div>
+  <div class="form-row">
+    {% if check.status == CheckStatus.DRAFT %}
+      <form method="post" action="/admin/checks/{{ check.id }}/publish" style="display:inline">
+        <button type="submit" class="btn btn-primary">✅ Publish</button>
+      </form>
+    {% elif check.status == CheckStatus.PUBLISHED %}
+      <form method="post" action="/admin/checks/{{ check.id }}/disable" style="display:inline">
+        <button type="submit" class="btn btn-secondary">⏸ Disable</button>
+      </form>
+    {% elif check.status == CheckStatus.DISABLED %}
+      <form method="post" action="/admin/checks/{{ check.id }}/publish" style="display:inline">
+        <button type="submit" class="btn btn-primary">✅ Bật lại</button>
+      </form>
+    {% endif %}
+    {% if check.status != CheckStatus.DRAFT %}
+      <form method="post" action="/admin/checks/{{ check.id }}/draft" style="display:inline">
+        <button type="submit" class="btn btn-secondary">📝 Về Draft</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <table class="data-table">
+    <tr><th>Mã</th><td><code>{{ check.code }}</code></td></tr>
+    <tr><th>Loại</th><td>{{ kind_labels.get(check.kind, check.kind) }}</td></tr>
+    <tr><th>Nhóm</th><td>{{ check.group }}</td></tr>
+    <tr><th>Mức độ mặc định</th><td>{{ check.default_severity }}</td></tr>
+    <tr><th>Tạo lúc</th><td>{{ check.created_at.strftime('%Y-%m-%d %H:%M') if check.created_at else '—' }}</td></tr>
+    <tr><th>Cập nhật lúc</th><td>{{ check.updated_at.strftime('%Y-%m-%d %H:%M') if check.updated_at else '—' }}</td></tr>
+  </table>
+</div>
+
+{% if check.description %}
+<div class="card mt-2">
+  <h3 class="card-title">Mô tả</h3>
+  <p style="margin:0">{{ check.description }}</p>
+</div>
+{% endif %}
+
+<div class="card mt-2">
+  <h3 class="card-title">Spec JSON</h3>
+  <pre style="font-size:var(--fs-sm);overflow:auto;margin:0;max-height:400px">{{ spec_json }}</pre>
+</div>
+
+{% if check.status == CheckStatus.DRAFT %}
+<div class="card mt-2" style="border-color:var(--c-warning)">
+  <p style="margin:0;font-size:var(--fs-sm);color:var(--c-text-muted)">
+    ⚠️ Check đang ở trạng thái <strong>Draft</strong>. Nhấn "Publish" để check này chạy trong lần kiểm tra kế tiếp.
+    Sau khi publish, kết quả sẽ hiển thị trong trang chi tiết DN dưới nhóm "Kiểm tra mở rộng"
+    với badge <strong>Tuỳ chỉnh</strong>.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

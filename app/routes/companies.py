@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import SessionUser, require_user
 from app.checks.combos import COMBO_SPECS
-from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity
+from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
 from app.checks.scoring import tier_css_for, tier_for
 from app.database import get_db
 from app.items.aggregations import (
@@ -417,6 +417,8 @@ def company_detail(
             )
         )
 
+    all_specs = get_all_specs(db)
+
     return templates.TemplateResponse(
         request,
         "company_detail.html",
@@ -430,6 +432,7 @@ def company_detail(
             "severity_totals": severity_totals,
             "total_findings": len(regular_findings),
             "year_score": year_score,
+            "all_specs": all_specs,
         },
     )
 

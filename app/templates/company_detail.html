@@ -100,14 +100,15 @@
   {% endif %}
 
   {% for code, findings in ordered_groups %}
-    {% set spec = SPECS[code] %}
+    {% set spec = all_specs.get(code) or SPECS.get(code) %}
     <details class="finding-group" id="group-{{ code }}">
       <summary>
         <span class="badge muted text-mono">{{ code }}</span>
-        <strong>{{ spec.title }}</strong>
+        {% if code.startswith('X.') %}<span class="badge info" style="font-size:var(--fs-xs);vertical-align:middle">Tuỳ chỉnh</span> {% endif %}
+        <strong>{{ spec.title if spec else code }}</strong>
         <span class="group-meta">{{ findings | length }} phát hiện</span>
       </summary>
-      <p class="group-desc">{{ spec.description }}</p>
+      <p class="group-desc">{{ spec.description if spec else '' }}</p>
       <div class="data-table-wrapper">
         <table class="data-table compact">
           <thead>

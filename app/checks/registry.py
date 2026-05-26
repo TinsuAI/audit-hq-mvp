@@ -288,3 +288,59 @@ def severity_for(check_code: str, pct: float) -> Severity | None:
 
 
 CheckFunction = Callable
+
+
+def get_check_meta(code: str, session) -> CheckSpec | None:
+    """Trả về CheckSpec cho code đã cho, merge built-in + published dynamic checks.
+
+    Built-in có priority; dynamic check phải status=published mới expose.
+    Trả None nếu không tìm thấy.
+    """
+    if code in SPECS:
+        return SPECS[code]
+
+    from sqlalchemy import select
+
+    from app.models.check_definition import CheckDefinition, CheckStatus
+
+    row = session.scalar(
+        select(CheckDefinition).where(
+            CheckDefinition.code == code,
+            CheckDefinition.status == CheckStatus.PUBLISHED,
+        )
+    )
+    if row is None:
+        return None
+    return _dynamic_to_spec(row)
+
+
+def get_all_specs(session) -> dict[str, CheckSpec]:
+    """Dict gộp built-in SPECS + published dynamic checks từ DB.
+
+    Built-in luôn có priority nếu có cùng code (không xảy ra trong thực tế
+    vì built-in dùng prefix C và dynamic dùng X).
+    """
+    from sqlalchemy import select
+
+    from app.models.check_definition import CheckDefinition, CheckStatus
+
+    result: dict[str, CheckSpec] = dict(SPECS)
+    rows = session.scalars(
+        select(CheckDefinition).where(CheckDefinition.status == CheckStatus.PUBLISHED)
+    ).all()
+    for row in rows:
+        if row.code not in result:
+            result[row.code] = _dynamic_to_spec(row)
+    return result
+
+
+def _dynamic_to_spec(row) -> CheckSpec:
+    """Chuyển CheckDefinition DB row → CheckSpec (readonly dataclass)."""
+    return CheckSpec(
+        code=row.code,
+        group=row.group,
+        title=row.title,
+        description=row.description,
+        default_severity=Severity(row.default_severity),
+        enabled=True,
+    )

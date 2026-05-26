@@ -1,5 +1,6 @@
 from app.models.ai import AiConversation, AiMessage, AiSetting
 from app.models.bcqt import Norm, NvlBalance, SpBalance
+from app.models.check_definition import CheckDefinition, CheckStatus
 from app.models.company import Company
 from app.models.declaration import DeclarationLine
 from app.models.finding import Finding
@@ -12,6 +13,8 @@ __all__ = [
     "AiConversation",
     "AiMessage",
     "AiSetting",
+    "CheckDefinition",
+    "CheckStatus",
     "Company",
     "CompanyYearScore",
     "DeclarationLine",
