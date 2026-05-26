@@ -1,89 +1,142 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-05-26, cuối session item-detail + AI fallback):**
-> Branch `main` đã deploy. Live trên `audit-hq-demo.tinsu.ai` (build `c9605cf`).
-> 257/257 tests pass. Trang chi tiết mã NVL/TP đã chạy, AI fallback chain Gemini → NIM DeepSeek đã verify.
+> **Trạng thái (2026-05-26, cuối session jobs + scoring + legal docs):**
+> Branch `main` đã push + deploy. Live trên `audit-hq-demo.tinsu.ai` (build `222bf76`).
+> 314/314 tests pass. Async job runner + rate-based scoring + thư viện tài liệu pháp lý đã chạy.
 
 ## Current State
 
 ### Production (`audit-hq-demo.tinsu.ai`)
-- Build hiện tại: `c9605cf` — tracking actual model used khi fallback.
-- 4 DN demo: GROWATT, KIM_LONG, HONG_AN (score 3836), DO_THANH, DN_003 (HOA SEN).
-- Tất cả feature MVP 10 tuần + AI assistant V1 + multi-user RBAC + trang chi tiết mã đang chạy.
-
-### AI Assistant — provider chain
-- **Primary**: Google AI Studio Gemini 2.5
-  - default: `gemini-2.5-flash`
-  - fast: `gemini-2.5-flash-lite`
-  - deep: `gemini-2.5-pro`
-  - Free tier: 10/15/5 RPM, 250/1000/100 req/ngày
-- **Fallback**: NVIDIA NIM (enabled), trigger trên 429/5xx/404/timeout/connection error
-  - default + deep: `deepseek-ai/deepseek-v4-pro`
-  - fast: `deepseek-ai/deepseek-v4-flash`
-  - Free tier: 40 RPM, không giới hạn ngày
-- Cost UI ẩn (`show_cost=False`) — set `True` ở route handler để hiện lại.
-- `tool_call_cap` = 5 (giảm từ 10 để tiết kiệm quota).
-
-### Trang chi tiết mã NVL/TP (mới session này)
-- URL: `/companies/{code}/items/{item_code}?year=<n|all>&kind=nvl|tp`
-- Components: hero band + sparkline, year tabs, waterfall cân đối kho, Apex scatter timeline BCCT, Sankey BOM (sort + cap + stack origin), findings filter theo subject_key, AI quick-prompt button.
-- Tab "Tất cả năm": heatmap year × metric + bảng cross-year + cờ Lệch.
-- Entry points patched: bảng M15/M15a/M16/BCCT cột mã → link; finding subject_key → link; AI citation `[item:CODE]` support.
+- Build hiện tại: `222bf76` — legal docs ingest (deploy manual sau khi CI gặp HTTP 500).
+- 4 DN demo với điểm sau khi rerun checks toàn bộ năm có data:
+  - DN_001 Phương Đông: 238/Có chênh lệch nhỏ (2023-2025)
+  - DN_003 Hoa Sen: 242/Có chênh lệch nhỏ (2021-2025)
+  - DN_004 Nam Tiến: 97/Dữ liệu nhất quán (2024)
+  - DN_002 Tiên Phong: 74/Dữ liệu nhất quán (2024-2025)
+- Job ID #1-4 đã done (BATCH_RUN cho 4 DN).
 
 ### Stack
-- Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite.
-- AI: OpenAI SDK 2.38 (compat layer), provider-agnostic qua DB settings.
-- Charts: SVG server-render (sparkline/waterfall/sankey) + ApexCharts CDN (timeline + heatmap).
-- 257 tests pass (32 warnings, no failures).
+- Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite (WAL + busy_timeout=5000).
+- AI: OpenAI SDK compat, Gemini 2.5 (primary) + NIM DeepSeek (fallback).
+- Markdown render: `python-markdown` 3.10 (mới session này).
+- Dev port: **8200** (cố định, match docker-compose + Cloudflare tunnel).
+- 314 tests pass.
 
-## Recent Changes (session 2026-05-25 → 26)
+### Async job runner (mới session này)
+- Bảng `jobs` + worker thread trong FastAPI lifespan, poll 1.5s.
+- `JobKind.RUN_CHECKS` (1 năm) + `JobKind.BATCH_RUN` (mọi năm có data).
+- `POST /companies/{code}/run-checks` mặc định enqueue BATCH_RUN; có form year → RUN_CHECKS.
+- Trang `/jobs` list, `/jobs/{id}` detail (auto-refresh 2s), `/jobs/unread.json` badge.
+- Navbar 📋 Công việc badge polling 10s.
+- Startup hook recover zombie (status=running > 1h → failed).
 
-- **Item detail page + traceability**: 6 commits. `app/items/` (operations.py, aggregations.py, charts.py), route + template, cross-page link patches.
-- **Sankey readability**: sort qty desc, cap 15 nodes + "+N khác", stack ribbon origins proportionally, min thickness 1.5px (commit `90a1993`).
-- **Cache busting**: CSS/JS URLs có `?v={{ app_version }}` để Cloudflare không serve stale (commit `60eb3b3`). Phải propagate `app_version_string` globals sang mọi route's templates env vì mỗi route module có Jinja2Templates instance riêng (commit `32c7760`).
-- **Findings groups collapsed default** trên company_detail.
-- **Cost UI ẩn** trên `/admin/ai` qua flag `show_cost` (commit `fddd4dd`).
-- **Provider switch**: OpenRouter → NIM → Gemini Google AI Studio. Tested NIM chạy được (Llama 3.3 70B feel "ngao ngao" so với Gemini, switch sang Gemini Flash).
-- **AI fallback chain** (commits `6911e0c` + `c9605cf`): Gemini fail → tự retry NIM DeepSeek. Settings `fallback_*` trong registry + admin UI Section 2b. `call_with_fallback` returns `(response, model_used)` để tracking đúng provider thực sự trả lời. Verified live: forcing primary 404 → DeepSeek trả lời, log "Primary LLM failed (NotFoundError); falling back to deepseek-ai/deepseek-v4-pro".
+### Rate-based scoring (mới session này)
+- Bảng `company_year_scores`: (DN, năm) → score 0-1000 + tier + breakdown JSON.
+- Formula: `rule_score = min(1, Σpoints/(10×denom)) × 10` per rule, sum 16 rule + 20 combo bonus, rescale 1000/180.
+- 5 hạng neutral: 0-100/101-300/301-600/601-850/851-1000 (KHÔNG dùng "Mức N" — tránh nhầm TT 81/2019).
+- `company.risk_score` = max qua các năm (cho ranking).
+- Legacy `compute_risk_score` (linear sum) vẫn còn cho backward compat.
+
+### Thư viện tài liệu `/tai-lieu` (mới session này)
+- 4 trang đã ingest: scoring-methodology + 3 thông tư (TT 38/2015, TT 39/2018, TT 81/2019).
+- Index `/tai-lieu` group "Phương pháp luận" + "Văn bản pháp lý".
+- Markdown render qua `app/routes/docs.py` + `PUBLIC_DOCS` whitelist 4-tuple `(file, title, description, category)`.
+- Navbar 📚 Tài liệu link.
+- Disclaimer pháp lý ở `companies_list.html` + `company_detail.html` link tới scoring-methodology.
+
+## Recent Changes (session 2026-05-26 jobs+scoring+docs)
+
+5 commits, đã push + deploy. Chi tiết trong `.ai/sessions/2026-05-26-jobs-scoring-docs.md`.
+
+- `c8c370f` — Async job runner + rate-based scoring + methodology docs
+- `c1f65c7` — Docs index `/tai-lieu` + navbar link
+- `e7df2ab` — Sửa BCQT terminology (BCQT chứa M15/M15a/M16, không song song)
+- `cc0dcc2` — Fix Dockerfile copy `docs/` vào image
+- `222bf76` — Ingest 3 văn bản pháp lý (TT 38, TT 39, TT 81) + categorize
+
+Repo `audit-hq` (proposal): commit `b232b5e` `docs(legal): start legal reference library for RAG` (giờ outdated — MVP là canonical cho legal docs từ session này trở đi).
 
 ## Next Steps
 
-1. **Demo HQ**: chuẩn bị kịch bản 5-10 câu hỏi tiếng Việt khó (audit logic, lệch BCCT, BOM bất thường) để chạy qua AI sidebar. Watch behavior + quota.
-2. **Xin NIM rate limit nâng lên 200 RPM** trên `build.nvidia.com` (mặc định 40 RPM, sau khi HQ demo nếu cần scale).
-3. **Verify tool calling trên Gemini**: chưa stress-test loại câu hỏi nào trigger nhiều tool call (3+). Có thể cần tăng `tool_call_cap` lại nếu Gemini Flash quá thận trọng.
-4. **Code matching BCCT ↔ BCQT exact-match + banner orphan**: hiện tại OK cho demo, nhưng cần build trang `/admin/data-quality` để liệt kê mã orphan giúp DN/Hải Quan thấy phạm vi mismatch thực tế. Sau đó mới quyết alias mapping.
-5. **Xoá file `audit_hq.sqlite.bak-20260525-120743`** (18MB untracked, không phải concern blocking nhưng dọn dẹp).
-6. **Khi nào HQ feedback cho buổi demo** — bump đề án v11 (ở repo `audit-hq`, không phải đây).
-
-## Notes for Next AI Session
-
-### Repo này vs repo đề án
-- Repo MVP code: `~/workspace/client/audit-hq-mvp` (đây). Branch `main`, push triggers CI deploy.
-- Repo đề án: `~/workspace/client/audit-hq` (proposal docs, `de-an-audit-hq.md` + HTML). Handoff session log thường ở repo đề án.
-- Khi HQ yêu cầu thêm check mới → update đề án TRƯỚC, MVP follow sau.
-
-### CI gotcha
-- `make lint` chạy `ruff check app tests scripts` (không check migrations). Pre-commit thường: `make lint && make test` rồi mới push. Lỗi lint thường: E501 (>110 char), I001 (import order), E401 (multi-import).
-- Hard refresh CSS bằng `?v={{ app_version_string | urlencode }}` đã wire ở base.html. Mỗi deploy URL thay đổi → Cloudflare miss → fetch fresh.
-
-### Provider config gotchas
-- Gemini OpenAI-compat endpoint: `https://generativelanguage.googleapis.com/v1beta/openai/` (có trailing slash).
-- NIM endpoint: `https://integrate.api.nvidia.com/v1`.
-- Mỗi route module (`companies.py`, `admin.py`, `admin_ai.py`, `admin_users.py`) có Jinja2Templates instance RIÊNG → nếu thêm template global mới phải add vào TẤT CẢ. Lý tưởng: refactor thành shared instance, nhưng chưa cần.
-
-### Cost UI
-- Admin/ai Section 5 hiển thị tokens + users + count nhưng KHÔNG hiện $$$. Bật lại bằng `show_cost=True` trong `admin_ai_page` + `admin_ai_conversation` handlers.
-
-### Test scripts
-- `/tmp/shoot.py` — Playwright screenshot script. Lưu output ra `/mnt/c/temp/toss/`. Có thể tái sử dụng để chụp ảnh demo cho stakeholder.
-- Login cookie jar: `/tmp/lc.txt`.
-
-### Dev server
-- Port 8200. Log `/tmp/audit-hq-dev.log`.
-- Start: `cd /home/vp/workspace/client/audit-hq-mvp && nohup .venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8200 > /tmp/audit-hq-dev.log 2>&1 &`
+1. **Manual browser smoke test** trên live demo — kịch bản: login → /tai-lieu → click 4 cards → /companies → click DN_001 → click "🔄 Chạy lại tất cả năm" → xem job progress → quay về company detail xem score mới.
+2. **Demo HQ** — chuẩn bị flow 5-10 phút với câu hỏi nghiệp vụ tiếng Việt khó. Watch behavior + quota Gemini/NIM.
+3. **Update đề án §2.6** ở repo `audit-hq` — đồng bộ giải thích scoring rate-based với HQ-facing language (AI không tự đụng per CLAUDE.md — chờ user).
+4. **Catalog động (luồng A + B)** — feature brief đã chốt trong `.ai/features/2026-05-26-async-jobs-and-dynamic-checks.md`. Ước tính 3-4 ngày. Defer cho session sau.
+5. **AI assistant integrate legal docs** — hiện 3 văn bản chỉ render HTML. Tích hợp retrieve-by-slug hoặc keyword search khi cán bộ hỏi về luật.
+6. **Văn bản pháp lý mở rộng** — NĐ 08/2015, TT 72/2015, TT 06/2024, QĐ 2218/QĐ-TCHQ, Luật Hải quan 54/2014. User chốt chỉ làm 3 quan trọng nhất; phần còn lại defer.
 
 ## Blockers
 
-Không có blocker hard. Đang chờ:
-- HQ confirm thời gian demo.
-- Feedback nội bộ Trọng Tín về biểu đồ thác + Sankey (đã gửi screenshot + tin nhắn ở `C:\temp\toss\`).
+Không có blocker hard. GitHub Actions API có episode 500 ở giữa session — đã workaround bằng deploy manual; nếu vẫn 500 lúc cần CI thì retry hoặc dùng deploy manual (xem Notes).
+
+## Notes for Next AI Session
+
+### Deploy manual (khi CI hỏng)
+```bash
+ssh tinsu  # qua ssh.exe -F 'C:\Users\vuong\.ssh\config' tinsu
+cd /home/tinsu/actions-runner-audit-hq/_work/audit-hq-mvp/audit-hq-mvp
+git pull origin main
+DB_DATA_PATH=/home/tinsu/audit-hq-mvp-deploy/db-data \
+BUILD_SHA=$(git rev-parse --short HEAD) \
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+AUTH_USER=admin AUTH_PASSWORD=admin \
+docker compose up -d --build
+```
+
+**Cảnh báo**: BẮT BUỘC set `DB_DATA_PATH=/home/tinsu/audit-hq-mvp-deploy/db-data`. Nếu quên → docker dùng default `./db-data` trong runner work dir → tạo volume rỗng → app hiển thị 0 DN. (Đã bị bug này trong session, fix bằng `docker compose down` + up lại với env đúng.)
+
+### Recompute scores trên prod
+```bash
+ssh tinsu
+docker exec audit-hq-mvp python -m scripts.recompute_all_scores [--company DN_001] [--dry-run]
+```
+
+Idempotent. Tính lại CompanyYearScore từ findings hiện có, không re-run checks. Dùng sau khi đổi công thức scoring hoặc reset score manual.
+
+### Rerun checks all years cho 4 DN (BATCH_RUN qua Python)
+```python
+# docker exec audit-hq-mvp python -c "..."
+from app.database import SessionLocal
+from app.jobs import enqueue_job
+from app.models import Company, User
+from app.models.job import JobKind
+from sqlalchemy import select
+
+with SessionLocal() as s:
+    admin = s.scalar(select(User).where(User.username=='admin'))
+    for code in ['DN_001','DN_002','DN_003','DN_004']:
+        c = s.scalar(select(Company).where(Company.code==code))
+        enqueue_job(s, kind=JobKind.BATCH_RUN, payload={'company_code': code},
+                    created_by=admin.id, company_id=c.id, period_year=None)
+```
+
+Worker thread tự pick up. Theo dõi qua `/jobs`.
+
+### Catalog động — open questions đã chốt
+Trong brief `.ai/features/2026-05-26-async-jobs-and-dynamic-checks.md`:
+- 5 kind DSL ban đầu (threshold_compare, presence_check, aggregate_threshold, cross_table_match, ratio_threshold)
+- Code prefix `X.1, X.2...` global counter; group=99 hoặc admin chọn
+- AI Gemini 2.5 Pro + few-shot 5 ví dụ; bypass fallback NIM cho spec gen
+- Preview-on-sample admin chọn (DN, năm); cache by spec_hash
+- Không cron (V2)
+- Không auto-purge job, admin dọn tay
+- In-app badge only (no email/Web Push)
+
+### Disclaimer pháp lý — đã chốt wording
+> "Đây là chỉ số rủi ro dữ liệu BCQT do Audit-HQ tính từ phát hiện chênh lệch giữa các báo cáo. KHÔNG phải đánh giá tuân thủ pháp luật theo Thông tư 81/2019/TT-BTC. Phân loại tuân thủ chính thức thuộc thẩm quyền Tổng cục Hải quan."
+
+Đặt ở footer mọi trang có score. Link "Xem cách tính điểm →" tới `/tai-lieu/scoring-methodology`.
+
+### Test patterns mới
+- File-based SQLite fixture `tests/test_jobs/test_worker.py::file_db` cho concurrency test (in-memory không share giữa thread).
+- TestClient flow: `_setup_db()` → seed admin → `_login()` → assertions. Pattern reuse 4 test files trong test_jobs/.
+- HANDLERS dict global → autouse fixture `_clear_handlers` để cô lập tests.
+
+### Memory lưu lại (session này)
+- `dev-port.md` — port 8200 cố định cho dev local
+
+### Hạ tầng đã ghi nhớ từ sessions trước (vẫn áp dụng)
+- Cloudflare tunnel `tinsu-online-server` remotely-managed, không sửa file local
+- WSL ssh broken → dùng `ssh.exe -F` từ Windows path
+- Mỗi route module có Jinja2Templates instance riêng (chưa refactor)
+- `make lint` chạy `ruff check app tests scripts`, KHÔNG check migrations
