@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.checks.registry import SPECS, CheckSpec, Severity, get_all_specs, get_check_meta
+from app.checks.registry import SPECS, Severity, get_all_specs, get_check_meta
 from app.models.check_definition import CheckDefinition, CheckStatus
 
 

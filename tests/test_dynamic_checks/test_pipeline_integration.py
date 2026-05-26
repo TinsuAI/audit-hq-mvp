@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.checks.dynamic_runner import DynamicCheckRunner
 from app.models import CheckDefinition, CheckStatus, Finding
 from app.pipeline.run_checks import run_checks
 from tests.conftest import add_nvl

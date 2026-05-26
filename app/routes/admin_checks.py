@@ -6,8 +6,6 @@ import json
 import logging
 from pathlib import Path
 
-log = logging.getLogger(__name__)
-
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -21,6 +19,8 @@ from app.database import get_db
 from app.models.check_definition import CheckDefinition, CheckStatus, next_check_code
 from app.models.company import Company
 from app.version import VERSION, version_string
+
+log = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")

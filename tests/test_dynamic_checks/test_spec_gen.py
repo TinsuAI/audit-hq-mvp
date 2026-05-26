@@ -11,10 +11,9 @@ from sqlalchemy.pool import StaticPool
 
 import app.database as dbmod
 from app.auth_users import seed_default_admin
-from app.checks.spec_gen import generate_spec, SpecGenError
+from app.checks.spec_gen import SpecGenError, generate_spec
 from app.database import Base, SessionLocal, engine
 from app.main import app
-
 
 # ---------------------------------------------------------------------------
 # Unit tests — generate_spec()
@@ -143,7 +142,7 @@ class TestGenerateSpecRoute:
     def test_requires_admin(self):
         eng, sess = _setup_db()
         try:
-            from app.auth import make_session_cookie, SessionUser
+            from app.auth import SessionUser, make_session_cookie
             from app.models.user import ROLE_OFFICER
             cookie = make_session_cookie(SessionUser(name="officer", role=ROLE_OFFICER))
             client = TestClient(app)
@@ -159,7 +158,7 @@ class TestGenerateSpecRoute:
         try:
             mock_resp = _make_mock_response(json.dumps(VALID_THRESHOLD_SPEC))
             with patch("app.checks.spec_gen._call_ai", return_value=mock_resp):
-                from app.auth import make_session_cookie, SessionUser
+                from app.auth import SessionUser, make_session_cookie
                 from app.models.user import ROLE_ADMIN
                 cookie = make_session_cookie(SessionUser(name="admin", role=ROLE_ADMIN))
                 client = TestClient(app)
@@ -179,7 +178,7 @@ class TestGenerateSpecRoute:
         eng, sess = _setup_db()
         try:
             with patch("app.checks.spec_gen._call_ai", side_effect=Exception("AI timeout")):
-                from app.auth import make_session_cookie, SessionUser
+                from app.auth import SessionUser, make_session_cookie
                 from app.models.user import ROLE_ADMIN
                 cookie = make_session_cookie(SessionUser(name="admin", role=ROLE_ADMIN))
                 client = TestClient(app)
@@ -198,7 +197,7 @@ class TestGenerateSpecRoute:
     def test_empty_description_returns_error(self):
         eng, sess = _setup_db()
         try:
-            from app.auth import make_session_cookie, SessionUser
+            from app.auth import SessionUser, make_session_cookie
             from app.models.user import ROLE_ADMIN
             cookie = make_session_cookie(SessionUser(name="admin", role=ROLE_ADMIN))
             client = TestClient(app)

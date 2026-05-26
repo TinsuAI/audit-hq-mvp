@@ -16,7 +16,6 @@ import re
 from app.ai.client import make_client
 from app.ai.config import get_setting
 from app.checks.dynamic_runner import (
-    _ALLOWED_TABLES,
     _VALIDATORS,
     SpecValidationError,
 )

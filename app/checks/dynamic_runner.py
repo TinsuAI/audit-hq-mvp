@@ -87,7 +87,7 @@ class SpecValidationError(ValueError):
 
 def _get_model(table: str):
     """Trả về SQLAlchemy model class cho tên bảng đã whitelist."""
-    from app.models.bcqt import NvlBalance, SpBalance, Norm
+    from app.models.bcqt import Norm, NvlBalance, SpBalance
     from app.models.declaration import DeclarationLine
 
     return {
@@ -102,7 +102,9 @@ def _get_col(model, col_name: str, table: str, col_type: str = "any"):
     """Trả về SQLAlchemy column attribute sau khi verify whitelist."""
     allowed = _NUMERIC_COLS[table] if col_type == "numeric" else _ALL_COLS[table]
     if col_name not in allowed:
-        raise SpecValidationError(f"col '{col_name}' không hợp lệ với bảng '{table}'. Cho phép: {sorted(allowed)}")
+        raise SpecValidationError(
+            f"col '{col_name}' không hợp lệ với bảng '{table}'. Cho phép: {sorted(allowed)}"
+        )
     return getattr(model, col_name)
 
 

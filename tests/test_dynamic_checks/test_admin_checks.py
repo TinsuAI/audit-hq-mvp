@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 
@@ -69,7 +68,7 @@ class TestListChecks:
         try:
             client = TestClient(app)
             # Dùng cookie officer trực tiếp (không cần đăng nhập thật).
-            from app.auth import make_session_cookie, SessionUser
+            from app.auth import SessionUser, make_session_cookie
             from app.models.user import ROLE_OFFICER
             cookie = make_session_cookie(SessionUser(name="officer", role=ROLE_OFFICER))
             r = client.get("/admin/checks", cookies={"ahq_session": cookie})
@@ -208,7 +207,7 @@ class TestPublishCheck:
     def test_publish_requires_admin(self):
         eng, sess = _setup_db()
         try:
-            from app.auth import make_session_cookie, SessionUser
+            from app.auth import SessionUser, make_session_cookie
             from app.models.user import ROLE_OFFICER
             cookie = make_session_cookie(SessionUser(name="officer", role=ROLE_OFFICER))
             client = TestClient(app)
@@ -245,7 +244,6 @@ class TestDisableCheck:
 class TestPreviewCheck:
     def _seed_check_and_company(self, sess):
         from app.models import Company
-        from app.models.finding import Finding
         with sess() as db:
             cd = CheckDefinition(
                 code="X.1", kind="threshold_compare",
@@ -343,7 +341,7 @@ class TestPreviewCheck:
     def test_preview_requires_admin(self):
         eng, sess = _setup_db()
         try:
-            from app.auth import make_session_cookie, SessionUser
+            from app.auth import SessionUser, make_session_cookie
             from app.models.user import ROLE_OFFICER
             cookie = make_session_cookie(SessionUser(name="officer", role=ROLE_OFFICER))
             client = TestClient(app)

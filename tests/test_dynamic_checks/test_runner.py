@@ -10,8 +10,7 @@ import pytest
 
 from app.checks.dynamic_runner import DynamicCheckRunner, SpecValidationError
 from app.models import Finding
-from tests.conftest import add_decl, add_nvl, add_sp
-
+from tests.conftest import add_decl, add_nvl
 
 # ---------------------------------------------------------------------------
 # Helpers

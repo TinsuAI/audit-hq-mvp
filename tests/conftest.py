@@ -8,7 +8,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.database import Base, engine as _default_engine
+from app.database import Base
+from app.database import engine as _default_engine
 from app.models import (
     Company,
     DeclarationLine,
