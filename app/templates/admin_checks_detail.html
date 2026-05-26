@@ -79,4 +79,100 @@
 </div>
 {% endif %}
 
+<!-- Preview panel -->
+<div class="card mt-3" style="border-color:var(--c-info)">
+  <h3 class="card-title" style="color:var(--c-info)">▶ Chạy thử</h3>
+  <p style="font-size:var(--fs-sm);color:var(--c-text-muted);margin-top:0">
+    Chạy check này trên một DN và năm cụ thể — không lưu kết quả vào DB.
+  </p>
+  <div class="form-row" style="gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
+    <div>
+      <label class="form-label">Doanh nghiệp</label>
+      <select id="preview-company" class="form-select" style="max-width:22rem">
+        {% for c in companies %}
+          <option value="{{ c.code }}">{{ c.code }} — {{ c.name or '(chưa đặt tên)' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="form-label">Năm</label>
+      <input type="number" id="preview-year" class="form-input"
+             value="2023" min="2015" max="2030" style="max-width:7rem">
+    </div>
+    <button type="button" class="btn btn-primary" onclick="runPreview()">▶ Chạy thử</button>
+  </div>
+  <div id="preview-status" style="margin-top:0.75rem;font-size:var(--fs-sm);display:none"></div>
+  <div id="preview-results" style="margin-top:1rem;display:none">
+    <p id="preview-summary" style="font-size:var(--fs-sm);font-weight:600;margin-bottom:0.5rem"></p>
+    <table class="data-table" id="preview-table">
+      <thead>
+        <tr>
+          <th style="width:8rem">Mức độ</th>
+          <th>Tiêu đề</th>
+          <th style="width:10rem">Mã đối tượng</th>
+        </tr>
+      </thead>
+      <tbody id="preview-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+async function runPreview() {
+  const company = document.getElementById('preview-company').value;
+  const year = parseInt(document.getElementById('preview-year').value, 10);
+  const status = document.getElementById('preview-status');
+  const results = document.getElementById('preview-results');
+
+  status.style.display = 'block';
+  status.style.color = 'var(--c-info)';
+  status.textContent = 'Đang chạy…';
+  results.style.display = 'none';
+
+  try {
+    const resp = await fetch('/admin/checks/{{ check.id }}/preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({company_code: company, year}),
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      status.style.color = 'var(--c-critical,#c0392b)';
+      status.textContent = '❌ ' + data.error;
+      return;
+    }
+
+    const count = data.count;
+    const findings = data.findings;
+
+    if (count === 0) {
+      status.style.color = 'var(--c-success,#2d8a4e)';
+      status.textContent = '✅ Không có phát hiện nào — dữ liệu hợp lệ.';
+      return;
+    }
+
+    status.style.color = 'var(--c-warning,#e67e22)';
+    status.textContent = `⚠ Tìm thấy ${count} phát hiện:`;
+
+    const tbody = document.getElementById('preview-tbody');
+    tbody.innerHTML = '';
+    const severityColor = {critical: 'var(--c-critical,#c0392b)', warning: 'var(--c-warning,#e67e22)', info: 'var(--c-info)'};
+    for (const f of findings) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span style="color:${severityColor[f.severity] || 'inherit'};font-weight:600">${f.severity}</span></td>
+        <td>${f.title}</td>
+        <td><code>${f.subject_key || '—'}</code></td>
+      `;
+      tbody.appendChild(tr);
+    }
+    results.style.display = 'block';
+  } catch (err) {
+    status.style.color = 'var(--c-critical,#c0392b)';
+    status.textContent = '❌ Lỗi kết nối: ' + err.message;
+  }
+}
+</script>
+
 {% endblock %}

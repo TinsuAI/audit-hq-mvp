@@ -19,6 +19,7 @@ from app.checks.dynamic_runner import DynamicCheckRunner, SpecValidationError
 from app.checks.spec_gen import SpecGenError, generate_spec
 from app.database import get_db
 from app.models.check_definition import CheckDefinition, CheckStatus, next_check_code
+from app.models.company import Company
 from app.version import VERSION, version_string
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -150,6 +151,7 @@ def checks_detail(
     cd = db.get(CheckDefinition, check_id)
     if cd is None:
         raise HTTPException(status_code=404, detail="Check không tồn tại")
+    companies = db.scalars(select(Company).order_by(Company.code)).all()
     return templates.TemplateResponse(
         request,
         "admin_checks_detail.html",
@@ -159,8 +161,50 @@ def checks_detail(
             "spec_json": json.dumps(cd.spec, ensure_ascii=False, indent=2),
             "kind_labels": _KIND_LABELS,
             "CheckStatus": CheckStatus,
+            "companies": companies,
         },
     )
+
+
+@router.post("/{check_id}/preview", response_class=JSONResponse)
+def checks_preview(
+    check_id: int,
+    payload: dict = Body(...),
+    user: SessionUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Chạy thử check trên (DN, năm) — không ghi findings vào DB."""
+    cd = db.get(CheckDefinition, check_id)
+    if cd is None:
+        raise HTTPException(status_code=404, detail="Check không tồn tại")
+
+    company_code = (payload.get("company_code") or "").strip()
+    year = payload.get("year")
+
+    company = db.scalar(select(Company).where(Company.code == company_code))
+    if company is None:
+        return JSONResponse({"findings": None, "count": 0, "error": f"Không tìm thấy DN '{company_code}'"})
+
+    try:
+        runner = DynamicCheckRunner(code=cd.code, spec=cd.spec)
+        findings = runner.run(db, company_id=company.id, year=int(year))
+    except Exception as exc:
+        log.exception("Preview run failed for check %s", cd.code)
+        return JSONResponse({"findings": None, "count": 0, "error": str(exc)})
+
+    return JSONResponse({
+        "findings": [
+            {
+                "title": f.title,
+                "severity": f.severity,
+                "subject_key": f.subject_key,
+                "details": f.details,
+            }
+            for f in findings
+        ],
+        "count": len(findings),
+        "error": None,
+    })
 
 
 @router.post("/{check_id}/publish", response_model=None)

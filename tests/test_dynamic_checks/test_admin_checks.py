@@ -240,3 +240,118 @@ class TestDisableCheck:
             assert cd.status == CheckStatus.DISABLED
         finally:
             _teardown(eng)
+
+
+class TestPreviewCheck:
+    def _seed_check_and_company(self, sess):
+        from app.models import Company
+        from app.models.finding import Finding
+        with sess() as db:
+            cd = CheckDefinition(
+                code="X.1", kind="threshold_compare",
+                title="Test check", description="",
+                spec=VALID_SPEC, status=CheckStatus.PUBLISHED,
+            )
+            db.add(cd)
+            company = Company(
+                code="DN_TEST", name="Công ty Test",
+            )
+            db.add(company)
+            db.commit()
+            return cd.id, company.id
+
+    def test_preview_returns_findings(self):
+        eng, sess = _setup_db()
+        try:
+            cd_id, company_id = self._seed_check_and_company(sess)
+            from app.models.finding import Finding
+            mock_findings = [
+                Finding(
+                    company_id=company_id, period_year=2023,
+                    check_code="X.1", severity="critical",
+                    title="Tồn cuối NVL001 âm",
+                    details={"closing_qty": -5},
+                ),
+            ]
+            from unittest.mock import patch
+            with patch("app.checks.dynamic_runner.DynamicCheckRunner.run", return_value=mock_findings):
+                client = TestClient(app)
+                _login_admin(client)
+                r = client.post(
+                    f"/admin/checks/{cd_id}/preview",
+                    json={"company_code": "DN_TEST", "year": 2023},
+                )
+            assert r.status_code == 200
+            data = r.json()
+            assert data["error"] is None
+            assert data["count"] == 1
+            assert data["findings"][0]["title"] == "Tồn cuối NVL001 âm"
+            assert data["findings"][0]["severity"] == "critical"
+        finally:
+            _teardown(eng)
+
+    def test_preview_no_findings(self):
+        eng, sess = _setup_db()
+        try:
+            cd_id, _ = self._seed_check_and_company(sess)
+            from unittest.mock import patch
+            with patch("app.checks.dynamic_runner.DynamicCheckRunner.run", return_value=[]):
+                client = TestClient(app)
+                _login_admin(client)
+                r = client.post(
+                    f"/admin/checks/{cd_id}/preview",
+                    json={"company_code": "DN_TEST", "year": 2023},
+                )
+            assert r.status_code == 200
+            data = r.json()
+            assert data["error"] is None
+            assert data["count"] == 0
+            assert data["findings"] == []
+        finally:
+            _teardown(eng)
+
+    def test_preview_unknown_company_returns_error(self):
+        eng, sess = _setup_db()
+        try:
+            cd_id, _ = self._seed_check_and_company(sess)
+            client = TestClient(app)
+            _login_admin(client)
+            r = client.post(
+                f"/admin/checks/{cd_id}/preview",
+                json={"company_code": "GHOST", "year": 2023},
+            )
+            assert r.status_code == 200
+            data = r.json()
+            assert data["error"] is not None
+            assert data["findings"] is None
+        finally:
+            _teardown(eng)
+
+    def test_preview_check_not_found_returns_404(self):
+        eng, sess = _setup_db()
+        try:
+            client = TestClient(app)
+            _login_admin(client)
+            r = client.post(
+                "/admin/checks/9999/preview",
+                json={"company_code": "DN_TEST", "year": 2023},
+            )
+            assert r.status_code == 404
+        finally:
+            _teardown(eng)
+
+    def test_preview_requires_admin(self):
+        eng, sess = _setup_db()
+        try:
+            from app.auth import make_session_cookie, SessionUser
+            from app.models.user import ROLE_OFFICER
+            cookie = make_session_cookie(SessionUser(name="officer", role=ROLE_OFFICER))
+            client = TestClient(app)
+            r = client.post(
+                "/admin/checks/1/preview",
+                json={"company_code": "DN_TEST", "year": 2023},
+                cookies={"ahq_session": cookie},
+            )
+            assert r.status_code == 403
+        finally:
+            _teardown(eng)
