@@ -1,12 +1,12 @@
 # Phương pháp tính điểm rủi ro dữ liệu BCQT
 
-> **Tóm tắt:** Audit-HQ tính một chỉ số rủi ro từ 0 đến 1000 cho mỗi cặp (Doanh nghiệp, Năm tài chính), dựa trên các phát hiện chênh lệch giữa Báo cáo Quyết toán (BCQT), Báo cáo Cân đối (M15/M15a), Định mức thực tế (M16) và Bộ chứng từ Tờ khai (BCCT). Chỉ số được tính theo công thức **tỷ lệ trên độ phơi nhiễm** (rate-based), không cộng dồn tuyến tính theo số lượng phát hiện, nhằm loại bỏ thiên lệch quy mô.
+> **Tóm tắt:** Audit-HQ tính một chỉ số rủi ro từ 0 đến 1000 cho mỗi cặp (Doanh nghiệp, Năm tài chính), dựa trên các phát hiện chênh lệch nội bộ giữa các thành phần của Báo cáo Quyết toán (BCQT) — gồm Mẫu 15 (cân đối nguyên vật liệu), Mẫu 15a (cân đối thành phẩm), Mẫu 16 (định mức thực tế) — và đối chiếu với Bộ chứng từ Tờ khai (BCCT). Chỉ số được tính theo công thức **tỷ lệ trên độ phơi nhiễm** (rate-based), không cộng dồn tuyến tính theo số lượng phát hiện, nhằm loại bỏ thiên lệch quy mô.
 
 ---
 
 ## 1. Mục đích
 
-Audit-HQ phân tích chất lượng dữ liệu hồ sơ hải quan của doanh nghiệp và phát hiện các chênh lệch có thể là dấu hiệu rủi ro nghiệp vụ. Hệ thống thực hiện 16 phép kiểm tra (catalog MVP) trên dữ liệu đầu vào, sinh ra danh sách phát hiện (findings) kèm mức độ nghiêm trọng. Điểm rủi ro dữ liệu là cách tổng hợp các phát hiện đó thành một con số duy nhất để cán bộ Hải quan dễ so sánh, sắp xếp ưu tiên kiểm tra.
+Audit-HQ phân tích chất lượng dữ liệu hồ sơ hải quan của doanh nghiệp và phát hiện các chênh lệch có thể là dấu hiệu rủi ro nghiệp vụ. Hệ thống thực hiện 16 phép kiểm tra (catalog MVP) trên dữ liệu đầu vào — gồm các mẫu thành phần của Báo cáo Quyết toán (Mẫu 15, Mẫu 15a, Mẫu 16) và Bộ chứng từ Tờ khai — sinh ra danh sách phát hiện (findings) kèm mức độ nghiêm trọng. Điểm rủi ro dữ liệu là cách tổng hợp các phát hiện đó thành một con số duy nhất để cán bộ Hải quan dễ so sánh, sắp xếp ưu tiên kiểm tra.
 
 **Phạm vi:** Đây là chỉ số rủi ro về **chất lượng dữ liệu báo cáo**, không phản ánh mức tuân thủ pháp luật của doanh nghiệp. Phân loại tuân thủ chính thức thuộc thẩm quyền Tổng cục Hải quan, thực hiện theo Thông tư 81/2019/TT-BTC.
 
