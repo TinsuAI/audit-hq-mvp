@@ -16,6 +16,7 @@ RUN pip install -U pip && pip install -e .
 COPY app ./app
 COPY migrations ./migrations
 COPY scripts ./scripts
+COPY docs ./docs
 COPY alembic.ini ./
 
 # Build-time metadata (inject từ docker build --build-arg).
