@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.database import Base
+from app.database import Base, engine as _default_engine
 from app.models import (
     Company,
     DeclarationLine,
@@ -17,6 +17,18 @@ from app.models import (
     UomAlias,
     UomCanonical,
 )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_default_schema():
+    """Đảm bảo default engine có đủ schema cho test nào đụng default DB.
+
+    Pre-existing tests (vd test_spec_gen) gọi code path đọc bảng `ai_settings`
+    nhưng không setup DB → fail trên CI runner với fresh sqlite. create_all
+    idempotent, không ghi đè data nếu file đã có.
+    """
+    import app.models  # noqa: F401  load all models metadata trước create_all
+    Base.metadata.create_all(_default_engine)
 
 
 @pytest.fixture
