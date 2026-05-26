@@ -1,13 +1,13 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-05-26, cuối session jobs + scoring + legal docs):**
-> Branch `main` đã push + deploy. Live trên `audit-hq-demo.tinsu.ai` (build `222bf76`).
-> 314/314 tests pass. Async job runner + rate-based scoring + thư viện tài liệu pháp lý đã chạy.
+> **Trạng thái (2026-05-26, session catalog động):**
+> Branch `main` đã push + deploy. Live trên `audit-hq-demo.tinsu.ai` (build `9c96af2`).
+> 374/374 tests pass. Catalog check động (DSL 5 kind, no-exec) đã build và deploy.
 
 ## Current State
 
 ### Production (`audit-hq-demo.tinsu.ai`)
-- Build hiện tại: `222bf76` — legal docs ingest (deploy manual sau khi CI gặp HTTP 500).
+- Build hiện tại: `9c96af2` — dynamic check catalog (DSL 5 kind). Deploy manual (CI vẫn ổn định sau lần trước).
 - 4 DN demo với điểm sau khi rerun checks toàn bộ năm có data:
   - DN_001 Phương Đông: 238/Có chênh lệch nhỏ (2023-2025)
   - DN_003 Hoa Sen: 242/Có chênh lệch nhỏ (2021-2025)
@@ -43,6 +43,21 @@
 - Markdown render qua `app/routes/docs.py` + `PUBLIC_DOCS` whitelist 4-tuple `(file, title, description, category)`.
 - Navbar 📚 Tài liệu link.
 - Disclaimer pháp lý ở `companies_list.html` + `company_detail.html` link tới scoring-methodology.
+
+## Recent Changes (session 2026-05-26 catalog động)
+
+1 commit `9c96af2`, đã push + deploy. 374 tests pass.
+
+**Catalog check động (DSL, no-exec):**
+- `CheckDefinition` model (bảng `check_definitions`, status draft/published/disabled). Migration `646b92a93768`.
+- `DynamicCheckRunner`: 5 kind DSL — `threshold_compare`, `presence_check`, `aggregate_threshold`, `cross_table_match`, `ratio_threshold`. Full whitelist bảng + cột + agg fn + filter op — không eval/exec code.
+- Registry merge: `get_check_meta(code, session)` + `get_all_specs(session)` trả về dict gộp built-in SPECS + published dynamic checks.
+- Pipeline: `run_checks` tự load và chạy published X.* checks. Wipe findings X.* khi re-run.
+- Admin UI: `/admin/checks` list, `/admin/checks/new`, detail page, publish/disable/revert-draft endpoints. Navbar link "🔬 Kiểm tra mở rộng" cho admin.
+- `company_detail.html`: findings X.* hiện "Tuỳ chỉnh" badge, dùng `all_specs` (merged, per-request) thay SPECS global.
+- 60 tests mới (5 model, 8 registry, 33 runner, 3 pipeline, 11 admin routes).
+
+---
 
 ## Recent Changes (session 2026-05-26 jobs+scoring+docs)
 
