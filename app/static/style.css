@@ -1271,3 +1271,13 @@ p { margin: 0 0 var(--space-3); }
   font-weight: 500;
   font-size: 13px;
 }
+
+/* --- Docs sections (grouped by category) --- */
+.docs-section { margin: 32px 0; }
+.docs-section-title {
+  font-size: 18px;
+  color: #1d3557;
+  margin: 0 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #e5e7eb;
+}

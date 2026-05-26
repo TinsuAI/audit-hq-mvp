@@ -11,23 +11,28 @@
 <div class="page-header">
   <h1>Thư viện tài liệu</h1>
   <p class="page-subtitle">
-    Tài liệu giải thích phương pháp luận, công thức tính toán và các quy ước nghiệp vụ
-    được Audit-HQ áp dụng.
+    Tài liệu giải thích phương pháp luận của Audit-HQ và các văn bản pháp lý
+    liên quan đến nghiệp vụ Báo cáo Quyết toán hải quan.
   </p>
 </div>
 
-{% if entries %}
-<ul class="docs-list">
-  {% for entry in entries %}
-  <li class="docs-list-item">
-    <a href="/tai-lieu/{{ entry.slug }}" class="docs-card">
-      <h2 class="docs-card-title">{{ entry.title }}</h2>
-      <p class="docs-card-desc">{{ entry.description }}</p>
-      <span class="docs-card-link">Xem chi tiết →</span>
-    </a>
-  </li>
+{% if sections %}
+  {% for section in sections %}
+  <section class="docs-section">
+    <h2 class="docs-section-title">{{ section.label }}</h2>
+    <ul class="docs-list">
+      {% for entry in section.entries %}
+      <li class="docs-list-item">
+        <a href="/tai-lieu/{{ entry.slug }}" class="docs-card">
+          <h3 class="docs-card-title">{{ entry.title }}</h3>
+          <p class="docs-card-desc">{{ entry.description }}</p>
+          <span class="docs-card-link">Xem chi tiết →</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
   {% endfor %}
-</ul>
 {% else %}
 <p class="empty-state">Chưa có tài liệu nào.</p>
 {% endif %}

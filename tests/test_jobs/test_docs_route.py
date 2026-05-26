@@ -80,6 +80,41 @@ def test_docs_index_requires_auth():
         _teardown(new_engine)
 
 
+def test_docs_index_groups_methodology_and_legal():
+    new_engine, _ = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/tai-lieu")
+        text = r.text
+        # Hai section: Phương pháp luận + Văn bản pháp lý.
+        assert "Phương pháp luận" in text
+        assert "Văn bản pháp lý" in text
+        # Section pháp lý phải có 3 thông tư.
+        assert "tt-38-2015-tt-btc" in text
+        assert "tt-39-2018-tt-btc" in text
+        assert "tt-81-2019-tt-btc" in text
+    finally:
+        _teardown(new_engine)
+
+
+def test_legal_doc_renders():
+    new_engine, _ = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        for slug, expected_substr in [
+            ("tt-38-2015-tt-btc", "Mẫu 15/BCQT-NVLTP"),
+            ("tt-39-2018-tt-btc", "thông báo định mức trước"),
+            ("tt-81-2019-tt-btc", "5 Mức tuân thủ"),
+        ]:
+            r = client.get(f"/tai-lieu/{slug}")
+            assert r.status_code == 200, f"{slug} status {r.status_code}"
+            assert expected_substr in r.text, f"{slug} missing {expected_substr!r}"
+    finally:
+        _teardown(new_engine)
+
+
 def test_navbar_has_docs_link():
     new_engine, _ = _setup_db()
     try:
