@@ -71,15 +71,16 @@ def test_rule_score_ignores_rejected_findings() -> None:
 # --- tier_for ---
 
 def test_tier_boundaries() -> None:
+    # Ngưỡng mặc định: 50, 100, 300, 600, 1000 (configurable ở /admin/risk-tiers).
     assert tier_for(0) == "Dữ liệu nhất quán"
-    assert tier_for(100) == "Dữ liệu nhất quán"
-    assert tier_for(101) == "Có chênh lệch nhỏ"
-    assert tier_for(300) == "Có chênh lệch nhỏ"
-    assert tier_for(301) == "Cần rà soát"
-    assert tier_for(600) == "Cần rà soát"
-    assert tier_for(601) == "Có dấu hiệu bất thường"
-    assert tier_for(850) == "Có dấu hiệu bất thường"
-    assert tier_for(851) == "Bất thường nghiêm trọng"
+    assert tier_for(50) == "Dữ liệu nhất quán"
+    assert tier_for(51) == "Có chênh lệch nhỏ"
+    assert tier_for(100) == "Có chênh lệch nhỏ"
+    assert tier_for(101) == "Cần rà soát"
+    assert tier_for(300) == "Cần rà soát"
+    assert tier_for(301) == "Có dấu hiệu bất thường"
+    assert tier_for(600) == "Có dấu hiệu bất thường"
+    assert tier_for(601) == "Bất thường nghiêm trọng"
     assert tier_for(1000) == "Bất thường nghiêm trọng"
 
 

@@ -1473,3 +1473,24 @@ p { margin: 0 0 var(--space-3); }
 .app-header .nav-dropdown-logout:hover { background: #fee2e2; color: #991b1b; }
 .app-header .nav-dropdown-form { margin: 0; }
 .app-header .nav-user-dropdown .user-name { color: inherit; }
+
+/* --- alert variants ngoài alert-warning --- */
+.alert-success {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #6ee7b7;
+}
+.alert-error {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+.btn-link {
+  background: transparent;
+  border: none;
+  color: var(--c-brand-600, #1d3557);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+}
+.btn-link:hover { color: var(--c-brand-700, #0f2030); }

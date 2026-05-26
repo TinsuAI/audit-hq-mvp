@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Ngưỡng hạng rủi ro — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Audit-HQ</a>
+  <span class="sep">›</span>
+  Quản trị
+  <span class="sep">›</span>
+  Ngưỡng hạng rủi ro
+</nav>
+
+<div class="page-header">
+  <h1>Ngưỡng hạng rủi ro dữ liệu</h1>
+  <p class="page-subtitle">
+    Cấu hình 5 ngưỡng cận trên cho điểm rủi ro 0–1000. Mỗi (doanh nghiệp, năm)
+    được xếp vào 1 trong 5 hạng dựa theo các ngưỡng này.
+    Đổi ngưỡng <em>không</em> chạy lại kiểm tra — chỉ thay đổi cách dán nhãn
+    cho điểm đã có. Xem giải thích phương pháp tại
+    <a href="/tai-lieu/scoring-methodology">/tai-lieu/scoring-methodology</a>.
+  </p>
+</div>
+
+{% if saved %}
+<div class="alert alert-success" role="status">✅ Đã lưu ngưỡng mới.</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-error" role="alert">⚠️ {{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <h3 class="card-title">Ngưỡng hiện tại</h3>
+  <table class="catalog-table" style="margin-top:8px">
+    <thead>
+      <tr>
+        <th style="width:60px">#</th>
+        <th>Hạng</th>
+        <th style="width:200px">Khoảng điểm</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tiers %}
+      <tr>
+        <td>{{ t.index }}</td>
+        <td>
+          <span class="tier-pill {{ t.css }}">{{ t.label }}</span>
+        </td>
+        <td class="text-mono">
+          {% if t.index == 1 %}0{% else %}{{ t.lower + 1 }}{% endif %}
+          – {{ t.upper }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if is_default %}
+  <p style="margin:10px 0 0;font-size:var(--fs-sm);color:var(--c-text-muted)">
+    Đang dùng giá trị mặc định.
+  </p>
+  {% endif %}
+</div>
+
+<form method="post" action="/admin/risk-tiers" class="card" style="margin-top:16px">
+  <h3 class="card-title">Chỉnh ngưỡng</h3>
+  <p style="font-size:var(--fs-sm);color:var(--c-text-muted);margin-bottom:14px">
+    Nhập cận trên cho từng hạng. 5 số phải tăng dần, dương, và ngưỡng cuối
+    bắt buộc bằng <strong>1000</strong> (vì điểm tối đa là 1000).
+  </p>
+
+  {% for t in tiers %}
+  <div class="form-row" style="align-items:center;gap:12px;margin-bottom:10px">
+    <div style="flex:0 0 220px">
+      <span class="tier-pill {{ t.css }}">{{ t.index }}. {{ t.label }}</span>
+    </div>
+    <div class="form-field" style="flex:0 0 160px;margin-bottom:0">
+      <label class="form-label" for="upper_{{ t.index }}">
+        Cận trên
+      </label>
+      <input
+        type="number" min="1" max="1000" step="1"
+        id="upper_{{ t.index }}" name="upper_{{ t.index }}"
+        value="{{ uppers[t.index - 1] }}"
+        class="form-input"
+        {% if t.is_last %}readonly{% endif %}
+        required
+      >
+    </div>
+    <div style="flex:1;font-size:var(--fs-sm);color:var(--c-text-muted)">
+      Mặc định: <span class="text-mono">{{ defaults[t.index - 1] }}</span>
+      {% if t.is_last %}<em>(luôn = 1000)</em>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <div style="display:flex;gap:12px;margin-top:16px;align-items:center">
+    <button type="submit" class="btn btn-primary">Lưu ngưỡng</button>
+    <button
+      type="submit" formaction="/admin/risk-tiers/reset"
+      class="btn btn-secondary"
+      onclick="return confirm('Khôi phục về ngưỡng mặc định?')"
+    >Khôi phục mặc định</button>
+    <a href="/companies" class="btn btn-link">Huỷ</a>
+  </div>
+</form>
+
+{% endblock %}

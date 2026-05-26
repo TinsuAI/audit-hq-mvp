@@ -35,13 +35,25 @@ MAX_RULE_SCORE = 10.0
 
 # 5 hạng neutral cho score 0-1000. CẬN TRÊN (inclusive) → label.
 # KHÔNG dùng tên "Mức N" để tránh nhầm với TT 81/2019.
+# `TIERS` chỉ là default cho code path legacy / tests. Runtime nên dùng
+# `app.app_settings.get_tiers()` để đọc ngưỡng admin có thể chỉnh ở
+# /admin/risk-tiers — cùng nhãn, ngưỡng cận trên có thể khác.
 TIERS: tuple[tuple[int, str, str], ...] = (
-    (100,  "Dữ liệu nhất quán",        "tier-green"),
-    (300,  "Có chênh lệch nhỏ",        "tier-yellow-green"),
-    (600,  "Cần rà soát",              "tier-yellow"),
-    (850,  "Có dấu hiệu bất thường",   "tier-orange"),
+    (50,   "Dữ liệu nhất quán",        "tier-green"),
+    (100,  "Có chênh lệch nhỏ",        "tier-yellow-green"),
+    (300,  "Cần rà soát",              "tier-yellow"),
+    (600,  "Có dấu hiệu bất thường",   "tier-orange"),
     (1000, "Bất thường nghiêm trọng",  "tier-red"),
 )
+
+
+def _active_tiers() -> tuple[tuple[int, str, str], ...]:
+    """Đọc tiers runtime; fallback default nếu thiếu DB context."""
+    try:
+        from app.app_settings import get_tiers
+        return get_tiers()
+    except Exception:
+        return TIERS
 
 
 # --- Legacy linear-sum (giữ nguyên cho backward compat) ---
@@ -96,19 +108,21 @@ def compute_rule_score(findings: Iterable[Finding], denominator: int) -> float:
 
 
 def tier_for(score: int) -> str:
-    """Map score 0-1000 → 1 trong 5 nhãn neutral."""
-    for upper, label, _css in TIERS:
+    """Map score 0-1000 → 1 trong 5 nhãn neutral (ngưỡng từ app_settings)."""
+    tiers = _active_tiers()
+    for upper, label, _css in tiers:
         if score <= upper:
             return label
-    return TIERS[-1][1]
+    return tiers[-1][1]
 
 
 def tier_css_for(score: int) -> str:
-    """CSS class cho hạng (vd tier-green, tier-red)."""
-    for upper, _label, css in TIERS:
+    """CSS class cho hạng (vd tier-green, tier-red) — ngưỡng từ app_settings."""
+    tiers = _active_tiers()
+    for upper, _label, css in tiers:
         if score <= upper:
             return css
-    return TIERS[-1][2]
+    return tiers[-1][2]
 
 
 def compute_company_year_score(
