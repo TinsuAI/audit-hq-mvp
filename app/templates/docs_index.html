@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Thư viện tài liệu — Audit-HQ{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  Tài liệu
+</nav>
+
+<div class="page-header">
+  <h1>Thư viện tài liệu</h1>
+  <p class="page-subtitle">
+    Tài liệu giải thích phương pháp luận, công thức tính toán và các quy ước nghiệp vụ
+    được Audit-HQ áp dụng.
+  </p>
+</div>
+
+{% if entries %}
+<ul class="docs-list">
+  {% for entry in entries %}
+  <li class="docs-list-item">
+    <a href="/tai-lieu/{{ entry.slug }}" class="docs-card">
+      <h2 class="docs-card-title">{{ entry.title }}</h2>
+      <p class="docs-card-desc">{{ entry.description }}</p>
+      <span class="docs-card-link">Xem chi tiết →</span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty-state">Chưa có tài liệu nào.</p>
+{% endif %}
+{% endblock %}

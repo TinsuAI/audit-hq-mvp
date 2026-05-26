@@ -53,6 +53,46 @@ def test_scoring_methodology_requires_auth():
         _teardown(new_engine)
 
 
+def test_docs_index_lists_all_public_docs():
+    new_engine, _ = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/tai-lieu")
+        assert r.status_code == 200
+        text = r.text
+        # Index phải có title + link tới scoring-methodology.
+        assert "Thư viện tài liệu" in text or "Tài liệu" in text
+        assert "/tai-lieu/scoring-methodology" in text
+        assert "Phương pháp tính điểm" in text
+    finally:
+        _teardown(new_engine)
+
+
+def test_docs_index_requires_auth():
+    new_engine, _ = _setup_db()
+    try:
+        client = TestClient(app)
+        r = client.get("/tai-lieu", follow_redirects=False)
+        assert r.status_code == 303
+        assert "/login" in r.headers.get("location", "")
+    finally:
+        _teardown(new_engine)
+
+
+def test_navbar_has_docs_link():
+    new_engine, _ = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/companies")
+        assert r.status_code == 200
+        # Navbar phải có link tới /tai-lieu.
+        assert 'href="/tai-lieu"' in r.text
+    finally:
+        _teardown(new_engine)
+
+
 def test_scoring_methodology_renders_md_content():
     new_engine, _ = _setup_db()
     try:

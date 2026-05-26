@@ -26,11 +26,14 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals["app_version"] = VERSION
 templates.env.globals["app_version_string"] = version_string()
 
-# Map slug → (file, title). Whitelist các trang được công khai.
-PUBLIC_DOCS: dict[str, tuple[str, str]] = {
+# Mỗi entry: slug → (file, title, description ngắn).
+# Whitelist — chỉ slug ở đây mới được render. Thêm tài liệu mới: thêm 1 entry.
+PUBLIC_DOCS: dict[str, tuple[str, str, str]] = {
     "scoring-methodology": (
         "scoring-methodology.md",
         "Phương pháp tính điểm rủi ro",
+        "Cách Audit-HQ tính điểm 0-1000 cho mỗi (DN, năm), giải thích "
+        "công thức rate-based và 5 hạng cảnh báo. Tham chiếu pháp lý.",
     ),
 }
 
@@ -52,6 +55,23 @@ def _render_doc(filename: str) -> str:
     )
 
 
+@router.get("/tai-lieu", response_class=HTMLResponse)
+def docs_index(
+    request: Request,
+    user: SessionUser = Depends(require_user),
+) -> HTMLResponse:
+    """Index trang liệt kê toàn bộ tài liệu công khai."""
+    entries = [
+        {"slug": slug, "title": title, "description": description}
+        for slug, (_filename, title, description) in PUBLIC_DOCS.items()
+    ]
+    return templates.TemplateResponse(
+        request,
+        "docs_index.html",
+        {"user": user, "entries": entries},
+    )
+
+
 @router.get("/tai-lieu/{slug}", response_class=HTMLResponse)
 def render_doc(
     slug: str,
@@ -61,7 +81,7 @@ def render_doc(
     entry = PUBLIC_DOCS.get(slug)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Không có tài liệu '{slug}'")
-    filename, title = entry
+    filename, title, _description = entry
     try:
         html_body = _render_doc(filename)
     except FileNotFoundError:

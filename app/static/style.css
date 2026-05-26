@@ -1227,3 +1227,47 @@ p { margin: 0 0 var(--space-3); }
 .docs-article ul, .docs-article ol { padding-left: 24px; }
 .docs-article li { margin: 4px 0; }
 .docs-article p { margin: 12px 0; }
+
+/* --- Docs index (thư viện tài liệu) --- */
+.docs-list {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+.docs-list-item { margin: 0; }
+.docs-card {
+  display: block;
+  padding: 20px 24px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  height: 100%;
+}
+.docs-card:hover {
+  border-color: #1d3557;
+  box-shadow: 0 4px 12px rgba(29, 53, 87, 0.1);
+  transform: translateY(-1px);
+}
+.docs-card-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  color: #1d3557;
+  font-weight: 600;
+}
+.docs-card-desc {
+  margin: 0 0 12px;
+  color: #4b5563;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.docs-card-link {
+  color: #1d3557;
+  font-weight: 500;
+  font-size: 13px;
+}
