@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+log = logging.getLogger(__name__)
+
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import SessionUser, require_admin
 from app.checks.dynamic_runner import DynamicCheckRunner, SpecValidationError
+from app.checks.spec_gen import SpecGenError, generate_spec
 from app.database import get_db
 from app.models.check_definition import CheckDefinition, CheckStatus, next_check_code
 from app.version import VERSION, version_string
@@ -111,6 +115,29 @@ def checks_create(
     db.add(cd)
     db.commit()
     return RedirectResponse(url=f"/admin/checks/{cd.id}", status_code=303)
+
+
+@router.post("/generate-spec", response_class=JSONResponse)
+def checks_generate_spec(
+    payload: dict = Body(...),
+    user: SessionUser = Depends(require_admin),
+) -> JSONResponse:
+    """Gọi AI sinh spec JSON từ mô tả nghiệp vụ.
+
+    Body: {"description": str, "kind_hint": str | null}
+    Returns: {"spec": dict | null, "error": str | null}
+    """
+    description = (payload.get("description") or "").strip()
+    kind_hint = payload.get("kind_hint") or None
+
+    try:
+        spec = generate_spec(description, kind_hint=kind_hint)
+        return JSONResponse({"spec": spec, "error": None})
+    except SpecGenError as e:
+        return JSONResponse({"spec": None, "error": str(e)})
+    except Exception as e:
+        log.exception("Unexpected error in generate_spec")
+        return JSONResponse({"spec": None, "error": f"Lỗi không mong đợi: {e}"})
 
 
 @router.get("/{check_id}", response_class=HTMLResponse)

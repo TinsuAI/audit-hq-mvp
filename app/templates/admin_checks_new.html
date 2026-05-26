@@ -20,21 +20,51 @@
 </div>
 {% endif %}
 
-<div class="card">
-  <form method="post" action="/admin/checks">
+<!-- AI Assist Panel -->
+<div class="card" style="border-color:var(--c-info);background:var(--c-surface-alt,#f8fafd)">
+  <h3 class="card-title" style="color:var(--c-info)">🤖 Gợi ý spec từ AI</h3>
+  <p style="font-size:var(--fs-sm);color:var(--c-text-muted);margin-top:0">
+    Mô tả ý tưởng kiểm tra bằng tiếng Việt — AI sẽ sinh spec JSON và điền vào form bên dưới.
+    Bạn có thể chỉnh sửa trước khi lưu.
+  </p>
+  <div class="form-field" style="margin-bottom:0.75rem">
+    <label class="form-label">Mô tả nghiệp vụ</label>
+    <textarea id="ai-description" class="form-input" rows="3"
+              placeholder="Ví dụ: Phát hiện mã NVL có tồn kho cuối kỳ âm (closing_qty &lt; 0)&#10;Ví dụ: So sánh số lượng nhập M15 với tờ khai BCCT, cảnh báo khi lệch quá 10%"
+              style="resize:vertical"></textarea>
+  </div>
+  <div class="form-row" style="align-items:center;gap:0.75rem;margin-bottom:0">
+    <div style="display:flex;align-items:center;gap:0.5rem">
+      <label class="form-label" style="margin:0;white-space:nowrap">Loại gợi ý (tuỳ chọn):</label>
+      <select id="ai-kind-hint" class="form-select" style="max-width:20rem">
+        <option value="">— Để AI tự chọn —</option>
+        {% for k, label in kind_labels.items() %}
+          <option value="{{ k }}">{{ k }} — {{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="button" id="ai-gen-btn" class="btn btn-primary"
+            onclick="generateSpec()">✨ Gợi ý spec</button>
+  </div>
+  <div id="ai-status" style="margin-top:0.75rem;font-size:var(--fs-sm);display:none"></div>
+</div>
+
+<!-- Main form -->
+<div class="card mt-2">
+  <form method="post" action="/admin/checks" id="check-form">
     <div class="form-field">
       <label class="form-label">Tiêu đề <span class="required">*</span></label>
-      <input type="text" name="title" class="form-input" required
+      <input type="text" name="title" id="field-title" class="form-input" required
              value="{{ form.get('title', '') }}" placeholder="Ví dụ: Tồn cuối NVL âm (mở rộng)">
     </div>
     <div class="form-field">
-      <label class="form-label">Mô tả</label>
-      <textarea name="description" class="form-input" rows="2"
+      <label class="form-label">Mô tả (hiển thị trong UI)</label>
+      <textarea name="description" id="field-desc" class="form-input" rows="2"
                 placeholder="Mô tả ngắn nghiệp vụ kiểm tra">{{ form.get('description', '') }}</textarea>
     </div>
     <div class="form-field">
       <label class="form-label">Loại kiểm tra (kind) <span class="required">*</span></label>
-      <select name="kind" class="form-select" required>
+      <select name="kind" id="field-kind" class="form-select" required>
         {% for k, label in kind_labels.items() %}
           <option value="{{ k }}" {% if form.get('kind') == k %}selected{% endif %}>{{ k }} — {{ label }}</option>
         {% endfor %}
@@ -42,7 +72,7 @@
     </div>
     <div class="form-field">
       <label class="form-label">Spec JSON <span class="required">*</span></label>
-      <textarea name="spec_json" class="form-input" rows="12" required
+      <textarea name="spec_json" id="field-spec" class="form-input" rows="14" required
                 style="font-family:monospace;font-size:var(--fs-sm)"
                 placeholder='{"kind": "threshold_compare", "table": "nvl_balances", ...}'>{{ form.get('spec_json', '') }}</textarea>
       <p class="form-hint">
@@ -71,23 +101,12 @@
 </div>
 
 <div class="card mt-3">
-  <h3 class="card-title">Ví dụ spec (threshold_compare)</h3>
-  <pre style="font-size:var(--fs-sm);overflow:auto;margin:0">{
-  "kind": "threshold_compare",
-  "table": "nvl_balances",
-  "subject_col": "material_code",
-  "metric_col": "closing_qty",
-  "thresholds": [
-    {"lt": 0, "severity": "critical"}
-  ],
-  "title_template": "Tồn cuối {subject_key} âm ({value:.2f})"
-}</pre>
-  <h3 class="card-title mt-3">Bảng được phép (table)</h3>
+  <h3 class="card-title">Bảng được phép (table)</h3>
   <ul style="font-size:var(--fs-sm);margin:0;padding-left:1.5rem">
-    <li><code>nvl_balances</code> — M15 cân đối NVL</li>
-    <li><code>sp_balances</code> — M15a cân đối TP</li>
-    <li><code>declaration_lines</code> — BCCT tờ khai XNK</li>
-    <li><code>norms</code> — M16 định mức</li>
+    <li><code>nvl_balances</code> — M15 cân đối NVL (material_code, opening/import/reexport/repurpose/production_out/other_out/closing_qty)</li>
+    <li><code>sp_balances</code> — M15a cân đối TP (product_code, opening/intake/repurpose/export/other_out/closing_qty)</li>
+    <li><code>declaration_lines</code> — BCCT tờ khai XNK (item_code, customs_code, quantity, unit_price, value_total…)</li>
+    <li><code>norms</code> — M16 định mức (product_code, material_code, norm_qty)</li>
   </ul>
   <h3 class="card-title mt-3">Format threshold (lt-ascending, first-match wins)</h3>
   <pre style="font-size:var(--fs-sm);margin:0">[
@@ -96,5 +115,80 @@
   {"gte": 20, "severity": "warning"} // ≥ 20% → Cảnh báo
 ]</pre>
 </div>
+
+<script>
+async function generateSpec() {
+  const description = document.getElementById('ai-description').value.trim();
+  const kindHint = document.getElementById('ai-kind-hint').value || null;
+  const btn = document.getElementById('ai-gen-btn');
+  const status = document.getElementById('ai-status');
+
+  if (!description) {
+    showStatus('⚠️ Nhập mô tả nghiệp vụ trước khi gọi AI.', 'warning');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Đang gọi AI…';
+  showStatus('Đang gọi AI sinh spec…', 'info');
+
+  try {
+    const resp = await fetch('/admin/checks/generate-spec', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({description, kind_hint: kindHint}),
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      showStatus('❌ ' + data.error, 'error');
+      return;
+    }
+
+    // Fill form fields from spec
+    const spec = data.spec;
+    const specStr = JSON.stringify(spec, null, 2);
+    document.getElementById('field-spec').value = specStr;
+
+    // Update kind select if spec has kind
+    if (spec.kind) {
+      const kindSel = document.getElementById('field-kind');
+      for (const opt of kindSel.options) {
+        if (opt.value === spec.kind) { kindSel.value = spec.kind; break; }
+      }
+    }
+
+    // Suggest title from title_template if title is empty
+    const titleField = document.getElementById('field-title');
+    if (!titleField.value && spec.title_template) {
+      titleField.value = spec.title_template.replace(/\{[^}]+\}/g, '…');
+    }
+
+    // Fill description with AI prompt description if empty
+    const descField = document.getElementById('field-desc');
+    if (!descField.value) {
+      descField.value = description;
+    }
+
+    showStatus('✅ Spec đã được điền. Kiểm tra và chỉnh sửa nếu cần trước khi lưu.', 'success');
+  } catch (err) {
+    showStatus('❌ Lỗi kết nối: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ Gợi ý spec';
+  }
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('ai-status');
+  el.style.display = 'block';
+  const colors = {
+    info: 'var(--c-info)', success: 'var(--c-success,#2d8a4e)',
+    error: 'var(--c-critical,#c0392b)', warning: 'var(--c-warning,#e67e22)',
+  };
+  el.style.color = colors[type] || 'inherit';
+  el.textContent = msg;
+}
+</script>
 
 {% endblock %}
