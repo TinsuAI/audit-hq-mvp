@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Danh mục kiểm tra — Audit-HQ{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  Danh mục kiểm tra
+</nav>
+
+<div class="page-header">
+  <h1>Danh mục kiểm tra Audit-HQ</h1>
+  <p class="page-subtitle">
+    Toàn bộ <strong>{{ counts.total }} kiểm tra</strong> theo §4 đề án Audit-HQ — phân bố theo
+    2 giai đoạn và 12 nhóm. Trang này là <em>danh mục</em> (catalog); để xem kết quả chạy
+    trên dữ liệu doanh nghiệp, vào trang doanh nghiệp cụ thể.
+  </p>
+</div>
+
+<section class="catalog-summary">
+  <div class="catalog-summary-card">
+    <div class="catalog-summary-num">{{ counts.total }}</div>
+    <div class="catalog-summary-label">Tổng số kiểm tra</div>
+  </div>
+  <div class="catalog-summary-card">
+    <div class="catalog-summary-num">{{ counts.mvp }}</div>
+    <div class="catalog-summary-label">{{ status_icon.mvp }} MVP — đã build</div>
+  </div>
+  <div class="catalog-summary-card">
+    <div class="catalog-summary-num">{{ counts.wip }}</div>
+    <div class="catalog-summary-label">{{ status_icon.wip }} Bổ sung thí điểm</div>
+  </div>
+  <div class="catalog-summary-card">
+    <div class="catalog-summary-num">{{ counts.conditional }}</div>
+    <div class="catalog-summary-label">{{ status_icon.conditional }} Cần thêm điều kiện</div>
+  </div>
+</section>
+
+<section class="catalog-legend">
+  <strong>Mức độ:</strong>
+  <span>{{ severity_icon.critical }} Nghiêm trọng</span>
+  <span>{{ severity_icon.warning }} Cảnh báo</span>
+  <span>{{ severity_icon.info }} Thông tin</span>
+  <span class="catalog-legend-sep">·</span>
+  <strong>Trạng thái:</strong>
+  <span>{{ status_icon.mvp }} MVP</span>
+  <span>{{ status_icon.wip }} Bổ sung thí điểm</span>
+  <span>{{ status_icon.conditional }} Cần điều kiện</span>
+</section>
+
+{% for phase in phases %}
+<section class="catalog-phase">
+  <h2 class="catalog-phase-title">{{ phase.title }}</h2>
+  <p class="catalog-phase-sub">{{ phase.subtitle }}</p>
+
+  {% for grp in phase.groups %}
+  <details class="catalog-group" open>
+    <summary class="catalog-group-summary">
+      <span class="catalog-group-name">
+        Nhóm {{ grp.group }} — {{ grp.name }}
+        <span class="catalog-group-count">({{ grp.entries|length }} kiểm tra)</span>
+      </span>
+    </summary>
+    {% if grp.note %}
+    <p class="catalog-group-note">{{ grp.note }}</p>
+    {% endif %}
+    <table class="catalog-table">
+      <thead>
+        <tr>
+          <th class="col-code">Mã</th>
+          <th class="col-title">Vấn đề</th>
+          <th class="col-risk">Rủi ro nghiệp vụ</th>
+          <th class="col-sev">Mức</th>
+          <th class="col-status">Trạng thái</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in grp.entries %}
+        <tr>
+          <td class="col-code"><strong>{{ e.code }}</strong></td>
+          <td class="col-title">
+            <div class="catalog-title">{{ e.title }}</div>
+            <div class="catalog-problem">{{ e.problem }}</div>
+          </td>
+          <td class="col-risk">{{ e.risk }}</td>
+          <td class="col-sev">
+            {% for sev in e.severities %}{{ severity_icon[sev] }}{% endfor %}
+          </td>
+          <td class="col-status">
+            <span class="catalog-status catalog-status-{{ e.status }}">
+              {{ status_icon[e.status] }} {{ status_label[e.status] }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endfor %}
+</section>
+{% endfor %}
+{% endblock %}

@@ -27,20 +27,34 @@
     </span>
   </a>
   <div class="user-menu">
-    {% if user.is_admin %}
-    <a href="/admin/units" class="header-link">⚙️ Đơn vị tính</a>
-    <a href="/admin/checks" class="header-link">🔬 Kiểm tra mở rộng</a>
-    <a href="/admin/ai" class="header-link">🤖 AI</a>
-    <a href="/admin/users" class="header-link">👥 Người dùng</a>
-    {% endif %}
+    <a href="/danh-muc-kiem-tra" class="header-link" title="Danh mục 49 kiểm tra">📑 Danh mục</a>
     <a href="/tai-lieu" class="header-link" title="Thư viện tài liệu">📚 Tài liệu</a>
     <a href="/jobs" class="header-link" id="jobs-badge-link" title="Hàng đợi công việc">
       📋 Công việc <span class="jobs-badge" id="jobs-badge" style="display:none"></span>
     </a>
-    <span class="user-name">👤 {{ user }}</span>
-    <form method="post" action="/logout" style="margin:0">
-      <button type="submit" class="logout-btn">Đăng xuất</button>
-    </form>
+    {% if user.is_admin %}
+    <details class="nav-dropdown">
+      <summary class="header-link nav-dropdown-toggle" title="Quản trị hệ thống">
+        ⚙️ Quản trị <span class="nav-caret">▾</span>
+      </summary>
+      <div class="nav-dropdown-menu">
+        <a href="/admin/checks" class="nav-dropdown-item">🔬 Kiểm tra mở rộng</a>
+        <a href="/admin/units" class="nav-dropdown-item">📐 Đơn vị tính</a>
+        <a href="/admin/ai" class="nav-dropdown-item">🤖 Cấu hình AI</a>
+        <a href="/admin/users" class="nav-dropdown-item">👥 Người dùng</a>
+      </div>
+    </details>
+    {% endif %}
+    <details class="nav-dropdown nav-user-dropdown">
+      <summary class="header-link nav-dropdown-toggle">
+        <span class="user-name">👤 {{ user }}</span> <span class="nav-caret">▾</span>
+      </summary>
+      <div class="nav-dropdown-menu nav-dropdown-menu-right">
+        <form method="post" action="/logout" class="nav-dropdown-form">
+          <button type="submit" class="nav-dropdown-item nav-dropdown-logout">Đăng xuất</button>
+        </form>
+      </div>
+    </details>
   </div>
 </header>
 {% endif %}
@@ -74,6 +88,13 @@
   update();
   setInterval(update, 10000);
 })();
+
+// Close nav dropdowns when clicking outside.
+document.addEventListener("click", function (ev) {
+  document.querySelectorAll(".nav-dropdown[open]").forEach(function (d) {
+    if (!d.contains(ev.target)) d.removeAttribute("open");
+  });
+});
 </script>
 {% endif %}
 
