@@ -44,6 +44,20 @@ class TestThresholdCompare:
         assert findings[0].subject_key == "NVL001"
         assert "NVL001" in findings[0].title
 
+    def test_finding_has_evidence_and_subject_type(self, session, company):
+        """Dynamic finding phải có evidence_refs trỏ về Tầng 1 (§2.2 đề án),
+        và subject_type khớp với subject_col của spec — không hardcode."""
+        add_nvl(session, company.id, material_code="NVL001", closing=-5)
+        session.commit()
+        f = _run(self.SPEC, session, company.id)[0]
+        assert f.subject_type == "material_code"  # khớp spec.subject_col
+        assert f.evidence_refs, "Dynamic finding phải có evidence_refs"
+        ref = f.evidence_refs[0]
+        assert ref["table"] == "nvl_balances"
+        assert ref["filter"]["company_id"] == company.id
+        assert ref["filter"]["period_year"] == 2024
+        assert ref["filter"]["material_code"] == "NVL001"
+
     def test_no_fire_when_above_threshold(self, session, company):
         add_nvl(session, company.id, material_code="NVL001", closing=10)
         session.commit()

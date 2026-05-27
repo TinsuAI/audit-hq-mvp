@@ -178,6 +178,7 @@ def _make_finding(
     company_id: int,
     year: int,
     subject_key: str,
+    subject_type: str,
     severity: str,
     title: str,
     details: dict,
@@ -188,12 +189,54 @@ def _make_finding(
         period_year=year,
         check_code=code,
         severity=severity,
-        subject_type="material_code",
+        subject_type=subject_type,
         subject_key=subject_key,
         title=title,
         details=details,
         evidence_refs=evidence_refs or [],
     )
+
+
+def _evidence_ref(
+    table: str,
+    company_id: int,
+    year: int,
+    subject_col: str,
+    subject_key: str,
+    extra_filter: dict | None = None,
+) -> dict:
+    """Build 1 evidence ref point về Tầng 1 — `(company, year, subject)` trên `table`.
+
+    `extra_filter` để thêm điều kiện đã có ở spec (vd customs_code__in=[E11]).
+    """
+    filt: dict[str, object] = {
+        "company_id": company_id,
+        "period_year": year,
+        subject_col: subject_key,
+    }
+    if extra_filter:
+        filt.update(extra_filter)
+    return {"table": table, "filter": filt}
+
+
+def _spec_filter_to_evidence(spec_filter: dict | None) -> dict:
+    """Chuyển `{col__op: val}` spec → filter có thể dùng cho _resolve_evidence.
+
+    _resolve_evidence chỉ hỗ trợ eq + `col__in`, nên ta chỉ giữ những op đó.
+    Op khác (gt/lt/...) sẽ bị bỏ — evidence vẫn point đúng subject, chỉ là
+    không pre-filter ở dòng (cán bộ vẫn thấy đầy đủ dòng để diễn giải).
+    """
+    if not spec_filter:
+        return {}
+    out: dict[str, object] = {}
+    for key, val in spec_filter.items():
+        parts = key.rsplit("__", 1)
+        col, op = (parts[0], parts[1]) if len(parts) == 2 else (parts[0], "eq")
+        if op == "eq":
+            out[col] = val
+        elif op == "in":
+            out[f"{col}__in"] = sorted(val) if isinstance(val, (set, list, tuple)) else val
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -282,16 +325,19 @@ def _run_threshold_compare(
 ) -> list[Finding]:
     model = _get_model(spec["table"])
     table = spec["table"]
-    subject_col = _get_col(model, spec["subject_col"], table)
+    subject_col_name = spec["subject_col"]
+    subject_col = _get_col(model, subject_col_name, table)
     metric_col = _get_col(model, spec["metric_col"], table, col_type="numeric")
     thresholds = spec["thresholds"]
     title_tpl = spec.get("title_template", "Phát hiện {subject_key}: {value}")
+    spec_filter = spec.get("filter", {})
+    ev_filter = _spec_filter_to_evidence(spec_filter)
 
     q = select(subject_col, metric_col).where(
         model.company_id == company_id,
         model.period_year == year,
     )
-    q = _apply_filters(q, model, table, spec.get("filter", {}))
+    q = _apply_filters(q, model, table, spec_filter)
 
     findings = []
     for subject_key, value in session.execute(q):
@@ -302,8 +348,11 @@ def _run_threshold_compare(
             continue
         title = _render_title(title_tpl, subject_key=subject_key, value=float(value))
         findings.append(_make_finding(
-            code, company_id, year, str(subject_key), sev, title,
+            code, company_id, year, str(subject_key), subject_col_name, sev, title,
             {"value": float(value)},
+            evidence_refs=[_evidence_ref(
+                table, company_id, year, subject_col_name, str(subject_key), ev_filter,
+            )],
         ))
     return findings
 
@@ -311,33 +360,41 @@ def _run_threshold_compare(
 def _run_presence_check(
     code: str, spec: dict, session: Session, company_id: int, year: int,
 ) -> list[Finding]:
-    model_a = _get_model(spec["table_a"])
-    model_b = _get_model(spec["table_b"])
-    col_a = _get_col(model_a, spec["join_col_a"], spec["table_a"])
-    col_b = _get_col(model_b, spec["join_col_b"], spec["table_b"])
+    table_a, table_b = spec["table_a"], spec["table_b"]
+    model_a = _get_model(table_a)
+    model_b = _get_model(table_b)
+    join_a, join_b = spec["join_col_a"], spec["join_col_b"]
+    col_a = _get_col(model_a, join_a, table_a)
+    col_b = _get_col(model_b, join_b, table_b)
     sev = spec["severity"]
     title_tpl = spec.get("title_template", "Thiếu tương ứng cho {subject_key}")
     mode = spec["mode"]
+    ev_filter_a = _spec_filter_to_evidence(spec.get("filter_a", {}))
+    ev_filter_b = _spec_filter_to_evidence(spec.get("filter_b", {}))
 
     q_a = select(col_a.label("key")).where(
         model_a.company_id == company_id,
         model_a.period_year == year,
     )
-    q_a = _apply_filters(q_a, model_a, spec["table_a"], spec.get("filter_a", {}))
+    q_a = _apply_filters(q_a, model_a, table_a, spec.get("filter_a", {}))
 
     q_b = select(col_b.label("key")).where(
         model_b.company_id == company_id,
         model_b.period_year == year,
     )
-    q_b = _apply_filters(q_b, model_b, spec["table_b"], spec.get("filter_b", {}))
+    q_b = _apply_filters(q_b, model_b, table_b, spec.get("filter_b", {}))
 
     set_a = {r.key for r in session.execute(q_a)}
     set_b = {r.key for r in session.execute(q_b)}
 
     if mode == "a_not_in_b":
+        # subject xuất hiện ở A nhưng vắng ở B → evidence trỏ về A.
         missing = set_a - set_b
+        ev_table, ev_col, ev_filter = table_a, join_a, ev_filter_a
     else:
+        # subject xuất hiện ở B nhưng vắng ở A → evidence trỏ về B.
         missing = set_b - set_a
+        ev_table, ev_col, ev_filter = table_b, join_b, ev_filter_b
 
     findings = []
     for key in sorted(missing):
@@ -345,7 +402,10 @@ def _run_presence_check(
             continue
         title = _render_title(title_tpl, subject_key=str(key))
         findings.append(_make_finding(
-            code, company_id, year, str(key), sev, title, {},
+            code, company_id, year, str(key), ev_col, sev, title, {},
+            evidence_refs=[_evidence_ref(
+                ev_table, company_id, year, ev_col, str(key), ev_filter,
+            )],
         ))
     return findings
 
@@ -366,17 +426,20 @@ def _run_aggregate_threshold(
 ) -> list[Finding]:
     model = _get_model(spec["table"])
     table = spec["table"]
-    subject_col = _get_col(model, spec["subject_col"], table)
+    subject_col_name = spec["subject_col"]
+    subject_col = _get_col(model, subject_col_name, table)
     metric_col = _get_col(model, spec["metric_col"], table, col_type="numeric")
     agg_fn = spec["agg_fn"]
     thresholds = spec["thresholds"]
     title_tpl = spec.get("title_template", "Tổng {subject_key}: {value}")
+    spec_filter = spec.get("filter", {})
+    ev_filter = _spec_filter_to_evidence(spec_filter)
 
     q = select(subject_col.label("key"), _agg_func(agg_fn, metric_col).label("val")).where(
         model.company_id == company_id,
         model.period_year == year,
     )
-    q = _apply_filters(q, model, table, spec.get("filter", {}))
+    q = _apply_filters(q, model, table, spec_filter)
     q = q.group_by(subject_col)
 
     findings = []
@@ -388,8 +451,11 @@ def _run_aggregate_threshold(
             continue
         title = _render_title(title_tpl, subject_key=str(key), value=float(val))
         findings.append(_make_finding(
-            code, company_id, year, str(key), sev, title,
+            code, company_id, year, str(key), subject_col_name, sev, title,
             {"value": float(val)},
+            evidence_refs=[_evidence_ref(
+                table, company_id, year, subject_col_name, str(key), ev_filter,
+            )],
         ))
     return findings
 
@@ -397,25 +463,29 @@ def _run_aggregate_threshold(
 def _run_cross_table_match(
     code: str, spec: dict, session: Session, company_id: int, year: int,
 ) -> list[Finding]:
-    model_a = _get_model(spec["table_a"])
-    model_b = _get_model(spec["table_b"])
-    col_a = _get_col(model_a, spec["join_col_a"], spec["table_a"])
-    col_b = _get_col(model_b, spec["join_col_b"], spec["table_b"])
-    metric_a = _get_col(model_a, spec["metric_col_a"], spec["table_a"], col_type="numeric")
-    metric_b = _get_col(model_b, spec["metric_col_b"], spec["table_b"], col_type="numeric")
+    table_a, table_b = spec["table_a"], spec["table_b"]
+    model_a = _get_model(table_a)
+    model_b = _get_model(table_b)
+    join_a, join_b = spec["join_col_a"], spec["join_col_b"]
+    col_a = _get_col(model_a, join_a, table_a)
+    col_b = _get_col(model_b, join_b, table_b)
+    metric_a = _get_col(model_a, spec["metric_col_a"], table_a, col_type="numeric")
+    metric_b = _get_col(model_b, spec["metric_col_b"], table_b, col_type="numeric")
+    ev_filter_a = _spec_filter_to_evidence(spec.get("filter_a", {}))
+    ev_filter_b = _spec_filter_to_evidence(spec.get("filter_b", {}))
 
     q_a = select(col_a.label("key"), _agg_func(spec["agg_fn_a"], metric_a).label("val")).where(
         model_a.company_id == company_id,
         model_a.period_year == year,
     )
-    q_a = _apply_filters(q_a, model_a, spec["table_a"], spec.get("filter_a", {}))
+    q_a = _apply_filters(q_a, model_a, table_a, spec.get("filter_a", {}))
     q_a = q_a.group_by(col_a)
 
     q_b = select(col_b.label("key"), _agg_func(spec["agg_fn_b"], metric_b).label("val")).where(
         model_b.company_id == company_id,
         model_b.period_year == year,
     )
-    q_b = _apply_filters(q_b, model_b, spec["table_b"], spec.get("filter_b", {}))
+    q_b = _apply_filters(q_b, model_b, table_b, spec.get("filter_b", {}))
     q_b = q_b.group_by(col_b)
 
     map_a = {r.key: float(r.val or 0) for r in session.execute(q_a)}
@@ -442,8 +512,12 @@ def _run_cross_table_match(
             title_tpl, subject_key=str(key), val_a=val_a, val_b=val_b, pct=pct,
         )
         findings.append(_make_finding(
-            code, company_id, year, str(key), sev, title,
+            code, company_id, year, str(key), join_a, sev, title,
             {"val_a": val_a, "val_b": val_b, "pct": pct},
+            evidence_refs=[
+                _evidence_ref(table_a, company_id, year, join_a, str(key), ev_filter_a),
+                _evidence_ref(table_b, company_id, year, join_b, str(key), ev_filter_b),
+            ],
         ))
     return findings
 
@@ -453,18 +527,21 @@ def _run_ratio_threshold(
 ) -> list[Finding]:
     model = _get_model(spec["table"])
     table = spec["table"]
-    subject_col = _get_col(model, spec["subject_col"], table)
+    subject_col_name = spec["subject_col"]
+    subject_col = _get_col(model, subject_col_name, table)
     num_col = _get_col(model, spec["numerator_col"], table, col_type="numeric")
     den_col = _get_col(model, spec["denominator_col"], table, col_type="numeric")
     scale_pct = spec.get("scale_pct", False)
     thresholds = spec["thresholds"]
     title_tpl = spec.get("title_template", "Tỷ lệ {subject_key}: {value:.2f}")
+    spec_filter = spec.get("filter", {})
+    ev_filter = _spec_filter_to_evidence(spec_filter)
 
     q = select(subject_col.label("key"), num_col.label("num"), den_col.label("den")).where(
         model.company_id == company_id,
         model.period_year == year,
     )
-    q = _apply_filters(q, model, table, spec.get("filter", {}))
+    q = _apply_filters(q, model, table, spec_filter)
 
     findings = []
     for key, num, den in session.execute(q):
@@ -477,8 +554,11 @@ def _run_ratio_threshold(
             continue
         title = _render_title(title_tpl, subject_key=str(key), value=value)
         findings.append(_make_finding(
-            code, company_id, year, str(key), sev, title,
+            code, company_id, year, str(key), subject_col_name, sev, title,
             {"value": value},
+            evidence_refs=[_evidence_ref(
+                table, company_id, year, subject_col_name, str(key), ev_filter,
+            )],
         ))
     return findings
 
