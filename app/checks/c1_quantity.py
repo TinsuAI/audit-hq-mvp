@@ -93,8 +93,8 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
             continue  # C1.1 chỉ áp với NVL có khai nhập trong M15
         bcct_qty = bcct_sums.get(r.material_code, 0.0)
         diff_pct = _pct_diff(bcct_qty, r.import_qty)
-        if abs(diff_pct) < 5.0:
-            continue  # dưới ngưỡng Thông tin
+        if abs(diff_pct) < 0.5:
+            continue  # floor 0.5% — coi như khớp (lọc nhiễu làm tròn).
         sev = severity_for("C1.1", abs(diff_pct))
         if sev is None:
             continue
@@ -252,8 +252,8 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
             continue
         bcct_qty = bcct_sums.get(r.product_code, 0.0)
         diff_pct = _pct_diff(bcct_qty, r.export_qty)
-        if abs(diff_pct) < 1.0:
-            continue
+        if abs(diff_pct) < 0.1:
+            continue  # floor 0.1% — coi như khớp (lọc nhiễu làm tròn).
         sev = severity_for("C1.4", abs(diff_pct))
         if sev is None:
             continue

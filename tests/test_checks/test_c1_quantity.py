@@ -38,10 +38,20 @@ def test_c1_1_no_fire_when_match(session, company):
     assert check_c1_1(session, company.id, 2024) == []
 
 
-def test_c1_1_no_fire_when_diff_under_5pct(session, company):
-    # Diff 4% — Thông tin nhưng vẫn dưới ngưỡng fire (theo design <5% skip).
+def test_c1_1_fires_info_when_diff_under_5pct(session, company):
+    # Diff 4% — Thông tin (INFO band 0.5% ≤ |diff| < 5%).
     add_nvl(session, company.id, material_code="A", imported=1000)
     add_decl(session, company.id, declaration_no="1", customs_code="E31", item_code="A", quantity=960)
+    session.commit()
+    findings = check_c1_1(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].severity == "info"
+
+
+def test_c1_1_no_fire_when_diff_under_floor(session, company):
+    # Diff 0.2% — dưới floor 0.5% (coi như khớp, lọc nhiễu).
+    add_nvl(session, company.id, material_code="A", imported=1000)
+    add_decl(session, company.id, declaration_no="1", customs_code="E31", item_code="A", quantity=998)
     session.commit()
     assert check_c1_1(session, company.id, 2024) == []
 
@@ -152,9 +162,20 @@ def test_c1_4_fires_when_export_diff(session, company):
     assert findings[0].severity == "critical"
 
 
-def test_c1_4_no_fire_when_within_1pct(session, company):
+def test_c1_4_fires_info_when_diff_under_1pct(session, company):
+    # Diff 0.5% — INFO band cho C1.4 (0.1% ≤ |diff| < 1%).
     add_sp(session, company.id, product_code="TP1", export_qty=1000)
     add_decl(session, company.id, declaration_no="1", customs_code="E62", item_code="TP1", quantity=995)
+    session.commit()
+    findings = check_c1_4(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].severity == "info"
+
+
+def test_c1_4_no_fire_when_under_floor(session, company):
+    # Diff 0.05% — dưới floor 0.1%.
+    add_sp(session, company.id, product_code="TP1", export_qty=1000)
+    add_decl(session, company.id, declaration_no="1", customs_code="E62", item_code="TP1", quantity=999.5)
     session.commit()
     assert check_c1_4(session, company.id, 2024) == []
 
