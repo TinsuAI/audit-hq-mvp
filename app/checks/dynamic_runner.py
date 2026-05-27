@@ -141,26 +141,26 @@ def _apply_filters(query, model, table: str, filters: dict[str, Any]):
 def _eval_threshold(value: float, thresholds: list[dict]) -> str | None:
     """Tìm severity theo danh sách band threshold. First-match wins.
 
-    Band format: {"lt": X, "severity": "critical"} hoặc {"gte": X, "severity": "warning"}.
+    Band format hỗ trợ nhiều op (gte+lt cho range):
+        {"gte": 5, "lt": 20, "severity": "warning"}  → match khi 5 ≤ value < 20
+        {"gte": 20, "severity": "critical"}          → match khi value ≥ 20
+
+    Trong cùng 1 band, mọi op phải đồng thời thoả (AND), không phải OR.
+    Band không có op nào (chỉ severity) bị bỏ qua an toàn.
     """
+    op_checks = {
+        "lt": lambda v, lim: v < lim,
+        "lte": lambda v, lim: v <= lim,
+        "gt": lambda v, lim: v > lim,
+        "gte": lambda v, lim: v >= lim,
+        "eq": lambda v, lim: v == lim,
+    }
     for band in thresholds:
         sev = band.get("severity")
-        matched = False
-        for op in _ALLOWED_THRESHOLD_OPS:
-            if op not in band:
-                continue
-            limit = band[op]
-            if op == "lt" and value < limit:
-                matched = True
-            elif op == "lte" and value <= limit:
-                matched = True
-            elif op == "gt" and value > limit:
-                matched = True
-            elif op == "gte" and value >= limit:
-                matched = True
-            elif op == "eq" and value == limit:
-                matched = True
-        if matched:
+        ops_in_band = [op for op in _ALLOWED_THRESHOLD_OPS if op in band]
+        if not ops_in_band:
+            continue  # band không có op nào → không match được
+        if all(op_checks[op](value, band[op]) for op in ops_in_band):
             return sev if sev else None
     return None
 

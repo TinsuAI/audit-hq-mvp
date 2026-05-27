@@ -107,6 +107,28 @@ class TestThresholdCompare:
         assert len(findings) == 1
         assert findings[0].subject_key == "NVL001"
 
+    def test_range_band_and_semantics(self, session, company):
+        """Band {gte: 5, lt: 20} phải AND-match: 5 ≤ value < 20."""
+        spec = {
+            **self.SPEC,
+            "thresholds": [
+                {"gte": 20, "severity": "critical"},
+                {"gte": 5, "lt": 20, "severity": "warning"},
+                {"gte": 0, "lt": 5, "severity": "info"},
+            ],
+        }
+        add_nvl(session, company.id, material_code="N_CRIT", closing=100)
+        add_nvl(session, company.id, material_code="N_WARN", closing=10)
+        add_nvl(session, company.id, material_code="N_INFO", closing=3)
+        add_nvl(session, company.id, material_code="N_NEG", closing=-1)  # không match band nào
+        session.commit()
+        findings = _run(spec, session, company.id)
+        sev_map = {f.subject_key: f.severity for f in findings}
+        assert sev_map.get("N_CRIT") == "critical"
+        assert sev_map.get("N_WARN") == "warning"
+        assert sev_map.get("N_INFO") == "info"
+        assert "N_NEG" not in sev_map
+
     def test_check_code_in_finding(self, session, company):
         add_nvl(session, company.id, material_code="NVL001", closing=-1)
         session.commit()
