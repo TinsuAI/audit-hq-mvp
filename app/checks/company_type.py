@@ -25,8 +25,11 @@ class CompanyType(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+# Mã loại hình NVL nhập (chỉ NVL, KHÔNG bao gồm MMTB).
+# E13 = nhập máy móc thiết bị miễn thuế của DNCX → KHÔNG nằm trong M15 (M15 chỉ NVL).
+# Dùng cho C1.1 / C1.2 / C1.3 / C1.7 + denominator NVL.
 IMPORT_CODES = {
-    CompanyType.DNCX: {"E11", "E15", "E13"},
+    CompanyType.DNCX: {"E11", "E15"},
     CompanyType.GIA_CONG: {"E21", "E23"},
     CompanyType.SXXK: {"E31", "E33"},
 }
@@ -37,8 +40,18 @@ EXPORT_CODES = {
     CompanyType.SXXK: {"E62"},
 }
 
-# Tờ khai dùng chung, không phân biệt loại hình DN.
+# Mã MMTB (máy móc thiết bị) miễn thuế — không phải NVL, có check riêng (C3.1, C4.x WIP).
+MMTB_CODES = {"E13"}
+
+# Mã dùng chung, không phân biệt loại hình DN (B13 tái xuất, A42 chuyển MĐSD nội địa).
 SHARED_CODES = {"B13", "A42"}
+
+# Tập mã giúp detect company type — gồm cả MMTB (E13 là chỉ báo DNCX rõ ràng).
+_DETECT_IMPORT_CODES = {
+    CompanyType.DNCX: IMPORT_CODES[CompanyType.DNCX] | MMTB_CODES,
+    CompanyType.GIA_CONG: IMPORT_CODES[CompanyType.GIA_CONG],
+    CompanyType.SXXK: IMPORT_CODES[CompanyType.SXXK],
+}
 
 
 def detect_company_type(session: Session, company_id: int, year: int) -> CompanyType:
@@ -57,7 +70,7 @@ def detect_company_type(session: Session, company_id: int, year: int) -> Company
         if not code:
             continue
         for t in counts:
-            if code in IMPORT_CODES[t] or code in EXPORT_CODES[t]:
+            if code in _DETECT_IMPORT_CODES[t] or code in EXPORT_CODES[t]:
                 counts[t] += n
 
     best_type, best_count = max(counts.items(), key=lambda kv: kv[1])

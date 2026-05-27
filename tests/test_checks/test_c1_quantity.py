@@ -95,6 +95,22 @@ def test_c1_2_fires_when_bcct_only(session, company):
     assert findings[0].subject_key == "MISSING"
 
 
+def test_c1_2_ignores_mmtb_E13_for_dncx(session, company):
+    """E13 (MMTB) không được coi là NVL nhập — không phải finding C1.2.
+
+    Trước fix: E13 trong IMPORT_CODES[DNCX] → mọi mã thiết bị nhập E13 bị flag
+    "thiếu trong M15" (M15 chỉ chứa NVL). 28% findings C1.2 demo là noise loại này.
+    """
+    add_decl(session, company.id, declaration_no="d1", customs_code="E11", item_code="NVL_OK", quantity=10)
+    add_decl(session, company.id, declaration_no="e1", customs_code="E42", item_code="TP1", quantity=5)
+    add_nvl(session, company.id, material_code="NVL_OK", imported=10)
+    # Thêm 1 tờ khai E13 (máy móc) — không được trở thành finding.
+    add_decl(session, company.id, declaration_no="m1", customs_code="E13", item_code="MAY_MOC", quantity=1)
+    session.commit()
+    findings = check_c1_2(session, company.id, 2024)
+    assert findings == [], f"E13 leak: {[f.subject_key for f in findings]}"
+
+
 def test_c1_2_no_fire_when_in_m15(session, company):
     add_nvl(session, company.id, material_code="A", imported=0)  # presence is enough
     add_decl(session, company.id, declaration_no="1", customs_code="E31", item_code="A", quantity=100)
