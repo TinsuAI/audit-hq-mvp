@@ -116,7 +116,7 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry(
         phase=1, group=1, code="C1.7",
         title="Tỷ lệ chuyển mục đích sử dụng vượt ngưỡng",
-        problem="`chuyển_mục_đích_sử_dụng` / `nhập_trong_kỳ` cao bất thường. Ngưỡng: >10% Cảnh báo · >25% Nghiêm trọng.",
+        problem="`chuyển_mục_đích_sử_dụng / (tồn_đầu_kỳ + nhập_trong_kỳ)` cao bất thường. Ngưỡng: ≥10% Cảnh báo · ≥25% Nghiêm trọng.",
         risk="Doanh nghiệp lợi dụng kẽ hở miễn thuế — nhập NVL miễn thuế rồi chuyển nội địa với tỷ lệ cao, biến đặc quyền miễn thuế thành kênh nhập hàng tiêu thụ nội địa.",
         severities=("warning", "critical"), status="mvp",
     ),

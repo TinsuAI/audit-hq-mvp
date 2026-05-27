@@ -107,8 +107,8 @@ register(CheckSpec(
     group=1,
     title="Tỷ lệ chuyển mục đích sử dụng vượt ngưỡng",
     description=(
-        "`chuyển_mục_đích_sử_dụng` / `nhập_trong_kỳ` cao bất thường. "
-        ">10% Cảnh báo · >25% Nghiêm trọng."
+        "`chuyển_mục_đích_sử_dụng / (tồn_đầu_kỳ + nhập_trong_kỳ)` cao bất thường. "
+        "≥10% Cảnh báo · ≥25% Nghiêm trọng."
     ),
     default_severity=Severity.WARNING,
 ))

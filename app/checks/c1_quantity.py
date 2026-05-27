@@ -351,7 +351,10 @@ def check_c1_7(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=sev.value,
             subject_type="material_code",
             subject_key=r.material_code,
-            title=f"NVL {r.material_code} chuyển MĐSD chiếm {pct:.1f}% tổng nhập",
+            title=(
+                f"NVL {r.material_code} chuyển MĐSD chiếm {pct:.1f}% "
+                f"(tồn đầu + nhập trong kỳ)"
+            ),
             details={
                 "repurpose": r.repurpose_qty,
                 "opening": r.opening_qty,
