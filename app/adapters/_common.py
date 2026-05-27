@@ -81,12 +81,21 @@ def find_date_in_text(text: str) -> date | None:
         return None
 
 
+_JUNK_CODES = {"", ".", "..", "...", "-", "--", "---", "_", "n/a", "na", "nan", "none", "null"}
+
+
 def normalize_code(code: str | None) -> str | None:
-    """Chuẩn hoá mã: bỏ khoảng trắng đầu/cuối, không đụng nội dung."""
+    """Chuẩn hoá mã: bỏ khoảng trắng đầu/cuối, loại các giá trị "không mã".
+
+    Trả None với mọi placeholder phổ biến (".", "-", "n/a", "nan", …) để
+    các check không bị xáo trộn bởi dòng tổng/tiêu đề trong tờ khai Excel.
+    """
     if code is None:
         return None
     s = str(code).strip()
-    return s or None
+    if not s or s.lower() in _JUNK_CODES:
+        return None
+    return s
 
 
 def normalize_name(text: str | None) -> str | None:
