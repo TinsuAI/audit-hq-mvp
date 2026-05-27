@@ -12,13 +12,14 @@
 
 <div class="page-header">
   <div class="page-title-group">
-    <h1>Kiểm tra mở rộng (catalog động)</h1>
+    <h1>Kiểm tra mở rộng (danh mục bổ sung)</h1>
     <p class="page-subtitle">
-      Check do admin tạo qua DSL khai báo — nằm ngoài catalog 49 chính thức của đề án.
-      Chỉ check <span class="badge published">published</span> mới chạy trong pipeline.
+      Các kiểm tra do quản trị viên tạo qua đặc tả khai báo — nằm ngoài danh mục 49
+      kiểm tra chính thức của đề án. Chỉ kiểm tra có trạng thái
+      <span class="badge published">đã công bố</span> mới chạy trong dây chuyền xử lý.
     </p>
   </div>
-  <a href="/admin/checks/new" class="btn btn-primary">+ Tạo check mới</a>
+  <a href="/admin/checks/new" class="btn btn-primary">+ Tạo kiểm tra mới</a>
 </div>
 
 {% if checks %}
@@ -28,7 +29,7 @@
       <tr>
         <th>Mã</th>
         <th>Tiêu đề</th>
-        <th>Loại (kind)</th>
+        <th>Loại</th>
         <th>Trạng thái</th>
         <th></th>
       </tr>
@@ -41,11 +42,11 @@
         <td>{{ kind_labels.get(c.kind, c.kind) }}</td>
         <td>
           {% if c.status == CheckStatus.PUBLISHED %}
-            <span class="badge published">✅ Published</span>
+            <span class="badge published">✅ Đã công bố</span>
           {% elif c.status == CheckStatus.DRAFT %}
-            <span class="badge draft">📝 Draft</span>
+            <span class="badge draft">📝 Nháp</span>
           {% else %}
-            <span class="badge disabled">⏸ Disabled</span>
+            <span class="badge disabled">⏸ Đã tắt</span>
           {% endif %}
         </td>
         <td><a href="/admin/checks/{{ c.id }}">Chi tiết →</a></td>
@@ -56,17 +57,17 @@
 </div>
 {% else %}
 <div class="card" style="text-align:center;padding:2rem;color:var(--c-text-muted)">
-  <p>Chưa có check mở rộng nào. <a href="/admin/checks/new">Tạo check đầu tiên →</a></p>
+  <p>Chưa có kiểm tra mở rộng nào. <a href="/admin/checks/new">Tạo kiểm tra đầu tiên →</a></p>
 </div>
 {% endif %}
 
 <div class="card mt-3">
   <h3 class="card-title">Hướng dẫn nhanh</h3>
   <ul style="font-size:var(--fs-sm);margin:0;padding-left:1.5rem">
-    <li><strong>Draft</strong>: đã lưu, chưa chạy. Admin có thể chỉnh spec và xem trước.</li>
-    <li><strong>Published</strong>: sẽ chạy tự động trong lần "Chạy kiểm tra" kế tiếp.</li>
-    <li><strong>Disabled</strong>: tắt tạm thời, không xóa, có thể bật lại.</li>
-    <li>Check mở rộng có mã prefix <code>X.*</code> — phân biệt với catalog <code>C1.*…C6.*</code>.</li>
+    <li><strong>Nháp</strong>: đã lưu, chưa chạy. Quản trị viên có thể chỉnh đặc tả và xem trước.</li>
+    <li><strong>Đã công bố</strong>: sẽ chạy tự động trong lần "Chạy kiểm tra" kế tiếp.</li>
+    <li><strong>Đã tắt</strong>: tắt tạm thời, không xoá, có thể bật lại.</li>
+    <li>Kiểm tra mở rộng có mã bắt đầu bằng <code>X.*</code> — phân biệt với danh mục chính thức <code>C1.*…C6.*</code>.</li>
   </ul>
 </div>
 

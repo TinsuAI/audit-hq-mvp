@@ -16,22 +16,22 @@
     <p class="page-subtitle">
       {{ kind_labels.get(check.kind, check.kind) }} ·
       {% if check.status == CheckStatus.PUBLISHED %}
-        <span class="badge published">✅ Published — đang chạy trong pipeline</span>
+        <span class="badge published">✅ Đã công bố — đang chạy trong dây chuyền xử lý</span>
       {% elif check.status == CheckStatus.DRAFT %}
-        <span class="badge draft">📝 Draft — chưa chạy</span>
+        <span class="badge draft">📝 Nháp — chưa chạy</span>
       {% else %}
-        <span class="badge disabled">⏸ Disabled</span>
+        <span class="badge disabled">⏸ Đã tắt</span>
       {% endif %}
     </p>
   </div>
   <div class="form-row">
     {% if check.status == CheckStatus.DRAFT %}
       <form method="post" action="/admin/checks/{{ check.id }}/publish" style="display:inline">
-        <button type="submit" class="btn btn-primary">✅ Publish</button>
+        <button type="submit" class="btn btn-primary">✅ Công bố</button>
       </form>
     {% elif check.status == CheckStatus.PUBLISHED %}
       <form method="post" action="/admin/checks/{{ check.id }}/disable" style="display:inline">
-        <button type="submit" class="btn btn-secondary">⏸ Disable</button>
+        <button type="submit" class="btn btn-secondary">⏸ Tạm tắt</button>
       </form>
     {% elif check.status == CheckStatus.DISABLED %}
       <form method="post" action="/admin/checks/{{ check.id }}/publish" style="display:inline">
@@ -40,7 +40,7 @@
     {% endif %}
     {% if check.status != CheckStatus.DRAFT %}
       <form method="post" action="/admin/checks/{{ check.id }}/draft" style="display:inline">
-        <button type="submit" class="btn btn-secondary">📝 Về Draft</button>
+        <button type="submit" class="btn btn-secondary">📝 Chuyển về Nháp</button>
       </form>
     {% endif %}
   </div>
@@ -65,25 +65,25 @@
 {% endif %}
 
 <div class="card mt-2">
-  <h3 class="card-title">Spec JSON</h3>
+  <h3 class="card-title">Đặc tả (JSON)</h3>
   <pre style="font-size:var(--fs-sm);overflow:auto;margin:0;max-height:400px">{{ spec_json }}</pre>
 </div>
 
 {% if check.status == CheckStatus.DRAFT %}
 <div class="card mt-2" style="border-color:var(--c-warning)">
   <p style="margin:0;font-size:var(--fs-sm);color:var(--c-text-muted)">
-    ⚠️ Check đang ở trạng thái <strong>Draft</strong>. Nhấn "Publish" để check này chạy trong lần kiểm tra kế tiếp.
-    Sau khi publish, kết quả sẽ hiển thị trong trang chi tiết DN dưới nhóm "Kiểm tra mở rộng"
-    với badge <strong>Tuỳ chỉnh</strong>.
+    ⚠️ Kiểm tra đang ở trạng thái <strong>Nháp</strong>. Nhấn "Công bố" để kiểm tra này chạy trong lần
+    chạy kế tiếp. Sau khi công bố, kết quả sẽ hiển thị trong trang chi tiết doanh nghiệp
+    dưới nhóm "Kiểm tra mở rộng" với nhãn <strong>Tuỳ chỉnh</strong>.
   </p>
 </div>
 {% endif %}
 
-<!-- Preview panel -->
+<!-- Khung chạy thử -->
 <div class="card mt-3" style="border-color:var(--c-info)">
   <h3 class="card-title" style="color:var(--c-info)">▶ Chạy thử</h3>
   <p style="font-size:var(--fs-sm);color:var(--c-text-muted);margin-top:0">
-    Chạy check này trên một DN và năm cụ thể — không lưu kết quả vào DB.
+    Chạy kiểm tra này trên một doanh nghiệp và năm cụ thể — không lưu kết quả vào cơ sở dữ liệu.
   </p>
   <div class="form-row" style="gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
     <div>
@@ -154,14 +154,16 @@ async function runPreview() {
 
     status.style.color = 'var(--c-warning,#e67e22)';
     status.textContent = `⚠ Tìm thấy ${count} phát hiện:`;
+    // severity nguyên gốc tiếng Anh đến từ DB enum; map sang nhãn Việt cho hiển thị.
 
     const tbody = document.getElementById('preview-tbody');
     tbody.innerHTML = '';
     const severityColor = {critical: 'var(--c-critical,#c0392b)', warning: 'var(--c-warning,#e67e22)', info: 'var(--c-info)'};
+    const severityLabel = {critical: 'Nghiêm trọng', warning: 'Cảnh báo', info: 'Thông tin'};
     for (const f of findings) {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><span style="color:${severityColor[f.severity] || 'inherit'};font-weight:600">${f.severity}</span></td>
+        <td><span style="color:${severityColor[f.severity] || 'inherit'};font-weight:600">${severityLabel[f.severity] || f.severity}</span></td>
         <td>${f.title}</td>
         <td><code>${f.subject_key || '—'}</code></td>
       `;

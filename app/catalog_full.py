@@ -51,7 +51,7 @@ GROUP_NOTE: dict[int, str] = {
 }
 
 STATUS_LABEL: dict[str, str] = {
-    "mvp": "MVP — đã build",
+    "mvp": "Đã triển khai",
     "wip": "Bổ sung thí điểm",
     "conditional": "Cần thêm điều kiện",
 }

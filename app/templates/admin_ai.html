@@ -14,7 +14,7 @@
   <div class="page-title-group">
     <h1>Cấu hình AI Assistant</h1>
     <p class="page-subtitle">
-      OpenAI-compatible API (OpenRouter / OpenAI / Anthropic compat / self-host). Settings áp dụng ngay không cần redeploy.
+      API tương thích OpenAI (OpenRouter / OpenAI / Anthropic / tự dựng). Cấu hình áp dụng ngay không cần triển khai lại.
     </p>
   </div>
   <div class="btn-group">
@@ -26,7 +26,7 @@
 
 {% if saved %}
 <div class="card" style="border-left:4px solid #16a34a;background:#f0fdf4">
-  <p style="color:#15803d;margin:0">✓ Đã lưu mục <strong>{{ saved }}</strong>. Áp dụng ngay từ request tiếp theo.</p>
+  <p style="color:#15803d;margin:0">✓ Đã lưu mục <strong>{{ saved }}</strong>. Áp dụng ngay từ yêu cầu tiếp theo.</p>
 </div>
 {% endif %}
 {% if error %}
@@ -35,57 +35,57 @@
 </div>
 {% endif %}
 
-<!-- ───────────────── Section 1: Kết nối ───────────────── -->
+<!-- ───────────────── Phần 1: Kết nối ───────────────── -->
 <form method="post" action="/admin/ai/connection" id="conn-form" class="card mt-3">
-  <h3 class="card-title">1. Kết nối Provider</h3>
+  <h3 class="card-title">1. Kết nối nhà cung cấp</h3>
   <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
-    Khuyến nghị OpenRouter: 1 API key dùng được hầu hết model phổ biến,
-    có dashboard usage. Đăng ký tại <code>openrouter.ai</code>.
+    Khuyến nghị OpenRouter: 1 mã API dùng được hầu hết model phổ biến,
+    có bảng điều khiển theo dõi sử dụng. Đăng ký tại <code>openrouter.ai</code>.
   </p>
 
   <div class="form-field">
-    <label class="form-label" for="base_url">Base URL</label>
+    <label class="form-label" for="base_url">Địa chỉ máy chủ (Base URL)</label>
     <input type="text" id="base_url" name="base_url" class="form-input text-mono"
            value="{{ settings.base_url.value }}" required>
-    <small class="text-subtle">VD: <code>https://openrouter.ai/api/v1</code>, <code>https://api.openai.com/v1</code></small>
+    <small class="text-subtle">Ví dụ: <code>https://openrouter.ai/api/v1</code>, <code>https://api.openai.com/v1</code></small>
   </div>
 
   <div class="form-field">
-    <label class="form-label" for="api_key">API Key</label>
+    <label class="form-label" for="api_key">Mã API</label>
     {% if settings.api_key.has_value %}
       <p class="text-subtle text-mono" style="margin:0 0 var(--space-1) 0;font-size:var(--fs-xs)">
         Hiện tại: <strong>{{ settings.api_key.value }}</strong> — để trống nếu không đổi
       </p>
     {% endif %}
     <input type="password" id="api_key" name="api_key" class="form-input text-mono"
-           placeholder="{% if settings.api_key.has_value %}•••• để trống = giữ key cũ{% else %}sk-or-v1-...{% endif %}"
+           placeholder="{% if settings.api_key.has_value %}•••• để trống = giữ mã cũ{% else %}sk-or-v1-...{% endif %}"
            autocomplete="off">
   </div>
 
   <div class="form-field">
-    <label class="form-label" for="extra_headers">Extra headers (JSON)</label>
+    <label class="form-label" for="extra_headers">Tiêu đề HTTP bổ sung (JSON)</label>
     <textarea id="extra_headers" name="extra_headers" class="form-input text-mono" rows="3"
               style="font-size:var(--fs-xs)">{{ settings.extra_headers.value | tojson(indent=2) }}</textarea>
-    <small class="text-subtle">OpenRouter dùng <code>HTTP-Referer</code> + <code>X-Title</code> để ranking. Có thể để rỗng <code>{}</code>.</small>
+    <small class="text-subtle">OpenRouter dùng <code>HTTP-Referer</code> + <code>X-Title</code> để xếp hạng. Có thể để rỗng <code>{}</code>.</small>
   </div>
 
   <div style="display:flex;gap:var(--space-3);align-items:center;margin-top:var(--space-3)">
     <button type="submit" class="btn btn-primary">💾 Lưu kết nối</button>
-    <button type="button" class="btn btn-secondary" onclick="testConnection()">🔌 Test connection</button>
+    <button type="button" class="btn btn-secondary" onclick="testConnection()">🔌 Thử kết nối</button>
     <span id="test-status" class="text-subtle" style="font-size:var(--fs-sm)"></span>
   </div>
 
   <div id="test-result" style="margin-top:var(--space-3);display:none"></div>
 </form>
 
-<!-- ───────────────── Section 2: Models ───────────────── -->
+<!-- ───────────────── Phần 2: Models ───────────────── -->
 <form method="post" action="/admin/ai/models" class="card mt-3">
   <h3 class="card-title">
     2. Models
     {% if grouped_models %}
       <span class="text-subtle" style="font-weight:400;font-size:var(--fs-xs)">
         — {{ models_count }} model phát hiện ·
-        <a href="/admin/ai?refresh_models=1" style="font-size:var(--fs-xs)">↻ Refresh</a>
+        <a href="/admin/ai?refresh_models=1" style="font-size:var(--fs-xs)">↻ Nạp lại</a>
       </span>
     {% endif %}
   </h3>
@@ -93,17 +93,17 @@
   {% if not grouped_models %}
   <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:var(--space-2) var(--space-3);margin-bottom:var(--space-3);border-radius:4px">
     <p style="margin:0;font-size:var(--fs-xs);color:#92400e">
-      ⚠️ Chưa fetch được model list (API key sai / network lỗi / chưa cấu hình).
-      Section 1 nhập key + "🔌 Test connection" trước, rồi quay lại đây.
+      ⚠️ Chưa tải được danh sách model (sai mã API / lỗi mạng / chưa cấu hình).
+      Phần 1 nhập mã + "🔌 Thử kết nối" trước, rồi quay lại đây.
       Tạm thời nhập tên model bằng tay.
     </p>
   </div>
   {% endif %}
 
   {% set model_inputs = [
-    ('model_default', 'Model default', 'Cho chat free-form. Sonnet/GPT-4o class.'),
-    ('model_fast', 'Model fast', 'Summarize/explain ngắn. Haiku/mini class.'),
-    ('model_deep', 'Model deep', 'Reasoning sâu, gated. Opus/o1 class.')
+    ('model_default', 'Model mặc định', 'Cho trò chuyện tự do. Hạng Sonnet/GPT-4o.'),
+    ('model_fast', 'Model nhanh', 'Tóm tắt/giải thích ngắn. Hạng Haiku/mini.'),
+    ('model_deep', 'Model sâu', 'Suy luận sâu, có kiểm soát. Hạng Opus/o1.')
   ] %}
 
   <div class="form-row">
@@ -122,9 +122,9 @@
               {% endfor %}
             </optgroup>
           {% endfor %}
-          {# Giữ giá trị hiện tại nếu không khớp catalog (custom model) #}
+          {# Giữ giá trị hiện tại nếu không khớp danh mục (model tự nhập) #}
           {% if not found.value and current %}
-            <optgroup label="— Đang dùng (không có trong catalog) —">
+            <optgroup label="— Đang dùng (không có trong danh mục) —">
               <option value="{{ current }}" selected>{{ current }}</option>
             </optgroup>
           {% endif %}
@@ -140,124 +140,124 @@
 
   <div class="form-row" style="margin-top:var(--space-3)">
     <div class="form-field" style="margin-bottom:0">
-      <label class="form-label" for="temperature">Temperature</label>
+      <label class="form-label" for="temperature">Độ ngẫu nhiên (temperature)</label>
       <input type="number" id="temperature" name="temperature" class="form-input"
              value="{{ settings.temperature.value }}" step="0.05" min="0" max="2" required>
-      <small class="text-subtle">0.0-2.0. Mặc định 0.2 (analytic).</small>
+      <small class="text-subtle">0.0-2.0. Mặc định 0.2 (phân tích).</small>
     </div>
     <div class="form-field" style="margin-bottom:0">
-      <label class="form-label" for="max_tokens">Max tokens (response)</label>
+      <label class="form-label" for="max_tokens">Tối đa token (phản hồi)</label>
       <input type="number" id="max_tokens" name="max_tokens" class="form-input"
              value="{{ settings.max_tokens.value }}" min="16" max="16384" step="64" required>
-      <small class="text-subtle">Cap output. Default 1024.</small>
+      <small class="text-subtle">Giới hạn đầu ra. Mặc định 1024.</small>
     </div>
   </div>
 
   <div style="margin-top:var(--space-3)">
-    <button type="submit" class="btn btn-primary">💾 Lưu models</button>
+    <button type="submit" class="btn btn-primary">💾 Lưu model</button>
   </div>
 </form>
 
-<!-- ───────────────── Section 2b: Fallback Provider ───────────────── -->
+<!-- ───────────────── Phần 2b: Nhà cung cấp dự phòng ───────────────── -->
 <form method="post" action="/admin/ai/fallback" class="card mt-3">
-  <h3 class="card-title">2b. Fallback Provider (provider phụ)</h3>
+  <h3 class="card-title">2b. Nhà cung cấp dự phòng</h3>
   <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
-    Khi primary trả 429/5xx/timeout/connection error → tự động retry trên provider phụ.
-    Không kích hoạt với lỗi 400/401/403 (vấn đề config, đổi provider vô ích).
-    Mặc định cấu hình NVIDIA NIM + DeepSeek làm fallback (free, 40 RPM, không giới hạn ngày).
+    Khi nhà cung cấp chính trả 429/5xx/quá thời gian chờ/lỗi kết nối → tự động thử lại trên nhà cung cấp dự phòng.
+    Không kích hoạt với lỗi 400/401/403 (lỗi cấu hình, đổi nhà cung cấp vô ích).
+    Mặc định cấu hình NVIDIA NIM + DeepSeek làm dự phòng (miễn phí, 40 yêu cầu/phút, không giới hạn ngày).
   </p>
 
   <div class="form-field">
     <label class="form-label">
       <input type="checkbox" name="fallback_enabled" value="on"
              {% if settings.fallback_enabled.value %}checked{% endif %}>
-      Bật fallback
+      Bật phương án dự phòng
     </label>
   </div>
 
   <div class="form-field">
-    <label class="form-label" for="fallback_base_url">Base URL phụ</label>
+    <label class="form-label" for="fallback_base_url">Địa chỉ máy chủ phụ (Base URL)</label>
     <input type="text" id="fallback_base_url" name="fallback_base_url" class="form-input text-mono"
            value="{{ settings.fallback_base_url.value }}" required>
   </div>
 
   <div class="form-field">
     <label class="form-label" for="fallback_api_key">
-      API key phụ {% if settings.fallback_api_key.has_value %}<span class="text-subtle">(đã lưu: {{ settings.fallback_api_key.value }} — bỏ trống để giữ)</span>{% endif %}
+      Mã API phụ {% if settings.fallback_api_key.has_value %}<span class="text-subtle">(đã lưu: {{ settings.fallback_api_key.value }} — bỏ trống để giữ)</span>{% endif %}
     </label>
     <input type="password" id="fallback_api_key" name="fallback_api_key" class="form-input text-mono"
-           placeholder="{% if settings.fallback_api_key.has_value %}••• đã lưu •••{% else %}Dán API key fallback{% endif %}">
+           placeholder="{% if settings.fallback_api_key.has_value %}••• đã lưu •••{% else %}Dán mã API dự phòng{% endif %}">
   </div>
 
   <div class="form-row">
     <div class="form-field" style="flex:1">
-      <label class="form-label" for="fallback_model_default">Default</label>
+      <label class="form-label" for="fallback_model_default">Mặc định</label>
       <input type="text" id="fallback_model_default" name="fallback_model_default" class="form-input text-mono"
              value="{{ settings.fallback_model_default.value }}" required>
     </div>
     <div class="form-field" style="flex:1">
-      <label class="form-label" for="fallback_model_fast">Fast</label>
+      <label class="form-label" for="fallback_model_fast">Nhanh</label>
       <input type="text" id="fallback_model_fast" name="fallback_model_fast" class="form-input text-mono"
              value="{{ settings.fallback_model_fast.value }}" required>
     </div>
     <div class="form-field" style="flex:1">
-      <label class="form-label" for="fallback_model_deep">Deep</label>
+      <label class="form-label" for="fallback_model_deep">Sâu</label>
       <input type="text" id="fallback_model_deep" name="fallback_model_deep" class="form-input text-mono"
              value="{{ settings.fallback_model_deep.value }}" required>
     </div>
   </div>
 
   <div style="margin-top:var(--space-3)">
-    <button type="submit" class="btn btn-primary">💾 Lưu fallback</button>
+    <button type="submit" class="btn btn-primary">💾 Lưu phương án dự phòng</button>
   </div>
 </form>
 
-<!-- ───────────────── Section 3: Giới hạn & Retention ───────────────── -->
+<!-- ───────────────── Phần 3: Giới hạn & Lưu giữ ───────────────── -->
 <form method="post" action="/admin/ai/limits" class="card mt-3">
-  <h3 class="card-title">3. Giới hạn & Retention</h3>
+  <h3 class="card-title">3. Giới hạn & Lưu giữ</h3>
   <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
-    Hard cap chi phí + rate limit để tránh abuse hoặc lỡ tay. Retention quyết định
-    khi nào cron xoá conversation cũ.
+    Hạn mức chi phí cứng + giới hạn tần suất để tránh lạm dụng hoặc lỡ tay. Thời gian lưu giữ quyết định
+    khi nào tác vụ định kỳ xoá cuộc trò chuyện cũ.
   </p>
 
   <div class="form-row">
     <div class="form-field" style="margin-bottom:0">
-      <label class="form-label" for="daily_budget_usd">Daily budget (USD)</label>
+      <label class="form-label" for="daily_budget_usd">Hạn mức theo ngày (USD)</label>
       <input type="number" id="daily_budget_usd" name="daily_budget_usd" class="form-input"
              value="{{ settings.daily_budget_usd.value }}" step="0.5" min="0" max="10000" required>
-      <small class="text-subtle">0 = tắt cap. Vượt → 503.</small>
+      <small class="text-subtle">0 = tắt giới hạn. Vượt → 503.</small>
     </div>
     <div class="form-field" style="margin-bottom:0">
-      <label class="form-label" for="rate_limit_per_hour">Rate limit (msg/user/giờ)</label>
+      <label class="form-label" for="rate_limit_per_hour">Giới hạn tần suất (tin/người dùng/giờ)</label>
       <input type="number" id="rate_limit_per_hour" name="rate_limit_per_hour" class="form-input"
              value="{{ settings.rate_limit_per_hour.value }}" min="0" max="10000" required>
       <small class="text-subtle">0 = tắt. Vượt → 429.</small>
     </div>
     <div class="form-field" style="margin-bottom:0">
-      <label class="form-label" for="request_timeout_s">Request timeout (s)</label>
+      <label class="form-label" for="request_timeout_s">Thời gian chờ phản hồi (giây)</label>
       <input type="number" id="request_timeout_s" name="request_timeout_s" class="form-input"
              value="{{ settings.request_timeout_s.value }}" min="5" max="600" required>
     </div>
     <div class="form-field" style="margin-bottom:0">
-      <label class="form-label" for="tool_call_cap">Tool call cap (vòng/turn)</label>
+      <label class="form-label" for="tool_call_cap">Giới hạn lệnh gọi công cụ (vòng/lượt)</label>
       <input type="number" id="tool_call_cap" name="tool_call_cap" class="form-input"
              value="{{ settings.tool_call_cap.value }}" min="1" max="50" required>
-      <small class="text-subtle">Tăng nếu query phức tạp cần nhiều tool. Default: 10.</small>
+      <small class="text-subtle">Tăng nếu truy vấn phức tạp cần nhiều công cụ. Mặc định: 10.</small>
     </div>
   </div>
 
   <div class="form-row" style="margin-top:var(--space-3)">
     <div class="form-field" style="margin-bottom:0">
-      <label class="form-label" for="history_retention_days">History retention (ngày)</label>
+      <label class="form-label" for="history_retention_days">Lưu giữ lịch sử (ngày)</label>
       <input type="number" id="history_retention_days" name="history_retention_days" class="form-input"
              value="{{ settings.history_retention_days.value }}" min="1" max="3650" required>
-      <small class="text-subtle">Conversation user cũ → cron xoá</small>
+      <small class="text-subtle">Cuộc trò chuyện cũ → tác vụ định kỳ xoá</small>
     </div>
     <div class="form-field" style="margin-bottom:0">
-      <label class="form-label" for="audit_retention_days">Audit retention (ngày)</label>
+      <label class="form-label" for="audit_retention_days">Lưu giữ nhật ký kiểm toán (ngày)</label>
       <input type="number" id="audit_retention_days" name="audit_retention_days" class="form-input"
              value="{{ settings.audit_retention_days.value }}" min="1" max="3650" required>
-      <small class="text-subtle">Audit log admin giữ riêng</small>
+      <small class="text-subtle">Nhật ký kiểm toán quản trị viên giữ riêng</small>
     </div>
   </div>
 
@@ -266,7 +266,7 @@
   </div>
 </form>
 
-<!-- ───────────────── Section 4: Flags ───────────────── -->
+<!-- ───────────────── Phần 4: Flags ───────────────── -->
 <form method="post" action="/admin/ai/flags" class="card mt-3">
   <h3 class="card-title">4. Bật/Tắt</h3>
 
@@ -274,9 +274,9 @@
     <input type="checkbox" id="enabled" name="enabled" value="on" style="margin-top:5px"
            {% if settings.enabled.value %}checked{% endif %}>
     <div>
-      <label for="enabled" style="font-weight:600;cursor:pointer">Bật AI assistant (master switch)</label>
+      <label for="enabled" style="font-weight:600;cursor:pointer">Bật trợ lý AI (công tắc tổng)</label>
       <div class="text-subtle" style="font-size:var(--fs-xs)">
-        Off → sidebar chat ẩn hoàn toàn, endpoint /api/chat trả 503.
+        Tắt → khung trò chuyện ẩn hoàn toàn, đầu cuối /api/chat trả 503.
       </div>
     </div>
   </div>
@@ -285,21 +285,21 @@
     <input type="checkbox" id="prompt_cache_enabled" name="prompt_cache_enabled" value="on" style="margin-top:5px"
            {% if settings.prompt_cache_enabled.value %}checked{% endif %}>
     <div>
-      <label for="prompt_cache_enabled" style="font-weight:600;cursor:pointer">Prompt caching</label>
+      <label for="prompt_cache_enabled" style="font-weight:600;cursor:pointer">Bộ nhớ đệm prompt</label>
       <div class="text-subtle" style="font-size:var(--fs-xs)">
-        Bật cache_control khi provider hỗ trợ (OpenRouter+Claude, Anthropic compat). Tắt để debug.
+        Bật cache_control khi nhà cung cấp hỗ trợ (OpenRouter+Claude, Anthropic). Tắt để gỡ lỗi.
       </div>
     </div>
   </div>
 
   <div style="margin-top:var(--space-3)">
-    <button type="submit" class="btn btn-primary">💾 Lưu cài đặt</button>
+    <button type="submit" class="btn btn-primary">💾 Lưu cấu hình</button>
   </div>
 </form>
 
-<!-- ───────────────── Section 5: Audit (read-only) ───────────────── -->
+<!-- ───────────────── Phần 5: Nhật ký kiểm toán (chỉ đọc) ───────────────── -->
 <div class="card mt-3">
-  <h3 class="card-title">5. Audit{% if show_cost %} & Cost{% endif %} (hôm nay)</h3>
+  <h3 class="card-title">5. Nhật ký kiểm toán{% if show_cost %} & Chi phí{% endif %} (hôm nay)</h3>
 
   {% if show_cost %}
   {% set budget_pct = (usage.cost_usd / usage.budget_usd * 100) if usage.budget_usd > 0 else 0 %}
@@ -348,12 +348,12 @@
         <thead>
           <tr>
             <th>#</th>
-            <th>User</th>
+            <th>Người dùng</th>
             <th class="wrap">Tiêu đề</th>
             <th>Bắt đầu</th>
-            <th class="num">Msg</th>
-            <th class="num">Tokens (in+out)</th>
-            {% if show_cost %}<th class="num">Cost</th>{% endif %}
+            <th class="num">Tin</th>
+            <th class="num">Token (vào+ra)</th>
+            {% if show_cost %}<th class="num">Chi phí</th>{% endif %}
             <th></th>
           </tr>
         </thead>
@@ -378,10 +378,10 @@
 
 <!-- ───────────────── Read-only summary ───────────────── -->
 <details class="card mt-3">
-  <summary style="cursor:pointer;font-weight:600">📋 Toàn bộ settings hiện tại (debug)</summary>
+  <summary style="cursor:pointer;font-weight:600">📋 Toàn bộ cấu hình hiện tại (gỡ lỗi)</summary>
   <table class="data-table compact mt-3">
     <thead>
-      <tr><th>Key</th><th>Value</th><th class="wrap">Mô tả</th></tr>
+      <tr><th>Khoá</th><th>Giá trị</th><th class="wrap">Mô tả</th></tr>
     </thead>
     <tbody>
       {% for key, entry in settings.items() %}
@@ -407,7 +407,7 @@ async function testConnection() {
   const status = document.getElementById('test-status');
   const result = document.getElementById('test-result');
 
-  status.textContent = '⏳ Đang test...';
+  status.textContent = '⏳ Đang thử...';
   status.style.color = '';
   result.style.display = 'none';
   result.innerHTML = '';
@@ -424,7 +424,7 @@ async function testConnection() {
       status.innerHTML = `✅ OK · ${j.latency_ms}ms · ${j.total_models} model`;
       status.style.color = '#15803d';
       let html = '<div class="card" style="border-left:4px solid #16a34a;background:#f0fdf4;margin:0">';
-      html += `<p style="margin:0 0 8px 0;color:#15803d"><strong>${j.total_models} model.</strong> Reload page để hiện dropdown đầy đủ trong Section 2: <a href="/admin/ai?refresh_models=1">↻ Refresh</a></p>`;
+      html += `<p style="margin:0 0 8px 0;color:#15803d"><strong>${j.total_models} model.</strong> Nạp lại trang để hiện danh sách đầy đủ trong Phần 2: <a href="/admin/ai?refresh_models=1">↻ Nạp lại</a></p>`;
       html += '<details><summary style="cursor:pointer;font-size:13px;color:#15803d">Xem 30 model đầu</summary>';
       html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">';
       (j.models || []).forEach(m => {
@@ -436,7 +436,7 @@ async function testConnection() {
     } else {
       status.innerHTML = `❌ Lỗi`;
       status.style.color = '#b91c1c';
-      result.innerHTML = `<div class="card" style="border-left:4px solid #b91c1c;background:#fef2f2;margin:0"><p style="margin:0;color:#b91c1c"><strong>Lỗi:</strong> ${j.error || 'unknown'}</p></div>`;
+      result.innerHTML = `<div class="card" style="border-left:4px solid #b91c1c;background:#fef2f2;margin:0"><p style="margin:0;color:#b91c1c"><strong>Lỗi:</strong> ${j.error || 'không rõ'}</p></div>`;
       result.style.display = 'block';
     }
   } catch (e) {

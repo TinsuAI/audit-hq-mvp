@@ -7,9 +7,9 @@
     <p class="page-subtitle">
       {{ conv.user }} ·
       {{ conv.started_at.strftime('%d/%m/%Y %H:%M') if conv.started_at else '' }} ·
-      {{ msgs | length }} message ·
+      {{ msgs | length }} tin ·
       {% if show_cost %}${{ cost_total }} ·{% endif %}
-      {{ tokens_total_in }}+{{ tokens_total_out }} tokens
+      {{ tokens_total_in }}+{{ tokens_total_out }} token
     </p>
   </div>
   <a href="/admin/ai" class="btn btn-secondary">← Về danh sách</a>
@@ -35,24 +35,24 @@
         <span class="text-mono" style="font-size:var(--fs-xs);font-weight:600;color:#374151">
           {% if m.role == 'user' %}👤 Người dùng
           {% elif m.role == 'assistant' %}🤖 AI{% if m.model %} <span class="text-subtle">({{ m.model }})</span>{% endif %}
-          {% elif m.role == 'tool' %}🔧 Tool{% if m.tool_name %}: {{ m.tool_name }}{% endif %}
+          {% elif m.role == 'tool' %}🔧 Công cụ{% if m.tool_name %}: {{ m.tool_name }}{% endif %}
           {% else %}{{ m.role }}{% endif %}
         </span>
         <span class="text-subtle" style="font-size:var(--fs-xs)">
           {% if m.created_at %}{{ m.created_at.strftime('%H:%M:%S') }}{% endif %}
-          {% if m.tokens_in or m.tokens_out %} · {{ m.tokens_in or 0 }}+{{ m.tokens_out or 0 }} tok{% endif %}
+          {% if m.tokens_in or m.tokens_out %} · {{ m.tokens_in or 0 }}+{{ m.tokens_out or 0 }} token{% endif %}
           {% if show_cost and m.cost_usd %} · ${{ "%.4f"|format(m.cost_usd) }}{% endif %}
           {% if m.latency_ms %} · {{ m.latency_ms }}ms{% endif %}
         </span>
       </div>
       {% if m.role == 'assistant' and m.tool_call_id == 'batch' and m.tool_args_json %}
       <details>
-        <summary class="text-subtle" style="font-size:var(--fs-sm);cursor:pointer">Tool calls JSON</summary>
+        <summary class="text-subtle" style="font-size:var(--fs-sm);cursor:pointer">Lệnh gọi công cụ (JSON)</summary>
         <pre class="text-mono" style="font-size:var(--fs-xs);overflow-x:auto;margin-top:4px;white-space:pre-wrap">{{ m.tool_args_json }}</pre>
       </details>
       {% elif m.role == 'tool' and m.tool_args_json %}
       <details>
-        <summary class="text-subtle" style="font-size:var(--fs-sm);cursor:pointer">Args: {{ m.tool_args_json[:80] }}{% if m.tool_args_json|length > 80 %}…{% endif %}</summary>
+        <summary class="text-subtle" style="font-size:var(--fs-sm);cursor:pointer">Tham số: {{ m.tool_args_json[:80] }}{% if m.tool_args_json|length > 80 %}…{% endif %}</summary>
         <pre class="text-mono" style="font-size:var(--fs-xs);overflow-x:auto;margin-top:4px;white-space:pre-wrap">{{ m.content }}</pre>
       </details>
       {% else %}

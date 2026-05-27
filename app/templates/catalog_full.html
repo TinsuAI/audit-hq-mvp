@@ -11,8 +11,8 @@
 <div class="page-header">
   <h1>Danh mục kiểm tra Audit-HQ</h1>
   <p class="page-subtitle">
-    Toàn bộ <strong>{{ counts.total }} kiểm tra</strong> theo §4 đề án Audit-HQ — phân bố theo
-    2 giai đoạn và 12 nhóm. Trang này là <em>danh mục</em> (catalog); để xem kết quả chạy
+    Toàn bộ <strong>{{ counts.total }} kiểm tra</strong> theo Mục 4 đề án Audit-HQ — phân bố theo
+    2 giai đoạn và 12 nhóm. Trang này liệt kê danh mục; để xem kết quả chạy
     trên dữ liệu doanh nghiệp, vào trang doanh nghiệp cụ thể.
   </p>
 </div>
@@ -24,7 +24,7 @@
   </div>
   <div class="catalog-summary-card">
     <div class="catalog-summary-num">{{ counts.mvp }}</div>
-    <div class="catalog-summary-label">{{ status_icon.mvp }} MVP — đã build</div>
+    <div class="catalog-summary-label">{{ status_icon.mvp }} Đã triển khai</div>
   </div>
   <div class="catalog-summary-card">
     <div class="catalog-summary-num">{{ counts.wip }}</div>
@@ -43,7 +43,7 @@
   <span>{{ severity_icon.info }} Thông tin</span>
   <span class="catalog-legend-sep">·</span>
   <strong>Trạng thái:</strong>
-  <span>{{ status_icon.mvp }} MVP</span>
+  <span>{{ status_icon.mvp }} Đã triển khai</span>
   <span>{{ status_icon.wip }} Bổ sung thí điểm</span>
   <span>{{ status_icon.conditional }} Cần điều kiện</span>
 </section>

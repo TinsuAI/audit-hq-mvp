@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Upload dữ liệu — {{ company.code }}{% endblock %}
+{% block title %}Tải lên dữ liệu — {{ company.code }} — Audit-HQ{% endblock %}
 {% block content %}
 
 <nav class="breadcrumbs">
@@ -7,12 +7,12 @@
   <span class="sep">›</span>
   <a href="/companies/{{ company.code }}">{{ company.code }}</a>
   <span class="sep">›</span>
-  Upload dữ liệu
+  Tải lên dữ liệu
 </nav>
 
 <div class="page-header">
   <div class="page-title-group">
-    <h1>Upload dữ liệu BCQT</h1>
+    <h1>Tải lên dữ liệu BCQT</h1>
     <p class="page-subtitle">
       DN <strong class="text-mono">{{ company.code }}</strong>
       {% if company.name %} · {{ company.name }}{% endif %}
@@ -40,7 +40,7 @@
   <div class="card-section">
     <h3 style="margin-top:0;margin-bottom:var(--space-2)">File Excel BCQT</h3>
     <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
-      Có thể bỏ trống slot nào không có dữ liệu. Hệ thống sẽ chạy ingest + 16 kiểm tra ngay sau khi upload xong (vài giây).
+      Có thể bỏ trống mục nào không có dữ liệu. Hệ thống sẽ nạp dữ liệu + chạy 16 kiểm tra ngay sau khi tải lên xong (vài giây).
     </p>
 
     {% set slots = [
@@ -66,7 +66,7 @@
 
   <div class="card-section" style="display:flex;gap:var(--space-3);justify-content:space-between;align-items:center">
     <a href="/companies/{{ company.code }}" class="btn btn-secondary">← Quay về</a>
-    <button type="submit" class="btn btn-primary">📥 Upload & chạy kiểm tra</button>
+    <button type="submit" class="btn btn-primary">📥 Tải lên & chạy kiểm tra</button>
   </div>
 </form>
 

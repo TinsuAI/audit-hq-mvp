@@ -19,7 +19,7 @@
         <li><span class="badge critical">🔴 Nghiêm trọng</span> = 10 đ</li>
         <li style="margin-top:6px"><span class="badge warning">🟡 Cảnh báo</span> = 3 đ</li>
         <li style="margin-top:6px"><span class="badge info">🔵 Thông tin</span> = 1 đ</li>
-        <li style="margin-top:6px"><span class="badge muted">⚡ Combo signature</span> = +20 đ</li>
+        <li style="margin-top:6px"><span class="badge muted">⚡ Tổ hợp đặc trưng</span> = +20 đ</li>
       </ul>
     </div>
   </details>
@@ -29,7 +29,7 @@
 {% if not summary %}
   <div class="card">
     <p class="text-muted">Chưa có doanh nghiệp nào trong hệ thống.</p>
-    <p><a href="/companies/new" class="btn btn-primary">+ Thêm DN mới</a> hoặc chạy <code>python -m app.pipeline.ingest --company HONG_AN --year 2024</code>.</p>
+    <p><a href="/companies/new" class="btn btn-primary">+ Thêm DN mới</a> hoặc chạy <code>python -m app.pipeline.ingest --company HONG_AN --year 2024</code> để nạp dữ liệu mẫu.</p>
   </div>
 {% else %}
 <div class="data-table-wrapper table-overflow">
@@ -83,7 +83,7 @@
               {% endif %}
             </div>
           {% else %}
-            <span class="text-subtle">chưa có findings — chạy <code>run_checks</code></span>
+            <span class="text-subtle">chưa có phát hiện — chạy <code>run_checks</code></span>
           {% endif %}
         </td>
       </tr>

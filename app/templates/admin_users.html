@@ -4,7 +4,7 @@
 <div class="page-header">
   <div class="page-title-group">
     <h1>Quản lý người dùng</h1>
-    <p class="page-subtitle">{{ users | length }} tài khoản · chỉ admin truy cập</p>
+    <p class="page-subtitle">{{ users | length }} tài khoản · chỉ quản trị viên truy cập</p>
   </div>
 </div>
 
@@ -39,7 +39,7 @@
       <select class="form-input" name="role">
         {% for r in valid_roles %}
         <option value="{{ r }}" {% if r == "officer" %}selected{% endif %}>
-          {{ "Quản trị viên" if r == "admin" else "Cán bộ Hải quan" }} ({{ r }})
+          {{ "Quản trị viên" if r == "admin" else "Cán bộ Hải quan" }}
         </option>
         {% endfor %}
       </select>
@@ -66,9 +66,9 @@
         <td class="text-mono">{{ u.username }}{% if u.username == user.name %} <span class="badge info" style="font-size:10px">bạn</span>{% endif %}</td>
         <td>
           {% if u.role == "admin" %}
-          <span class="badge critical">admin</span>
+          <span class="badge critical">Quản trị viên</span>
           {% else %}
-          <span class="badge info">officer</span>
+          <span class="badge info">Cán bộ Hải quan</span>
           {% endif %}
         </td>
         <td class="text-subtle">{{ u.created_at.strftime('%d/%m/%Y %H:%M') if u.created_at else '—' }}</td>

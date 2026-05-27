@@ -26,8 +26,8 @@
     <strong>Canonical</strong> = đơn vị chuẩn (vd <code>MTR</code>, <code>KGM</code>, <code>PCE</code>).
     <strong>Family</strong> = nhóm đơn vị cùng đo lượng gì (<code>length</code>, <code>mass</code>, <code>count</code>…).
     <strong>Alias</strong> = các tên gọi khác nhau quy về cùng canonical (<code>Chiếc</code>, <code>PCS</code>, <code>PIECES</code> → <code>PCE</code>).
-    C3.3 fire <span class="badge info">🔵 Thông tin</span> khi 2 đơn vị cùng family (KG↔GAM quy đổi được),
-    <span class="badge critical">🔴 Nghiêm trọng</span> khi khác family hẳn (sai đơn vị ×1000).
+    C3.3 kích hoạt <span class="badge info">🔵 Thông tin</span> khi 2 đơn vị cùng nhóm (KG↔GAM quy đổi được),
+    <span class="badge critical">🔴 Nghiêm trọng</span> khi khác nhóm hẳn (sai đơn vị ×1000).
   </p>
 </div>
 
@@ -96,11 +96,11 @@
 <div class="card mt-5">
   <h3 class="card-title">Thêm alias mới</h3>
   <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
-    Khi C3.3 báo false-positive, dùng form này để map đơn vị lạ về canonical phù hợp.
+    Khi C3.3 báo nhầm, dùng biểu mẫu này để ánh xạ đơn vị lạ về đơn vị chuẩn phù hợp.
   </p>
   <form method="post" action="/admin/units/aliases" class="form-row">
     <div class="form-field" style="margin-bottom:0;flex:1">
-      <label class="form-label">Alias (text raw)</label>
+      <label class="form-label">Bí danh (văn bản thô)</label>
       <input type="text" name="alias" class="form-input" placeholder="vd MÉT VUÔNG, CHIẾC" required>
     </div>
     <div class="form-field" style="margin-bottom:0">
@@ -126,7 +126,7 @@
 </div>
 
 <details class="card mt-3">
-  <summary style="cursor:pointer;font-weight:600">⚙️ Thêm canonical mới (advanced)</summary>
+  <summary style="cursor:pointer;font-weight:600">⚙️ Thêm đơn vị chuẩn mới (nâng cao)</summary>
   <p class="text-subtle" style="font-size:var(--fs-xs);margin-top:var(--space-3)">
     Chỉ thêm khi gặp đơn vị thật sự MỚI (không phải alias của canonical đã có).
   </p>
