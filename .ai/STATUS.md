@@ -1,31 +1,28 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-05-27, sau session catalog + tiers + i18n):**
-> Branch `main` đã push + deploy. Live `audit-hq-demo.tinsu.ai` build `22aaa7b`.
-> 406 tests pass. Toàn bộ UI thuần Việt cho cán bộ Hải quan.
+> **Trạng thái (2026-05-27, sau session audit + fix vòng 1):**
+> Branch `main` đã push + deploy. Live `audit-hq-demo.tinsu.ai` build `01db20d`.
+> 432 tests pass, ruff clean. 7 bug check rule + dynamic runner đã audit;
+> 6 fix, 1 defer (Bug #6 — dynamic check scope fallback).
 
 ## Current State
 
 ### Production (`audit-hq-demo.tinsu.ai`)
-- Build hiện tại: `22aaa7b` — i18n thuần Việt. Deploy CI tự động (đã fix checkout EACCES).
-- 4 DN demo, ranked theo điểm rủi ro:
-  - DN_003 Hoa Sen (Dệt may): score 242 — Cần rà soát
-  - DN_001 Phương Đông (Điện tử): score 238 — Cần rà soát
-  - DN_004 Nam Tiến (Hoá chất): score 97 — Có chênh lệch nhỏ
-  - DN_002 Tiên Phong (Cơ khí): score 74 — Có chênh lệch nhỏ
-- Ngưỡng tier mới (default sau commit `4977cd4`): **50 / 100 / 300 / 600 / 1000**.
-  Admin chỉnh trực tiếp ở `/admin/risk-tiers` — đổi không cần re-run check.
-
-### Trang mới hôm nay
-- `/danh-muc-kiem-tra` — toàn bộ 49 kiểm tra theo §4 đề án (16+14+19).
-- `/admin/risk-tiers` — chỉnh 5 ngưỡng hạng rủi ro (form 5 ô số, validate tăng dần + cuối = 1000).
-- Navbar gọn: dropdown "⚙️ Quản trị" gom 4 mục admin + dropdown user nhỏ.
+- Build hiện tại: `01db20d` — audit fix vòng 1. CI 2m23s.
+- DB tinsu đã clean junk + rerun checks. 11 (DN, năm) pair, 3416 findings.
+- 4 DN demo, score sau rerun (rate-based, max qua các năm):
+  - DN_001 Phương Đông (Điện tử): **296** — Cần rà soát
+  - DN_003 Hoa Sen (Dệt may): **263** — Cần rà soát
+  - DN_002 Tiên Phong (Cơ khí): **125** — Có chênh lệch nhỏ
+  - DN_004 Nam Tiến (Hoá chất): **97** — Có chênh lệch nhỏ
+- Ngưỡng tier (default sau `4977cd4`): **50 / 100 / 300 / 600 / 1000**.
+  Admin chỉnh ở `/admin/risk-tiers` — đổi không cần re-run check.
 
 ### Stack
 - Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite (WAL + busy_timeout=5000).
 - AI: OpenAI SDK compat, Gemini 2.5 (primary) + NIM DeepSeek (dự phòng).
 - Dev port: **8200** (cố định, match docker-compose + Cloudflare tunnel).
-- 406 tests pass, ruff clean.
+- **432 tests pass** (was 406, +26 mới hoặc đã từng skip), ruff clean.
 
 ### Migrations (head: `a4d5ffcb0da7`)
 Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (company.risk_score) → `599dbd931e77` (UOM) → `a3c48313dddf` (ai_settings + ai audit) → `b7e91f4d2a13` (users) → `de9eee546b80` (jobs) → `46b3bcaebbe4` (company_year_scores) → `646b92a93768` (check_definitions) → `a4d5ffcb0da7` (**app_settings**).
@@ -51,30 +48,68 @@ Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (compan
 ### Thư viện tài liệu `/tai-lieu`
 - 4 trang: scoring-methodology + TT 38/2015, TT 39/2018, TT 81/2019.
 
-## Recent Changes (2026-05-27 session, từ commit `a702648` → `22aaa7b`)
+## Recent Changes (2026-05-27 audit + fix vòng 1, từ commit `22aaa7b` → `01db20d`)
 
-5 commit, tất cả đã deploy live:
-- `e40ea34` feat(catalog): /danh-muc-kiem-tra page + navbar redesign
-- `aff9b18` fix(tests): conftest autouse fixture cho default engine schema
-- `0dfc2d7` fix(lint): 32 ruff errors pre-existing (E402/I001/F401/B008/E501)
-- `4977cd4` feat(scoring): ngưỡng hạng rủi ro configurable + default 50/100/300/600/1000
-- `22aaa7b` i18n(ui): rà soát 19 template + STATUS_LABEL sang tiếng Việt thuần
+6 commit, tất cả đã push + deploy + rerun DB tinsu:
+- `b4d2737` fix(adapters): `normalize_code` reject placeholder values
+- `233da3f` fix(checks): xoá E13 khỏi `IMPORT_CODES[DNCX]`
+- `b81e442` fix(checks): C1.1/C1.4 emit INFO band như description đã hứa
+- `c36a3e1` fix(checks): C1.7 thống nhất denominator giữa code, registry, catalog
+- `8c3f33c` fix(dynamic_runner): `_eval_threshold` AND semantics trong cùng band
+- `01db20d` fix(dynamic_runner): dynamic finding có `evidence_refs` và `subject_type` đúng
 
-Chi tiết: `.ai/sessions/2026-05-27-catalog-tiers-i18n.md`.
+Tổng impact đo trên DB demo sau rerun:
+- Junk subject_key (`.`, `-`, …) **0** (was 23+).
+- C1.2 E13-only false positive **0/240** (was ~93/333 = 28%).
+- C1.1 distribution: 16 INFO + 17 WARN + 527 CRIT (INFO band giờ fire đúng).
+- Toàn bộ dynamic check finding tương lai sẽ có evidence + subject_type chuẩn.
+
+Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
 
 ## Next Steps
 
-1. **Edit check spec từ detail page** — hiện read-only, cần thêm edit form (vẫn pending từ session trước).
-2. **Demo HQ** — flow 5-10 phút: login → vào DN_003 → xem ranking + findings → mở `/danh-muc-kiem-tra` → mở `/admin/risk-tiers` đổi ngưỡng → quay lại trang DN thấy tier update ngay.
-3. **Backlog catalog research** — Bước 2 (gap analysis vs Johnson Phase 3 / BCQT-System / data-hub) + Bước 3 (spec chi tiết per-check) user đã nói lúc đầu session. Chưa làm.
-4. **Văn bản pháp lý mở rộng** — NĐ 08/2015, TT 72/2015, TT 06/2024 (defer, ưu tiên thấp).
-5. **Verify `item_detail.html`, `job_detail.html`, `login.html`, `_charts.html`** sạch tiếng Anh (sub-agent báo OK, chưa double-check tay).
+1. **Verify UI tay trên live** — mở 1 finding bất kỳ ở `audit-hq-demo.tinsu.ai`,
+   xác nhận evidence hiển thị đúng năm + đúng đối tượng + đã sạch junk
+   `.`/E13. Smoke test này chưa làm.
+2. **Bug #6 (defer)** — dynamic check denominator fallback `"nvl"` trong
+   `denominators.RULE_SCOPE`. Khi có dynamic check đầu tiên publish trên
+   `declaration_lines`, sẽ méo điểm. Fix sạch cần thêm `scope` field vào
+   `CheckDefinition` model + migration + UI form. Ưu tiên thấp.
+3. **C6.1 UX** — display 2 năm evidence có thể gây nhầm dù logic đúng.
+   Cân nhắc thêm note "so sánh với kỳ N-1" ở `finding_detail.html` cho
+   C6.1, hoặc group evidence theo năm với header.
+4. **C2.4 (tồn cuối TP âm)** vẫn W.I.P theo §4.1 — symmetric với C2.3 cho TP.
+   Có thể clone `c2_balance.check_c2_3` sang dùng SpBalance.
+5. **Edit check spec từ detail page** — hiện read-only, cần thêm edit form
+   (pending từ session trước trước nữa).
+6. **Demo HQ flow** — login → vào DN_003 → xem ranking + findings →
+   `/danh-muc-kiem-tra` → `/admin/risk-tiers` đổi ngưỡng → quay lại DN
+   thấy tier update ngay.
+7. **Backlog catalog research** — Bước 2 (gap analysis vs Johnson Phase 3
+   / BCQT-System / data-hub) + Bước 3 (spec chi tiết per-check). Pending
+   từ session catalog-tiers-i18n.
+8. **Văn bản pháp lý mở rộng** — NĐ 08/2015, TT 72/2015, TT 06/2024
+   (defer, ưu tiên thấp).
 
 ## Blockers
 
 Không có.
 
 ## Notes for Next AI Session
+
+### Audit fix vòng 1 — đã làm gì
+- Đọc 6 module check (c1..c6) + dynamic_runner + scoring + denominators +
+  company_type + registry + `_resolve_evidence` + `finding_detail.html`.
+- Tìm 7 bug, fix 6, defer 1. Bug C6.1 cross-year evidence user nghi không
+  phải bug — C6.1 là check liên kỳ, theo thiết kế phải show 2 năm.
+- `IMPORT_CODES[DNCX]` giờ chỉ `{E11, E15}` — KHÔNG có E13. E13 ở
+  `MMTB_CODES` public, dùng cho C3.1 và check MMTB tương lai. Detect
+  company type dùng `_DETECT_IMPORT_CODES` (gồm E13) — KHÔNG dùng cho
+  rule check.
+- `_make_finding` trong dynamic_runner giờ require `subject_type`
+  argument. Mọi runner pass `subject_col_name` của spec (hoặc cột join).
+- C1.1 / C1.4 / C1.7 ngưỡng + title đã đồng bộ giữa code, registry, catalog.
+  Nếu sửa 1 chỗ → cập nhật cả 3.
 
 ### Glossary tiếng Việt (đã áp dụng nhất quán — giữ đồng bộ khi viết text mới)
 - Draft/Published/Disabled → Nháp/Đã công bố/Đã tắt
@@ -90,10 +125,36 @@ Không có.
 - Đổi ngưỡng KHÔNG re-run check — tier compute lúc view qua `tier_for(score)`.
 
 ### Local DB
-- Đã re-ingest fresh sáng 2026-05-27. 4 DN, 2586 phát hiện, 12 (DN, năm) scored.
-- Backup gần nhất: `audit_hq.sqlite.bak-20260525-120743` (18MB, codes DN_001-006 với tên cũ).
+- Sau audit fix: 2504 phát hiện local (DB sạch junk + rerun với code mới).
+- Backup: `audit_hq.sqlite.bak-pre-audit-fix-20260527-201520` (26MB, state cũ trước fix).
 - File empty rỗng (trước khi restore): `audit_hq.sqlite.empty-20260527-102310`.
 - **Lesson: trước khi `rm audit_hq.sqlite*`, backup trước:** `cp audit_hq.sqlite audit_hq.sqlite.bak-$(date +%Y%m%d-%H%M%S)`.
+
+### Tinsu DB (sau audit fix)
+- 3416 findings (was 3182). Backup pre-fix:
+  `~/audit-hq-mvp-deploy/db-data/audit_hq.sqlite.bak-pre-audit-fix-20260527-232133`.
+- Cleanup + rerun chạy qua `docker exec audit-hq-mvp python -c "..."`.
+
+### Workflow rerun checks trên tinsu (không full re-ingest)
+```bash
+ssh.exe -F 'C:\Users\vuong\.ssh\config' tinsu
+
+# Backup
+cp ~/audit-hq-mvp-deploy/db-data/audit_hq.sqlite \
+   ~/audit-hq-mvp-deploy/db-data/audit_hq.sqlite.bak-$(date +%Y%m%d-%H%M%S)
+
+# Inline cleanup + rerun
+docker exec audit-hq-mvp python -c "
+from app.pipeline.run_checks import run_checks
+pairs = [('DN_001',2023),('DN_001',2024),('DN_001',2025),
+         ('DN_002',2024),('DN_002',2025),
+         ('DN_003',2021),('DN_003',2022),('DN_003',2023),('DN_003',2024),('DN_003',2025),
+         ('DN_004',2024)]
+for code, year in pairs:
+    s = run_checks(code, year)
+    print(f'{code} {year}: {s.total} findings score={s.risk_score}')
+"
+```
 
 ### Workflow re-ingest fresh local
 ```bash
@@ -151,7 +212,14 @@ docker run --rm \
 ```
 
 ### Tests
-- 406 pass. Conftest có autouse session fixture `create_all` trên default engine — không cần test_smoke chạy trước.
+- 432 pass. Conftest có autouse session fixture `create_all` trên default engine — không cần test_smoke chạy trước.
+- Test mới sau audit fix vòng 1:
+  - `tests/test_normalize_code.py` (21 parametrize)
+  - `test_c1_2_ignores_mmtb_E13_for_dncx`
+  - `test_c1_1_fires_info_when_diff_under_5pct` + `_under_floor`
+  - `test_c1_4_fires_info_when_diff_under_1pct` + `_under_floor`
+  - `test_range_band_and_semantics` (dynamic runner)
+  - `test_finding_has_evidence_and_subject_type` (dynamic runner)
 
 ### Recompute scores trên prod
 ```bash
