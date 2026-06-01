@@ -1,9 +1,11 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-05-27, sau session audit + fix vòng 1):**
-> Branch `main` đã push + deploy. Live `audit-hq-demo.tinsu.ai` build `01db20d`.
-> 432 tests pass, ruff clean. 7 bug check rule + dynamic runner đã audit;
-> 6 fix, 1 defer (Bug #6 — dynamic check scope fallback).
+> **Trạng thái (2026-06-01, sau góp ý nghiệp vụ + fix Mẫu 16 xuất xứ "x"):**
+> Branch `main` push build `9d5bd06`. Live deploy auto qua CI.
+> **435 tests pass**, ruff clean. C4.1 nay loại NVL xuất xứ trong nước
+> (Ghi chú M16 = "x") — bỏ ~296 false-positive trên DB dev.
+> ⚠️ DB tinsu (live) CHƯA re-ingest/rerun với code mới — vẫn dữ liệu cũ.
+> ⏳ Chờ chị trả lời 4 câu hỏi clarify (xem session 2026-06-01).
 
 ## Current State
 
@@ -48,6 +50,19 @@ Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (compan
 ### Thư viện tài liệu `/tai-lieu`
 - 4 trang: scoring-methodology + TT 38/2015, TT 39/2018, TT 81/2019.
 
+## Recent Changes (2026-06-01 — góp ý nghiệp vụ + Mẫu 16 xuất xứ "x")
+
+Commit `9d5bd06` (push main): C4.1 loại NVL xuất xứ trong nước.
+- Mẫu 16 TT39 cột "Ghi chú" (col 8) = "x" → xuất xứ VN, không có tờ khai nhập.
+- Adapter `m16.py` đọc note → `Norm.note` (migration `c7f3a1b2d4e5`).
+- C4.1 bỏ qua mã "x" khi soi "không có nguồn nhập". C4.3 giữ nguyên (vẫn áp
+  dụng cho hàng nội địa vì vẫn tiêu hao).
+- Impact DB dev (8 cặp DN/năm có "x"): **bỏ ~296 C4.1 false-positive (~80%)**.
+
+Phân tích 5 điểm góp ý: điểm 1 đã làm; điểm 4 (mapping) + 5 (KXDĐM) đã verify
+không có vấn đề trong data hiện tại; điểm 2/3 chờ chị trả lời 4 câu hỏi clarify.
+Chi tiết: `.ai/sessions/2026-06-01-m16-domestic-origin-c41.md`.
+
 ## Recent Changes (2026-05-27 audit + fix vòng 1, từ commit `22aaa7b` → `01db20d`)
 
 6 commit, tất cả đã push + deploy + rerun DB tinsu:
@@ -68,6 +83,13 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
 
 ## Next Steps
 
+0. **Chờ chị trả lời 4 câu hỏi clarify** (góp ý 2026-06-01) rồi xử lý điểm 2/3:
+   (1) phạm vi loại "x" — chỉ check nhập hay mọi check định mức; (2) nguồn định
+   mức ngành cho demo (C7.1); (3) cách quy số thuế truy thu cho "trọng yếu";
+   (4) quy ước ghi chú vật tư tiêu hao (KXDĐM). Điểm 2/3 → đưa vào đề án sau khi
+   có câu trả lời. Xem session 2026-06-01.
+0b. **Re-ingest + rerun DB tinsu (live)** với code `9d5bd06` để demo phản ánh
+   việc loại "x" — hiện live vẫn dữ liệu cũ. Cần khi muốn cập nhật demo.
 1. **Verify UI tay trên live** — mở 1 finding bất kỳ ở `audit-hq-demo.tinsu.ai`,
    xác nhận evidence hiển thị đúng năm + đúng đối tượng + đã sạch junk
    `.`/E13. Smoke test này chưa làm.
