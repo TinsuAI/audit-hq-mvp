@@ -145,6 +145,7 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                     material_name=r.material_name,
                     material_unit=r.material_unit,
                     norm_qty=r.norm_qty,
+                    note=r.note,
                     source_file=m16.source_file,
                 )
                 for r in m16.rows

@@ -72,6 +72,7 @@ class Norm(Base):
     material_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     material_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     norm_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    note: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_file: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     __table_args__ = (

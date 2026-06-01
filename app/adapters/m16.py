@@ -28,6 +28,15 @@ class M16Row:
     material_name: str | None
     material_unit: str | None
     norm_qty: float
+    note: str | None = None
+
+
+def is_domestic_origin(note: str | None) -> bool:
+    """Ghi chú "x" ở Mẫu 16 = NVL xuất xứ trong nước (không nhập khẩu).
+
+    Hàng xuất xứ VN không có tờ khai nhập nên không đối chiếu lệch nhập khẩu.
+    """
+    return bool(note) and note.strip().lower() == "x"
 
 
 @dataclass
@@ -52,6 +61,7 @@ _M16_TT39_COLS = {
     "material_name": 5,
     "material_unit": 6,
     "norm_qty": 7,
+    "note": 8,
 }
 _M16_TT39_DATA_START = 11
 _M16_TT39_SHEETS = ("BCTT39", "Bcqt", "Sheet1")
@@ -129,6 +139,7 @@ def parse_m16(path: str | Path) -> M16File:
                 material_name=normalize_name(to_str(cell(raw, "material_name"))),
                 material_unit=normalize_code(to_str(cell(raw, "material_unit"))),
                 norm_qty=norm_qty,
+                note=(to_str(cell(raw, "note")) or None) if "note" in cols else None,
             )
         )
 

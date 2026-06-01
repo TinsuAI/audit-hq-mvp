@@ -10,6 +10,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.adapters.m16 import is_domestic_origin
 from app.checks.registry import Severity, severity_for
 from app.models import Finding, Norm, NvlBalance, SpBalance
 
@@ -20,13 +21,18 @@ def check_c4_1(session: Session, company_id: int, year: int) -> list[Finding]:
     Fire khi: mã NVL có trong M16 nhưng
       (a) không có dòng trong M15, hoặc
       (b) có dòng nhưng `import_qty = 0` VÀ `opening_qty = 0`.
+
+    Loại trừ NVL xuất xứ trong nước (Ghi chú M16 = "x"): hàng nội địa không có
+    tờ khai nhập nên không đối chiếu nguồn nhập khẩu (góp ý nghiệp vụ 2026-05-29).
     """
-    m16_codes = set(session.scalars(
-        select(Norm.material_code).where(
+    code_notes = session.execute(
+        select(Norm.material_code, Norm.note).where(
             Norm.company_id == company_id,
             Norm.period_year == year,
         ).distinct()
-    ).all())
+    ).all()
+    domestic = {code for code, note in code_notes if is_domestic_origin(note)}
+    m16_codes = {code for code, _ in code_notes} - domestic
 
     m15_rows = {
         r.material_code: r

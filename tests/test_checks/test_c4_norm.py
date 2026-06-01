@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.adapters.m16 import is_domestic_origin
 from app.checks.c4_norm import check_c4_1, check_c4_3
 from app.models import Norm
 from tests.conftest import add_nvl, add_sp
@@ -14,6 +15,7 @@ def add_norm(
     product_code: str,
     material_code: str,
     norm_qty: float,
+    note: str | None = None,
     year: int = 2024,
 ):
     n = Norm(
@@ -22,6 +24,7 @@ def add_norm(
         product_code=product_code,
         material_code=material_code,
         norm_qty=norm_qty,
+        note=note,
     )
     session.add(n)
     return n
@@ -61,6 +64,30 @@ def test_c4_1_no_fire_with_opening(session, company):
     add_norm(session, company.id, product_code="TP", material_code="STK", norm_qty=1.0)
     session.commit()
     assert check_c4_1(session, company.id, 2024) == []
+
+
+def test_is_domestic_origin():
+    assert is_domestic_origin("x")
+    assert is_domestic_origin(" X ")
+    assert not is_domestic_origin(None)
+    assert not is_domestic_origin("")
+    assert not is_domestic_origin("nhập khẩu")
+
+
+def test_c4_1_skips_domestic_origin(session, company):
+    # Mã xuất xứ trong nước (Ghi chú "x") không có nguồn nhập → KHÔNG flag.
+    add_norm(session, company.id, product_code="TP", material_code="VN", norm_qty=1.0, note="x")
+    session.commit()
+    assert check_c4_1(session, company.id, 2024) == []
+
+
+def test_c4_1_still_fires_for_imported_no_source(session, company):
+    # Cùng tình huống nhưng không phải hàng nội địa → vẫn flag.
+    add_norm(session, company.id, product_code="TP", material_code="NK", norm_qty=1.0, note=None)
+    session.commit()
+    findings = check_c4_1(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].subject_key == "NK"
 
 
 # --- C4.3: tiêu hao lý thuyết vượt xuất SX ---

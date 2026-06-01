@@ -48,6 +48,8 @@ def test_m16_hong_an_2024_tt39_format():
     # Every row must have both codes filled in (parent-child forward-fill).
     assert all(r.product_code and r.material_code for r in res.rows)
     assert all(r.norm_qty > 0 for r in res.rows)
+    # Cột Ghi chú (col9) được đọc; HONG_AN 2024 không đánh dấu xuất xứ nên đều None.
+    assert all(r.note is None for r in res.rows)
 
 
 def test_bcct_hong_an_2024():
