@@ -1,26 +1,27 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-06-03, fix bug ingest/evidence lệch kỳ — session Gemini):**
-> Branch `main` push build `ad68837`. Live deploy hoàn tất.
+> **Trạng thái (2026-06-03, fix ingest lệch kỳ + backfill norms.note "x" trên live):**
+> Branch `main` push build `9cb6bbb`. Live deploy hoàn tất.
 > **435 tests pass**, ruff clean.
 > 🛠️ Fix bug nạp tờ khai BCCT lệch kỳ (file gộp nhiều năm). Live đã dọn
-> ~20.671 dòng tờ khai lạc kỳ + rerun checks. DN_001 296→127, DN_002 125→62.
+> ~20.671 dòng tờ khai lạc kỳ + rerun checks.
+> ✅ Backfill `norms.note` ("x") trên live (3517 dòng) + rerun C4.1: 291→74.
+> Điểm cuối: DN_001 **127**, DN_002 **30**, DN_003 **232**, DN_004 **49**.
 > ⏳ Vẫn chờ chị trả lời 4 câu hỏi clarify M16 (xem session 2026-06-01).
-> ⚠️ Cần xác nhận: bảng `norms` trên live đã có cột `note` ("x") chưa — fix
-> C4.1 loại hàng nội địa (06-01) chỉ hiệu lực nếu live đã re-ingest M16.
 
 ## Current State
 
 ### Production (`audit-hq-demo.tinsu.ai`)
-- Build hiện tại: `ad68837` — fix ingest year filter.
-- DB tinsu (06-03): khôi phục `declaration_lines` từ backup 27/05, lọc bỏ
-  ~20.671 dòng tờ khai lạc kỳ, rerun toàn bộ 16 check 4 DN. 2025: 880 findings,
-  2024: 283 findings.
-- 4 DN demo, score sau rerun 06-03 (rate-based, max qua các năm):
-  - DN_001 Phương Đông (Điện tử): **127** (was 296) — Có chênh lệch nhỏ
-  - DN_003 Hoa Sen (Dệt may): **263** — Cần rà soát
-  - DN_002 Tiên Phong (Cơ khí): **62** (was 125) — Có chênh lệch nhỏ
-  - DN_004 Nam Tiến (Hoá chất): **97** — Có chênh lệch nhỏ
+- Build hiện tại: `9cb6bbb`.
+- DB tinsu (06-03): (a) khôi phục `declaration_lines` từ backup 27/05 + lọc bỏ
+  ~20.671 dòng lạc kỳ; (b) backfill `norms.note` ("x") 3517 dòng từ M16 thật
+  (qua mapping anonymize, material_code giữ nguyên); rerun full 11 cặp + recompute.
+- 4 DN demo, score cuối (rate-based, max qua các năm):
+  - DN_003 Hoa Sen (Dệt may): **232** (was 263) — Cần rà soát
+  - DN_001 Phương Đông (Điện tử): **127** — Có chênh lệch nhỏ (không có note "x")
+  - DN_004 Nam Tiến (Hoá chất): **49** (was 97) — Dữ liệu nhất quán
+  - DN_002 Tiên Phong (Cơ khí): **30** (was 62) — Dữ liệu nhất quán
+- C4.1 findings: **74** (was 291 — backfill loại 217 mã hàng nội địa).
 - Ngưỡng tier (default sau `4977cd4`): **50 / 100 / 300 / 600 / 1000**.
   Admin chỉnh ở `/admin/risk-tiers` — đổi không cần re-run check.
 
@@ -109,12 +110,11 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
    mức ngành cho demo (C7.1); (3) cách quy số thuế truy thu cho "trọng yếu";
    (4) quy ước ghi chú vật tư tiêu hao (KXDĐM). Điểm 2/3 → đưa vào đề án sau khi
    có câu trả lời. Xem session 2026-06-01.
-0b. **Xác nhận fix "x" (C4.1) đã hiệu lực trên live.** Live 06-03 chỉ khôi phục
-   `declaration_lines`, có thể chưa re-ingest `norms` → cột `note` toàn NULL →
-   C4.1 không loại hàng nội địa. Kiểm `norms.note` trên tinsu; nếu NULL, cần
-   re-ingest M16 hoặc backfill note rồi rerun C4.1.
+0b. ✅ DONE — backfill `norms.note` "x" trên live + rerun C4.1 (291→74) +
+   recompute scores. Fix C4.1 hàng nội địa (06-01) nay đã hiệu lực trên live.
 1. **Verify UI tay trên live** — phần evidence lệch kỳ ĐÃ verify 06-03 (DN_001
    kỳ 2024 sạch tờ khai 2023). Còn lại: xác nhận đã sạch junk `.`/E13 (chưa làm).
+   Cũng nên xoá DN rác trên live (`DN_`, `TEST`, `TEST_1` — score 0).
 2. **Bug #6 (defer)** — dynamic check denominator fallback `"nvl"` trong
    `denominators.RULE_SCOPE`. Khi có dynamic check đầu tiên publish trên
    `declaration_lines`, sẽ méo điểm. Fix sạch cần thêm `scope` field vào
@@ -182,6 +182,24 @@ Không có.
   file được. Khi cần sửa dữ liệu Tầng 1 trên live: khôi phục bảng từ backup rồi
   lọc bằng SQL/script trong container, KHÔNG chạy `run_all`/`ingest`. (Đây là
   cách session 06-03 dọn `declaration_lines` lệch kỳ.)
+- **Chạy script file trong container:** cwd=/app nhưng `python /tmp/x.py` đặt
+  sys.path[0]=/tmp → `import app` fail. Phải `docker exec -e PYTHONPATH=/app
+  -w /app ... python /tmp/x.py` (hoặc dùng `python -c`).
+
+### ⚠️ GOTCHA: `run_checks(only={...})` xóa luôn COMBO findings
+- `run_checks(code, year, only={"C4.1"})` wipe cả COMBO_* nhưng KHÔNG tái tạo
+  (combo chỉ chạy khi `only is None`). Hậu quả: chạy 1 check lẻ → mất hết combo
+  → điểm tụt sai (06-03 DN_001 127→55 ảo). **Luôn rerun full `run_checks(code,
+  year)` (only=None) rồi recompute_all_scores** khi muốn điểm đúng.
+
+### Backfill norms.note "x" lên live (06-03) — cách đã dùng
+- anonymize.py **giữ nguyên material_code/product_code** (chỉ ẩn company/NCC) →
+  map note qua `db-data/anonymize_mapping.json` (DN_xxx→real) + (year, pc, mc).
+- Parse M16 thật bằng `discover`+`parse_m16` (adapter mới đọc note) → JSON
+  {dn,year,pc,mc,note} chỉ dòng có note → docker cp vào container → UPDATE theo
+  (company_id, period_year, product_code, material_code). 11 cặp khớp 100% số dòng.
+- Tương lai rebuild demo: flow `ingest (adapter mới điền note) → anonymize (giữ
+  note)` sẽ tự mang note sang, không cần backfill tay nữa.
 
 ### Workflow rerun checks trên tinsu (không full re-ingest)
 ```bash

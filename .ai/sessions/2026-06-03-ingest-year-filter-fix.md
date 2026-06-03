@@ -54,12 +54,23 @@ Live không có Excel raw (policy bảo mật/dung lượng) nên không re-inge
   đã bỏ, quay về generator gọn (đúng style dự án, tránh log thừa). Filter giữ
   nguyên.
 
-## Open Items
+## Backfill norms.note "x" lên live (cùng ngày, sau khi kiểm tra)
 
-- ⚠️ **Chưa chắc fix C4.1 "x" (06-01) đã hiệu lực trên live.** Live 06-03 chỉ
-  khôi phục `declaration_lines`, không re-ingest `norms` → cột `note` có thể
-  toàn NULL → C4.1 không loại hàng nội địa. Cần kiểm `norms.note` trên tinsu;
-  nếu NULL thì re-ingest M16 hoặc backfill note rồi rerun C4.1.
+- Kiểm `norms.note` trên tinsu: **0/20.781 dòng có note** (toàn NULL) → fix C4.1
+  "x" (06-01) CHƯA hiệu lực vì live chỉ khôi phục `declaration_lines`, không
+  re-ingest `norms`.
+- **Backfill:** anonymize giữ nguyên material/product_code → map note từ M16 thật
+  qua `anonymize_mapping.json`. Parse 11 cặp (DN, năm) bằng `discover`+`parse_m16`
+  → 3517 dòng note (3490 "x" + 27 "nhập loại hình a12") → UPDATE live theo
+  (company_id, period_year, product_code, material_code). Khớp 100% số dòng.
+- **Rerun:** ban đầu chạy `run_checks(only={"C4.1"})` → vô tình XÓA COMBO findings
+  (gotcha, xem STATUS) làm điểm tụt ảo (DN_001 127→55). Sửa: rerun FULL 11 cặp
+  (only=None) tái tạo combo + recompute scores.
+- **Kết quả:** C4.1 291→74 (loại 217 mã hàng nội địa). Điểm cuối: DN_001 127
+  (không đổi — GROWATT không có note "x"), DN_002 62→30, DN_003 263→232,
+  DN_004 97→49.
+
+## Open Items
 - Vẫn chờ chị trả lời 4 câu hỏi clarify M16 (xem session 2026-06-01) cho
   điểm 2/3 góp ý nghiệp vụ.
 - Verify UI live: phần junk `.`/E13 chưa smoke-test (phần evidence lệch kỳ đã
