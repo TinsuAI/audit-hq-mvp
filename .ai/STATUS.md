@@ -131,7 +131,7 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
    recompute scores. Fix C4.1 hàng nội địa (06-01) nay đã hiệu lực trên live.
 1. **Verify UI tay trên live** — phần evidence lệch kỳ ĐÃ verify 06-03 (DN_001
    kỳ 2024 sạch tờ khai 2023). Còn lại: xác nhận đã sạch junk `.`/E13 (chưa làm).
-   Cũng nên xoá DN rác trên live (`DN_`, `TEST`, `TEST_1` — score 0).
+   DN rác (`DN_`, `TEST`, `TEST_1`) đã xoá 06-04 → live chỉ còn 4 DN demo.
 2. **✅ DN_001 (GROWATT) đã backfill tờ khai xuất + 2025 từ data-hub (06-04).**
    `data/GROWATT` (symlink) thiếu file xuất; tìm thấy trong project **data-hub**:
    `data/source_inventory/growatt-vn/2026-05-27/BaoCaoHangChiTiet ALL {NK,XK} GRW`.
