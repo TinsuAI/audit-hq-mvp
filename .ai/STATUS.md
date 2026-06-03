@@ -131,7 +131,15 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
 1. **Verify UI tay trên live** — phần evidence lệch kỳ ĐÃ verify 06-03 (DN_001
    kỳ 2024 sạch tờ khai 2023). Còn lại: xác nhận đã sạch junk `.`/E13 (chưa làm).
    Cũng nên xoá DN rác trên live (`DN_`, `TEST`, `TEST_1` — score 0).
-2. **Bug #6 (defer)** — dynamic check denominator fallback `"nvl"` trong
+2. **⚠️ DATA GAP — DN_001 (GROWATT) thiếu tờ khai XUẤT.** Dataset chỉ có 1 file
+   BCCT `BaoCaoHangChiTiet 2023-2025.xls`, toàn mã nhập (E11/E13/E15), 0 dòng
+   xuất E42 (Sheet2/3 rỗng). GROWATT là DNCX nên chắc chắn có xuất — file xuất
+   KHÔNG có trong `data/`. Hệ quả: C1.4 2024 = 21 finding nhiều khả năng FP;
+   2025 = 0 tờ khai (file không có dòng ghi ngày 2025). KHÔNG backfill được
+   (không có nguồn). **Cần xin file tờ khai xuất GROWATT từ Trọng Tín.**
+   Đã quét kỹ toàn bộ `data/GROWATT` (mọi thư mục + sheet) 2026-06-04, xác nhận
+   thiếu thật, không phải bug discover/parse.
+3. **Bug #6 (defer)** — dynamic check denominator fallback `"nvl"` trong
    `denominators.RULE_SCOPE`. Khi có dynamic check đầu tiên publish trên
    `declaration_lines`, sẽ méo điểm. Fix sạch cần thêm `scope` field vào
    `CheckDefinition` model + migration + UI form. Ưu tiên thấp.
