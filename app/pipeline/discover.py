@@ -12,7 +12,7 @@ class DiscoveredFiles:
     m15: Path | None
     m15a: Path | None
     m16: Path | None
-    bcct: Path | None
+    bcct: list[Path]  # nhiều file (DN có thể tách tờ khai NK / XK thành 2 file)
 
 
 # Lower index = higher priority. Files matching ignore patterns are dropped.
@@ -48,6 +48,15 @@ def _pick_best(candidates: list[Path]) -> Path | None:
     pool = primary or candidates
     # Prefer .xlsx over .xls when both present, otherwise newest mtime.
     return max(pool, key=lambda p: (p.suffix.lower() == ".xlsx", p.stat().st_mtime))
+
+
+def _pick_all(candidates: list[Path]) -> list[Path]:
+    """Trả về tất cả file hợp lệ (loại draft/dup) — dùng cho BCCT khi DN tách
+    tờ khai nhập (NK) và xuất (XK) thành nhiều file phải nạp gộp."""
+    primary = [c for c in candidates if not _is_draft(c.name)]
+    pool = primary or candidates
+    # Sắp theo tên cho thứ tự ổn định (không phụ thuộc mtime).
+    return sorted(pool, key=lambda p: p.name)
 
 
 def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
@@ -109,5 +118,5 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
         m15=_pick_best(m15_candidates),
         m15a=_pick_best(m15a_candidates),
         m16=_pick_best(m16_candidates),
-        bcct=_pick_best(bcct_candidates),
+        bcct=_pick_all(bcct_candidates),
     )

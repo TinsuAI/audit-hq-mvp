@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.pipeline.discover import _pick_best, discover
+from app.pipeline.discover import _pick_all, _pick_best, discover
 
 DATA_ROOT = Path(__file__).resolve().parent.parent / "data"
 
@@ -17,7 +17,25 @@ def test_discover_hong_an_2024():
     assert res.m15 is not None and "NVL" in res.m15.name
     assert res.m15a is not None and "SP" in res.m15a.name
     assert res.m16 is not None and res.m16.name.lower().startswith(("bcdm", "dinhmuc"))
-    assert res.bcct is not None and "HangChiTiet" in res.bcct.name
+    assert res.bcct and any("HangChiTiet" in p.name for p in res.bcct)
+
+
+def test_discover_hong_an_2021_loads_both_nk_and_xk():
+    # 2021 tách tờ khai nhập (NK) và xuất (XK) thành 2 file — phải nạp cả hai.
+    res = discover("HONG_AN", 2021, DATA_ROOT)
+    names = [p.name for p in res.bcct]
+    assert any("NK" in n for n in names), names
+    assert any(".XK" in n or " XK" in n for n in names), names
+
+
+def test_pick_all_keeps_non_draft_combines_multiple(tmp_path: Path):
+    nk = tmp_path / "BaoCaoHangChiTiet.NK 2021.xls"
+    xk = tmp_path / "BaoCaoHangChiTiet.XK 2021.xls"
+    dup = tmp_path / "BaoCaoHangChiTiet.XK 2021__dup1.xls"
+    for p in (nk, xk, dup):
+        p.write_bytes(b"x")
+    chosen = _pick_all([nk, xk, dup])
+    assert set(chosen) == {nk, xk}  # cả NK lẫn XK, loại dup
 
 
 def test_pick_best_prefers_non_draft(tmp_path: Path):

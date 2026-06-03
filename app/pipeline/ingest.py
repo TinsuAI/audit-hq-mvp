@@ -59,26 +59,29 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
             "m15": str(files.m15) if files.m15 else None,
             "m15a": str(files.m15a) if files.m15a else None,
             "m16": str(files.m16) if files.m16 else None,
-            "bcct": str(files.bcct) if files.bcct else None,
+            "bcct": ", ".join(p.name for p in files.bcct) if files.bcct else None,
         },
     )
 
     m15 = parse_m15(files.m15) if files.m15 else None
     m15a = parse_m15a(files.m15a) if files.m15a else None
     m16 = parse_m16(files.m16) if files.m16 else None
-    bcct = parse_bcct(files.bcct) if files.bcct else None
+    # DN có thể tách tờ khai NK / XK thành nhiều file — parse + gộp tất cả.
+    bcct_files = [parse_bcct(p) for p in files.bcct]
 
     stats.m15_rows = len(m15.rows) if m15 else 0
     stats.m15a_rows = len(m15a.rows) if m15a else 0
     stats.m16_rows = len(m16.rows) if m16 else 0
-    stats.bcct_rows = len(bcct.rows) if bcct else 0
+    stats.bcct_rows = sum(len(b.rows) for b in bcct_files)
 
     if dry_run:
         return stats
 
     company_meta = next((x.header for x in (m15, m15a, m16) if x is not None), None)
-    tax_id = (company_meta.tax_id if company_meta else None) or (bcct.company_tax_id if bcct else None)
-    name = (company_meta.name if company_meta else None) or (bcct.company_name if bcct else None)
+    bcct_tax = next((b.company_tax_id for b in bcct_files if b.company_tax_id), None)
+    bcct_name = next((b.company_name for b in bcct_files if b.company_name), None)
+    tax_id = (company_meta.tax_id if company_meta else None) or bcct_tax
+    name = (company_meta.name if company_meta else None) or bcct_name
     address = company_meta.address if company_meta else None
 
     with SessionLocal() as session:
@@ -151,7 +154,7 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                 for r in m16.rows
             )
 
-        if bcct:
+        for bcct in bcct_files:
             session.add_all(
                 DeclarationLine(
                     company_id=company.id,
