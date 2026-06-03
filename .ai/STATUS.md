@@ -1,21 +1,25 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-06-01, sau góp ý nghiệp vụ + fix Mẫu 16 xuất xứ "x"):**
-> Branch `main` push build `9d5bd06`. Live deploy auto qua CI.
-> **435 tests pass**, ruff clean. C4.1 nay loại NVL xuất xứ trong nước
-> (Ghi chú M16 = "x") — bỏ ~296 false-positive trên DB dev.
-> ⚠️ DB tinsu (live) CHƯA re-ingest/rerun với code mới — vẫn dữ liệu cũ.
-> ⏳ Chờ chị trả lời 4 câu hỏi clarify (xem session 2026-06-01).
+> **Trạng thái (2026-06-03, fix bug ingest/evidence lệch kỳ — session Gemini):**
+> Branch `main` push build `ad68837`. Live deploy hoàn tất.
+> **435 tests pass**, ruff clean.
+> 🛠️ Fix bug nạp tờ khai BCCT lệch kỳ (file gộp nhiều năm). Live đã dọn
+> ~20.671 dòng tờ khai lạc kỳ + rerun checks. DN_001 296→127, DN_002 125→62.
+> ⏳ Vẫn chờ chị trả lời 4 câu hỏi clarify M16 (xem session 2026-06-01).
+> ⚠️ Cần xác nhận: bảng `norms` trên live đã có cột `note` ("x") chưa — fix
+> C4.1 loại hàng nội địa (06-01) chỉ hiệu lực nếu live đã re-ingest M16.
 
 ## Current State
 
 ### Production (`audit-hq-demo.tinsu.ai`)
-- Build hiện tại: `01db20d` — audit fix vòng 1. CI 2m23s.
-- DB tinsu đã clean junk + rerun checks. 11 (DN, năm) pair, 3416 findings.
-- 4 DN demo, score sau rerun (rate-based, max qua các năm):
-  - DN_001 Phương Đông (Điện tử): **296** — Cần rà soát
+- Build hiện tại: `ad68837` — fix ingest year filter.
+- DB tinsu (06-03): khôi phục `declaration_lines` từ backup 27/05, lọc bỏ
+  ~20.671 dòng tờ khai lạc kỳ, rerun toàn bộ 16 check 4 DN. 2025: 880 findings,
+  2024: 283 findings.
+- 4 DN demo, score sau rerun 06-03 (rate-based, max qua các năm):
+  - DN_001 Phương Đông (Điện tử): **127** (was 296) — Có chênh lệch nhỏ
   - DN_003 Hoa Sen (Dệt may): **263** — Cần rà soát
-  - DN_002 Tiên Phong (Cơ khí): **125** — Có chênh lệch nhỏ
+  - DN_002 Tiên Phong (Cơ khí): **62** (was 125) — Có chênh lệch nhỏ
   - DN_004 Nam Tiến (Hoá chất): **97** — Có chênh lệch nhỏ
 - Ngưỡng tier (default sau `4977cd4`): **50 / 100 / 300 / 600 / 1000**.
   Admin chỉnh ở `/admin/risk-tiers` — đổi không cần re-run check.
@@ -24,10 +28,10 @@
 - Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite (WAL + busy_timeout=5000).
 - AI: OpenAI SDK compat, Gemini 2.5 (primary) + NIM DeepSeek (dự phòng).
 - Dev port: **8200** (cố định, match docker-compose + Cloudflare tunnel).
-- **432 tests pass** (was 406, +26 mới hoặc đã từng skip), ruff clean.
+- **435 tests pass**, ruff clean.
 
-### Migrations (head: `a4d5ffcb0da7`)
-Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (company.risk_score) → `599dbd931e77` (UOM) → `a3c48313dddf` (ai_settings + ai audit) → `b7e91f4d2a13` (users) → `de9eee546b80` (jobs) → `46b3bcaebbe4` (company_year_scores) → `646b92a93768` (check_definitions) → `a4d5ffcb0da7` (**app_settings**).
+### Migrations (head: `c7f3a1b2d4e5`)
+Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (company.risk_score) → `599dbd931e77` (UOM) → `a3c48313dddf` (ai_settings + ai audit) → `b7e91f4d2a13` (users) → `de9eee546b80` (jobs) → `46b3bcaebbe4` (company_year_scores) → `646b92a93768` (check_definitions) → `a4d5ffcb0da7` (app_settings) → `c7f3a1b2d4e5` (**norms.note** — xuất xứ "x").
 
 ### Cấu trúc lưu trữ cấu hình runtime
 - `ai_settings` — chỉ cho AI assistant (base_url, api_key, model_default/fast/deep, fallback, limits…).
@@ -49,6 +53,23 @@ Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (compan
 
 ### Thư viện tài liệu `/tai-lieu`
 - 4 trang: scoring-methodology + TT 38/2015, TT 39/2018, TT 81/2019.
+
+## Recent Changes (2026-06-03 — fix bug ingest/evidence lệch kỳ, session Gemini)
+
+Commit `ad68837` (push main): lọc tờ khai BCCT theo năm.
+- **Bug:** File BCCT gộp nhiều năm (2023–2025). `ingest` gán cứng mọi dòng vào
+  `period_year` đang nạp → finding kỳ 2025 hiện evidence tờ khai 2023, sai tổng
+  lượng đối chiếu Mẫu 15 (C1.1/C1.4), trang Data lẫn năm.
+- **Fix:** `app/pipeline/ingest.py` chỉ nạp dòng
+  `r.declaration_date is None or r.declaration_date.year == year`. Mỗi năm
+  ingest riêng nên tờ khai 2023 vẫn vào kỳ 2023 — KHÔNG mất dữ liệu (vd HONG_AN
+  file 2267 dòng → 2023:180, 2024:246, 2025:1512).
+- **Live:** khôi phục `declaration_lines` từ backup 27/05 + lọc ~20.671 dòng
+  lạc kỳ + rerun checks. DN_001 296→127, DN_002 125→62.
+- Chi tiết: `.ai/sessions/2026-06-03-ingest-year-filter-fix.md`.
+- ⚠️ Live chỉ khôi phục `declaration_lines` (không re-ingest từ Excel). Bảng
+  `norms` có thể CHƯA có cột `note` "x" → cần kiểm tra fix C4.1 (06-01) đã
+  hiệu lực trên live chưa.
 
 ## Recent Changes (2026-06-01 — góp ý nghiệp vụ + Mẫu 16 xuất xứ "x")
 
@@ -88,11 +109,12 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
    mức ngành cho demo (C7.1); (3) cách quy số thuế truy thu cho "trọng yếu";
    (4) quy ước ghi chú vật tư tiêu hao (KXDĐM). Điểm 2/3 → đưa vào đề án sau khi
    có câu trả lời. Xem session 2026-06-01.
-0b. **Re-ingest + rerun DB tinsu (live)** với code `9d5bd06` để demo phản ánh
-   việc loại "x" — hiện live vẫn dữ liệu cũ. Cần khi muốn cập nhật demo.
-1. **Verify UI tay trên live** — mở 1 finding bất kỳ ở `audit-hq-demo.tinsu.ai`,
-   xác nhận evidence hiển thị đúng năm + đúng đối tượng + đã sạch junk
-   `.`/E13. Smoke test này chưa làm.
+0b. **Xác nhận fix "x" (C4.1) đã hiệu lực trên live.** Live 06-03 chỉ khôi phục
+   `declaration_lines`, có thể chưa re-ingest `norms` → cột `note` toàn NULL →
+   C4.1 không loại hàng nội địa. Kiểm `norms.note` trên tinsu; nếu NULL, cần
+   re-ingest M16 hoặc backfill note rồi rerun C4.1.
+1. **Verify UI tay trên live** — phần evidence lệch kỳ ĐÃ verify 06-03 (DN_001
+   kỳ 2024 sạch tờ khai 2023). Còn lại: xác nhận đã sạch junk `.`/E13 (chưa làm).
 2. **Bug #6 (defer)** — dynamic check denominator fallback `"nvl"` trong
    `denominators.RULE_SCOPE`. Khi có dynamic check đầu tiên publish trên
    `declaration_lines`, sẽ méo điểm. Fix sạch cần thêm `scope` field vào
@@ -152,10 +174,14 @@ Không có.
 - File empty rỗng (trước khi restore): `audit_hq.sqlite.empty-20260527-102310`.
 - **Lesson: trước khi `rm audit_hq.sqlite*`, backup trước:** `cp audit_hq.sqlite audit_hq.sqlite.bak-$(date +%Y%m%d-%H%M%S)`.
 
-### Tinsu DB (sau audit fix)
-- 3416 findings (was 3182). Backup pre-fix:
+### Tinsu DB
+- Backup pre-fix (audit vòng 1):
   `~/audit-hq-mvp-deploy/db-data/audit_hq.sqlite.bak-pre-audit-fix-20260527-232133`.
 - Cleanup + rerun chạy qua `docker exec audit-hq-mvp python -c "..."`.
+- **Live KHÔNG có Excel raw** (policy bảo mật/dung lượng) → không re-ingest từ
+  file được. Khi cần sửa dữ liệu Tầng 1 trên live: khôi phục bảng từ backup rồi
+  lọc bằng SQL/script trong container, KHÔNG chạy `run_all`/`ingest`. (Đây là
+  cách session 06-03 dọn `declaration_lines` lệch kỳ.)
 
 ### Workflow rerun checks trên tinsu (không full re-ingest)
 ```bash
