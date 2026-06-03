@@ -14,8 +14,9 @@
 ### Production (`audit-hq-demo.tinsu.ai`)
 - Build hiện tại: `a2b3f92`.
 - DB tinsu (06-03→04): (a) lọc ~20.671 dòng tờ khai lạc kỳ; (b) backfill
-  `norms.note` "x" 3517 dòng; (c) backfill tờ khai xuất DN_003 còn thiếu
-  (NK/XK tách file): 2021 0→289, 2022 69→236, 2025 1512→1893. Rerun + recompute.
+  `norms.note` "x" 3517 dòng; (c) backfill tờ khai xuất DN_003 (NK/XK tách file):
+  2021 0→289, 2022 69→236, 2025 1512→1893; (d) backfill DN_001 (GROWATT) từ
+  data-hub: 2023 →5475, 2024 →3505 (C1.4 FP→0), 2025 0→19.898. Rerun + recompute.
 - 4 DN demo, score cuối (rate-based, max qua các năm):
   - DN_003 Hoa Sen (Dệt may): **177** (was 232) — Cần rà soát
   - DN_001 Phương Đông (Điện tử): **127** — Có chênh lệch nhỏ (không có note "x")
@@ -131,14 +132,15 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
 1. **Verify UI tay trên live** — phần evidence lệch kỳ ĐÃ verify 06-03 (DN_001
    kỳ 2024 sạch tờ khai 2023). Còn lại: xác nhận đã sạch junk `.`/E13 (chưa làm).
    Cũng nên xoá DN rác trên live (`DN_`, `TEST`, `TEST_1` — score 0).
-2. **⚠️ DATA GAP — DN_001 (GROWATT) thiếu tờ khai XUẤT.** Dataset chỉ có 1 file
-   BCCT `BaoCaoHangChiTiet 2023-2025.xls`, toàn mã nhập (E11/E13/E15), 0 dòng
-   xuất E42 (Sheet2/3 rỗng). GROWATT là DNCX nên chắc chắn có xuất — file xuất
-   KHÔNG có trong `data/`. Hệ quả: C1.4 2024 = 21 finding nhiều khả năng FP;
-   2025 = 0 tờ khai (file không có dòng ghi ngày 2025). KHÔNG backfill được
-   (không có nguồn). **Cần xin file tờ khai xuất GROWATT từ Trọng Tín.**
-   Đã quét kỹ toàn bộ `data/GROWATT` (mọi thư mục + sheet) 2026-06-04, xác nhận
-   thiếu thật, không phải bug discover/parse.
+2. **✅ DN_001 (GROWATT) đã backfill tờ khai xuất + 2025 từ data-hub (06-04).**
+   `data/GROWATT` (symlink) thiếu file xuất; tìm thấy trong project **data-hub**:
+   `data/source_inventory/growatt-vn/2026-05-27/BaoCaoHangChiTiet ALL {NK,XK} GRW`.
+   Backfill live: 2023 +1 E42, 2024 +34 E42 (C1.4 21→0 FP), 2025 0→19.898
+   (nhập 19.369 + xuất 529). Item_code khớp M15 379/379, M15a 56/63.
+   ⚠️ **Nguồn `data/GROWATT` VẪN thiếu** → rebuild demo sẽ mất lại. Fix triệt để:
+   copy 2 file ALL NK/XK GRW của data-hub vào `audit-hq/data/raw/GROWATT/
+   multi_year/HANG_CHI_TIET/` (discover mới nạp gộp được). Chưa làm (đụng repo
+   audit-hq nguồn — cần OK).
 3. **Bug #6 (defer)** — dynamic check denominator fallback `"nvl"` trong
    `denominators.RULE_SCOPE`. Khi có dynamic check đầu tiên publish trên
    `declaration_lines`, sẽ méo điểm. Fix sạch cần thêm `scope` field vào
