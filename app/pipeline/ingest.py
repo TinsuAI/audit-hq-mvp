@@ -176,7 +176,9 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                     source_file=bcct.source_file,
                 )
                 for r in bcct.rows
+                if r.declaration_date is None or r.declaration_date.year == year
             )
+
 
         session.commit()
 
