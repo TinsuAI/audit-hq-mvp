@@ -152,32 +152,49 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
             )
 
         if bcct:
-            session.add_all(
-                DeclarationLine(
-                    company_id=company.id,
-                    period_year=year,
-                    declaration_no=r.declaration_no,
-                    declaration_date=r.declaration_date,
-                    customs_code=r.customs_code,
-                    line_no=r.line_no,
-                    item_code=r.item_code,
-                    item_name=r.item_name,
-                    hs_code=r.hs_code,
-                    origin=r.origin,
-                    quantity=r.quantity,
-                    unit=r.unit,
-                    unit_price=r.unit_price,
-                    currency=r.currency,
-                    value_foreign=r.value_foreign,
-                    value_total=r.value_total,
-                    tax_total=r.tax_total,
-                    partner=r.partner,
-                    invoice_no=r.invoice_no,
-                    source_file=bcct.source_file,
-                )
-                for r in bcct.rows
-                if r.declaration_date is None or r.declaration_date.year == year
-            )
+            accepted_count = 0
+            rejected_count = 0
+            rejected_years = {}
+            
+            to_insert = []
+            for r in bcct.rows:
+                if r.declaration_date is None or r.declaration_date.year == year:
+                    to_insert.append(
+                        DeclarationLine(
+                            company_id=company.id,
+                            period_year=year,
+                            declaration_no=r.declaration_no,
+                            declaration_date=r.declaration_date,
+                            customs_code=r.customs_code,
+                            line_no=r.line_no,
+                            item_code=r.item_code,
+                            item_name=r.item_name,
+                            hs_code=r.hs_code,
+                            origin=r.origin,
+                            quantity=r.quantity,
+                            unit=r.unit,
+                            unit_price=r.unit_price,
+                            currency=r.currency,
+                            value_foreign=r.value_foreign,
+                            value_total=r.value_total,
+                            tax_total=r.tax_total,
+                            partner=r.partner,
+                            invoice_no=r.invoice_no,
+                            source_file=bcct.source_file,
+                        )
+                    )
+                    accepted_count += 1
+                else:
+                    rejected_count += 1
+                    y = r.declaration_date.year
+                    rejected_years[y] = rejected_years.get(y, 0) + 1
+            
+            if rejected_count > 0:
+                print(f"  [INFO] {company_code} {year}: Lọc bỏ {rejected_count} dòng tờ khai thuộc năm khác {sorted(rejected_years.keys())}")
+                for y, count in sorted(rejected_years.items()):
+                    print(f"         - Năm {y}: {count} dòng")
+            
+            session.add_all(to_insert)
 
 
         session.commit()
