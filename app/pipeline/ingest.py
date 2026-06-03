@@ -29,6 +29,7 @@ class IngestStats:
     m15a_rows: int = 0
     m16_rows: int = 0
     bcct_rows: int = 0
+    bcct_other_year: int = 0  # dòng BCCT bị loại vì ngày tờ khai thuộc kỳ khác
     files: dict[str, str | None] | None = None
 
 
@@ -72,7 +73,13 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
     stats.m15_rows = len(m15.rows) if m15 else 0
     stats.m15a_rows = len(m15a.rows) if m15a else 0
     stats.m16_rows = len(m16.rows) if m16 else 0
-    stats.bcct_rows = sum(len(b.rows) for b in bcct_files)
+    # BCCT: tách dòng thuộc kỳ đang nạp (theo ngày tờ khai) khỏi dòng kỳ khác.
+    bcct_all = [r for b in bcct_files for r in b.rows]
+    stats.bcct_rows = sum(
+        1 for r in bcct_all
+        if r.declaration_date is None or r.declaration_date.year == year
+    )
+    stats.bcct_other_year = len(bcct_all) - stats.bcct_rows
 
     if dry_run:
         return stats
@@ -154,11 +161,19 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                 for r in m16.rows
             )
 
+        # period_year của BCCT suy TỪ ngày tờ khai của từng dòng (không gán cứng
+        # `year`). Chỉ giữ dòng thuộc kỳ đang nạp — file gộp nhiều năm chỉ đóng góp
+        # phần đúng năm; phần năm khác do lần nạp năm đó xử lý. Dòng thiếu ngày →
+        # quy về kỳ đang nạp (không suy được năm).
         for bcct in bcct_files:
-            session.add_all(
-                DeclarationLine(
+            to_add = []
+            for r in bcct.rows:
+                row_year = r.declaration_date.year if r.declaration_date else year
+                if row_year != year:
+                    continue
+                to_add.append(DeclarationLine(
                     company_id=company.id,
-                    period_year=year,
+                    period_year=row_year,
                     declaration_no=r.declaration_no,
                     declaration_date=r.declaration_date,
                     customs_code=r.customs_code,
@@ -177,10 +192,8 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                     partner=r.partner,
                     invoice_no=r.invoice_no,
                     source_file=bcct.source_file,
-                )
-                for r in bcct.rows
-                if r.declaration_date is None or r.declaration_date.year == year
-            )
+                ))
+            session.add_all(to_add)
 
         session.commit()
 
@@ -211,7 +224,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  M15  (NVL):  {stats.m15_rows}")
     print(f"  M15a (SP):   {stats.m15a_rows}")
     print(f"  M16  (norm): {stats.m16_rows}")
-    print(f"  BCCT:        {stats.bcct_rows}")
+    other = f" (+{stats.bcct_other_year} kỳ khác bị loại)" if stats.bcct_other_year else ""
+    print(f"  BCCT:        {stats.bcct_rows}{other}")
     if args.dry_run:
         print("(dry-run — chưa ghi DB)")
     else:

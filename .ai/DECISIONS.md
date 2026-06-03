@@ -107,3 +107,18 @@ Ghi lại các quyết định kiến trúc và phạm vi. Mỗi entry: ngày, q
 **Lý do:** Tránh duplicate 500MB. Source of truth duy nhất.
 
 **Trade-off:** Developer mới clone phải tự `ln -s ../audit-hq/data/raw data` — note trong README.
+
+### 13. `period_year` là khoá thời gian chung; BCCT suy từ `declaration_date` (2026-06-04)
+
+**Quyết định:** Mọi bảng Tầng 1 (NvlBalance/M15, SpBalance/M15a, Norm/M16, DeclarationLine/BCCT) đều có cột `period_year`. Tất cả check query bằng `period_year`. Riêng BCCT: `period_year` **suy từ `declaration_date.year` của từng dòng** lúc ingest, không gán cứng tham số `year`.
+
+**Lý do:**
+- M15/M15a/M16 là **báo cáo theo kỳ quyết toán**, KHÔNG có ngày từng dòng — chỉ BCCT có `declaration_date`. Phần lớn check là đối chiếu chéo BCCT ↔ M15/M16, cần một chiều thời gian chung cho cả 4 bảng. Đơn vị phát hiện cũng là cặp **(DN, năm)**. → `period_year` là khoá join duy nhất khả dụng.
+- "Kỳ quyết toán" là khái niệm hành chính (DN nộp BCQT cho kỳ nào), không nhất thiết = năm dương lịch — nên `period_year` (kỳ) tách biệt `declaration_date` (mốc giao dịch).
+- Gán `period_year` từ tham số `year` (như trước) gây bug file gộp nhiều năm (dòng 2023 lọt vào kỳ 2025). Suy từ `declaration_date.year` loại bug này tận gốc; số dòng kỳ khác bị loại được đếm vào `IngestStats.bcct_other_year` (không cắt âm thầm).
+
+**Vì sao KHÔNG nạp cả file BCCT một lần (giữ vòng lặp per-year):**
+- Whitelist năm gắn với **năm có BCQT**. File BCCT có thể chứa năm chưa có BCQT (vd GROWATT 2026) → không có settlement để đối chiếu → nạp vào chỉ tạo finding rác.
+- DN có cả file per-year lẫn file gộp (HONG_AN) → nạp hết một lần sẽ **trùng** năm; cơ chế per-year + fallback multi_year hiện tại đảm bảo mỗi năm đúng 1 nguồn.
+
+**Alternatives loại:** dùng thẳng `declaration_date` trong check (rejected — M15/M16 không có ngày, không join được); decouple BCCT ingest toàn DN (rejected — vỡ curation theo BCQT + trùng nguồn).
