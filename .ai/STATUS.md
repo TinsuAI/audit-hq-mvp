@@ -1,23 +1,23 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-06-03, fix ingest lệch kỳ + backfill norms.note "x" trên live):**
-> Branch `main` push build `9cb6bbb`. Live deploy hoàn tất.
-> **435 tests pass**, ruff clean.
-> 🛠️ Fix bug nạp tờ khai BCCT lệch kỳ (file gộp nhiều năm). Live đã dọn
-> ~20.671 dòng tờ khai lạc kỳ + rerun checks.
-> ✅ Backfill `norms.note` ("x") trên live (3517 dòng) + rerun C4.1: 291→74.
-> Điểm cuối: DN_001 **127**, DN_002 **30**, DN_003 **232**, DN_004 **49**.
+> **Trạng thái (2026-06-04, fix BCCT đa-file NK/XK + backfill tờ khai DN_003):**
+> Branch `main` push build `a2b3f92`. Live deploy hoàn tất.
+> **437 tests pass**, ruff clean.
+> 🛠️ Fix `discover`/`ingest` nạp gộp nhiều file BCCT (DN tách NK/XK). Backfill
+> live tờ khai DN_003 2021 (0→289), 2022 (69→236), 2025 (1512→1893).
+> ✅ (06-03) Backfill `norms.note` "x" + rerun C4.1 291→74.
+> Điểm cuối: DN_001 **127**, DN_002 **30**, DN_003 **177**, DN_004 **49**.
 > ⏳ Vẫn chờ chị trả lời 4 câu hỏi clarify M16 (xem session 2026-06-01).
 
 ## Current State
 
 ### Production (`audit-hq-demo.tinsu.ai`)
-- Build hiện tại: `9cb6bbb`.
-- DB tinsu (06-03): (a) khôi phục `declaration_lines` từ backup 27/05 + lọc bỏ
-  ~20.671 dòng lạc kỳ; (b) backfill `norms.note` ("x") 3517 dòng từ M16 thật
-  (qua mapping anonymize, material_code giữ nguyên); rerun full 11 cặp + recompute.
+- Build hiện tại: `a2b3f92`.
+- DB tinsu (06-03→04): (a) lọc ~20.671 dòng tờ khai lạc kỳ; (b) backfill
+  `norms.note` "x" 3517 dòng; (c) backfill tờ khai xuất DN_003 còn thiếu
+  (NK/XK tách file): 2021 0→289, 2022 69→236, 2025 1512→1893. Rerun + recompute.
 - 4 DN demo, score cuối (rate-based, max qua các năm):
-  - DN_003 Hoa Sen (Dệt may): **232** (was 263) — Cần rà soát
+  - DN_003 Hoa Sen (Dệt may): **177** (was 232) — Cần rà soát
   - DN_001 Phương Đông (Điện tử): **127** — Có chênh lệch nhỏ (không có note "x")
   - DN_004 Nam Tiến (Hoá chất): **49** (was 97) — Dữ liệu nhất quán
   - DN_002 Tiên Phong (Cơ khí): **30** (was 62) — Dữ liệu nhất quán
@@ -29,7 +29,7 @@
 - Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite (WAL + busy_timeout=5000).
 - AI: OpenAI SDK compat, Gemini 2.5 (primary) + NIM DeepSeek (dự phòng).
 - Dev port: **8200** (cố định, match docker-compose + Cloudflare tunnel).
-- **435 tests pass**, ruff clean.
+- **437 tests pass**, ruff clean.
 
 ### Migrations (head: `c7f3a1b2d4e5`)
 Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (company.risk_score) → `599dbd931e77` (UOM) → `a3c48313dddf` (ai_settings + ai audit) → `b7e91f4d2a13` (users) → `de9eee546b80` (jobs) → `46b3bcaebbe4` (company_year_scores) → `646b92a93768` (check_definitions) → `a4d5ffcb0da7` (app_settings) → `c7f3a1b2d4e5` (**norms.note** — xuất xứ "x").
@@ -54,6 +54,22 @@ Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (compan
 
 ### Thư viện tài liệu `/tai-lieu`
 - 4 trang: scoring-methodology + TT 38/2015, TT 39/2018, TT 81/2019.
+
+## Recent Changes (2026-06-04 — fix BCCT đa-file NK/XK + backfill tờ khai DN_003)
+
+Commit `a2b3f92`: `discover`/`ingest` nạp **gộp nhiều file BCCT** mỗi năm.
+- **Bug:** discover chọn 1 file BCCT/năm theo mtime. DN tách tờ khai nhập (NK) và
+  xuất (XK) thành 2 file → chỉ nạp 1. HONG_AN 2021 còn chọn nhầm file rỗng
+  `BaoCaoHang XK 2021.xls` (0 dòng) → kỳ 2021 trống tờ khai.
+- **Fix:** `DiscoveredFiles.bcct` thành list; `_pick_all` giữ mọi file non-draft;
+  ingest parse + gộp, giữ `source_file` đúng từng dòng. HONG_AN: 2021 0→289,
+  2022 69→236, 2025 1512→1893 dòng.
+- **Backfill live** (DN_003, vì live không re-ingest từ Excel): parse NK+XK thật,
+  ẩn danh `partner` qua mapping (mint 4 alias mới), DELETE+INSERT
+  `declaration_lines` 3 năm, rerun full + recompute.
+- **Insight:** thiếu tờ khai xuất (E62) khiến C1.4 báo false-positive hàng loạt
+  "xuất M15a không có tờ khai". Bổ sung đủ → DN_003 2025 387→14 finding,
+  2022 417→250. Score DN_003 232→177 (chính xác hơn).
 
 ## Recent Changes (2026-06-03 — fix bug ingest/evidence lệch kỳ, session Gemini)
 
