@@ -14,8 +14,8 @@
   <div class="page-title-group">
     <h1>Quản lý đơn vị tính (UOM)</h1>
     <p class="page-subtitle">
-      {{ total_canonical }} đơn vị chuẩn · {{ total_aliases }} alias
-      · dùng cho check C3.3 (đơn vị tính không nhất quán)
+      {{ total_canonical }} đơn vị chuẩn · {{ total_aliases }} bí danh
+      · dùng cho kiểm tra C3.3 (đơn vị tính không nhất quán)
     </p>
   </div>
 </div>
@@ -23,9 +23,9 @@
 <div class="card">
   <h3 class="card-title">Khái niệm</h3>
   <p style="margin-bottom:0;font-size:var(--fs-sm);color:var(--c-text-muted)">
-    <strong>Canonical</strong> = đơn vị chuẩn (vd <code>MTR</code>, <code>KGM</code>, <code>PCE</code>).
-    <strong>Family</strong> = nhóm đơn vị cùng đo lượng gì (<code>length</code>, <code>mass</code>, <code>count</code>…).
-    <strong>Alias</strong> = các tên gọi khác nhau quy về cùng canonical (<code>Chiếc</code>, <code>PCS</code>, <code>PIECES</code> → <code>PCE</code>).
+    <strong>Đơn vị chuẩn</strong> = đơn vị quy ước gốc (vd <code>MTR</code>, <code>KGM</code>, <code>PCE</code>).
+    <strong>Nhóm</strong> = các đơn vị cùng đo một đại lượng (<code>length</code>, <code>mass</code>, <code>count</code>…).
+    <strong>Bí danh</strong> = các tên gọi khác nhau quy về cùng một đơn vị chuẩn (<code>Chiếc</code>, <code>PCS</code>, <code>PIECES</code> → <code>PCE</code>).
     C3.3 kích hoạt <span class="badge info">🔵 Thông tin</span> khi 2 đơn vị cùng nhóm (KG↔GAM quy đổi được),
     <span class="badge critical">🔴 Nghiêm trọng</span> khi khác nhóm hẳn (sai đơn vị ×1000).
   </p>
@@ -33,7 +33,7 @@
 
 <form method="get" class="form-row mb-3 mt-4">
   <div class="form-field" style="margin-bottom:0">
-    <label class="form-label">Lọc theo family</label>
+    <label class="form-label">Lọc theo nhóm</label>
     <select name="family" class="form-select">
       <option value="">— Tất cả —</option>
       {% for f in families %}
@@ -42,7 +42,7 @@
     </select>
   </div>
   <div class="form-field" style="margin-bottom:0;flex:1">
-    <label class="form-label">Lọc theo code</label>
+    <label class="form-label">Lọc theo mã</label>
     <input type="text" name="q" value="{{ q or '' }}" class="form-input" placeholder="MTR, KGM…">
   </div>
   <div>
@@ -54,18 +54,18 @@
 {% for family, items in families_grouped | dictsort %}
 <div class="card mt-3">
   <h3 class="card-title">
-    Family: <code class="text-mono">{{ family }}</code>
-    <span class="text-subtle" style="font-weight:400;text-transform:none">({{ items | length }} canonical)</span>
+    Nhóm: <code class="text-mono">{{ family }}</code>
+    <span class="text-subtle" style="font-weight:400;text-transform:none">({{ items | length }} đơn vị chuẩn)</span>
   </h3>
   <div class="data-table-wrapper">
     <table class="data-table compact">
       <thead>
         <tr>
-          <th>Code</th>
+          <th>Mã</th>
           <th>Tên VN</th>
-          <th class="num">Base factor</th>
+          <th class="num">Hệ số quy đổi</th>
           <th class="wrap">Mô tả</th>
-          <th>Aliases</th>
+          <th>Bí danh</th>
         </tr>
       </thead>
       <tbody>
@@ -83,7 +83,7 @@
             {% for a in item.aliases %}
               {% if a != item.row.code %}<code class="alias-chip">{{ a }}</code>{% endif %}
             {% endfor %}
-            {% if item.aliases | length <= 1 %}<span class="text-subtle" style="font-size:var(--fs-xs)">chưa có alias riêng</span>{% endif %}
+            {% if item.aliases | length <= 1 %}<span class="text-subtle" style="font-size:var(--fs-xs)">chưa có bí danh riêng</span>{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -94,7 +94,7 @@
 {% endfor %}
 
 <div class="card mt-5">
-  <h3 class="card-title">Thêm alias mới</h3>
+  <h3 class="card-title">Thêm bí danh mới</h3>
   <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
     Khi C3.3 báo nhầm, dùng biểu mẫu này để ánh xạ đơn vị lạ về đơn vị chuẩn phù hợp.
   </p>
@@ -104,7 +104,7 @@
       <input type="text" name="alias" class="form-input" placeholder="vd MÉT VUÔNG, CHIẾC" required>
     </div>
     <div class="form-field" style="margin-bottom:0">
-      <label class="form-label">Canonical</label>
+      <label class="form-label">Đơn vị chuẩn</label>
       <select name="canonical_code" class="form-select" required>
         {% for family, items in families_grouped | dictsort %}
           <optgroup label="{{ family }}">
@@ -120,7 +120,7 @@
       <input type="text" name="note" class="form-input" placeholder="vd: gặp ở DN_003 2024">
     </div>
     <div>
-      <button type="submit" class="btn btn-primary">Thêm alias</button>
+      <button type="submit" class="btn btn-primary">Thêm bí danh</button>
     </div>
   </form>
 </div>
@@ -128,22 +128,22 @@
 <details class="card mt-3">
   <summary style="cursor:pointer;font-weight:600">⚙️ Thêm đơn vị chuẩn mới (nâng cao)</summary>
   <p class="text-subtle" style="font-size:var(--fs-xs);margin-top:var(--space-3)">
-    Chỉ thêm khi gặp đơn vị thật sự MỚI (không phải alias của canonical đã có).
+    Chỉ thêm khi gặp đơn vị thật sự MỚI (không phải bí danh của đơn vị chuẩn đã có).
   </p>
   <form method="post" action="/admin/units/canonical" class="form-stack" style="max-width:600px;margin-top:var(--space-3)">
     <div class="form-row">
       <div class="form-field" style="margin-bottom:0">
-        <label class="form-label">Code (3-4 ký tự)</label>
+        <label class="form-label">Mã (3-4 ký tự)</label>
         <input type="text" name="code" class="form-input text-mono" required maxlength="16">
       </div>
       <div class="form-field" style="margin-bottom:0">
-        <label class="form-label">Family</label>
+        <label class="form-label">Nhóm</label>
         <select name="family" class="form-select" required>
           {% for f in families %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
         </select>
       </div>
       <div class="form-field" style="margin-bottom:0">
-        <label class="form-label">Base factor</label>
+        <label class="form-label">Hệ số quy đổi</label>
         <input type="number" name="base_factor" class="form-input" step="any" value="1.0" required>
       </div>
     </div>
@@ -156,7 +156,7 @@
       <input type="text" name="description" class="form-input">
     </div>
     <div>
-      <button type="submit" class="btn btn-primary">Thêm canonical</button>
+      <button type="submit" class="btn btn-primary">Thêm đơn vị chuẩn</button>
     </div>
   </form>
 </details>

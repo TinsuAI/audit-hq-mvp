@@ -187,6 +187,8 @@ Không có.
 - pipeline → dây chuyền xử lý · fallback → dự phòng · timeout → thời gian chờ
 - admin (vai trò) → quản trị viên · upload → tải lên · preview → xem trước
 - API Key → Mã API · refresh → nạp lại · debug → gỡ lỗi
+- (UOM) canonical → đơn vị chuẩn · family → nhóm · alias → bí danh ·
+  base factor → hệ số quy đổi · code → mã (áp dụng `admin_units.html`)
 - Giữ: BCQT, M15/M15a/M16, BCCT, TKXNK, NVL, TP, HS, MST, A42, E11-E62, AI, JSON, API, HTTP
 
 ### Đổi ngưỡng tier

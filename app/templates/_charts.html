@@ -5,7 +5,7 @@
     <span class="text-subtle">Không có dữ liệu</span>
   {%- else -%}
     <svg class="chart chart-sparkline" viewBox="0 0 {{ layout.width }} {{ layout.height }}"
-         role="img" aria-label="Sparkline" preserveAspectRatio="none">
+         role="img" aria-label="Biểu đồ xu hướng" preserveAspectRatio="none">
       <polyline points="{% for p in layout.points %}{{ p[0] }},{{ p[1] }} {% endfor %}"
                 fill="none" stroke="currentColor" stroke-width="2" />
       {% for p in layout.points %}
@@ -21,7 +21,7 @@
     <span class="text-subtle">Không có dữ liệu</span>
   {%- else -%}
     <svg class="chart chart-waterfall" viewBox="0 0 {{ layout.width }} {{ layout.height }}"
-         role="img" aria-label="Cân đối kho — waterfall" preserveAspectRatio="xMidYMid meet">
+         role="img" aria-label="Biểu đồ cân đối kho" preserveAspectRatio="xMidYMid meet">
       <line x1="{{ layout.pad_x }}" x2="{{ layout.width - layout.pad_x }}"
             y1="{{ layout.zero_y }}" y2="{{ layout.zero_y }}"
             class="wf-axis" stroke-dasharray="2,3" />

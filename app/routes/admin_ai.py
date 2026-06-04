@@ -146,10 +146,10 @@ def save_connection(
     try:
         headers_dict = json.loads(extra_headers) if extra_headers.strip() else {}
         if not isinstance(headers_dict, dict):
-            raise ValueError("must be JSON object")
+            raise ValueError("phải là đối tượng JSON")
         for k, v in headers_dict.items():
             if not isinstance(k, str) or not isinstance(v, str):
-                raise ValueError("keys/values phải là string")
+                raise ValueError("khoá/giá trị phải là chuỗi")
     except (json.JSONDecodeError, ValueError) as e:
         return _flash_redirect(error=f"Extra headers không hợp lệ: {e}")
 
@@ -286,7 +286,7 @@ def admin_test_connection(
     try:
         headers_dict = json.loads(extra_headers) if extra_headers.strip() else {}
         if not isinstance(headers_dict, dict):
-            raise ValueError("không phải JSON object")
+            raise ValueError("phải là đối tượng JSON")
     except (json.JSONDecodeError, ValueError) as e:
         return JSONResponse({"ok": False, "error": f"Extra headers lỗi: {e}"}, status_code=400)
 
