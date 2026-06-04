@@ -1,12 +1,13 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-06-04, fix BCCT đa-file NK/XK + backfill tờ khai DN_003):**
-> Branch `main` push build `a2b3f92`. Live deploy hoàn tất.
+> **Trạng thái (2026-06-04, fix BCCT đa-file + backfill DN_001/DN_003 + UI i18n):**
+> Branch `main` push build `6df3f6e`. Live deploy hoàn tất, đã verify render.
 > **437 tests pass**, ruff clean.
-> 🛠️ Fix `discover`/`ingest` nạp gộp nhiều file BCCT (DN tách NK/XK). Backfill
-> live tờ khai DN_003 2021 (0→289), 2022 (69→236), 2025 (1512→1893).
-> ✅ (06-03) Backfill `norms.note` "x" + rerun C4.1 291→74.
-> Điểm cuối: DN_001 **127**, DN_002 **30**, DN_003 **177**, DN_004 **49**.
+> 🛠️ Fix `discover`/`ingest` nạp gộp nhiều file BCCT (NK/XK tách) + derive
+> `period_year` từ ngày tờ khai. Backfill live DN_003 (2021/2022/2025) và DN_001
+> GROWATT (xuất E42 + năm 2025, lấy từ project **data-hub**). Backfill `norms.note`
+> "x" → C4.1 291→74. Xoá 3 DN rác. Audit UI → dịch nốt tiếng Anh sót.
+> Điểm cuối live: DN_001 **127**, DN_002 **30**, DN_003 **177**, DN_004 **49** (chỉ 4 DN).
 > ⏳ Vẫn chờ chị trả lời 4 câu hỏi clarify M16 (xem session 2026-06-01).
 
 ## Current State
