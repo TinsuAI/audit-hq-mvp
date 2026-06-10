@@ -13,6 +13,7 @@ env/
 
 /data
 /data/
+/demo-data/
 *.sqlite
 *.sqlite-journal
 *.db
