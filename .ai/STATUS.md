@@ -1,19 +1,26 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-06-04, fix BCCT đa-file + backfill DN_001/DN_003 + UI i18n):**
-> Branch `main` push build `6df3f6e`. Live deploy hoàn tất, đã verify render.
-> **437 tests pass**, ruff clean.
-> 🛠️ Fix `discover`/`ingest` nạp gộp nhiều file BCCT (NK/XK tách) + derive
-> `period_year` từ ngày tờ khai. Backfill live DN_003 (2021/2022/2025) và DN_001
-> GROWATT (xuất E42 + năm 2025, lấy từ project **data-hub**). Backfill `norms.note`
-> "x" → C4.1 291→74. Xoá 3 DN rác. Audit UI → dịch nốt tiếng Anh sót.
-> Điểm cuối live: DN_001 **127**, DN_002 **30**, DN_003 **177**, DN_004 **49** (chỉ 4 DN).
-> ⏳ Vẫn chờ chị trả lời 4 câu hỏi clarify M16 (xem session 2026-06-01).
+> **Trạng thái (2026-06-11, demo upload data + tách upload/check + validate+AI):**
+> Branch `main`: **2 commit mới CHƯA push** — `86a7d48` (gen demo data),
+> `2ee586e` (tách upload/check + validate/AI). **444 tests pass**, ruff clean.
+> Live (`cb2f3ad`) và data live KHÔNG đổi.
+> 🆕 (1) `scripts/gen_demo_data.py` — anonymize file Excel **GỐC** (giữ format thật)
+> → `demo-data/` theo **tên DN** + slot; upload tái hiện đúng demo (round-trip
+> verified 116/28/148/46). (2) **Tách upload khỏi chạy kiểm tra** — upload chỉ
+> ingest; chạy check là bước riêng; trang DN có state "đã nạp, chưa chạy". (3)
+> `app/pipeline/validate.py` chặn **misparse thầm lặng** (heuristic dò cột lệch,
+> chặn ingest khi lỗi nặng) + `app/ai/ingest_doctor.py` / `POST /diagnose-ai`
+> (AI Gemini live, **tùy chọn** — degrade về heuristic khi tắt).
+> Bộ data + 7 screenshot ở `C:\temp\toss` (máy Windows, không vào git).
+> Điểm: live (giữ nguyên) **127/30/177/49** · local (17-rule) **116/28/148/46**.
+> ⏳ Vẫn chờ chị trả lời 4 câu hỏi clarify M16 (session 2026-06-01).
 
 ## Current State
 
 ### Production (`audit-hq-demo.tinsu.ai`)
-- Build hiện tại: `a2b3f92`.
+- Build hiện tại: `cb2f3ad` (C2.4 code + fix CI uv PATH). Data live **không đổi**
+  (vẫn state backfill 06-04). C2.4 runnable nhưng **chưa fire** (chưa rerun trên live).
+  Điểm cache 127/30/177/49 vẫn tính bằng code 16-rule cũ → "treo" tới khi rerun.
 - DB tinsu (06-03→04): (a) lọc ~20.671 dòng tờ khai lạc kỳ; (b) backfill
   `norms.note` "x" 3517 dòng; (c) backfill tờ khai xuất DN_003 (NK/XK tách file):
   2021 0→289, 2022 69→236, 2025 1512→1893; (d) backfill DN_001 (GROWATT) từ
@@ -31,7 +38,7 @@
 - Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite (WAL + busy_timeout=5000).
 - AI: OpenAI SDK compat, Gemini 2.5 (primary) + NIM DeepSeek (dự phòng).
 - Dev port: **8200** (cố định, match docker-compose + Cloudflare tunnel).
-- **437 tests pass**, ruff clean.
+- **439 tests pass**, ruff clean.
 
 ### Migrations (head: `c7f3a1b2d4e5`)
 Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (company.risk_score) → `599dbd931e77` (UOM) → `a3c48313dddf` (ai_settings + ai audit) → `b7e91f4d2a13` (users) → `de9eee546b80` (jobs) → `46b3bcaebbe4` (company_year_scores) → `646b92a93768` (check_definitions) → `a4d5ffcb0da7` (app_settings) → `c7f3a1b2d4e5` (**norms.note** — xuất xứ "x").
@@ -42,7 +49,7 @@ Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (compan
 
 ### Catalog check
 - **49 chính thức** (`app/catalog_full.py`) — danh mục §4 đề án, hardcoded, hiển thị ở `/danh-muc-kiem-tra`.
-- **16 MVP đã build** (`app/checks/registry.py`) — runable, có rule code Python.
+- **17 MVP đã build** (`app/checks/registry.py`) — runable, có rule code Python (C2.4 thêm 06-10).
 - **Catalog động** (`check_definitions` table) — đặc tả no-exec, admin tạo qua `/admin/checks`.
 
 ### Async job runner
@@ -56,6 +63,99 @@ Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (compan
 
 ### Thư viện tài liệu `/tai-lieu`
 - 4 trang: scoring-methodology + TT 38/2015, TT 39/2018, TT 81/2019.
+
+## Recent Changes (2026-06-11 — demo upload data + tách upload/check + validate/AI)
+
+Commits (main, **chưa push**): `86a7d48`, `2ee586e`. Tests 439 → **444**.
+
+**1. Bộ data demo để UPLOAD** — `scripts/gen_demo_data.py` (commit `86a7d48`).
+Yêu cầu: HQ cần upload BCQT (M15/15a/16) + BCCT thật để chạy 1 flow hoàn chỉnh.
+KHÔNG export từ DB (vô tri, sai cấu trúc) — thay vào đó **anonymize file Excel
+GỐC** mà `discover()` chọn, chỉ thay PII (tên DN/MST/địa chỉ/NCC từ
+`db-data/anonymize_mapping.json`), giữ nguyên layout/cột/sheet/công thức.
+- 4 DN × mọi năm có data (~12 bộ, 42 file). Output `demo-data/<tên DN>/<năm>/
+  {BCQT,HANG_CHI_TIET}/` — ĐM (Mẫu 16) gộp trong BCQT; folder theo **tên DN**
+  (không dùng mã DN_xxx). gitignored.
+- DN_003/2024 nhúng lại 7 sai phạm inject §6.3 (từ `injected_changes.json` —
+  toàn M15; block norm DG ×100 thực tế chưa từng chạy vì DB không có norm DG).
+- **Bug fix khi verify:** ô closing của DO_THANH là **công thức Excel**; openpyxl
+  giữ công thức nhưng mất cache → pandas đọc lại = 0 → C2.1 false. Fix: bake
+  `data_only=True` cache cho mọi ô công thức. Sau fix round-trip khớp tuyệt đối.
+- Verify: ingest demo-data vào scratch DB + run checks → **116/28/148/46** khớp
+  DB gốc (DN_003 +2 finding nhiễu .xls→.xlsx, điểm không đổi). Leak scan sạch.
+- Bản copy ở `C:\temp\toss` cho chị dùng tay.
+
+**2. Tách upload khỏi chạy kiểm tra** (commit `2ee586e`).
+Trước: upload → tự `ingest + run_checks`. Giờ: `upload_data` **chỉ ingest**;
+chạy check là bước riêng (`POST /run-checks` đã có).
+- `company_detail` lấy năm từ **dữ liệu Tầng 1** (NvlBalance/SpBalance/Norm/
+  DeclarationLine) chứ không chỉ từ findings → data hiện ngay khi chưa chạy check.
+- Context mới: `has_data`, `checks_run`, `just_ingested`. Banner "Đã nạp dữ liệu…
+  chưa chạy kiểm tra" + nút "Chạy kiểm tra năm N"; ô điểm hiện "— / Chưa chạy".
+- Bỏ import `run_check_pipeline` (không còn dùng).
+
+**3. Validate upload + AI chẩn đoán** (commit `2ee586e`).
+Rủi ro thật = **misparse thầm lặng** (adapter hardcode cột/sheet, file HQ khác
+mẫu → đọc nhầm, không báo). Giải pháp 2 lớp:
+- Lớp 0 `app/pipeline/validate.py`: `diagnose_upload()` chạy TRƯỚC ingest. Bắt:
+  file hỏng, 0 dòng (sai mẫu/sheet), số toàn 0 (lệch cột). **Heuristic dò dòng
+  tiêu đề + map cột thực vs chuẩn** → câu giải thích cụ thể ("cột Tồn cuối ở vị
+  trí 12, chuẩn 10"). Lỗi nặng → render panel chẩn đoán (HTTP 422), **KHÔNG nạp**.
+- Lớp AI `app/ai/ingest_doctor.py` + `POST /companies/{code}/diagnose-ai`: nút
+  "🤖 Nhờ AI chẩn đoán" (chỉ hiện khi AI bật). Gửi trích đoạn sheet thật + schema
+  mong đợi cho LLM (slot `fast` + fallback chain, guard rate/budget). Xử mẫu lạ
+  heuristic bó tay (vd header tiếng Anh → AI map ngữ nghĩa Anh→Việt). **Không
+  phụ thuộc AI** — tắt thì heuristic vẫn đầy đủ. Tuân thủ "không LLM trong rule logic".
+- **Bug fix khi screenshot:** `_check_balance` truy cập `r.import_qty` cho mọi
+  balance row, nhưng `M15aRow` dùng `intake_qty` → 500 khi upload Mẫu 15a. Fix
+  field-agnostic `_inflow()` + regression test. (Nhờ chụp ảnh mới lộ.)
+- `tests/test_validate.py`: 5 test (good m15/m15a, lệch cột, thư mục trống, file hỏng).
+
+**4. Screenshot Playwright** (không commit) — 7 ảnh ở `C:\temp\toss\screenshots\`:
+upload-chỉ-nạp, đã-nạp-chưa-chạy, sau-khi-chạy (điểm 112 + combo), chẩn-đoán-lỗi,
+nút-AI, AI-Gemini-thật, AI-case-file-tiếng-Anh. Chạy trên scratch DB + raw tạm
+(không đụng DB/data thật). Demo AI dùng config live kéo từ tinsu (key xoá sau,
+không commit, không in raw).
+
+## Recent Changes (2026-06-10 — C2.4 + resync local + deploy live + fix CI)
+
+**1. C2.4 (tồn cuối TP âm)** — commit `bc59545`. Đối xứng C2.3 cho thành phẩm
+(`SpBalance`/`product_code`). Thêm: `check_c2_4` + `CHECKS["C2.4"]`, `CheckSpec`
+C2.4 (CRITICAL), `RULE_SCOPE["C2.4"]="tp"`, catalog status `wip`→`mvp`. 16→17
+runnable. ⚠️ Thêm vào `RULE_SCOPE` nâng mẫu số scoring (16→17 rule) → **điểm mọi
+DN giảm nhẹ** khi recompute bằng code mới. Test: +2 C2.4, sửa 3 assertion bị ảnh
+hưởng (catalog counts, scoring max_raw). 439 pass.
+
+**2. Resync DB local về đúng 4 DN ẩn danh** — phát hiện local lẫn 5 công ty thật
+(tên thật hiện trên UI dev) + 4 DN_xxx mồ côi (mất tờ khai, score cũ). Làm sạch
+theo **đúng quy trình live**: wipe business tables → `run_all` (ingest 4 DN +
+checks) → `anonymize` → `inject_findings` DN_003 → rerun DN_003 2024 → recompute.
+Kết quả: đúng 4 DN demo, 0 tên thật, 197 NCC ẩn danh. Backup pre-resync:
+`audit_hq.sqlite.bak-pre-resync-20260610-213107`.
+
+**3. Fix triệt để nguồn GROWATT (Next Step #2 — DONE)** — `data/GROWATT` thiếu
+file xuất + 2025. Copy 2 file HUB từ data-hub
+(`.../source_inventory/growatt-vn/2026-05-27/BaoCaoHangChiTiet ALL {NK,XK} GRW`)
+vào `data/raw/GROWATT/multi_year/HANG_CHI_TIET/` đặt tên **có khoảng năm**
+(`...ALL NK GRW 2023-2025.xls`) để `discover._filename_covers_year` nạp; file cũ
+rename `...2023-2025 OLD.xls` (draft-excluded, tránh double-count). `data/raw`
+gitignored → file thật không lên git. **Rebuild demo từ nay tự nạp đủ GROWATT.**
+Verify khớp live: 2023=5475, 2024=3505, 2025=19898 tờ khai (+21 dòng/năm thiếu
+ngày tờ khai → ingest gán `row_year=year` nên nhân 3, ~0.2%, không đổi điểm).
+
+**4. Deploy C2.4 lên live (chỉ code, giữ data)** — chị **không ingest được trên
+live** (không có Excel raw) → không "rebuild theo quy trình" được; chọn **chỉ
+deploy code, giữ nguyên data**. CI lần đầu fail (`uv: command not found`), deploy
+tay qua được (`docker compose up -d --build`, build trong Docker). Live: 4 DN,
+điểm 127/30/177/49 nguyên vẹn, C2.4 runnable. **2 bản KHÔNG giống nhau về điểm**
+(local 17-rule vs live cache 16-rule). Muốn đồng bộ điểm: rerun checks trên live
+bằng code mới (sẽ đổi findings/score) — defer theo ý chị.
+
+**5. Fix CI runner kẹt `uv`** — commit `cb2f3ad`. `uv` vẫn cài (`/snap/bin`,
+`~/.local/bin`) nhưng PATH shell non-interactive của GitHub Actions không có →
+prepend `export PATH="$HOME/.local/bin:/snap/bin:$PATH"` trong step "Setup venv".
+CI xanh trở lại, auto-deploy hoạt động. Backup live pre-deploy:
+`audit_hq.sqlite.bak-pre-c24-<ts>` trên tinsu.
 
 ## Recent Changes (2026-06-04 — fix BCCT đa-file NK/XK + backfill tờ khai DN_003)
 
@@ -123,6 +223,18 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
 
 ## Next Steps
 
+A. **Push 2 commit** `86a7d48` + `2ee586e` lên main khi chị OK (giờ mới commit
+   local, chưa push). Auto-deploy sẽ đẩy code (validate/AI + tách upload/check)
+   lên live — **không đổi data live**.
+B. **Rebuild demo-data trước mỗi demo / sau khi đổi data:** `python -m
+   scripts.gen_demo_data` (tự verify leak). Copy sang `C:\temp\toss` nếu cần.
+C. **(Feature lớn, defer) AI auto-remap:** hiện AI chỉ *chẩn đoán* (giải thích).
+   Bước tiếp: AI tự đề xuất mapping cột → cán bộ **duyệt** → ingest theo mapping.
+   Cần thêm UI duyệt mapping trước khi ghi DB. Chưa làm.
+D. **UI/UX (#4, chưa làm):** badge trạng thái DN (đã nạp/đã kiểm tra/chưa chạy),
+   progress inline khi chạy check, drag-drop đoán slot theo tên file, nút "nạp 1
+   DN mẫu" một chạm. Mới ở mức gợi ý.
+
 0. **Chờ chị trả lời 4 câu hỏi clarify** (góp ý 2026-06-01) rồi xử lý điểm 2/3:
    (1) phạm vi loại "x" — chỉ check nhập hay mọi check định mức; (2) nguồn định
    mức ngành cho demo (C7.1); (3) cách quy số thuế truy thu cho "trọng yếu";
@@ -138,10 +250,9 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
    `data/source_inventory/growatt-vn/2026-05-27/BaoCaoHangChiTiet ALL {NK,XK} GRW`.
    Backfill live: 2023 +1 E42, 2024 +34 E42 (C1.4 21→0 FP), 2025 0→19.898
    (nhập 19.369 + xuất 529). Item_code khớp M15 379/379, M15a 56/63.
-   ⚠️ **Nguồn `data/GROWATT` VẪN thiếu** → rebuild demo sẽ mất lại. Fix triệt để:
-   copy 2 file ALL NK/XK GRW của data-hub vào `audit-hq/data/raw/GROWATT/
-   multi_year/HANG_CHI_TIET/` (discover mới nạp gộp được). Chưa làm (đụng repo
-   audit-hq nguồn — cần OK).
+   ✅ **DONE 06-10** — đã copy 2 file HUB ALL NK/XK vào `data/raw/GROWATT/
+   multi_year/HANG_CHI_TIET/` (tên có khoảng năm) + rename file cũ `...OLD.xls`.
+   Rebuild demo từ nay tự nạp đủ. Xem Recent Changes 06-10 mục 3.
 3. **Bug #6 (defer)** — dynamic check denominator fallback `"nvl"` trong
    `denominators.RULE_SCOPE`. Khi có dynamic check đầu tiên publish trên
    `declaration_lines`, sẽ méo điểm. Fix sạch cần thêm `scope` field vào
@@ -149,8 +260,9 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
 3. **C6.1 UX** — display 2 năm evidence có thể gây nhầm dù logic đúng.
    Cân nhắc thêm note "so sánh với kỳ N-1" ở `finding_detail.html` cho
    C6.1, hoặc group evidence theo năm với header.
-4. **C2.4 (tồn cuối TP âm)** vẫn W.I.P theo §4.1 — symmetric với C2.3 cho TP.
-   Có thể clone `c2_balance.check_c2_3` sang dùng SpBalance.
+4. **✅ C2.4 (tồn cuối TP âm) DONE 06-10** — `c2_balance.check_c2_4` clone từ C2.3
+   sang `SpBalance`. Đã deploy code lên live. **Pending:** rerun checks trên live
+   để C2.4 fire + đồng bộ điểm 2 bản (sẽ đổi findings/score live — defer theo ý chị).
 5. **Edit check spec từ detail page** — hiện read-only, cần thêm edit form
    (pending từ session trước trước nữa).
 6. **Demo HQ flow** — login → vào DN_003 → xem ranking + findings →
@@ -198,10 +310,14 @@ Không có.
 - Đổi ngưỡng KHÔNG re-run check — tier compute lúc view qua `tier_for(score)`.
 
 ### Local DB
-- Sau audit fix: 2504 phát hiện local (DB sạch junk + rerun với code mới).
-- Backup: `audit_hq.sqlite.bak-pre-audit-fix-20260527-201520` (26MB, state cũ trước fix).
-- File empty rỗng (trước khi restore): `audit_hq.sqlite.empty-20260527-102310`.
+- **Sau resync 06-10: đúng 4 DN ẩn danh** (DN_001–004), 0 tên thật. Điểm
+  116/28/148/46 (code 17-rule). 770 findings + inject DN_003. GROWATT đầy đủ.
+- Backup pre-resync: `audit_hq.sqlite.bak-pre-resync-20260610-213107` (38MB, state
+  cũ lẫn 5 công ty thật + 4 DN_xxx mồ côi — KHÔNG dùng lại trừ khi cần debug).
+- Backup cũ hơn: `audit_hq.sqlite.bak-pre-audit-fix-20260527-201520`.
 - **Lesson: trước khi `rm audit_hq.sqlite*`, backup trước:** `cp audit_hq.sqlite audit_hq.sqlite.bak-$(date +%Y%m%d-%H%M%S)`.
+- **Lesson 06-10:** đừng `run_all` (ingest công ty thật) ĐÈ lên DB đã anonymize —
+  tạo state lẫn lộn real + DN_xxx mồ côi. Quy trình đúng: wipe → ingest → anonymize.
 
 ### Tinsu DB
 - Backup pre-fix (audit vòng 1):
@@ -307,7 +423,9 @@ docker run --rm \
 ```
 
 ### Tests
-- 432 pass. Conftest có autouse session fixture `create_all` trên default engine — không cần test_smoke chạy trước.
+- 439 pass. Conftest có autouse session fixture `create_all` trên default engine — không cần test_smoke chạy trước.
+- C2.4 (06-10): `test_c2_4_no_fire_when_zero_or_positive` + `test_c2_4_fires_when_closing_negative`.
+  Sửa kèm: `test_catalog_has_49_entries` (mvp 16→17, wip 14→13) + `test_score_combo_bonus_one_shot` (max_raw 16→17 rule → 111→105).
 - Test mới sau audit fix vòng 1:
   - `tests/test_normalize_code.py` (21 parametrize)
   - `test_c1_2_ignores_mmtb_E13_for_dncx`
