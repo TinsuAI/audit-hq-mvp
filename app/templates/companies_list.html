@@ -11,20 +11,56 @@
   </div>
   <div class="btn-group">
     <a href="/companies/new" class="btn btn-primary">+ Thêm DN mới</a>
-  <details class="scoring-info">
-    <summary class="btn btn-secondary btn-sm">ℹ️ Cách tính điểm</summary>
-    <div class="scoring-popover">
-      <p class="text-mono text-subtle" style="margin-bottom:var(--space-2);font-size:var(--fs-xs)">§2.6 đề án</p>
-      <ul style="list-style:none;padding:0;margin:0;font-size:var(--fs-sm)">
-        <li><span class="badge critical">🔴 Nghiêm trọng</span> = 10 đ</li>
-        <li style="margin-top:6px"><span class="badge warning">🟡 Cảnh báo</span> = 3 đ</li>
-        <li style="margin-top:6px"><span class="badge info">🔵 Thông tin</span> = 1 đ</li>
-        <li style="margin-top:6px"><span class="badge muted">⚡ Tổ hợp đặc trưng</span> = +20 đ</li>
-      </ul>
-    </div>
-  </details>
   </div>
 </div>
+
+<details class="scoring-explainer" open>
+  <summary>
+    <span class="se-title">Cách tính điểm rủi ro</span>
+    <span class="se-sub">thang 0–1000 · bấm để thu gọn</span>
+    <span class="se-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="se-body">
+    <p class="se-intro">
+      Mỗi doanh nghiệp được chấm điểm rủi ro <strong>0–1000</strong> cho từng năm, tổng hợp từ các
+      phát hiện chênh lệch giữa Mẫu 15/15a/16 và tờ khai, <strong>chuẩn hoá theo tỷ lệ</strong>
+      để không thiên vị doanh nghiệp quy mô lớn.
+    </p>
+    <div class="se-grid">
+      <div class="se-block">
+        <h4 class="se-h">Công thức</h4>
+        <p class="se-formula">
+          Điểm = tổng điểm của <strong>{{ n_rules }} phép kiểm tra</strong>
+          <span class="se-muted">(mỗi phép tối đa 10đ, tính theo tỷ lệ phát hiện)</span>,
+          cộng <strong>20đ</strong> khi có tổ hợp rủi ro, rồi quy về thang 0–1000.
+        </p>
+        <div class="se-weights">
+          <span class="badge critical">🔴 Nghiêm trọng · 10đ</span>
+          <span class="badge warning">🟡 Cảnh báo · 3đ</span>
+          <span class="badge info">🔵 Thông tin · 1đ</span>
+        </div>
+      </div>
+      <div class="se-block">
+        <h4 class="se-h">5 mức cảnh báo <span class="se-muted">· ngưỡng mặc định</span></h4>
+        <div class="se-ladder">
+          {% for t in tier_ladder %}
+          <div class="se-tier {{ t.css }}">
+            <span class="se-tier-range">{{ t.lo }}–{{ t.hi }}</span>
+            <span class="se-tier-name">{{ t.label }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="se-foot">
+      <span class="se-note">
+        Chỉ số nội bộ về chất lượng dữ liệu BCQT — <strong>không phải</strong> đánh giá tuân thủ
+        theo Thông tư 81/2019/TT-BTC.
+      </span>
+      <a href="/tai-lieu/scoring-methodology" class="se-link">Xem cách tính đầy đủ →</a>
+    </div>
+  </div>
+</details>
 
 {% if not summary %}
   <div class="card">
@@ -32,15 +68,31 @@
     <p><a href="/companies/new" class="btn btn-primary">+ Thêm DN mới</a> hoặc chạy <code>python -m app.pipeline.ingest --company HONG_AN --year 2024</code> để nạp dữ liệu mẫu.</p>
   </div>
 {% else %}
+
+<div class="table-toolbar">
+  <input type="search" id="dn-search" class="toolbar-search" placeholder="🔍 Tìm mã / tên / MST…" autocomplete="off">
+  <select id="dn-tier-filter" class="toolbar-select" aria-label="Lọc theo mức cảnh báo">
+    <option value="">Mọi mức cảnh báo</option>
+  </select>
+  <select id="dn-industry-filter" class="toolbar-select" aria-label="Lọc theo ngành">
+    <option value="">Mọi ngành</option>
+  </select>
+  <label class="toolbar-toggle">
+    <input type="checkbox" id="dn-group"> Nhóm theo ngành
+  </label>
+  <span class="toolbar-count" id="dn-count"></span>
+</div>
+
 <div class="data-table-wrapper table-overflow">
-  <table class="data-table companies-table">
+  <table class="data-table companies-table" id="companies-table">
     <thead>
       <tr>
         <th>Hạng</th>
-        <th>Điểm rủi ro DL <small style="font-weight:normal">(0-1000)</small></th>
+        <th class="sortable" data-sort-key="score">Điểm rủi ro DL <small style="font-weight:normal">(0-1000)</small></th>
         <th>Mức cảnh báo</th>
-        <th>Doanh nghiệp</th>
-        <th>MST</th>
+        <th class="sortable" data-sort-key="name">Doanh nghiệp</th>
+        <th class="sortable" data-sort-key="industry">Ngành</th>
+        <th class="sortable" data-sort-key="mst">MST</th>
         <th>Phát hiện theo năm</th>
       </tr>
     </thead>
@@ -51,7 +103,13 @@
         {% set score = item.score %}
         {% set tier_css = tier_css_for(score) %}
         {% set tier_label = tier_for(score) %}
-      <tr>
+      <tr class="dn-row"
+          data-score="{{ score }}"
+          data-name="{{ (c.name or '') | lower }}"
+          data-mst="{{ c.tax_id or '' }}"
+          data-tier="{{ tier_label }}"
+          data-industry="{{ c.industry or '' }}"
+          data-search="{{ (c.code ~ ' ' ~ (c.name or '') ~ ' ' ~ (c.tax_id or '')) | lower }}">
         <td class="rank"><span class="rank-badge {% if rank <= 3 %}rank-{{ rank }}{% endif %}">{{ rank }}</span></td>
         <td><span class="score-pill {{ tier_css }}">{{ score }}</span></td>
         <td><span class="tier-pill {{ tier_css }}">{{ tier_label }}</span></td>
@@ -60,6 +118,9 @@
             <a href="/companies/{{ c.code }}" class="dn-code text-mono">{{ c.code }}</a>
             <div class="dn-name">{{ c.name or '—' }}</div>
           </div>
+        </td>
+        <td>
+          {% if c.industry %}<span class="industry-tag">{{ c.industry }}</span>{% else %}<span class="text-subtle">—</span>{% endif %}
         </td>
         <td class="text-mono text-subtle">{{ c.tax_id or '—' }}</td>
         <td>
@@ -91,6 +152,8 @@
     </tbody>
   </table>
 </div>
+
+<p class="table-empty-hint" id="dn-empty-hint" hidden>Không có doanh nghiệp nào khớp bộ lọc.</p>
 {% endif %}
 
 <aside class="legal-disclaimer">
@@ -101,5 +164,107 @@
     <a href="/tai-lieu/scoring-methodology">Xem cách tính điểm →</a>
   </p>
 </aside>
+
+{% if summary %}
+<script>
+(function () {
+  var table = document.getElementById('companies-table');
+  if (!table) return;
+  var tbody = table.querySelector('tbody');
+  var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr.dn-row'));
+  var search = document.getElementById('dn-search');
+  var tierSel = document.getElementById('dn-tier-filter');
+  var indSel = document.getElementById('dn-industry-filter');
+  var groupChk = document.getElementById('dn-group');
+  var countEl = document.getElementById('dn-count');
+  var emptyHint = document.getElementById('dn-empty-hint');
+
+  function fillSelect(sel, values) {
+    var uniq = values.filter(function (v) { return v; })
+      .filter(function (v, i, a) { return a.indexOf(v) === i; })
+      .sort(function (a, b) { return a.localeCompare(b, 'vi'); });
+    uniq.forEach(function (v) {
+      var o = document.createElement('option');
+      o.value = v; o.textContent = v; sel.appendChild(o);
+    });
+  }
+  fillSelect(tierSel, rows.map(function (r) { return r.dataset.tier; }));
+  fillSelect(indSel, rows.map(function (r) { return r.dataset.industry; }));
+
+  var sortKey = null, sortDir = 1;
+
+  function apply() {
+    var q = (search.value || '').trim().toLowerCase();
+    var tf = tierSel.value, inf = indSel.value;
+    var visible = [];
+    rows.forEach(function (r) {
+      var ok = (!q || r.dataset.search.indexOf(q) >= 0)
+        && (!tf || r.dataset.tier === tf)
+        && (!inf || r.dataset.industry === inf);
+      r.classList.toggle('is-hidden', !ok);
+      if (ok) visible.push(r);
+    });
+
+    var ordered = visible.slice();
+    if (sortKey) {
+      ordered.sort(function (a, b) {
+        var av = a.dataset[sortKey], bv = b.dataset[sortKey];
+        if (sortKey === 'score') return (parseInt(av, 10) - parseInt(bv, 10)) * sortDir;
+        return (av || '').localeCompare(bv || '', 'vi') * sortDir;
+      });
+    }
+
+    tbody.querySelectorAll('tr.dn-group-header').forEach(function (h) { h.remove(); });
+
+    if (groupChk.checked) {
+      var groups = {}, order = [];
+      ordered.forEach(function (r) {
+        var g = r.dataset.industry || '(Chưa phân ngành)';
+        if (!groups[g]) { groups[g] = []; order.push(g); }
+        groups[g].push(r);
+      });
+      order.sort(function (a, b) { return a.localeCompare(b, 'vi'); });
+      order.forEach(function (g) {
+        var hr = document.createElement('tr');
+        hr.className = 'dn-group-header';
+        var td = document.createElement('td');
+        td.colSpan = 7;
+        td.innerHTML = '<span class="grp-name">' + g + '</span><span class="grp-count">'
+          + groups[g].length + ' DN</span>';
+        hr.appendChild(td);
+        tbody.appendChild(hr);
+        groups[g].forEach(function (r) { tbody.appendChild(r); });
+      });
+    } else {
+      ordered.forEach(function (r) { tbody.appendChild(r); });
+    }
+    rows.forEach(function (r) { if (r.classList.contains('is-hidden')) tbody.appendChild(r); });
+
+    countEl.textContent = visible.length + '/' + rows.length + ' DN';
+    if (emptyHint) emptyHint.hidden = visible.length !== 0;
+  }
+
+  search.addEventListener('input', apply);
+  tierSel.addEventListener('change', apply);
+  indSel.addEventListener('change', apply);
+  groupChk.addEventListener('change', apply);
+
+  table.querySelectorAll('th.sortable').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var key = th.dataset.sortKey;
+      if (sortKey === key) { sortDir = -sortDir; }
+      else { sortKey = key; sortDir = (key === 'score') ? -1 : 1; }
+      table.querySelectorAll('th.sortable').forEach(function (h) {
+        h.classList.remove('sort-asc', 'sort-desc');
+      });
+      th.classList.add(sortDir > 0 ? 'sort-asc' : 'sort-desc');
+      apply();
+    });
+  });
+
+  apply();
+})();
+</script>
+{% endif %}
 
 {% endblock %}

@@ -14,6 +14,7 @@ class Company(Base):
     tax_id: Mapped[str | None] = mapped_column(String(20), index=True, nullable=True)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
     risk_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
 
     def __repr__(self) -> str:

@@ -1,41 +1,41 @@
 {% extends "base.html" %}
-{% block title %}Thêm doanh nghiệp mới — Audit-HQ{% endblock %}
+{% block title %}Sửa DN {{ company.code }} — Audit-HQ{% endblock %}
 {% block content %}
 
 <nav class="breadcrumbs">
   <a href="/companies">Doanh nghiệp</a>
   <span class="sep">›</span>
-  Thêm mới
+  <a href="/companies/{{ company.code }}">{{ company.code }}</a>
+  <span class="sep">›</span>
+  Sửa thông tin
 </nav>
 
 <div class="page-header">
   <div class="page-title-group">
-    <h1>Thêm doanh nghiệp mới</h1>
-    <p class="page-subtitle">Tạo hồ sơ DN mẫu để chạy thử quy trình BCQT. Tên DN sẽ tự động gắn hậu tố <strong>(Demo)</strong>.</p>
+    <h1>Sửa thông tin doanh nghiệp</h1>
+    <p class="page-subtitle">Cập nhật tên, ngành, MST, địa chỉ. Mã DN không đổi (dùng làm thư mục lưu file).</p>
   </div>
 </div>
 
 {% if error %}
 <div class="form-alert form-alert-error" role="alert">
   <span class="form-alert-icon">⚠️</span>
-  <div><strong>Không tạo được:</strong> {{ error }}</div>
+  <div><strong>Không lưu được:</strong> {{ error }}</div>
 </div>
 {% endif %}
 
-<form method="post" action="/companies" class="card form-card">
+<form method="post" action="/companies/{{ company.code }}/edit" class="card form-card">
   <div class="form-field">
-    <label class="form-label" for="code">Mã DN <span class="req">*</span></label>
-    <input class="form-input mono-input" type="text" id="code" name="code" required
-           value="{{ form.code or '' }}" pattern="[A-Z][A-Z0-9_\-]{1,30}"
-           placeholder="VD: DN_007, CONG_TY_XYZ" autofocus>
-    <p class="form-hint">Chữ HOA + số + dấu <code>_ -</code>, bắt đầu bằng chữ, tối đa 31 ký tự. Dùng làm thư mục lưu file.</p>
+    <label class="form-label" for="code">Mã DN</label>
+    <input class="form-input mono-input" type="text" id="code" value="{{ company.code }}" disabled>
+    <p class="form-hint">Mã DN cố định — dùng làm thư mục lưu file đã tải lên, không thể đổi.</p>
   </div>
 
   <div class="form-grid-2">
     <div class="form-field">
       <label class="form-label" for="name">Tên DN</label>
       <input class="form-input" type="text" id="name" name="name"
-             value="{{ form.name or '' }}" placeholder="VD: Công ty TNHH May Mặc ABC">
+             value="{{ form.name or '' }}" placeholder="VD: Công ty TNHH May Mặc ABC" autofocus>
       <p class="form-hint">Tự thêm <code>(Demo)</code> nếu chưa có.</p>
     </div>
     <div class="form-field">
@@ -70,8 +70,8 @@
   </div>
 
   <div class="form-actions">
-    <a href="/companies" class="btn btn-secondary">Huỷ</a>
-    <button type="submit" class="btn btn-primary">Tạo DN & chuyển sang tải lên →</button>
+    <a href="/companies/{{ company.code }}" class="btn btn-secondary">Huỷ</a>
+    <button type="submit" class="btn btn-primary">💾 Lưu thay đổi</button>
   </div>
 </form>
 

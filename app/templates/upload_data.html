@@ -21,39 +21,42 @@
 </div>
 
 {% if error %}
-<div class="card" style="border-left:4px solid var(--c-danger,#b91c1c);background:#fef2f2">
-  <p style="color:#b91c1c;margin:0"><strong>Lỗi:</strong> {{ error }}</p>
+<div class="form-alert form-alert-error" role="alert">
+  <span class="form-alert-icon">⚠️</span>
+  <div><strong>Lỗi:</strong> {{ error }}</div>
 </div>
 {% endif %}
 
 {% if diagnosis %}
-<div class="card" style="border-left:4px solid #d97706;background:#fffbeb;max-width:760px">
-  <h3 style="margin:0 0 var(--space-2)">⚠️ Dữ liệu chưa nạp được — phát hiện vấn đề khi đọc file</h3>
-  <p class="text-subtle" style="font-size:var(--fs-xs);margin:0 0 var(--space-3)">
-    Hệ thống chưa nạp để tránh phân tích nhầm trên dữ liệu đọc sai. Sửa file rồi tải lại,
-    hoặc nhờ AI chẩn đoán cấu trúc file.
-  </p>
+<div class="diag-panel">
+  <div class="diag-head">
+    <span class="diag-icon">⚠️</span>
+    <div>
+      <h3>Dữ liệu chưa nạp được — phát hiện vấn đề khi đọc file</h3>
+      <p>Hệ thống chưa nạp để tránh phân tích nhầm trên dữ liệu đọc sai. Sửa file rồi tải lại, hoặc nhờ AI chẩn đoán cấu trúc file.</p>
+    </div>
+  </div>
   {% for d in diagnosis.errors %}
-  <div style="padding:var(--space-2) 0;border-top:1px solid #fde68a">
-    <p style="margin:0;font-weight:600;color:#b91c1c">🔴 {{ d.title }}</p>
-    <p style="margin:var(--space-1) 0 0;font-size:var(--fs-sm)">{{ d.detail }}</p>
+  <div class="diag-item diag-item-error">
+    <p class="diag-item-title">🔴 {{ d.title }}</p>
+    <p class="diag-item-detail">{{ d.detail }}</p>
   </div>
   {% endfor %}
   {% for d in diagnosis.warnings %}
-  <div style="padding:var(--space-2) 0;border-top:1px solid #fde68a">
-    <p style="margin:0;font-weight:600;color:#b45309">🟡 {{ d.title }}</p>
-    <p style="margin:var(--space-1) 0 0;font-size:var(--fs-sm)">{{ d.detail }}</p>
+  <div class="diag-item diag-item-warn">
+    <p class="diag-item-title">🟡 {{ d.title }}</p>
+    <p class="diag-item-detail">{{ d.detail }}</p>
   </div>
   {% endfor %}
 
   {% if ai_result %}
-  <div style="margin-top:var(--space-3);padding:var(--space-3);background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px">
-    <p style="margin:0 0 var(--space-2);font-weight:600">🤖 AI chẩn đoán cấu trúc file</p>
-    <div style="font-size:var(--fs-sm);white-space:pre-wrap">{{ ai_result }}</div>
-    <p class="text-subtle" style="font-size:var(--fs-xs);margin:var(--space-2) 0 0">Gợi ý của AI mang tính tham khảo — cán bộ tự kiểm chứng trước khi sửa file.</p>
+  <div class="diag-ai">
+    <p class="diag-ai-title">🤖 AI chẩn đoán cấu trúc file</p>
+    <div class="diag-ai-body">{{ ai_result }}</div>
+    <p class="form-hint">Gợi ý của AI mang tính tham khảo — cán bộ tự kiểm chứng trước khi sửa file.</p>
   </div>
   {% elif ai_enabled %}
-  <form method="post" action="/companies/{{ company.code }}/diagnose-ai" style="margin-top:var(--space-3)">
+  <form method="post" action="/companies/{{ company.code }}/diagnose-ai" class="diag-ai-form">
     <input type="hidden" name="year" value="{{ year }}">
     <button type="submit" class="btn btn-secondary">🤖 Nhờ AI chẩn đoán cấu trúc file</button>
   </form>
@@ -61,48 +64,80 @@
 </div>
 {% endif %}
 
-<form method="post" action="/companies/{{ company.code }}/upload" enctype="multipart/form-data" class="card" style="max-width:760px">
+<form method="post" action="/companies/{{ company.code }}/upload" enctype="multipart/form-data" class="card form-card upload-form">
 
-  <div class="card-section">
-    <label for="year" style="display:block;font-weight:600;margin-bottom:var(--space-2)">
-      Kỳ báo cáo (năm) <span style="color:#b91c1c">*</span>
+  <div class="form-field">
+    <label class="form-label" for="year">Kỳ báo cáo (năm) <span class="req">*</span></label>
+    <input class="form-input mono-input" type="number" id="year" name="year" required
+           value="{{ year }}" min="{{ year_min }}" max="{{ year_max }}" style="max-width:160px">
+  </div>
+
+  <h3 class="upload-section-title">File Excel BCQT</h3>
+  <p class="form-hint upload-section-hint">
+    Có thể bỏ trống mục không có dữ liệu. Hệ thống chỉ <strong>nạp dữ liệu</strong> sau khi tải lên —
+    việc <strong>chạy kiểm tra</strong> là bước riêng (bấm "Chạy kiểm tra" ở trang DN sau khi rà soát dữ liệu).
+  </p>
+
+  {% set slots = [
+    ('m15', 'Mẫu 15', 'Cân đối NVL / NPL', 'BCQT/NhapXuatTon_NVL_*.xlsx'),
+    ('m15a', 'Mẫu 15a', 'Cân đối thành phẩm', 'BCQT/NhapXuatTon_SP_*.xlsx'),
+    ('m16', 'Mẫu 16', 'Định mức thực tế', 'DINH_MUC/BCDM_TT39_*.xlsx'),
+    ('bcct', 'BCCT', 'Báo cáo hàng chi tiết (tờ khai)', 'HANG_CHI_TIET/BaoCaoHangChiTiet_*.xlsx')
+  ] %}
+  <div class="upload-slots">
+    {% for slot, code, label, sample in slots %}
+    <label class="upload-slot" for="file_{{ slot }}" data-slot="{{ slot }}">
+      <div class="upload-slot-info">
+        <span class="upload-slot-code">{{ code }}</span>
+        <span class="upload-slot-label">{{ label }}</span>
+        <span class="upload-slot-sample">{{ sample }}</span>
+      </div>
+      <div class="upload-slot-drop">
+        <span class="upload-slot-placeholder">Kéo thả hoặc bấm chọn file</span>
+        <span class="upload-slot-filename" hidden></span>
+      </div>
+      <input class="upload-slot-input" type="file" id="file_{{ slot }}" name="{{ slot }}" accept=".xls,.xlsx">
     </label>
-    <input type="number" id="year" name="year" required
-           value="{{ year }}" min="{{ year_min }}" max="{{ year_max }}"
-           style="width:160px;padding:var(--space-2) var(--space-3);font-family:var(--font-mono,monospace)">
-  </div>
-
-  <div class="card-section">
-    <h3 style="margin-top:0;margin-bottom:var(--space-2)">File Excel BCQT</h3>
-    <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
-      Có thể bỏ trống mục nào không có dữ liệu. Hệ thống chỉ <strong>nạp dữ liệu</strong> sau khi tải lên — việc <strong>chạy kiểm tra</strong> là bước riêng (bấm nút "Chạy kiểm tra" ở trang DN sau khi đã rà soát dữ liệu).
-    </p>
-
-    {% set slots = [
-      ('m15', 'Mẫu 15 — Cân đối NVL/NPL', 'BCQT/NhapXuatTon_NVL_*.xlsx'),
-      ('m15a', 'Mẫu 15a — Cân đối SP', 'BCQT/NhapXuatTon_SP_*.xlsx'),
-      ('m16', 'Mẫu 16 — Định mức', 'DINH_MUC/BCDM_TT39_*.xlsx'),
-      ('bcct', 'BCCT — Báo cáo hàng chi tiết', 'HANG_CHI_TIET/BaoCaoHangChiTiet_*.xlsx')
-    ] %}
-    {% for slot, label, sample in slots %}
-    <div style="display:grid;grid-template-columns:200px 1fr;gap:var(--space-3);align-items:center;padding:var(--space-2) 0;border-bottom:1px solid var(--c-border,#e5e7eb)">
-      <label for="file_{{ slot }}" style="font-weight:500">
-        {{ label }}
-        <div class="text-subtle text-mono" style="font-size:var(--fs-xs);font-weight:400">{{ sample }}</div>
-      </label>
-      <input type="file" id="file_{{ slot }}" name="{{ slot }}" accept=".xls,.xlsx">
-    </div>
     {% endfor %}
-
-    <p class="text-subtle" style="font-size:var(--fs-xs);margin-top:var(--space-3)">
-      Giới hạn 100MB/file. Định dạng: <code>.xls</code> / <code>.xlsx</code>.
-    </p>
   </div>
 
-  <div class="card-section" style="display:flex;gap:var(--space-3);justify-content:space-between;align-items:center">
+  <p class="form-hint">Giới hạn 100MB/file. Định dạng: <code>.xls</code> / <code>.xlsx</code>.</p>
+
+  <div class="form-actions form-actions-split">
     <a href="/companies/{{ company.code }}" class="btn btn-secondary">← Quay về</a>
     <button type="submit" class="btn btn-primary">📥 Tải lên & nạp dữ liệu</button>
   </div>
 </form>
+
+<script>
+(function () {
+  document.querySelectorAll('.upload-slot').forEach(function (slot) {
+    var input = slot.querySelector('.upload-slot-input');
+    var nameEl = slot.querySelector('.upload-slot-filename');
+    var ph = slot.querySelector('.upload-slot-placeholder');
+    function show() {
+      if (input.files && input.files.length) {
+        nameEl.textContent = input.files[0].name;
+        nameEl.hidden = false; ph.hidden = true;
+        slot.classList.add('has-file');
+      } else {
+        nameEl.hidden = true; ph.hidden = false;
+        slot.classList.remove('has-file');
+      }
+    }
+    input.addEventListener('change', show);
+    slot.addEventListener('dragover', function (e) { e.preventDefault(); slot.classList.add('dragover'); });
+    slot.addEventListener('dragleave', function () { slot.classList.remove('dragover'); });
+    slot.addEventListener('drop', function (e) {
+      e.preventDefault();
+      slot.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        input.files = e.dataTransfer.files;
+        show();
+      }
+    });
+  });
+})();
+</script>
 
 {% endblock %}

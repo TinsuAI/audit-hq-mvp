@@ -607,25 +607,174 @@ p { margin: 0 0 var(--space-3); }
 }
 .dn-name { font-size: var(--fs-sm); color: var(--c-text); }
 
-/* Scoring info popover (details/summary) */
-.scoring-info {
-  position: relative;
-}
-.scoring-info summary {
-  list-style: none;
-}
-.scoring-info summary::-webkit-details-marker { display: none; }
-.scoring-popover {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
+/* — Scoring explainer (collapsible card on companies list) — */
+.scoring-explainer {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-5);
+  overflow: hidden;
+}
+.scoring-explainer > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--c-surface-alt);
+  border-bottom: 1px solid transparent;
+  user-select: none;
+}
+.scoring-explainer > summary::-webkit-details-marker { display: none; }
+.scoring-explainer[open] > summary { border-bottom-color: var(--c-border); }
+.se-title { font-weight: 700; font-size: var(--fs-md); color: var(--c-text); }
+.se-sub { font-size: var(--fs-xs); color: var(--c-text-subtle); }
+.se-caret { margin-left: auto; color: var(--c-text-subtle); transition: transform 0.15s; }
+.scoring-explainer[open] .se-caret { transform: rotate(180deg); }
+
+.se-body { padding: var(--space-4); }
+.se-intro {
+  margin: 0 0 var(--space-4);
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  max-width: 80ch;
+}
+.se-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: var(--space-6);
+}
+@media (max-width: 760px) { .se-grid { grid-template-columns: 1fr; gap: var(--space-4); } }
+.se-h {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--c-text);
+}
+.se-muted { font-weight: 400; color: var(--c-text-subtle); font-size: var(--fs-xs); }
+.se-formula {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--c-text);
+  line-height: 1.55;
+}
+.se-weights { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.se-ladder {
+  display: flex;
+  border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.se-tier {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+}
+.se-tier + .se-tier { border-left: 1px solid rgba(255, 255, 255, 0.65); }
+.se-tier-range { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 600; }
+.se-tier-name { font-size: 0.6875rem; line-height: 1.2; }
+.se-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--c-border);
+}
+.se-note { font-size: var(--fs-xs); color: var(--c-text-subtle); max-width: 70ch; line-height: 1.5; }
+.se-link { font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
+
+/* — Companies table toolbar (search / filter / group) — */
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.toolbar-search {
+  flex: 1 1 240px;
+  min-width: 200px;
+  max-width: 360px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+}
+.toolbar-select {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  cursor: pointer;
+}
+.toolbar-search:focus, .toolbar-select:focus {
+  outline: none;
+  border-color: var(--c-brand-500);
+  box-shadow: 0 0 0 3px var(--c-overlay);
+}
+.toolbar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.toolbar-count {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--c-text-subtle);
+  font-family: var(--font-mono);
+}
+
+/* Sortable headers */
+.companies-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.companies-table th.sortable:hover { color: var(--c-brand-500); }
+.companies-table th.sortable::after { content: " ↕"; opacity: 0.35; font-size: 0.85em; }
+.companies-table th.sortable.sort-asc::after { content: " ↑"; opacity: 1; }
+.companies-table th.sortable.sort-desc::after { content: " ↓"; opacity: 1; }
+
+/* Industry group headers + tag */
+.dn-group-header td {
+  background: var(--c-surface-alt);
+  padding: var(--space-2) var(--space-3) !important;
+  font-size: var(--fs-xs);
+  border-bottom: 1px solid var(--c-border);
+}
+.dn-group-header .grp-name { font-weight: 700; color: var(--c-text); }
+.dn-group-header .grp-count { margin-left: var(--space-2); color: var(--c-text-subtle); }
+.industry-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--c-brand-50);
+  color: var(--c-brand-500);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.dn-row.is-hidden { display: none; }
+.table-empty-hint {
+  margin: var(--space-3) 0;
   padding: var(--space-4);
-  min-width: 240px;
-  z-index: 30;
+  text-align: center;
+  color: var(--c-text-subtle);
+  font-size: var(--fs-sm);
+  background: var(--c-surface-alt);
+  border-radius: var(--radius-md);
 }
 
 /* Companies table: row height comfortable, alternating subtle */
@@ -1494,3 +1643,123 @@ p { margin: 0 0 var(--space-3); }
   text-decoration: underline;
 }
 .btn-link:hover { color: var(--c-brand-700, #0f2030); }
+
+/* — Form layout (thêm DN + tải lên) — */
+.form-card { max-width: 720px; }
+.form-card .form-field { margin-bottom: var(--space-4); }
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+@media (max-width: 620px) { .form-grid-2 { grid-template-columns: 1fr; gap: 0; } }
+.req { color: var(--c-critical-fg); font-weight: 700; }
+.form-hint {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--c-text-subtle);
+  line-height: 1.5;
+}
+.mono-input { font-family: var(--font-mono); }
+#code { text-transform: uppercase; }
+.form-actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--c-border);
+}
+.form-actions-split { justify-content: space-between; }
+
+.form-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-width: 720px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  font-size: var(--fs-sm);
+}
+.form-alert-error {
+  background: var(--c-critical-bg);
+  color: var(--c-critical-fg);
+  border: 1px solid var(--c-critical-border);
+}
+.form-alert-icon { font-size: 1.1em; line-height: 1.3; }
+
+/* — Upload slots (drag & drop) — */
+.upload-section-title { margin: var(--space-2) 0 var(--space-1); font-size: var(--fs-md); }
+.upload-section-hint { margin-bottom: var(--space-3); max-width: 80ch; }
+.upload-slots { display: flex; flex-direction: column; gap: var(--space-3); }
+.upload-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) 1fr;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.upload-slot:hover { border-color: var(--c-border-strong); }
+.upload-slot.dragover { border-color: var(--c-brand-500); background: var(--c-brand-50); }
+.upload-slot.has-file { border-color: var(--c-success-border); background: var(--c-success-bg); }
+.upload-slot-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.upload-slot-code { font-weight: 700; font-size: var(--fs-sm); color: var(--c-text); }
+.upload-slot-label { font-size: var(--fs-sm); color: var(--c-text-muted); }
+.upload-slot-sample { font-size: var(--fs-xs); color: var(--c-text-subtle); }
+.upload-slot-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: var(--space-2);
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+.upload-slot.has-file .upload-slot-drop { border-style: solid; border-color: var(--c-success-border); }
+.upload-slot-placeholder { font-size: var(--fs-sm); color: var(--c-text-subtle); }
+.upload-slot-filename {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-success-fg);
+  word-break: break-all;
+}
+.upload-slot-filename::before { content: "✓ "; }
+.upload-slot-input { display: none; }
+@media (max-width: 620px) { .upload-slot { grid-template-columns: 1fr; } }
+
+/* — Upload diagnostic panel — */
+.diag-panel {
+  max-width: 800px;
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--c-warning-border);
+  border-left: 4px solid #d97706;
+  border-radius: var(--radius-md);
+  background: var(--c-warning-bg);
+}
+.diag-head { display: flex; gap: var(--space-3); align-items: flex-start; }
+.diag-icon { font-size: 1.3em; }
+.diag-head h3 { margin: 0 0 var(--space-1); font-size: var(--fs-md); }
+.diag-head p { margin: 0; font-size: var(--fs-xs); color: var(--c-text-muted); }
+.diag-item { padding: var(--space-2) 0; border-top: 1px solid var(--c-warning-border); margin-top: var(--space-2); }
+.diag-item-title { margin: 0; font-weight: 600; }
+.diag-item-error .diag-item-title { color: var(--c-critical-fg); }
+.diag-item-warn .diag-item-title { color: #b45309; }
+.diag-item-detail { margin: var(--space-1) 0 0; font-size: var(--fs-sm); }
+.diag-ai {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--c-info-bg);
+  border: 1px solid var(--c-info-border);
+  border-radius: var(--radius-sm);
+}
+.diag-ai-title { margin: 0 0 var(--space-2); font-weight: 600; }
+.diag-ai-body { font-size: var(--fs-sm); white-space: pre-wrap; }
+.diag-ai-form { margin-top: var(--space-3); }

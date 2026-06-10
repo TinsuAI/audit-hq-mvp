@@ -155,10 +155,26 @@ def list_companies(
             "years": sorted(years.items(), reverse=True),
         })
     summary.sort(key=lambda s: (-s["score"], s["company"].code))
+
+    # Thang hạng cho thẻ giải thích — đọc ngưỡng runtime (admin có thể chỉnh),
+    # không hardcode trong template để khỏi lệch khi đổi ngưỡng.
+    from app.app_settings import get_tiers
+    from app.checks.denominators import RULE_SCOPE
+    tier_ladder = []
+    lo = 0
+    for upper, label, css in get_tiers(db):
+        tier_ladder.append({"lo": lo, "hi": upper, "label": label, "css": css})
+        lo = upper + 1
+
     return templates.TemplateResponse(
         request,
         "companies_list.html",
-        {"user": user, "summary": summary},
+        {
+            "user": user,
+            "summary": summary,
+            "n_rules": len(RULE_SCOPE),
+            "tier_ladder": tier_ladder,
+        },
     )
 
 
@@ -216,6 +232,7 @@ def create_company(
     name: str = Form(""),
     tax_id: str = Form(""),
     address: str = Form(""),
+    industry: str = Form(""),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse | RedirectResponse:
@@ -223,8 +240,12 @@ def create_company(
     name = name.strip()
     tax_id = tax_id.strip() or None
     address = address.strip() or None
+    industry = industry.strip() or None
 
-    form_state = {"code": code, "name": name, "tax_id": tax_id or "", "address": address or ""}
+    form_state = {
+        "code": code, "name": name, "tax_id": tax_id or "",
+        "address": address or "", "industry": industry or "",
+    }
 
     def _err(msg: str) -> HTMLResponse:
         return templates.TemplateResponse(
@@ -243,11 +264,67 @@ def create_company(
     if DEMO_SUFFIX not in display_name:
         display_name = f"{display_name} {DEMO_SUFFIX}"
 
-    company = Company(code=code, name=display_name, tax_id=tax_id, address=address, risk_score=0)
+    company = Company(
+        code=code, name=display_name, tax_id=tax_id, address=address,
+        industry=industry, risk_score=0,
+    )
     db.add(company)
     db.commit()
 
     return RedirectResponse(url=f"/companies/{code}/upload", status_code=303)
+
+
+@router.get("/companies/{code}/edit", response_class=HTMLResponse)
+def edit_company_form(
+    code: str,
+    request: Request,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    form_state = {
+        "code": company.code,
+        "name": company.name or "",
+        "tax_id": company.tax_id or "",
+        "address": company.address or "",
+        "industry": company.industry or "",
+    }
+    return templates.TemplateResponse(
+        request, "edit_company.html",
+        {"user": user, "company": company, "form": form_state, "error": None},
+    )
+
+
+@router.post("/companies/{code}/edit", response_model=None)
+def update_company(
+    code: str,
+    request: Request,
+    name: str = Form(""),
+    tax_id: str = Form(""),
+    address: str = Form(""),
+    industry: str = Form(""),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+
+    # Mã DN cố định (dùng làm thư mục lưu file) — không nhận từ form.
+    name = name.strip()
+    display_name = name or company.code
+    if DEMO_SUFFIX not in display_name:  # giữ hậu tố (Demo) nhất quán với lúc tạo
+        display_name = f"{display_name} {DEMO_SUFFIX}"
+
+    company.name = display_name
+    company.tax_id = tax_id.strip() or None
+    company.address = address.strip() or None
+    company.industry = industry.strip() or None
+    db.commit()
+
+    return RedirectResponse(url=f"/companies/{code}", status_code=303)
 
 
 @router.get("/companies/{code}/upload", response_class=HTMLResponse)

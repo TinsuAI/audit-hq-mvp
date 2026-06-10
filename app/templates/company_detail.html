@@ -17,11 +17,13 @@
     <h1>{{ company.name or company.code }}</h1>
     <p class="page-subtitle">
       Mã: <strong class="text-mono">{{ company.code }}</strong>
+      {% if company.industry %} · Ngành: {{ company.industry }}{% endif %}
       {% if company.tax_id %} · MST: <span class="text-mono">{{ company.tax_id }}</span>{% endif %}
       {% if company.address %} · {{ company.address }}{% endif %}
     </p>
   </div>
   <div class="btn-group">
+    <a href="/companies/{{ company.code }}/edit" class="btn btn-secondary">✏️ Sửa</a>
     <a href="/companies/{{ company.code }}/upload{% if selected_year %}?year={{ selected_year }}{% endif %}" class="btn btn-secondary">📥 Tải lên dữ liệu</a>
     {% if selected_year %}
     <form method="post" action="/companies/{{ company.code }}/run-checks" style="display:inline;margin:0">
