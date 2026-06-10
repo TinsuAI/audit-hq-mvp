@@ -253,9 +253,12 @@ E. **[ĐÃ ĐIỀU TRA 2026-06-11] DN_002 (30) vs DN_009 (28) — KHÔNG phải 
      DN_009 (trùng DN_002) → `recompute_all_scores`. Live giờ 4 DN, điểm
      **120/28/168/46**, list=detail nhất quán. **CHƯA push** STATUS này; code live
      không đổi (chỉ data score).
-   - **Còn backlog (fix code chống tái diễn):** trang danh sách đọc thẳng
-     `max(company_year_scores)` thay vì field `companies.risk_score` để hết drift;
-     và sau mỗi lần đổi rule phải `recompute_all_scores` toàn bộ.
+   - **✅ Fix code (2026-06-11):** trang danh sách giờ đọc + sort theo
+     `max(company_year_scores)` thay vì field cache `companies.risk_score` →
+     list không còn drift khỏi detail kể cả khi cache stale (route `list_companies`
+     + `companies_list.html`; test `tests/test_companies_list.py`).
+   - Còn lại (vận hành): sau mỗi lần đổi rule vẫn nên `recompute_all_scores` toàn
+     bộ để cache `risk_score` + CYS năm-khác đồng bộ.
 
 0. **Chờ chị trả lời 4 câu hỏi clarify** (góp ý 2026-06-01) rồi xử lý điểm 2/3:
    (1) phạm vi loại "x" — chỉ check nhập hay mọi check định mức; (2) nguồn định

@@ -48,7 +48,7 @@
       {% for item in summary %}
         {% set c = item.company %}
         {% set rank = loop.index %}
-        {% set score = c.risk_score or 0 %}
+        {% set score = item.score %}
         {% set tier_css = tier_css_for(score) %}
         {% set tier_label = tier_for(score) %}
       <tr>

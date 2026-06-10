@@ -128,9 +128,16 @@ def list_companies(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    companies = db.scalars(
-        select(Company).order_by(Company.risk_score.desc(), Company.code)
-    ).all()
+    companies = db.scalars(select(Company)).all()
+    # Điểm hiển thị = max(company_year_scores), KHÔNG đọc cache company.risk_score.
+    # Cache có thể "drift" khỏi điểm theo năm (đổi rule/chạy lẻ không recompute) →
+    # đọc thẳng từ CYS để list luôn khớp trang chi tiết.
+    max_scores = dict(
+        db.execute(
+            select(CompanyYearScore.company_id, func.max(CompanyYearScore.score))
+            .group_by(CompanyYearScore.company_id)
+        ).all()
+    )
     summary = []
     for c in companies:
         counts_rows = db.execute(
@@ -144,8 +151,10 @@ def list_companies(
                 years[year][sev] = n
         summary.append({
             "company": c,
+            "score": max_scores.get(c.id) or 0,
             "years": sorted(years.items(), reverse=True),
         })
+    summary.sort(key=lambda s: (-s["score"], s["company"].code))
     return templates.TemplateResponse(
         request,
         "companies_list.html",
