@@ -14,6 +14,7 @@ jobs:
 
       - name: Setup venv (uv)
         run: |
+          export PATH="$HOME/.local/bin:/snap/bin:$PATH"
           uv venv --python python3.13 .venv
           uv pip install -e ".[dev]" --python .venv/bin/python --quiet
 
