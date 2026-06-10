@@ -78,15 +78,48 @@ chụp; case 2 file header tiếng Anh → AI map ngữ nghĩa Anh→Việt.
 - **`pkill -f "uvicorn.*8222"` tự kill shell** (cmdline chứa chính pattern) → kill
   theo PID từ pidfile thay vì pattern.
 
+## Phần sau (cùng session) — điều tra DN_002/DN_009 + fix drift + dọn live
+
+### #5 — Điều tra "DN_002=30 vs DN_009=28 cùng data"
+- DN_009 = bản **copy DN_002** (cùng MST `0401886016`, chị tạo từ upload data DN_002
+  khi test luồng mới). Xác minh trên live: data + findings + `company_year_scores`
+  **giống hệt** — cả hai **28/năm**. Chênh chỉ ở field denormalized
+  `companies.risk_score`: DN_002=**30** (rate-based 16-rule cũ kẹt lại), DN_009=28.
+- **Root cause:** trang DANH SÁCH đọc cache `companies.risk_score`, trang CHI TIẾT
+  đọc `company_year_scores` → **drift** khi đổi rule (C2.4 16→17, mẫu số scoring tăng,
+  5.314/180≈30 → /190≈28) mà không recompute toàn bộ. Không phải lỗi data/logic per-DN.
+- Verify: dry-run `recompute_all_scores` trên live → DN_002 TỔNG 30→28, year-scores
+  KHÔNG đổi.
+
+### #6 — Fix live (data) — chị OK "làm luôn"
+- Backup live (`audit_hq.sqlite.bak-pre-cleanup-20260611-000123`) → xoá rác **DN_008**
+  (rỗng) + **DN_009** (copy) → `recompute_all_scores`. Live giờ 4 DN, điểm
+  **120/28/168/46**, list=detail nhất quán. App đọc DB trực tiếp → hiện ngay, không
+  cần restart. ⚠️ Đổi điểm demo so với trước (177→168…).
+
+### #7 — Fix code chống tái diễn (commit `8d6b6c5`)
+- `list_companies` đọc + sort theo `max(company_year_scores)` thay vì
+  `companies.risk_score` → list luôn khớp detail kể cả cache stale. `tests/
+  test_companies_list.py` (2 test: hiển thị + ranking). 444 → **446 pass**.
+- Push toàn bộ 6 commit → CI deploy live xanh (build `8d6b6c5`). Verify demo flow
+  read-only trên live qua Playwright: **16/16 pass** (login, 4 DN + điểm, không rác,
+  DN_003 combo, upload copy mới, catalog).
+
 ## Open items
-- **Chưa push** 2 commit (chờ chị OK). Push → auto-deploy code lên live (data không đổi).
-- AI auto-remap (tự map cột rồi ingest, có UI duyệt mapping) — feature lớn, defer.
-- UI/UX #4 chưa làm.
+- ✅ Đã push hết + deploy live + verify. main = origin sạch.
+- **AI auto-remap** (tự map cột rồi ingest, có UI duyệt mapping) — feature lớn, defer.
+- **UI/UX #4** chưa làm (badge trạng thái DN, progress inline, drag-drop, nút nạp mẫu).
+- **Vận hành:** sau mỗi lần đổi rule scoring phải `recompute_all_scores` toàn bộ
+  (live không tự rerun). Có 2 hệ scoring: rate-based (CYS, dùng cho ranking) +
+  legacy `compute_risk_score` (chỉ inject_findings dùng) — đừng lẫn.
 - Tồn từ trước: 4 câu hỏi clarify M16 (session 2026-06-01) vẫn chờ chị.
 
 ## File chạm
 - Mới: `scripts/gen_demo_data.py`, `app/pipeline/validate.py`,
-  `app/ai/ingest_doctor.py`, `tests/test_validate.py`.
-- Sửa: `app/routes/companies.py`, `app/templates/company_detail.html`,
-  `app/templates/upload_data.html`, `.gitignore`.
+  `app/ai/ingest_doctor.py`, `tests/test_validate.py`, `tests/test_companies_list.py`.
+- Sửa: `app/routes/companies.py` (upload decouple + validate wiring + diagnose-ai +
+  list reads max-CYS), `app/templates/{company_detail,upload_data,companies_list}.html`,
+  `.gitignore`, `.ai/STATUS.md`.
+- Commit (6, đã push): `86a7d48` `2ee586e` `d104af9` `5c87955` `abbfd2e` `8d6b6c5`.
 - Không commit: `demo-data/` (gitignored), screenshot + bộ data ở `C:\temp\toss`.
+- Live: backup `audit_hq.sqlite.bak-pre-cleanup-20260611-000123`; xoá DN_008/DN_009.

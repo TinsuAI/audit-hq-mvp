@@ -1,37 +1,55 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-06-11, demo upload data + tách upload/check + validate+AI):**
-> Branch `main`: **2 commit mới CHƯA push** — `86a7d48` (gen demo data),
-> `2ee586e` (tách upload/check + validate/AI). **444 tests pass**, ruff clean.
-> Live (`cb2f3ad`) và data live KHÔNG đổi.
+> **Trạng thái (2026-06-11 — UI/UX + viết lại methodology, CHƯA commit/push/live):**
+> Trên nền build `8d6b6c5`. **449 tests pass** (446 + 3 test sửa DN), ruff clean.
+> Dev server local chạy :8200. Toàn bộ thay đổi session này **chưa commit**.
+> 🆕 (1) Viết lại `docs/scoring-methodology.md`: thuần Việt (bỏ thuật ngữ Anh +
+> định danh code), sửa 16→**17 phép** / 180→**190**, §6 nêu rõ ngưỡng 5 mức là
+> **cấu hình runtime** (mặc định 50/100/300/600/1000, không hardcode), đổi
+> "Điểm thưởng tổ hợp" → **"Điểm rủi ro tổ hợp"** + bảng 4 tổ hợp (lấy từ
+> `combos.py`) + ghi chú danh mục tổ hợp mở rộng theo kinh nghiệm cán bộ HQ.
+> (2) **Thẻ giải thích điểm** thu-gọn-được ở `/companies` (công thức động theo
+> `len(RULE_SCOPE)`, thang 5 hạng dựng từ `get_tiers()` nên tự đúng khi đổi ngưỡng).
+> (3) **Bảng DN**: tìm kiếm + lọc theo mức + lọc/nhóm theo **ngành** + sort cột —
+> thêm cột `Company.industry` (migration `e1a2c3d4f5b6`, đã nạp ngành 4 DN local).
+> (4) **Redesign** trang Thêm DN + Tải lên (ô file thành vùng kéo-thả, panel chẩn
+> đoán restyle). (5) **Trang Sửa DN** `/companies/{code}/edit` (mã DN khoá vì là
+> tên thư mục file). (6) Local: set **key OpenRouter** vào `ai_settings` + bật AI
+> (test_connection OK) — **KHÔNG commit** (DB gitignored).
+> ⚠️ **Deploy live cần:** chạy migration `e1a2c3d4f5b6` + set ngành 4 DN qua trang Sửa.
+
+> **Trạng thái (2026-06-11, demo upload data + tách upload/check + validate/AI + fix drift):**
+> Branch `main` = origin (sạch), **6 commit đã push + deploy live xanh**, build live
+> **`8d6b6c5`**. **446 tests pass**, ruff clean. Đã verify demo flow trên live (16/16).
 > 🆕 (1) `scripts/gen_demo_data.py` — anonymize file Excel **GỐC** (giữ format thật)
-> → `demo-data/` theo **tên DN** + slot; upload tái hiện đúng demo (round-trip
-> verified 116/28/148/46). (2) **Tách upload khỏi chạy kiểm tra** — upload chỉ
-> ingest; chạy check là bước riêng; trang DN có state "đã nạp, chưa chạy". (3)
-> `app/pipeline/validate.py` chặn **misparse thầm lặng** (heuristic dò cột lệch,
-> chặn ingest khi lỗi nặng) + `app/ai/ingest_doctor.py` / `POST /diagnose-ai`
-> (AI Gemini live, **tùy chọn** — degrade về heuristic khi tắt).
-> Bộ data + 7 screenshot ở `C:\temp\toss` (máy Windows, không vào git).
-> Điểm **LIVE đã recompute 17-rule + dọn rác** (2026-06-11): **120/28/168/46**
-> (4 DN; xoá DN_008 rỗng + DN_009 trùng DN_002). list=detail nhất quán. Local: 116/28/148/46.
+> → `demo-data/` theo **tên DN** + slot; upload tái hiện đúng demo. (2) **Tách upload
+> khỏi chạy kiểm tra** — upload chỉ ingest; chạy check là bước riêng; trang DN có
+> state "đã nạp, chưa chạy". (3) `app/pipeline/validate.py` chặn **misparse thầm
+> lặng** (heuristic dò cột lệch) + `app/ai/ingest_doctor.py`/`POST /diagnose-ai`
+> (AI Gemini live, **tùy chọn**, degrade về heuristic khi tắt). (4) **Fix drift
+> điểm:** trang danh sách đọc `max(company_year_scores)` thay vì cache
+> `companies.risk_score` (list luôn khớp detail).
+> **Live đã dọn + recompute 17-rule (2026-06-11):** 4 DN demo, điểm **120/28/168/46**
+> (xoá rác DN_008/DN_009), list=detail nhất quán. Local: 116/28/148/46.
+> Bộ data + screenshot (demo + AI + live) ở `C:\temp\toss` (Windows, không vào git).
 > ⏳ Vẫn chờ chị trả lời 4 câu hỏi clarify M16 (session 2026-06-01).
 
 ## Current State
 
 ### Production (`audit-hq-demo.tinsu.ai`)
-- Build hiện tại: `cb2f3ad` (C2.4 code + fix CI uv PATH). Data live **không đổi**
-  (vẫn state backfill 06-04). C2.4 runnable nhưng **chưa fire** (chưa rerun trên live).
-  Điểm cache 127/30/177/49 vẫn tính bằng code 16-rule cũ → "treo" tới khi rerun.
-- DB tinsu (06-03→04): (a) lọc ~20.671 dòng tờ khai lạc kỳ; (b) backfill
-  `norms.note` "x" 3517 dòng; (c) backfill tờ khai xuất DN_003 (NK/XK tách file):
-  2021 0→289, 2022 69→236, 2025 1512→1893; (d) backfill DN_001 (GROWATT) từ
-  data-hub: 2023 →5475, 2024 →3505 (C1.4 FP→0), 2025 0→19.898. Rerun + recompute.
-- 4 DN demo, score cuối (rate-based, max qua các năm):
-  - DN_003 Hoa Sen (Dệt may): **177** (was 232) — Cần rà soát
-  - DN_001 Phương Đông (Điện tử): **127** — Có chênh lệch nhỏ (không có note "x")
-  - DN_004 Nam Tiến (Hoá chất): **49** (was 97) — Dữ liệu nhất quán
-  - DN_002 Tiên Phong (Cơ khí): **30** (was 62) — Dữ liệu nhất quán
-- C4.1 findings: **74** (was 291 — backfill loại 217 mã hàng nội địa).
+- Build hiện tại: **`8d6b6c5`** (tách upload/check + validate/AI + fix drift điểm).
+  Deploy CI xanh. Đã verify demo flow read-only trên live: 16/16 check pass.
+- **Điểm live đã recompute 17-rule + dọn rác (2026-06-11)** — 4 DN demo,
+  list=detail nhất quán:
+  - DN_003 Hoa Sen (Dệt may): **168** (was 177 cache 16-rule) — Cần rà soát
+  - DN_001 Phương Đông (Điện tử): **120** (was 127) — Cần rà soát
+  - DN_004 Nam Tiến (Hoá chất): **46** (was 49) — Dữ liệu nhất quán
+  - DN_002 Tiên Phong (Cơ khí): **28** (was 30) — Dữ liệu nhất quán
+  - Đã xoá rác: DN_008 (rỗng) + DN_009 (copy DN_002). Backup live:
+    `audit_hq.sqlite.bak-pre-cleanup-20260611-000123`.
+- DB tinsu (06-03→04, vẫn giữ): lọc tờ khai lạc kỳ; backfill `norms.note` "x";
+  backfill tờ khai xuất DN_003 + DN_001 (GROWATT) từ data-hub.
+- C4.1 findings: **74** (backfill loại 217 mã hàng nội địa).
 - Ngưỡng tier (default sau `4977cd4`): **50 / 100 / 300 / 600 / 1000**.
   Admin chỉnh ở `/admin/risk-tiers` — đổi không cần re-run check.
 
@@ -39,10 +57,10 @@
 - Python 3.12, FastAPI, SQLAlchemy + Alembic, SQLite (WAL + busy_timeout=5000).
 - AI: OpenAI SDK compat, Gemini 2.5 (primary) + NIM DeepSeek (dự phòng).
 - Dev port: **8200** (cố định, match docker-compose + Cloudflare tunnel).
-- **439 tests pass**, ruff clean.
+- **449 tests pass**, ruff clean.
 
-### Migrations (head: `c7f3a1b2d4e5`)
-Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (company.risk_score) → `599dbd931e77` (UOM) → `a3c48313dddf` (ai_settings + ai audit) → `b7e91f4d2a13` (users) → `de9eee546b80` (jobs) → `46b3bcaebbe4` (company_year_scores) → `646b92a93768` (check_definitions) → `a4d5ffcb0da7` (app_settings) → `c7f3a1b2d4e5` (**norms.note** — xuất xứ "x").
+### Migrations (head: `e1a2c3d4f5b6`)
+Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (company.risk_score) → `599dbd931e77` (UOM) → `a3c48313dddf` (ai_settings + ai audit) → `b7e91f4d2a13` (users) → `de9eee546b80` (jobs) → `46b3bcaebbe4` (company_year_scores) → `646b92a93768` (check_definitions) → `a4d5ffcb0da7` (app_settings) → `c7f3a1b2d4e5` (norms.note — xuất xứ "x") → `e1a2c3d4f5b6` (**company.industry** — lọc/nhóm ngành ở danh sách).
 
 ### Cấu trúc lưu trữ cấu hình runtime
 - `ai_settings` — chỉ cho AI assistant (base_url, api_key, model_default/fast/deep, fallback, limits…).
@@ -64,6 +82,50 @@ Chuỗi: `da05efe02a74` → `2d66c843ef0e` (findings) → `9fbf36d7f864` (compan
 
 ### Thư viện tài liệu `/tai-lieu`
 - 4 trang: scoring-methodology + TT 38/2015, TT 39/2018, TT 81/2019.
+
+## Recent Changes (2026-06-11 — UI/UX: methodology + trang chủ + bảng + form + sửa DN)
+
+Chưa commit. Tests 446 → **449** (+3 sửa DN). Yêu cầu: 5 việc UI/nội dung của chị.
+
+**1. Viết lại `docs/scoring-methodology.md` thuần Việt.** Bỏ thuật ngữ Anh chêm
+(rate-based, findings, exposure, max_points, combination bonus, breakdown,
+evidence_refs, run-checks, jobs, cohort z-score, calibrated…) + định danh code
+khỏi văn xuôi; dịch tên WCO/OECD. **Sửa số liệu dẫn xuất:** 16→17 phép, 180→190
+(`max_raw = len(RULE_SCOPE)×10+20`). **§6:** ngưỡng 5 mức là **cấu hình runtime**
+(admin chỉnh ở /admin/risk-tiers), bảng ví dụ dùng default hiện hành
+50/100/300/600/1000 — KHÔNG còn bộ số cũ 0-100/101-300/… (số cũ không khớp UI).
+**§4:** "Điểm thưởng tổ hợp" → **"Điểm rủi ro tổ hợp"** (chị góp ý "thưởng" mang
+nghĩa tích cực, sai ngữ cảnh) + thêm bảng **4 tổ hợp** (Định mức ảo C2.3+C4.3;
+NVL nội địa không khai báo C1.3+C5.1; Số liệu mâu thuẫn C2.1+C4.3; Phân loại sai
+C3.2+C3.3) lấy từ `combos.py` + ghi chú danh mục mở rộng theo kinh nghiệm HQ.
+
+**2. Thẻ giải thích điểm ở trang chủ** (`companies_list.html` + `companies.py`).
+`<details open>` thu-gọn-được đầu `/companies`: mô tả + công thức (động theo
+`len(RULE_SCOPE)` = **17 phép**) + trọng số 🔴10/🟡3/🔵1 + thang 5 hạng màu dựng
+từ `get_tiers(db)` (tự đúng khi admin đổi ngưỡng) + link tài liệu. Route truyền
+`n_rules` + `tier_ladder`. Gỡ popover "ℹ️" cũ + CSS chết `.scoring-info/.scoring-popover`.
+
+**3. Bảng DN: tìm kiếm + lọc + sort + nhóm ngành.** Client-side (JS inline trong
+template): ô tìm (mã/tên/MST), lọc theo mức cảnh báo, lọc theo ngành, toggle
+**nhóm theo ngành** (chèn hàng group-header), sort khi bấm tiêu đề (Điểm/Tên/
+Ngành/MST). Thêm cột **Ngành** + schema `Company.industry` (migration
+`e1a2c3d4f5b6`). Nạp ngành 4 DN local: DN_001 Điện tử, DN_002 Cơ khí, DN_003
+Dệt may, DN_004 Hoá chất. **Live chưa có** (chạy migration + set qua trang Sửa).
+
+**4. Redesign Thêm DN + Tải lên.** Bỏ inline-style → class CSS (`.form-card`,
+`.form-grid-2`, `.form-actions`, `.form-alert`, `.form-hint`, `.req`). `new_company`
+thêm field **Ngành** (input + datalist 8 ngành). `upload_data`: 4 ô file thành
+**vùng kéo-thả** (`.upload-slot`, hiện tên file + viền xanh khi có file, JS
+dragover/drop), panel chẩn đoán + khối AI restyle (`.diag-panel`).
+
+**5. Trang Sửa DN** `GET/POST /companies/{code}/edit` + `edit_company.html`. Sửa
+tên/ngành/MST/địa chỉ; **mã DN khoá** (read-only — là tên thư mục lưu file). Tên
+giữ hậu tố `(Demo)`. Nút "✏️ Sửa" + dòng "Ngành" ở header `company_detail.html`.
+Test `tests/test_company_edit.py` (3): prefill+khoá mã, update+giữ Demo, 404.
+
+**6. Key OpenRouter (local).** Set `ai_settings.api_key` + `enabled=true` qua
+`set_setting`, `test_connection` OK (229ms). DB gitignored → **không commit, chưa
+lên live**. Default `base_url` vốn đã là OpenRouter + model Claude.
 
 ## Recent Changes (2026-06-11 — demo upload data + tách upload/check + validate/AI)
 
@@ -224,17 +286,18 @@ Chi tiết: `.ai/sessions/2026-05-27-checks-audit-round-1.md`.
 
 ## Next Steps
 
-A. **Push 2 commit** `86a7d48` + `2ee586e` lên main khi chị OK (giờ mới commit
-   local, chưa push). Auto-deploy sẽ đẩy code (validate/AI + tách upload/check)
-   lên live — **không đổi data live**.
+A. ✅ **DONE** — 6 commit đã push + deploy live xanh (build `8d6b6c5`), verify demo
+   flow trên live 16/16. main = origin sạch.
 B. **Rebuild demo-data trước mỗi demo / sau khi đổi data:** `python -m
    scripts.gen_demo_data` (tự verify leak). Copy sang `C:\temp\toss` nếu cần.
 C. **(Feature lớn, defer) AI auto-remap:** hiện AI chỉ *chẩn đoán* (giải thích).
    Bước tiếp: AI tự đề xuất mapping cột → cán bộ **duyệt** → ingest theo mapping.
    Cần thêm UI duyệt mapping trước khi ghi DB. Chưa làm.
-D. **UI/UX (#4, chưa làm):** badge trạng thái DN (đã nạp/đã kiểm tra/chưa chạy),
-   progress inline khi chạy check, drag-drop đoán slot theo tên file, nút "nạp 1
-   DN mẫu" một chạm. Mới ở mức gợi ý.
+D. **UI/UX — phần lớn ĐÃ LÀM 2026-06-11** (xem Recent Changes UI/UX): redesign
+   Thêm DN + Tải lên (kéo-thả file), thẻ giải thích điểm trang chủ, bảng DN
+   tìm/lọc/sort/nhóm ngành, trang Sửa DN. **Còn lại (gợi ý):** badge trạng thái
+   DN ngay trên bảng danh sách, progress inline khi chạy check, **tự đoán slot
+   theo tên file** khi kéo-thả (hiện kéo vào đúng ô), nút "nạp 1 DN mẫu" một chạm.
 E. **[ĐÃ ĐIỀU TRA 2026-06-11] DN_002 (30) vs DN_009 (28) — KHÔNG phải khác data.**
    DN_009 = bản copy DN_002 (cùng MST `0401886016`, chắc tạo từ upload data DN_002).
    Xác minh trên live: data + findings + **`company_year_scores` giống hệt** — cả
