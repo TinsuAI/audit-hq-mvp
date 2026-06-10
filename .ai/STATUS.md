@@ -12,7 +12,8 @@
 > chặn ingest khi lỗi nặng) + `app/ai/ingest_doctor.py` / `POST /diagnose-ai`
 > (AI Gemini live, **tùy chọn** — degrade về heuristic khi tắt).
 > Bộ data + 7 screenshot ở `C:\temp\toss` (máy Windows, không vào git).
-> Điểm: live (giữ nguyên) **127/30/177/49** · local (17-rule) **116/28/148/46**.
+> Điểm **LIVE đã recompute 17-rule + dọn rác** (2026-06-11): **120/28/168/46**
+> (4 DN; xoá DN_008 rỗng + DN_009 trùng DN_002). list=detail nhất quán. Local: 116/28/148/46.
 > ⏳ Vẫn chờ chị trả lời 4 câu hỏi clarify M16 (session 2026-06-01).
 
 ## Current State
@@ -234,15 +235,27 @@ C. **(Feature lớn, defer) AI auto-remap:** hiện AI chỉ *chẩn đoán* (gi
 D. **UI/UX (#4, chưa làm):** badge trạng thái DN (đã nạp/đã kiểm tra/chưa chạy),
    progress inline khi chạy check, drag-drop đoán slot theo tên file, nút "nạp 1
    DN mẫu" một chạm. Mới ở mức gợi ý.
-E. **[Investigate] DN_002 vs DN_009 chênh điểm 30 vs 28 dù data cơ bản giống nhau.**
-   Giả thuyết (cần verify, đừng coi là kết luận): DN_002 (điểm 30) là **cache tính
-   bằng code 16-rule cũ** (chưa rerun sau khi thêm C2.4 → mẫu số scoring 16→17);
-   DN_009 chạy bằng **code 17-rule** hiện tại → mẫu số lớn hơn, điểm giảm nhẹ (28).
-   Cách kiểm: rerun checks cả 2 bằng cùng code rồi so breakdown
-   `company_year_scores`; nếu chỉ khác mẫu số (`max_raw` 16 vs 17 rule) thì chênh
-   là do scoring chứ không phải data. (DN_009 là DN nào — tạo từ upload data DN_002?
-   xác nhận nguồn trước.) Xem note "live cache 16-rule chưa rerun" ở Recent Changes
-   2026-06-10 + GOTCHA "run_checks(only=...) xoá COMBO" (rerun phải full only=None).
+E. **[ĐÃ ĐIỀU TRA 2026-06-11] DN_002 (30) vs DN_009 (28) — KHÔNG phải khác data.**
+   DN_009 = bản copy DN_002 (cùng MST `0401886016`, chắc tạo từ upload data DN_002).
+   Xác minh trên live: data + findings + **`company_year_scores` giống hệt** — cả
+   hai đều **28/năm** (max_raw=190, raw=5.314). Chênh chỉ ở field denormalized
+   `companies.risk_score`: DN_002=**30** (kẹt giá trị rate-based **16-rule cũ**),
+   DN_009=28 (nhất quán). Per-year của DN_002 **đã là 28** — risk_score 30 là
+   **stale**, không khớp chính year-scores của nó. Dry-run `recompute_all_scores`
+   trên live: DN_002 TỔNG 30→28 (year-scores KHÔNG đổi). 16-rule cho 5.314/180≈30,
+   17-rule 5.314/190≈28.
+   - **Bug thật cần để ý:** `companies.risk_score` (dùng ở trang DANH SÁCH/ranking)
+     là cache `max(company_year_scores)` — drift được khỏi CYS (dùng ở trang CHI
+     TIẾT) khi: đổi rule không recompute toàn bộ, hoặc `run_checks` lấy max trên
+     CYS năm-khác còn stale. DN_002 hiện list=30 nhưng detail=28 (lệch nội bộ).
+   - **✅ ĐÃ XỬ LÝ trên live 2026-06-11** (chị OK "làm luôn"): backup
+     `audit_hq.sqlite.bak-pre-cleanup-20260611-000123` → xoá DN_008 (rỗng) +
+     DN_009 (trùng DN_002) → `recompute_all_scores`. Live giờ 4 DN, điểm
+     **120/28/168/46**, list=detail nhất quán. **CHƯA push** STATUS này; code live
+     không đổi (chỉ data score).
+   - **Còn backlog (fix code chống tái diễn):** trang danh sách đọc thẳng
+     `max(company_year_scores)` thay vì field `companies.risk_score` để hết drift;
+     và sau mỗi lần đổi rule phải `recompute_all_scores` toàn bộ.
 
 0. **Chờ chị trả lời 4 câu hỏi clarify** (góp ý 2026-06-01) rồi xử lý điểm 2/3:
    (1) phạm vi loại "x" — chỉ check nhập hay mọi check định mức; (2) nguồn định
