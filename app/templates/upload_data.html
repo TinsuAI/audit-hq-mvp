@@ -26,6 +26,41 @@
 </div>
 {% endif %}
 
+{% if diagnosis %}
+<div class="card" style="border-left:4px solid #d97706;background:#fffbeb;max-width:760px">
+  <h3 style="margin:0 0 var(--space-2)">⚠️ Dữ liệu chưa nạp được — phát hiện vấn đề khi đọc file</h3>
+  <p class="text-subtle" style="font-size:var(--fs-xs);margin:0 0 var(--space-3)">
+    Hệ thống chưa nạp để tránh phân tích nhầm trên dữ liệu đọc sai. Sửa file rồi tải lại,
+    hoặc nhờ AI chẩn đoán cấu trúc file.
+  </p>
+  {% for d in diagnosis.errors %}
+  <div style="padding:var(--space-2) 0;border-top:1px solid #fde68a">
+    <p style="margin:0;font-weight:600;color:#b91c1c">🔴 {{ d.title }}</p>
+    <p style="margin:var(--space-1) 0 0;font-size:var(--fs-sm)">{{ d.detail }}</p>
+  </div>
+  {% endfor %}
+  {% for d in diagnosis.warnings %}
+  <div style="padding:var(--space-2) 0;border-top:1px solid #fde68a">
+    <p style="margin:0;font-weight:600;color:#b45309">🟡 {{ d.title }}</p>
+    <p style="margin:var(--space-1) 0 0;font-size:var(--fs-sm)">{{ d.detail }}</p>
+  </div>
+  {% endfor %}
+
+  {% if ai_result %}
+  <div style="margin-top:var(--space-3);padding:var(--space-3);background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px">
+    <p style="margin:0 0 var(--space-2);font-weight:600">🤖 AI chẩn đoán cấu trúc file</p>
+    <div style="font-size:var(--fs-sm);white-space:pre-wrap">{{ ai_result }}</div>
+    <p class="text-subtle" style="font-size:var(--fs-xs);margin:var(--space-2) 0 0">Gợi ý của AI mang tính tham khảo — cán bộ tự kiểm chứng trước khi sửa file.</p>
+  </div>
+  {% elif ai_enabled %}
+  <form method="post" action="/companies/{{ company.code }}/diagnose-ai" style="margin-top:var(--space-3)">
+    <input type="hidden" name="year" value="{{ year }}">
+    <button type="submit" class="btn btn-secondary">🤖 Nhờ AI chẩn đoán cấu trúc file</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
 <form method="post" action="/companies/{{ company.code }}/upload" enctype="multipart/form-data" class="card" style="max-width:760px">
 
   <div class="card-section">
@@ -40,7 +75,7 @@
   <div class="card-section">
     <h3 style="margin-top:0;margin-bottom:var(--space-2)">File Excel BCQT</h3>
     <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
-      Có thể bỏ trống mục nào không có dữ liệu. Hệ thống sẽ nạp dữ liệu + chạy 16 kiểm tra ngay sau khi tải lên xong (vài giây).
+      Có thể bỏ trống mục nào không có dữ liệu. Hệ thống chỉ <strong>nạp dữ liệu</strong> sau khi tải lên — việc <strong>chạy kiểm tra</strong> là bước riêng (bấm nút "Chạy kiểm tra" ở trang DN sau khi đã rà soát dữ liệu).
     </p>
 
     {% set slots = [
@@ -66,7 +101,7 @@
 
   <div class="card-section" style="display:flex;gap:var(--space-3);justify-content:space-between;align-items:center">
     <a href="/companies/{{ company.code }}" class="btn btn-secondary">← Quay về</a>
-    <button type="submit" class="btn btn-primary">📥 Tải lên & chạy kiểm tra</button>
+    <button type="submit" class="btn btn-primary">📥 Tải lên & nạp dữ liệu</button>
   </div>
 </form>
 

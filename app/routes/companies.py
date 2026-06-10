@@ -40,7 +40,7 @@ from app.models import (
 )
 from app.pipeline.export import build_export
 from app.pipeline.ingest import ingest as run_ingest
-from app.pipeline.run_checks import run_checks as run_check_pipeline
+from app.pipeline.validate import diagnose_upload
 from app.settings import settings
 from app.version import VERSION, version_string
 
@@ -304,16 +304,72 @@ def upload_data(
             status_code=303,
         )
 
-    # Ingest + run checks ngay (sync, vài giây với 16 check).
+    # CHẨN ĐOÁN trước khi nạp — chống misparse thầm lặng (file HQ sai mẫu/lệch cột).
+    diagnosis = diagnose_upload(code, year, Path(settings.raw_data_path))
+    if diagnosis.has_errors:
+        from app.ai.config import get_setting
+        try:
+            ai_enabled = bool(get_setting("enabled")) and bool(get_setting("api_key"))
+        except Exception:  # noqa: BLE001 — AI optional, đừng để lỗi config chặn upload
+            ai_enabled = False
+        return templates.TemplateResponse(
+            request, "upload_data.html",
+            {
+                "user": user, "company": company, "year": year,
+                "year_min": YEAR_MIN, "year_max": YEAR_MAX, "error": None,
+                "diagnosis": diagnosis, "ai_enabled": ai_enabled,
+            },
+            status_code=422,
+        )
+
+    # Không lỗi nặng → NẠP dữ liệu (ingest). KHÔNG tự chạy kiểm tra (bước riêng).
     try:
         run_ingest(code, year, raw_root=Path(settings.raw_data_path))
-        run_check_pipeline(code, year)
     except FileNotFoundError as e:
         raise HTTPException(status_code=400, detail=f"Discover lỗi: {e}") from e
-    except Exception as e:  # noqa: BLE001 — show parser/check errors back to user
-        raise HTTPException(status_code=500, detail=f"Pipeline lỗi: {type(e).__name__}: {e}") from e
+    except Exception as e:  # noqa: BLE001 — show parser errors back to user
+        raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
 
-    return RedirectResponse(url=f"/companies/{code}?year={year}", status_code=303)
+    return RedirectResponse(url=f"/companies/{code}?year={year}&ingested=1", status_code=303)
+
+
+@router.post("/companies/{code}/diagnose-ai", response_model=None)
+def diagnose_ai(
+    code: str,
+    request: Request,
+    year: int = Form(...),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Nhờ AI chẩn đoán cấu trúc file khi nạp lỗi (escalation của validate)."""
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+
+    from app.ai.config import get_setting
+    from app.ai.limits import check_daily_budget, check_rate_limit
+
+    if not (get_setting("enabled") and get_setting("api_key")):
+        raise HTTPException(status_code=503, detail="AI assistant đang tắt. Bật trong /admin/ai.")
+    check_rate_limit(user.name, db)
+    check_daily_budget(db)
+
+    raw_root = Path(settings.raw_data_path)
+    diagnosis = diagnose_upload(code, year, raw_root)
+    try:
+        from app.ai.ingest_doctor import diagnose_with_ai
+        ai_result = diagnose_with_ai(code, year, raw_root)
+    except Exception as e:  # noqa: BLE001 — AI lỗi không được làm sập trang
+        ai_result = f"Không gọi được AI: {type(e).__name__}: {e}"
+
+    return templates.TemplateResponse(
+        request, "upload_data.html",
+        {
+            "user": user, "company": company, "year": year,
+            "year_min": YEAR_MIN, "year_max": YEAR_MAX, "error": None,
+            "diagnosis": diagnosis, "ai_enabled": True, "ai_result": ai_result,
+        },
+    )
 
 
 @router.post("/companies/{code}/run-checks", response_model=None)
@@ -366,6 +422,7 @@ def company_detail(
     code: str,
     request: Request,
     year: int | None = Query(default=None),
+    ingested: int = Query(default=0),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -373,12 +430,20 @@ def company_detail(
     if company is None:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
 
-    years = sorted(
+    finding_years = set(
         db.scalars(
             select(Finding.period_year).where(Finding.company_id == company.id).distinct()
-        ).all(),
-        reverse=True,
+        ).all()
     )
+    # Năm CÓ DỮ LIỆU đã nạp (kể cả chưa chạy kiểm tra) — gộp 4 bảng Tầng 1.
+    data_years: set[int] = set()
+    for model in (NvlBalance, SpBalance, Norm, DeclarationLine):
+        data_years |= set(
+            db.scalars(
+                select(model.period_year).where(model.company_id == company.id).distinct()
+            ).all()
+        )
+    years = sorted(finding_years | data_years, reverse=True)
     selected_year = year if year is not None else (years[0] if years else None)
 
     findings: list[Finding] = []
@@ -419,6 +484,10 @@ def company_detail(
 
     all_specs = get_all_specs(db)
 
+    # Trạng thái tách upload/kiểm tra: có dữ liệu năm này chưa? đã chạy kiểm tra chưa?
+    has_data = selected_year in data_years if selected_year is not None else False
+    checks_run = year_score is not None or bool(findings)
+
     return templates.TemplateResponse(
         request,
         "company_detail.html",
@@ -433,6 +502,9 @@ def company_detail(
             "total_findings": len(regular_findings),
             "year_score": year_score,
             "all_specs": all_specs,
+            "has_data": has_data,
+            "checks_run": checks_run,
+            "just_ingested": bool(ingested),
         },
     )
 

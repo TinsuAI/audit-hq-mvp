@@ -23,8 +23,14 @@
   </div>
   <div class="btn-group">
     <a href="/companies/{{ company.code }}/upload{% if selected_year %}?year={{ selected_year }}{% endif %}" class="btn btn-secondary">📥 Tải lên dữ liệu</a>
+    {% if selected_year %}
     <form method="post" action="/companies/{{ company.code }}/run-checks" style="display:inline;margin:0">
-      <button type="submit" class="btn btn-secondary" title="Chạy lại 16 kiểm tra cho tất cả năm có dữ liệu">🔄 Chạy lại tất cả năm</button>
+      <input type="hidden" name="year" value="{{ selected_year }}">
+      <button type="submit" class="btn {% if has_data and not checks_run %}btn-primary{% else %}btn-secondary{% endif %}" title="Chạy kiểm tra cho năm {{ selected_year }}">▶️ Chạy kiểm tra {{ selected_year }}</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/companies/{{ company.code }}/run-checks" style="display:inline;margin:0">
+      <button type="submit" class="btn btn-secondary" title="Chạy kiểm tra cho tất cả năm có dữ liệu">🔄 Tất cả năm</button>
     </form>
     {% if selected_year %}
       <a href="/companies/{{ company.code }}/data?year={{ selected_year }}&table=m15" class="btn btn-secondary">📋 Dữ liệu gốc</a>
@@ -34,12 +40,17 @@
 </div>
 
 <div class="stat-grid">
-  <div class="stat tier-stat {{ ys_css }}">
+  <div class="stat tier-stat {% if checks_run %}{{ ys_css }}{% endif %}">
     <span class="stat-label">
       Rủi ro dữ liệu {% if selected_year %}({{ selected_year }}){% endif %}
     </span>
-    <span class="stat-value">{{ ys_score }}<span class="stat-unit">/1000</span></span>
-    <span class="tier-label">{{ ys_tier }}</span>
+    {% if checks_run %}
+      <span class="stat-value">{{ ys_score }}<span class="stat-unit">/1000</span></span>
+      <span class="tier-label">{{ ys_tier }}</span>
+    {% else %}
+      <span class="stat-value">—</span>
+      <span class="tier-label">Chưa chạy kiểm tra</span>
+    {% endif %}
   </div>
   <div class="stat critical">
     <span class="stat-label">🔴 Nghiêm trọng</span>
@@ -70,6 +81,23 @@
     <p class="text-subtle" style="font-size:var(--fs-xs)">Hoặc dùng dòng lệnh: <code>python -m app.pipeline.ingest --company {{ company.code }} --year YYYY</code></p>
   </div>
 {% else %}
+
+  {% if has_data and not checks_run %}
+  <div class="card" style="border-left:4px solid var(--c-primary,#2563eb);background:#eff6ff;margin-bottom:var(--space-4)">
+    <p style="margin:0 0 var(--space-2)"><strong>✅ Đã nạp dữ liệu năm {{ selected_year }}.</strong> Dữ liệu Tầng 1 đã sẵn sàng nhưng <strong>chưa chạy kiểm tra</strong>.</p>
+    <div style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap">
+      <form method="post" action="/companies/{{ company.code }}/run-checks" style="margin:0">
+        <input type="hidden" name="year" value="{{ selected_year }}">
+        <button type="submit" class="btn btn-primary">▶️ Chạy kiểm tra năm {{ selected_year }}</button>
+      </form>
+      <a href="/companies/{{ company.code }}/data?year={{ selected_year }}&table=m15" class="btn btn-secondary">📋 Xem dữ liệu đã nạp</a>
+    </div>
+  </div>
+  {% elif just_ingested and checks_run %}
+  <div class="card" style="border-left:4px solid var(--c-success,#16a34a);background:#f0fdf4;margin-bottom:var(--space-4)">
+    <p style="margin:0">✅ Đã nạp thêm dữ liệu năm {{ selected_year }}. Kết quả kiểm tra dưới đây tính từ lần chạy trước — bấm <strong>▶️ Chạy kiểm tra {{ selected_year }}</strong> để cập nhật theo dữ liệu mới.</p>
+  </div>
+  {% endif %}
 
   {% if combo_findings %}
   <section class="combo-section">
