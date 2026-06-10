@@ -28,7 +28,7 @@ RULE_SCOPE: dict[str, str] = {
     "C1.4": "tp",
     "C1.6": "nvl", "C1.7": "nvl",
     # Nhóm 2: cân bằng và tồn kho
-    "C2.1": "nvl", "C2.2": "tp", "C2.3": "nvl",
+    "C2.1": "nvl", "C2.2": "tp", "C2.3": "nvl", "C2.4": "tp",
     # Nhóm 3: phân loại hàng hoá
     "C3.1": "nvl", "C3.2": "nvl", "C3.3": "nvl",
     # Nhóm 4: định mức M16

@@ -114,7 +114,7 @@ register(CheckSpec(
 ))
 
 
-# --- Nhóm 2 — Cân bằng và tồn kho (3 MVP, C2.4 W.I.P) ---
+# --- Nhóm 2 — Cân bằng và tồn kho (4 MVP) ---
 register(CheckSpec(
     code="C2.1",
     group=2,
@@ -140,6 +140,13 @@ register(CheckSpec(
     group=2,
     title="Tồn cuối NVL âm",
     description="Bất kỳ mã NVL nào có `closing_qty < 0` trên M15 (tolerance ±0.01).",
+    default_severity=Severity.CRITICAL,
+))
+register(CheckSpec(
+    code="C2.4",
+    group=2,
+    title="Tồn cuối TP âm",
+    description="Bất kỳ mã thành phẩm nào có `closing_qty < 0` trên M15a (tolerance ±0.01).",
     default_severity=Severity.CRITICAL,
 ))
 

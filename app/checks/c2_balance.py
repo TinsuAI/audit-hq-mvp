@@ -1,6 +1,6 @@
 """Nhóm 2 — Cân bằng và tồn kho (§4.1 đề án).
 
-3 MVP check: C2.1, C2.2, C2.3. C2.4 (tồn cuối TP âm) là W.I.P — chưa implement.
+4 MVP check: C2.1, C2.2, C2.3 (tồn cuối NVL âm), C2.4 (tồn cuối TP âm).
 """
 
 from __future__ import annotations
@@ -176,8 +176,40 @@ def check_c2_3(session: Session, company_id: int, year: int) -> list[Finding]:
     ]
 
 
+def check_c2_4(session: Session, company_id: int, year: int) -> list[Finding]:
+    """Tồn cuối TP âm: closing_qty < 0 (với tolerance). Đối xứng C2.3 cho thành phẩm."""
+    rows = session.scalars(
+        select(SpBalance).where(
+            SpBalance.company_id == company_id,
+            SpBalance.period_year == year,
+            SpBalance.closing_qty < -_TOLERANCE,
+        )
+    ).all()
+
+    return [
+        Finding(
+            company_id=company_id,
+            period_year=year,
+            check_code="C2.4",
+            severity=Severity.CRITICAL.value,
+            subject_type="product_code",
+            subject_key=r.product_code,
+            title=(
+                f"TP {r.product_code} có tồn cuối âm: {r.closing_qty:.2f} {r.unit or ''}"
+            ),
+            details={
+                "closing_qty": r.closing_qty,
+                "unit": r.unit,
+            },
+            evidence_refs=_sp_evidence(r.product_code, year, company_id),
+        )
+        for r in rows
+    ]
+
+
 CHECKS = {
     "C2.1": check_c2_1,
     "C2.2": check_c2_2,
     "C2.3": check_c2_3,
+    "C2.4": check_c2_4,
 }

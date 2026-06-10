@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.checks.c2_balance import check_c2_1, check_c2_2, check_c2_3
+from app.checks.c2_balance import check_c2_1, check_c2_2, check_c2_3, check_c2_4
 from tests.conftest import add_nvl, add_sp
 
 # --- C2.1: Mất cân bằng phương trình M15 ---
@@ -104,4 +104,29 @@ def test_c2_3_fires_when_closing_negative(session, company):
     assert len(findings) == 2
     keys = {f.subject_key for f in findings}
     assert keys == {"NEG1", "NEG2"}
+    assert all(f.severity == "critical" for f in findings)
+
+
+# --- C2.4: Tồn cuối TP âm ---
+
+
+def test_c2_4_no_fire_when_zero_or_positive(session, company):
+    add_sp(session, company.id, product_code="POS", closing=10)
+    add_sp(session, company.id, product_code="ZERO", closing=0)
+    add_sp(session, company.id, product_code="TINY_NEG", closing=-0.005)  # under tolerance
+    session.commit()
+    assert check_c2_4(session, company.id, 2024) == []
+
+
+def test_c2_4_fires_when_closing_negative(session, company):
+    add_sp(session, company.id, product_code="NEG1", closing=-50, unit="PCE")
+    add_sp(session, company.id, product_code="NEG2", closing=-0.5, unit="SET")
+    add_sp(session, company.id, product_code="POS", closing=10)
+    session.commit()
+    findings = check_c2_4(session, company.id, 2024)
+    assert len(findings) == 2
+    keys = {f.subject_key for f in findings}
+    assert keys == {"NEG1", "NEG2"}
+    assert all(f.check_code == "C2.4" for f in findings)
+    assert all(f.subject_type == "product_code" for f in findings)
     assert all(f.severity == "critical" for f in findings)

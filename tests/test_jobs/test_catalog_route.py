@@ -46,7 +46,7 @@ def _login(client: TestClient) -> None:
 def test_catalog_has_49_entries():
     assert len(CATALOG) == 49
     counts = summary_counts()
-    assert counts == {"total": 49, "mvp": 16, "wip": 14, "conditional": 19}
+    assert counts == {"total": 49, "mvp": 17, "wip": 13, "conditional": 19}
 
 
 def test_catalog_phase_breakdown_matches_proposal():

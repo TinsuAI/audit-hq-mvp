@@ -4,7 +4,7 @@
 Khi đề án bump version, đồng bộ tay file này. Trang `/danh-muc-kiem-tra`
 đọc trực tiếp, không qua DB.
 
-Đối lập với `app/checks/registry.py` (16 check đã implement runnable),
+Đối lập với `app/checks/registry.py` (17 check đã implement runnable),
 file này liệt kê toàn bộ 49 dự kiến, bao gồm WIP + conditional.
 """
 
@@ -147,7 +147,7 @@ CATALOG: list[CatalogEntry] = [
         title="Tồn cuối âm — thành phẩm (M15a)",
         problem="`tồn_cuối_kỳ` < 0 trên bất kỳ mã nào.",
         risk="Tương tự C2.3 cho thành phẩm — bỏ sót tờ khai, sử dụng hàng không khai báo, hoặc điều chỉnh tồn kho sai thực tế.",
-        severities=("critical",), status="wip",
+        severities=("critical",), status="mvp",
     ),
     # --- Nhóm 3 — Phân loại hàng hoá ---
     CatalogEntry(
