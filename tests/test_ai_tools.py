@@ -219,11 +219,13 @@ def test_get_legal_context_topic_no_match(session):
 
 # ─────────────────────────── run_tool dispatcher ───────────────────────────
 
-def test_run_tool_dispatches_all_6_tools(session, company):
-    # Sanity check: all 6 tools registered + schemas match registry keys.
+def test_run_tool_dispatches_all_tools(session, company):
+    # Sanity check: every schema maps to a registered impl + vice versa.
     schema_names = {t["function"]["name"] for t in TOOL_SCHEMAS}
     assert schema_names == set(TOOL_REGISTRY.keys())
-    assert len(schema_names) == 6
+    # 6 tool gốc + 5 tool mới (query_sql, export_excel, propose_check_run,
+    # generate_report, export_query_excel).
+    assert len(schema_names) == 11
 
 
 def test_run_tool_unknown_tool_returns_json_error(session):
@@ -258,8 +260,8 @@ def test_run_tool_truncates_large_result(session, company):
         session,
     )
     payload = json.loads(out)
-    # Truncate kích hoạt khi result raw > 4000 chars. Output cuối có thể hơi to
-    # hơn 4000 do JSON wrap + escape Unicode → assert truncate flag thay vì byte.
+    # Result lớn dạng {rows:[...]} giờ được cắt theo DÒNG (giữ cấu trúc) thay vì
+    # băm thành preview — để FE/LLM vẫn dùng được dữ liệu còn lại.
     assert payload.get("truncated") is True
-    assert "preview" in payload
-    assert len(payload["preview"]) <= 3800
+    assert "note" in payload
+    assert len(payload["rows"]) < 50  # đã bị cắt bớt dòng

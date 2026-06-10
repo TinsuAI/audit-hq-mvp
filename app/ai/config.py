@@ -61,6 +61,14 @@ SETTINGS_REGISTRY: dict[str, SettingSpec] = {
     "audit_retention_days": SettingSpec(int, 365, "Giữ audit log"),
     # Flags
     "prompt_cache_enabled": SettingSpec(bool, True, "Bật prompt caching khi provider hỗ trợ"),
+    # Tool mở rộng — truy vấn SQL + hành động (chạy kiểm tra). Tắt để về chế độ chỉ tra cứu.
+    "sql_tool_enabled": SettingSpec(bool, True, "Bật tool truy vấn SQL chỉ-đọc trên view có kiểm soát"),
+    "sql_row_cap": SettingSpec(int, 200, "Số dòng tối đa 1 truy vấn SQL trả về (trong chat)"),
+    "sql_export_row_cap": SettingSpec(int, 5000, "Số dòng tối đa khi xuất Excel tùy biến từ SQL"),
+    "sql_timeout_ms": SettingSpec(int, 2000, "Thời gian chờ tối đa 1 truy vấn SQL (ms)"),
+    "action_tools_enabled": SettingSpec(
+        bool, True, "Cho phép AI đề xuất hành động (chạy kiểm tra) — cán bộ vẫn phải bấm xác nhận"
+    ),
     # Fallback provider — kích hoạt khi primary trả 429/5xx/connection error.
     "fallback_enabled": SettingSpec(bool, False, "Bật fallback sang provider phụ khi primary lỗi/quota"),
     "fallback_base_url": SettingSpec(

@@ -325,3 +325,66 @@
 @media (max-width: 640px) {
   .ai-panel { width: 100vw; }
 }
+
+/* ───────────── Cảnh báo hallucination (luôn hiện) ───────────── */
+.ai-warn {
+  flex: none;
+  padding: 7px 12px;
+  background: #fff7ed;
+  color: #9a3412;
+  border-bottom: 1px solid #fed7aa;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Footer nhắc kiểm chứng cuối mỗi lượt trả lời */
+.ai-msg-foot {
+  align-self: flex-start;
+  margin-top: -6px;
+  font-size: 10px;
+  color: #b45309;
+}
+
+/* Chip tải báo cáo Excel */
+.ai-dl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.ai-dl-chip:hover { background: #d1fae5; }
+
+/* Thẻ xác nhận hành động (chạy kiểm tra) */
+.ai-action-confirm {
+  align-self: stretch;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-left: 3px solid var(--c-brand-600, #1e40af);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.ai-action-confirm .aac-label { font-weight: 700; color: #1e3a8a; }
+.ai-action-confirm .aac-note { color: #475569; margin: 4px 0 8px; line-height: 1.45; }
+.ai-action-confirm .aac-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ai-action-confirm .aac-run {
+  background: var(--c-brand-600, #1e40af);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ai-action-confirm .aac-run:hover:not(:disabled) { background: var(--c-brand-700, #1d4ed8); }
+.ai-action-confirm .aac-run:disabled { opacity: 0.6; cursor: not-allowed; }
+.ai-action-confirm .aac-status { font-size: 12px; color: #334155; }
+.ai-action-confirm .aac-status a { color: var(--c-brand-600, #1e40af); }

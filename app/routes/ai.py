@@ -17,7 +17,7 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from openai import APIError, APIStatusError
 from sqlalchemy import func, select
@@ -35,10 +35,13 @@ from app.ai.cost import estimate_cost
 from app.ai.guardrails import apply_guardrails
 from app.ai.limits import check_daily_budget, check_rate_limit
 from app.ai.system_prompt import build_messages_system
-from app.ai.tools import TOOL_SCHEMAS, run_tool
+from app.ai.tools import get_tool_schemas, run_tool
 from app.auth import SessionUser, require_user
+from app.auth_users import get_user_by_username
 from app.database import get_db
-from app.models import AiConversation, AiMessage
+from app.jobs import enqueue_job
+from app.models import AiConversation, AiMessage, Company
+from app.models.job import JobKind
 
 log = logging.getLogger(__name__)
 
@@ -196,7 +199,7 @@ async def chat(
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                tools=TOOL_SCHEMAS,
+                tools=get_tool_schemas(),
                 return_model=True,
             )
         except APIStatusError as e:
@@ -406,6 +409,109 @@ def _sse(event: str, data: Any) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _extract_action(result_str: str) -> dict | None:
+    """Lấy payload `_ui_action` từ kết quả tool (vd propose_check_run). None nếu không có."""
+    try:
+        data = json.loads(result_str)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(data, dict) and data.get("_ui_action") == "run_checks":
+        return {
+            "action": "run_checks",
+            "company_code": data.get("company_code"),
+            "year": data.get("year"),
+            "label": data.get("label"),
+            "note": data.get("note"),
+        }
+    return None
+
+
+def _extract_download(result_str: str) -> dict:
+    """Lấy download_url (export_excel/generate_report) để FE render chip tải. {} nếu không có."""
+    try:
+        data = json.loads(result_str)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    if isinstance(data, dict) and data.get("download_url"):
+        return {
+            "download_url": data["download_url"],
+            "year": data.get("year"),
+            "title": data.get("title"),
+        }
+    return {}
+
+
+@router.post("/chat/run-checks")
+async def chat_run_checks(
+    request: Request,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Cán bộ XÁC NHẬN chạy kiểm tra từ đề xuất của AI → enqueue job.
+
+    Đây là điểm con-người-bấm-nút: AI chỉ đề xuất (propose_check_run), chỉ endpoint
+    này (do cán bộ kích hoạt) mới thực sự tạo job. Trả JSON để sidebar hiện link.
+    """
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+
+    company_code = (body.get("company_code") or "").strip()
+    year = body.get("year")
+    if not company_code:
+        raise HTTPException(status_code=400, detail="Thiếu company_code.")
+
+    company = db.scalar(select(Company).where(Company.code == company_code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {company_code}")
+
+    user_row = get_user_by_username(db, user.name)
+    if user_row is None:
+        raise HTTPException(status_code=403, detail="Session user không tồn tại.")
+
+    if year is None:
+        job = enqueue_job(
+            db, kind=JobKind.BATCH_RUN, payload={"company_code": company_code},
+            created_by=user_row.id, company_id=company.id, period_year=None,
+        )
+    else:
+        year = int(year)
+        job = enqueue_job(
+            db, kind=JobKind.RUN_CHECKS,
+            payload={"company_code": company_code, "year": year},
+            created_by=user_row.id, company_id=company.id, period_year=year,
+        )
+    return {"job_id": job.id, "status_url": f"/jobs/{job.id}", "company_code": company_code, "year": year}
+
+
+@router.get("/chat/export-query")
+def chat_export_query(
+    sql: str = Query(...),
+    title: str | None = Query(default=None),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Xuất Excel tùy biến từ câu SQL (do tool export_query_excel sinh link).
+
+    Guard chỉ-đọc chạy lại ở đây (validate_sql trong build_query_export) — an toàn
+    dù SQL đến từ query string.
+    """
+    from app.pipeline.export import build_query_export
+
+    try:
+        payload = build_query_export(
+            db, sql, title=title, row_cap=int(get_setting("sql_export_row_cap")),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Không xuất được: {e}") from e
+    return Response(
+        content=payload,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=audit-hq_truy-van-tuy-bien.xlsx"},
+    )
+
+
 @router.post("/chat/stream")
 async def chat_stream(
     request: Request,
@@ -488,7 +594,7 @@ async def chat_stream(
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    tools=TOOL_SCHEMAS,
+                    tools=get_tool_schemas(),
                     stream=True,
                     stream_options={"include_usage": True},
                     return_model=True,
@@ -581,7 +687,14 @@ async def chat_stream(
                             "tool_call_id": tc["id"],
                             "content": result_str,
                         })
-                        yield _sse("tool_result", {"name": name, "preview": result_str[:300]})
+                        evt = {"name": name, "preview": result_str[:300]}
+                        evt.update(_extract_download(result_str))
+                        yield _sse("tool_result", evt)
+                        # Tool đề xuất hành động (chạy kiểm tra) → phát event riêng để FE
+                        # render nút xác nhận. Cán bộ bấm mới enqueue (AI không tự chạy).
+                        action = _extract_action(result_str)
+                        if action is not None:
+                            yield _sse("action_proposal", action)
                     db.commit()
                     continue
 

@@ -245,13 +245,23 @@
         }
         break;
       case 'tool_result':
+        // Chip tải file (export_excel / generate_report) — hiện cho mọi cán bộ.
+        if (data.download_url) renderDownloadChip(data);
         if (metaCache && metaCache.is_admin) {
           addMessage('tool', data.preview || '(no preview)', { toolName: `${data.name} ✓` });
         }
         break;
+      case 'action_proposal':
+        renderActionProposal(data);
+        break;
       case 'done':
         convId = data.conversation_id;
         sessionStorage.setItem(STORAGE_KEY, convId);
+        // Footer nhắc kiểm chứng cuối mỗi lượt trả lời (chống hallucination).
+        if (assistantNode && assistantNode.textContent.trim()) {
+          const foot = el('div', { class: 'ai-msg-foot', text: '⚠️ AI có thể sai — hãy kiểm chứng số liệu với nguồn.' });
+          document.getElementById('ai-messages').appendChild(foot);
+        }
         // Optional: show usage stats footer
         if (data.usage) {
           const usage = data.usage;
@@ -265,6 +275,60 @@
         addMessage('error', `❌ ${data.detail || 'Unknown error'}`);
         break;
     }
+  }
+
+  // ───────────── Download chip (export Excel) ─────────────
+  function renderDownloadChip(data) {
+    clearEmpty();
+    const wrap = el('div', { class: 'ai-msg assistant' });
+    const a = el('a', {
+      class: 'ai-dl-chip', href: data.download_url,
+      target: '_blank', rel: 'noopener',
+    });
+    if (data.title) {
+      a.textContent = `⬇️ Tải Excel: ${data.title.length > 50 ? data.title.slice(0, 50) + '…' : data.title}`;
+    } else {
+      a.textContent = `⬇️ Tải báo cáo Excel${data.year ? ' năm ' + data.year : ''}`;
+    }
+    wrap.appendChild(a);
+    document.getElementById('ai-messages').appendChild(wrap);
+    scrollToBottom();
+  }
+
+  // ───────────── Action proposal (chạy kiểm tra — cán bộ xác nhận) ─────────────
+  function renderActionProposal(data) {
+    clearEmpty();
+    const card = el('div', { class: 'ai-action-confirm' });
+    card.appendChild(el('div', { class: 'aac-label', text: '▶ ' + (data.label || 'Chạy kiểm tra') }));
+    if (data.note) card.appendChild(el('div', { class: 'aac-note', text: data.note }));
+    const actions = el('div', { class: 'aac-actions' });
+    const btn = el('button', { class: 'aac-run', type: 'button', text: 'Xác nhận chạy' });
+    const status = el('span', { class: 'aac-status' });
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Đang tạo...';
+      try {
+        const r = await fetch('/api/chat/run-checks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company_code: data.company_code, year: data.year ?? null }),
+          credentials: 'same-origin',
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
+        btn.remove();
+        status.innerHTML = `✓ Đã tạo công việc #${j.job_id} — <a href="${j.status_url}" target="_blank" rel="noopener">xem tiến độ</a>`;
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Xác nhận chạy';
+        status.textContent = `❌ ${e.message}`;
+      }
+    });
+    actions.appendChild(btn);
+    actions.appendChild(status);
+    card.appendChild(actions);
+    document.getElementById('ai-messages').appendChild(card);
+    scrollToBottom();
   }
 
   // ───────────── History panel ─────────────

@@ -244,3 +244,66 @@ def build_export(session: Session, company: Company, year: int) -> bytes:
 
     wb.close()
     return buffer.getvalue()
+
+
+def build_query_export(
+    session: Session, sql: str, title: str | None = None, row_cap: int = 5000,
+) -> bytes:
+    """Xuất Excel TÙY BIẾN từ một câu SQL chỉ-đọc (kết quả query_sql).
+
+    File tự-tài-liệu: hiển thị câu SQL đã chạy + kết quả + ghi chú truy nguồn
+    (không hộp đen). Raise ValueError nếu SQL bị guard từ chối / lỗi chạy.
+    """
+    from app.ai.sql_tool import run_query
+
+    res = run_query(session, sql, row_cap=row_cap)
+    if "error" in res:
+        raise ValueError(res["error"])
+    cols: list[str] = res["columns"]
+    rows: list[dict] = res["rows"]
+    ncols = max(1, len(cols))
+
+    buffer = BytesIO()
+    wb = xlsxwriter.Workbook(buffer, {"in_memory": True})
+    ws = wb.add_worksheet("Kết quả")
+
+    title_fmt = wb.add_format({
+        "bold": True, "font_size": 13, "bg_color": "#1e40af", "font_color": "white",
+    })
+    label_fmt = wb.add_format({"bold": True, "bg_color": "#f0f0f0", "border": 1})
+    sql_fmt = wb.add_format({
+        "font_name": "Consolas", "text_wrap": True, "valign": "top", "border": 1,
+    })
+    header_fmt = wb.add_format({
+        "bold": True, "bg_color": "#333333", "font_color": "white", "border": 1,
+    })
+    cell_fmt = wb.add_format({"border": 1})
+    note_fmt = wb.add_format({"italic": True, "font_color": "#6b7280", "text_wrap": True})
+
+    ws.merge_range(0, 0, 0, ncols - 1, title or "Báo cáo tùy biến — Audit-HQ", title_fmt)
+    ws.set_row(0, 24)
+    ws.write(1, 0, "Câu truy vấn đã chạy:", label_fmt)
+    ws.merge_range(2, 0, 2, ncols - 1, res.get("sql", sql), sql_fmt)
+    ws.set_row(2, 56)
+
+    start = 4
+    for c, name in enumerate(cols):
+        ws.write(start, c, name, header_fmt)
+        ws.set_column(c, c, max(12, min(48, len(str(name)) + 4)))
+    for r, row in enumerate(rows, start=start + 1):
+        for c, name in enumerate(cols):
+            v = row.get(name)
+            ws.write(r, c, "" if v is None else v, cell_fmt)
+
+    note_row = start + 1 + len(rows) + 1
+    note = f"{len(rows)} dòng"
+    if res.get("truncated"):
+        note += f" (đã đạt giới hạn {row_cap} — có thể còn thêm)"
+    note += (
+        " · Đây là chỉ số rủi ro dữ liệu BCQT, không phải kết luận tuân thủ pháp luật. "
+        "AI có thể tạo thông tin sai — hãy đối chiếu nguồn gốc trước khi sử dụng."
+    )
+    ws.merge_range(note_row, 0, note_row, ncols - 1, note, note_fmt)
+
+    wb.close()
+    return buffer.getvalue()

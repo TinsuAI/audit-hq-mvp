@@ -15,9 +15,20 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.ai.config import get_setting
+from app.ai.sql_tool import run_query
 from app.checks.combos import COMBO_SPECS
-from app.checks.registry import SEVERITY_BADGE, SPECS
-from app.models import Company, DeclarationLine, Finding, Norm, NvlBalance, SpBalance
+from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS
+from app.models import (
+    Company,
+    CompanyYearScore,
+    DeclarationLine,
+    Finding,
+    Norm,
+    NvlBalance,
+    SpBalance,
+)
+from app.pipeline.export import _LEGAL_REFERENCES
 
 # Map tên bảng cho query_raw_data — alias ngắn → SQLA model + identifier code field.
 _RAW_TABLES: dict[str, dict[str, Any]] = {
@@ -196,6 +207,124 @@ TOOL_SCHEMAS: list[dict] = [
                     },
                 },
                 "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_sql",
+            "description": (
+                "Truy vấn SQL CHỈ-ĐỌC để tổng hợp/aggregate/đếm/top-N/group/cross-DN khi "
+                "các tool khác không đủ. CHỈ được SELECT trên 6 view (xem schema ở system "
+                "prompt): v_findings, v_m15, v_m15a, v_m16, v_bcct, v_company_scores — mọi "
+                "view đều có cột company_code + period_year. KHÔNG truy vấn được bảng khác. "
+                "BẮT BUỘC trình bày lại câu SQL đã chạy cho cán bộ kiểm chứng. Ví dụ: "
+                "\"đếm finding theo mức của DN_003 năm 2024\" → SELECT severity, COUNT(*) "
+                "FROM v_findings WHERE company_code='DN_003' AND period_year=2024 GROUP BY severity."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sql": {
+                        "type": "string",
+                        "description": (
+                            "Một câu SELECT (hoặc WITH...SELECT) duy nhất trên view v_*. "
+                            "Không dấu ';', không INSERT/UPDATE/DELETE/DDL."
+                        ),
+                    },
+                },
+                "required": ["sql"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "export_excel",
+            "description": (
+                "Tạo link tải báo cáo Excel kiến nghị kiểm tra (7 sheet: tổng quan, phát hiện, "
+                "chứng cứ M15/M15a/M16/BCCT, pháp lý) cho 1 DN + năm. Trả về download_url để "
+                "cán bộ bấm tải. Dùng khi user nói 'xuất Excel', 'tải báo cáo', 'export báo cáo'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_code": {"type": "string", "description": "Mã DN. Bắt buộc."},
+                    "year": {"type": "integer", "description": "Năm kỳ báo cáo. Bắt buộc."},
+                },
+                "required": ["company_code", "year"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "propose_check_run",
+            "description": (
+                "ĐỀ XUẤT chạy lại bộ kiểm tra cho 1 DN (1 năm cụ thể hoặc mọi năm). KHÔNG tự "
+                "chạy — trả về đề xuất để cán bộ bấm nút xác nhận, vì hành động này thay đổi "
+                "phát hiện + điểm rủi ro. Dùng khi user nói 'chạy kiểm tra', 'chạy lại check', "
+                "'rà soát lại DN X'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_code": {"type": "string", "description": "Mã DN. Bắt buộc."},
+                    "year": {
+                        "type": "integer",
+                        "description": "Năm cụ thể. Bỏ trống = chạy mọi năm có dữ liệu (batch).",
+                    },
+                },
+                "required": ["company_code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_report",
+            "description": (
+                "Gom toàn bộ dữ liệu để VIẾT báo cáo rủi ro 1 DN + năm trong MỘT lần gọi: "
+                "thông tin DN, điểm + hạng, tổng hợp phát hiện theo nhóm/mức, tổ hợp rủi ro, "
+                "phát hiện nghiêm trọng tiêu biểu, căn cứ pháp lý, link Excel. Dùng khi user "
+                "nói 'viết báo cáo', 'soạn báo cáo', 'tóm tắt toàn diện'. Sau khi gọi, viết "
+                "văn xuôi tiếng Việt formal theo template báo cáo, cite [finding:id]."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_code": {"type": "string", "description": "Mã DN. Bắt buộc."},
+                    "year": {"type": "integer", "description": "Năm kỳ báo cáo. Bắt buộc."},
+                },
+                "required": ["company_code", "year"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "export_query_excel",
+            "description": (
+                "Xuất Excel TÙY BIẾN từ một câu SQL — dùng khi cán bộ muốn tải kết quả một "
+                "truy vấn phức tạp (vd cross-DN, lọc/tổng hợp đặc thù) mà báo cáo mặc định "
+                "(export_excel) KHÔNG có. Truyền chính câu SELECT trên view v_* (cùng quy tắc "
+                "như query_sql). File Excel chứa kết quả + câu SQL đã chạy (để truy nguồn). "
+                "Trả download_url. KHÔNG dùng cho báo cáo kiến nghị mặc định 1 DN/năm — đó là export_excel."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sql": {
+                        "type": "string",
+                        "description": "Câu SELECT/WITH trên view v_* (một câu duy nhất, chỉ đọc).",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Tiêu đề báo cáo hiển thị trong file (optional).",
+                    },
+                },
+                "required": ["sql"],
             },
         },
     },
@@ -440,6 +569,161 @@ def _get_legal_context(db: Session, *, topic: str | None = None) -> dict:
     return {"full_section": text}
 
 
+def _query_sql(db: Session, *, sql: str) -> dict:
+    """SQL chỉ-đọc trên view có kiểm soát (xem app/ai/sql_tool)."""
+    return run_query(
+        db, sql,
+        row_cap=int(get_setting("sql_row_cap")),
+        timeout_ms=int(get_setting("sql_timeout_ms")),
+    )
+
+
+def _export_excel(db: Session, *, company_code: str, year: int) -> dict:
+    company = db.scalar(select(Company).where(Company.code == company_code))
+    if company is None:
+        return {"error": f"Không tìm thấy DN {company_code}"}
+    count = db.scalar(
+        select(func.count())
+        .select_from(Finding)
+        .where(Finding.company_id == company.id, Finding.period_year == year)
+    ) or 0
+    return {
+        "company_code": company.code,
+        "company_name": company.name,
+        "year": year,
+        "findings_count": count,
+        "download_url": f"/companies/{company.code}/export?year={year}",
+        "filename": f"audit-hq_{company.code}_{year}_kien-nghi-kiem-tra.xlsx",
+        "note": (
+            "Trình link download_url cho cán bộ bấm tải. File Excel 7 sheet: tổng quan, "
+            "phát hiện, chứng cứ M15/M15a/M16/BCCT, pháp lý."
+        ),
+    }
+
+
+def _propose_check_run(db: Session, *, company_code: str, year: int | None = None) -> dict:
+    company = db.scalar(select(Company).where(Company.code == company_code))
+    if company is None:
+        return {"error": f"Không tìm thấy DN {company_code}"}
+    scope = f"năm {year}" if year else "mọi năm có dữ liệu"
+    return {
+        "_ui_action": "run_checks",
+        "company_code": company.code,
+        "company_name": company.name,
+        "year": year,
+        "label": f"Chạy kiểm tra {company.code} ({scope})",
+        "note": (
+            "Đây là ĐỀ XUẤT — chưa chạy. Hành động này chạy lại bộ kiểm tra, thay đổi phát "
+            "hiện + điểm rủi ro. Cán bộ phải bấm nút xác nhận trên giao diện để thực hiện."
+        ),
+    }
+
+
+def _generate_report(db: Session, *, company_code: str, year: int) -> dict:
+    company = db.scalar(select(Company).where(Company.code == company_code))
+    if company is None:
+        return {"error": f"Không tìm thấy DN {company_code}"}
+
+    findings = db.scalars(
+        select(Finding)
+        .where(Finding.company_id == company.id, Finding.period_year == year)
+        .order_by(Finding.severity, Finding.check_code, Finding.id)
+    ).all()
+
+    sev_totals = {"critical": 0, "warning": 0, "info": 0}
+    by_check: dict[str, int] = {}
+    by_group: dict[int, dict[str, int]] = {}
+    combos: list[dict] = []
+    top_findings: list[dict] = []
+    for f in findings:
+        if f.severity in sev_totals:
+            sev_totals[f.severity] += 1
+        by_check[f.check_code] = by_check.get(f.check_code, 0) + 1
+        if f.check_code.startswith("COMBO_"):
+            combos.append({
+                "code": f.check_code,
+                "title": f.title,
+                "severity": SEVERITY_LABEL_VI.get(f.severity, f.severity),
+                "subject_key": f.subject_key,
+            })
+            continue
+        spec = SPECS.get(f.check_code)
+        g = spec.group if spec else 0
+        by_group.setdefault(g, {"critical": 0, "warning": 0, "info": 0})
+        if f.severity in by_group[g]:
+            by_group[g][f.severity] += 1
+        if f.severity in ("critical", "warning") and len(top_findings) < 15:
+            top_findings.append({
+                "finding_id": f.id,
+                "check_code": f.check_code,
+                "severity": SEVERITY_LABEL_VI.get(f.severity, f.severity),
+                "subject_key": f.subject_key,
+                "title": f.title,
+            })
+
+    cys = db.scalar(
+        select(CompanyYearScore).where(
+            CompanyYearScore.company_id == company.id,
+            CompanyYearScore.period_year == year,
+        )
+    )
+
+    return {
+        "company": {
+            "code": company.code,
+            "name": company.name,
+            "tax_id": company.tax_id,
+            "industry": company.industry,
+        },
+        "year": year,
+        "score": cys.score if cys else None,
+        "tier": cys.tier if cys else None,
+        "overall_risk_score": company.risk_score,
+        "total_findings": len(findings),
+        "severity_totals": sev_totals,
+        "findings_by_group": by_group,
+        "findings_by_check": by_check,
+        "combos_fired": combos,
+        "top_findings": top_findings,
+        "legal_references": [
+            {"ref": ref, "desc": desc} for ref, desc in _LEGAL_REFERENCES[:3]
+        ],
+        "download_url": f"/companies/{company.code}/export?year={year}",
+        "note": (
+            "Viết báo cáo văn xuôi tiếng Việt formal theo template (Tổng quan DN · Điểm rủi "
+            "ro · Phát hiện theo nhóm · Tổ hợp rủi ro · Kiến nghị · Căn cứ pháp lý). Cite "
+            "[finding:id] cho phát hiện cụ thể. Nêu rõ đây là chỉ số rủi ro dữ liệu, không "
+            "phải kết luận vi phạm."
+        ),
+    }
+
+
+def _export_query_excel(db: Session, *, sql: str, title: str | None = None) -> dict:
+    """Trả link tải Excel tùy biến từ SQL. Validate guard sớm để báo lỗi ngay cho LLM."""
+    from urllib.parse import quote
+
+    from app.ai.sql_tool import SqlGuardError, validate_sql
+
+    try:
+        validate_sql(sql, row_cap=int(get_setting("sql_export_row_cap")))
+    except SqlGuardError as e:
+        return {"error": str(e), "sql": sql}
+
+    qs = "sql=" + quote(sql)
+    if title:
+        qs += "&title=" + quote(title)
+    return {
+        "download_url": f"/api/chat/export-query?{qs}",
+        "filename": "audit-hq_truy-van-tuy-bien.xlsx",
+        "title": title,
+        "sql": sql,
+        "note": (
+            "Trình link download_url cho cán bộ bấm tải. File Excel chứa kết quả truy vấn + "
+            "câu SQL đã chạy để truy nguồn."
+        ),
+    }
+
+
 TOOL_REGISTRY: dict[str, Any] = {
     "search_findings": _search_findings,
     "get_finding": _get_finding,
@@ -447,7 +731,31 @@ TOOL_REGISTRY: dict[str, Any] = {
     "explain_check": _explain_check,
     "list_companies": _list_companies,
     "get_legal_context": _get_legal_context,
+    "query_sql": _query_sql,
+    "export_excel": _export_excel,
+    "propose_check_run": _propose_check_run,
+    "generate_report": _generate_report,
+    "export_query_excel": _export_query_excel,
 }
+
+# Tool gated theo config flag — ẩn khỏi schema gửi LLM khi admin tắt.
+_GATED_TOOLS: dict[str, str] = {
+    "query_sql": "sql_tool_enabled",
+    "export_query_excel": "sql_tool_enabled",
+    "propose_check_run": "action_tools_enabled",
+}
+
+
+def get_tool_schemas() -> list[dict]:
+    """Schema tool gửi cho LLM, đã lọc theo config flag runtime."""
+    out = []
+    for schema in TOOL_SCHEMAS:
+        name = schema["function"]["name"]
+        flag = _GATED_TOOLS.get(name)
+        if flag is not None and not get_setting(flag):
+            continue
+        out.append(schema)
+    return out
 
 
 def run_tool(name: str, args_json: str, db: Session) -> str:
@@ -471,9 +779,24 @@ def run_tool(name: str, args_json: str, db: Session) -> str:
         return json.dumps({"error": f"{type(e).__name__}: {e}"}, ensure_ascii=False)
 
     output = json.dumps(result, ensure_ascii=False, default=str)
-    if len(output) > 4000:
-        return json.dumps(
-            {"truncated": True, "preview": output[:3800], "note": "Result > 4000 chars, đã cắt"},
-            ensure_ascii=False,
-        )
+    max_chars = 8000
+    if len(output) > max_chars:
+        # Kết quả dạng {rows: [...]} (query_sql/query_raw_data): cắt bớt DÒNG, giữ
+        # cấu trúc + câu SQL để FE render + LLM dùng tiếp, thay vì băm thành preview.
+        if isinstance(result, dict) and isinstance(result.get("rows"), list) and result["rows"]:
+            rows = result["rows"]
+            while rows and len(json.dumps(result, ensure_ascii=False, default=str)) > max_chars:
+                del rows[-max(1, len(rows) // 4):]
+                result["truncated"] = True
+                result["note"] = (
+                    f"Kết quả lớn — đã cắt còn {len(rows)} dòng đầu. "
+                    "Hãy thu hẹp bằng filter hoặc aggregate (COUNT/SUM/GROUP BY)."
+                )
+            output = json.dumps(result, ensure_ascii=False, default=str)
+        if len(output) > max_chars:
+            return json.dumps(
+                {"truncated": True, "preview": output[:max_chars - 200],
+                 "note": "Result quá lớn, đã cắt"},
+                ensure_ascii=False,
+            )
     return output
