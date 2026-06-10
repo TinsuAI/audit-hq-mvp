@@ -234,6 +234,15 @@ C. **(Feature lớn, defer) AI auto-remap:** hiện AI chỉ *chẩn đoán* (gi
 D. **UI/UX (#4, chưa làm):** badge trạng thái DN (đã nạp/đã kiểm tra/chưa chạy),
    progress inline khi chạy check, drag-drop đoán slot theo tên file, nút "nạp 1
    DN mẫu" một chạm. Mới ở mức gợi ý.
+E. **[Investigate] DN_002 vs DN_009 chênh điểm 30 vs 28 dù data cơ bản giống nhau.**
+   Giả thuyết (cần verify, đừng coi là kết luận): DN_002 (điểm 30) là **cache tính
+   bằng code 16-rule cũ** (chưa rerun sau khi thêm C2.4 → mẫu số scoring 16→17);
+   DN_009 chạy bằng **code 17-rule** hiện tại → mẫu số lớn hơn, điểm giảm nhẹ (28).
+   Cách kiểm: rerun checks cả 2 bằng cùng code rồi so breakdown
+   `company_year_scores`; nếu chỉ khác mẫu số (`max_raw` 16 vs 17 rule) thì chênh
+   là do scoring chứ không phải data. (DN_009 là DN nào — tạo từ upload data DN_002?
+   xác nhận nguồn trước.) Xem note "live cache 16-rule chưa rerun" ở Recent Changes
+   2026-06-10 + GOTCHA "run_checks(only=...) xoá COMBO" (rerun phải full only=None).
 
 0. **Chờ chị trả lời 4 câu hỏi clarify** (góp ý 2026-06-01) rồi xử lý điểm 2/3:
    (1) phạm vi loại "x" — chỉ check nhập hay mọi check định mức; (2) nguồn định
