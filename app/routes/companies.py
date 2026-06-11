@@ -745,10 +745,16 @@ def _format_cell(value, cls: str):
     if value is None:
         return ""
     if cls == "num" and isinstance(value, (int, float)) and not isinstance(value, bool):
-        # Bỏ .0 cho số nguyên; số thập phân giữ tối đa 2 chữ số.
-        if float(value).is_integer():
-            return f"{int(value):,}"
-        return f"{value:,.2f}"
+        v = float(value)
+        # Bỏ .0 cho số nguyên.
+        if v.is_integer():
+            return f"{int(v):,}"
+        # Số "bình thường": 2 chữ số thập phân.
+        if abs(v) >= 0.01:
+            return f"{v:,.2f}"
+        # Số rất nhỏ (vd định mức tiêu hao ~0.0018 kg/sp): 2 chữ số sẽ thành 0.00 →
+        # dùng định dạng số-có-nghĩa để không mất giá trị thật.
+        return f"{v:.6g}"
     if cls == "date" and hasattr(value, "strftime"):
         return value.strftime("%d/%m/%Y")
     return value
