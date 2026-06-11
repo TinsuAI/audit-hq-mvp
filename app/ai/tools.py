@@ -49,7 +49,8 @@ TOOL_SCHEMAS: list[dict] = [
             "description": (
                 "Tìm phát hiện (finding) trong DB theo filter. Dùng khi user hỏi "
                 "'DN X có findings gì', 'năm Y có lỗi nào critical', 'check C2.3 fire ở đâu'. "
-                "Trả về list compact: id, check_code, severity, subject_key, title, status."
+                "Trả về `count` = TỔNG số khớp filter (đếm thật) + `findings` = tối đa `limit` "
+                "dòng liệt kê. ĐẾM số phát hiện phải dùng `count`, KHÔNG đếm theo số dòng liệt kê."
             ),
             "parameters": {
                 "type": "object",
@@ -365,27 +366,34 @@ def _search_findings(
 ) -> dict:
     company = db.scalar(select(Company).where(Company.code == company_code))
     if company is None:
-        return {"error": f"Không tìm thấy DN {company_code}", "count": 0, "findings": []}
+        return {"error": f"Không tìm thấy DN {company_code}", "count": 0, "returned": 0, "findings": []}
 
-    stmt = select(Finding).where(Finding.company_id == company.id)
+    conditions = [Finding.company_id == company.id]
     if year is not None:
-        stmt = stmt.where(Finding.period_year == year)
+        conditions.append(Finding.period_year == year)
     if severity:
-        stmt = stmt.where(Finding.severity == severity)
+        conditions.append(Finding.severity == severity)
     if check_code:
-        stmt = stmt.where(Finding.check_code == check_code)
+        conditions.append(Finding.check_code == check_code)
     if status:
-        stmt = stmt.where(Finding.status == status)
+        conditions.append(Finding.status == status)
+
+    # `count` = TỔNG số phát hiện khớp filter (đếm thật, không bị limit).
+    total = db.scalar(select(func.count()).select_from(Finding).where(*conditions)) or 0
 
     limit = max(1, min(int(limit), 50))
-    stmt = stmt.order_by(Finding.severity, Finding.check_code, Finding.id).limit(limit)
-    rows = db.scalars(stmt).all()
+    rows = db.scalars(
+        select(Finding).where(*conditions)
+        .order_by(Finding.severity, Finding.check_code, Finding.id)
+        .limit(limit)
+    ).all()
 
-    return {
+    result = {
         "company_code": company.code,
         "company_name": company.name,
         "company_risk_score": company.risk_score,
-        "count": len(rows),
+        "count": total,            # tổng thật khớp filter
+        "returned": len(rows),     # số dòng liệt kê bên dưới (≤ limit)
         "filters": {
             "year": year, "severity": severity, "check_code": check_code, "status": status,
         },
@@ -402,6 +410,12 @@ def _search_findings(
             for f in rows
         ],
     }
+    if total > len(rows):
+        result["note"] = (
+            f"Tổng {total} phát hiện khớp filter, chỉ liệt kê {len(rows)} dòng đầu. "
+            f"Số liệu đếm phải dùng `count`={total}, KHÔNG đếm theo số dòng liệt kê."
+        )
+    return result
 
 
 def _get_finding(db: Session, *, finding_id: int) -> dict:
@@ -446,10 +460,7 @@ def _query_raw_data(
         return {"error": f"Không tìm thấy DN {company_code}", "count": 0, "rows": []}
 
     model = config["model"]
-    stmt = select(model).where(
-        model.company_id == company.id,
-        model.period_year == year,
-    )
+    conditions = [model.company_id == company.id, model.period_year == year]
     if filter_field and filter_value:
         col = getattr(model, filter_field, None)
         if col is None:
@@ -457,29 +468,39 @@ def _query_raw_data(
                 "error": f"Cột {filter_field!r} không có trong bảng {table}. "
                          f"Các cột hợp lệ: {[c.name for c in model.__table__.columns]}",
             }
-        stmt = stmt.where(col.contains(filter_value))
+        conditions.append(col.contains(filter_value))
+
+    total = db.scalar(select(func.count()).select_from(model).where(*conditions)) or 0
 
     limit = max(1, min(int(limit), 50))
-    stmt = stmt.order_by(getattr(model, config["code_field"])).limit(limit)
-    rows = db.scalars(stmt).all()
+    rows = db.scalars(
+        select(model).where(*conditions).order_by(getattr(model, config["code_field"])).limit(limit)
+    ).all()
 
     # Exclude noisy columns (id, company_id, source_file) trong response để tiết kiệm token.
     exclude = {"id", "company_id", "period_year", "source_file"}
     cols = [c.name for c in model.__table__.columns if c.name not in exclude]
 
-    return {
+    result = {
         "table": table,
         "table_label": config["label"],
         "company_code": company.code,
         "year": year,
         "filter": {"field": filter_field, "value": filter_value} if filter_field else None,
-        "count": len(rows),
+        "count": total,          # tổng thật khớp filter
+        "returned": len(rows),   # số dòng trả về (≤ limit)
         "columns": cols,
         "rows": [
             {c: getattr(r, c, None) for c in cols}
             for r in rows
         ],
     }
+    if total > len(rows):
+        result["note"] = (
+            f"Tổng {total} dòng khớp, chỉ trả {len(rows)} dòng đầu. Để đếm chính xác dùng "
+            "`count` hoặc query_sql COUNT(*); KHÔNG đếm theo số dòng trả về."
+        )
+    return result
 
 
 def _explain_check(db: Session, *, check_code: str) -> dict:

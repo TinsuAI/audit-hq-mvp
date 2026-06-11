@@ -50,6 +50,23 @@ def test_search_findings_unknown_company(session):
     assert result["count"] == 0
 
 
+def test_search_findings_count_is_true_total_not_limited(session, company):
+    # 25 finding cùng check, limit 10 → count phải = 25 (tổng thật), returned = 10.
+    session.add_all([
+        Finding(company_id=company.id, period_year=2022, check_code="C4.3",
+                severity="critical", subject_key=f"M{i}", title="t", status="new")
+        for i in range(25)
+    ])
+    session.commit()
+    result = TOOL_REGISTRY["search_findings"](
+        session, company_code=company.code, check_code="C4.3", limit=10,
+    )
+    assert result["count"] == 25          # tổng thật, KHÔNG bị cắt theo limit
+    assert result["returned"] == 10       # số dòng liệt kê
+    assert len(result["findings"]) == 10
+    assert "note" in result               # cảnh báo đã cắt
+
+
 # ─────────────────────────── get_finding ───────────────────────────
 
 def test_get_finding_returns_full_detail(session, company):
