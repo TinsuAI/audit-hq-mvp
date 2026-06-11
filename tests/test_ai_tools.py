@@ -223,9 +223,9 @@ def test_run_tool_dispatches_all_tools(session, company):
     # Sanity check: every schema maps to a registered impl + vice versa.
     schema_names = {t["function"]["name"] for t in TOOL_SCHEMAS}
     assert schema_names == set(TOOL_REGISTRY.keys())
-    # 6 tool gốc + 5 tool mới (query_sql, export_excel, propose_check_run,
-    # generate_report, export_query_excel).
-    assert len(schema_names) == 11
+    # 6 tool gốc + 6 tool mới (query_sql, export_excel, propose_check_run,
+    # generate_report, export_query_excel, explain_score).
+    assert len(schema_names) == 12
 
 
 def test_run_tool_unknown_tool_returns_json_error(session):

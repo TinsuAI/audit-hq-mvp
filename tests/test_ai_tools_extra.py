@@ -134,3 +134,36 @@ def test_build_query_export_raises_on_bad_sql(session):
     import pytest
     with pytest.raises(ValueError):
         build_query_export(session, "SELECT * FROM ai_settings")
+
+
+# ─────────────────────────── explain_score ───────────────────────────
+
+def test_explain_score_returns_breakdown(session, company):
+    from app.models import CompanyYearScore
+    session.add(CompanyYearScore(
+        company_id=company.id, period_year=2022, score=168, tier="Cần rà soát",
+        breakdown={
+            "score": 168, "tier": "Cần rà soát",
+            "rule_scores": {"C4.3": 10.0, "C2.1": 6.212},
+            "combo_bonus": 0, "raw": 31.94, "max_raw": 190.0,
+            "denominators": {"nvl": 66, "tp": 169, "m16": 93},
+        },
+    ))
+    session.commit()
+    out = TOOL_REGISTRY["explain_score"](session, company_code=company.code, year=2022)
+    assert out["score"] == 168
+    assert out["raw"] == 31.94
+    assert out["max_raw"] == 190.0
+    assert out["rule_scores"]["C4.3"] == 10.0
+    assert out["denominators"]["m16"] == 93
+    assert "rate" in out["formula"].lower() or "bão hoà" in out["note"].lower()
+
+
+def test_explain_score_no_score_yet(session, company):
+    out = TOOL_REGISTRY["explain_score"](session, company_code=company.code, year=2099)
+    assert "error" in out
+
+
+def test_explain_score_unknown_company(session):
+    out = TOOL_REGISTRY["explain_score"](session, company_code="NOPE", year=2022)
+    assert "error" in out

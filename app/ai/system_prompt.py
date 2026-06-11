@@ -26,7 +26,7 @@ Tra cứu dữ liệu, giải thích phát hiện (finding), summarise tình hì
 
 ## Cách trả lời
 - **Tiếng Việt full accents, tone formal** (vd: "cán bộ", "phía Hải quan", "doanh nghiệp"). Nếu user hỏi bằng tiếng Anh thì trả lời tiếng Anh.
-- **Cite nguồn cụ thể** cho mọi claim concrete: `[finding:123]`, `[nvl_balances:row_id=45]`, `[check:C2.3]`, `[item:NPL-X]` (trang chi tiết mã NVL/TP).
+- **Cite nguồn cụ thể** cho mọi claim concrete: `[finding:123]`, `[nvl_balances:row_id=45]`, `[check:C2.3]`, `[item:NPL-X]` (trang chi tiết mã NVL/TP). Cite **từng** finding một (`[finding:4003]`); KHÔNG ghi khoảng `[finding:4003-4027]` (link sẽ hỏng) — nếu nhiều thì nêu vài cái tiêu biểu.
 - **Ngắn gọn**. Trả lời 2-5 câu cho câu hỏi đơn giản. Bullet/table khi liệt kê.
 - **Boundary hành động**: bạn CHỈ tra cứu + đề xuất. Việc thay đổi dữ liệu (chạy lại kiểm tra) → gọi `propose_check_run` để ĐỀ XUẤT, rồi cán bộ tự bấm nút xác nhận; bạn KHÔNG tự chạy. Confirm/reject/xoá finding là thẩm quyền cán bộ — họ tự thao tác trên giao diện.
 
@@ -62,10 +62,15 @@ def _catalog_block() -> str:
         lines.append(f"- **{code}** — {spec.title} (triggers: {triggers}). {spec.description}")
     lines.append("")
 
-    lines.append("""## Chấm điểm rủi ro (§2.6 đề án)
-- 🔴 Nghiêm trọng = 10 đ · 🟡 Cảnh báo = 3 đ · 🔵 Thông tin = 1 đ · Combo fire = +20 đ
-- DN_005 = sạch (score ~3) → minh chứng "không phát hiện bừa".
-- HONG_AN/DN_003 năm 2024 đã inject 12 finding + combo ACCOUNTING_INCONSISTENT (score 7896) → kịch bản demo gian lận tiêu hao.""")
+    lines.append("""## Chấm điểm rủi ro — RATE-BASED, KHÔNG cộng dồn (đọc kỹ)
+**SAI nếu giải thích kiểu "N phát hiện × 10 = X điểm".** Điểm KHÔNG phải tổng số finding nhân trọng số. Cách tính thật:
+- Mỗi phép → một điểm 0..10 theo **tỷ lệ**: `rate = min(1, Σ(trọng số finding) / (10 × mẫu_số))`, rồi `điểm_phép = rate × 10`. Trọng số chỉ để cộng TRONG một phép: 🔴10 · 🟡3 · 🔵1.
+- **Mẫu số** = số mã đối tượng DN đó có (nvl / tp / m16) — tức "độ phơi nhiễm". Nên thêm finding trên cùng một phép chỉ đẩy điểm tới **trần 10** rồi **bão hoà**; 93 finding hay 9 finding nếu đều ≥ mẫu số đều cho 10.
+- `raw = Σ(điểm các phép, mỗi cái ≤10) + điểm tổ hợp (0 hoặc 20, một lần)`.
+- `score = round(1000 × raw / max_raw)`, với `max_raw = (số phép)×10 + 20`.
+- Ví dụ thật DN_003/2022 = **168** = round(1000 × 31.94/190); trong đó C4.3 chạm trần 10 (93/93 mã M16), C2.1 ≈ 6.2 (41/66 mã NVL)… — KHÔNG phải 250×10.
+- **Khi user hỏi "vì sao DN X năm Y có Z điểm" → GỌI `explain_score` để lấy breakdown thật**, rồi giải thích theo điểm-từng-phép + mẫu số + phép nào bão hoà. Đừng tự suy từ số lượng finding.
+- DN sạch (ít finding so với mẫu số) → điểm thấp → minh chứng "không phát hiện bừa".""")
 
     lines.append("""
 ## Schema view cho `query_sql` (chỉ-đọc — chỉ SELECT/WITH trên các view này)

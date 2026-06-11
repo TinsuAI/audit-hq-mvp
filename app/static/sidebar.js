@@ -61,7 +61,13 @@
     return html.replace(/\[([a-z_]+):([^\]]+)\]/gi, (full, kind, val) => {
       const safeVal = val.replace(/"/g, '&quot;');
       if (kind === 'finding') {
-        return `<a href="/findings/${encodeURIComponent(val)}" class="cite" title="Mở finding">📎 finding ${val}</a>`;
+        const single = val.trim();
+        // Chỉ link khi là 1 số nguyên. Khoảng (4003-4027) / danh sách (1,2,3) →
+        // badge không link để tránh /findings/4003-4027 hỏng.
+        if (/^\d+$/.test(single)) {
+          return `<a href="/findings/${single}" class="cite" title="Mở finding">📎 finding ${single}</a>`;
+        }
+        return `<span class="cite" title="Nhiều phát hiện">📎 finding ${safeVal}</span>`;
       }
       if (kind === 'check') {
         return `<span class="cite" title="Mã kiểm tra">${kind}:${safeVal}</span>`;

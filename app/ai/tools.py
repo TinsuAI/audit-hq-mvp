@@ -304,6 +304,26 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "explain_score",
+            "description": (
+                "Trả về breakdown ĐIỂM RỦI RO thật của 1 DN + năm: điểm từng phép (0..10), "
+                "mẫu số (độ phơi nhiễm), điểm tổ hợp, raw, max_raw. BẮT BUỘC gọi tool này khi "
+                "user hỏi 'vì sao DN X năm Y có Z điểm' — điểm là RATE-BASED (không phải số "
+                "finding × trọng số), phải giải thích từ breakdown này."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_code": {"type": "string", "description": "Mã DN. Bắt buộc."},
+                    "year": {"type": "integer", "description": "Năm kỳ báo cáo. Bắt buộc."},
+                },
+                "required": ["company_code", "year"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "export_query_excel",
             "description": (
                 "Xuất Excel TÙY BIẾN từ một câu SQL — dùng khi cán bộ muốn tải kết quả một "
@@ -698,6 +718,43 @@ def _generate_report(db: Session, *, company_code: str, year: int) -> dict:
     }
 
 
+def _explain_score(db: Session, *, company_code: str, year: int) -> dict:
+    company = db.scalar(select(Company).where(Company.code == company_code))
+    if company is None:
+        return {"error": f"Không tìm thấy DN {company_code}"}
+    cys = db.scalar(
+        select(CompanyYearScore).where(
+            CompanyYearScore.company_id == company.id,
+            CompanyYearScore.period_year == year,
+        )
+    )
+    if cys is None:
+        return {
+            "error": f"Chưa có điểm cho {company_code} năm {year} "
+                     "(có thể chưa chạy kiểm tra cho năm này).",
+        }
+    bd = cys.breakdown or {}
+    return {
+        "company_code": company.code,
+        "year": year,
+        "score": cys.score,
+        "tier": cys.tier,
+        "raw": bd.get("raw"),
+        "max_raw": bd.get("max_raw"),
+        "rule_scores": bd.get("rule_scores"),       # {check_code: điểm 0..10 (đã bão hoà)}
+        "combo_bonus": bd.get("combo_bonus"),
+        "denominators": bd.get("denominators"),     # mẫu số {nvl, tp, m16}
+        "formula": (
+            "score = round(1000 × raw / max_raw). raw = Σ(điểm từng phép ≤10) + combo_bonus. "
+            "Mỗi điểm phép = min(1, Σtrọng_số_finding/(10×mẫu_số)) × 10 → BÃO HOÀ ở 10."
+        ),
+        "note": (
+            "Giải thích điểm DỰA TRÊN rule_scores + denominators này. Nêu phép nào chạm trần "
+            "10 (bão hoà) và tỷ lệ so với mẫu số. TUYỆT ĐỐI không tính 'số finding × trọng số'."
+        ),
+    }
+
+
 def _export_query_excel(db: Session, *, sql: str, title: str | None = None) -> dict:
     """Trả link tải Excel tùy biến từ SQL. Validate guard sớm để báo lỗi ngay cho LLM."""
     from urllib.parse import quote
@@ -735,6 +792,7 @@ TOOL_REGISTRY: dict[str, Any] = {
     "export_excel": _export_excel,
     "propose_check_run": _propose_check_run,
     "generate_report": _generate_report,
+    "explain_score": _explain_score,
     "export_query_excel": _export_query_excel,
 }
 
