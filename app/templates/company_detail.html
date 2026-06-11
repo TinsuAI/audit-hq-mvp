@@ -79,19 +79,22 @@
   </summary>
   <div class="se-body">
     <p class="se-intro">
-      Điểm <strong>không phải</strong> tổng số phát hiện nhân trọng số. Mỗi phép kiểm tra cho
-      <strong>tối đa 10 điểm theo tỷ lệ</strong> phát hiện so với <em>độ phơi nhiễm</em>
-      (số mã đối tượng doanh nghiệp có) — nên thêm phát hiện chỉ đẩy điểm tới <strong>trần</strong>
-      rồi bão hoà. Cộng điểm các phép, thêm điểm tổ hợp rủi ro, rồi quy về thang 0–1000.
+      Điểm rủi ro <strong>không phải</strong> là tổng số phát hiện nhân trọng số. Mỗi
+      <strong>bài kiểm tra</strong> được chấm tối đa <strong>10 điểm</strong>, dựa trên
+      <strong>tỷ lệ</strong> giữa số phát hiện và quy mô dữ liệu của doanh nghiệp (số mã nguyên
+      vật liệu / thành phẩm / dòng định mức). Vì mỗi bài chỉ đến 10 điểm là kịch khung, khi sai
+      lệch ở một bài đã đủ nhiều so với quy mô thì điểm bài đó <strong>dừng ở mức tối đa</strong>
+      — phát hiện thêm cũng không làm điểm tăng nữa. Điểm các bài cộng lại, thêm điểm tổ hợp rủi
+      ro (nếu có), rồi quy về thang <strong>0–1000</strong>.
     </p>
     <p class="se-formula">
       <strong>{{ ys_score }}</strong> = round(1000 × <strong>{{ '%.2f' | format(bd.raw) }}</strong>
       ÷ <strong>{{ bd.max_raw | int }}</strong>)
-      <span class="se-muted">· max = {{ ((bd.max_raw - 20) / 10) | int }} phép × 10 + 20 (tổ hợp)</span>
+      <span class="se-muted">· tối đa = {{ ((bd.max_raw - 20) / 10) | int }} bài kiểm tra × 10 + 20 (tổ hợp)</span>
     </p>
 
     <table class="score-bd-table">
-      <thead><tr><th>Phép</th><th>Nội dung</th><th>Điểm /10</th></tr></thead>
+      <thead><tr><th>Bài kiểm tra</th><th>Nội dung</th><th>Điểm /10</th></tr></thead>
       <tbody>
       {% for code, sc in bd.rule_scores | dictsort %}
         {% set spec = all_specs.get(code) or SPECS.get(code) %}
@@ -100,7 +103,7 @@
           <td>{{ spec.title if spec else '—' }}</td>
           <td class="num">
             {{ '%.2f' | format(sc) }}
-            {% if sc >= 10 %}<span class="bd-cap" title="Đã chạm trần — bão hoà">trần</span>{% endif %}
+            {% if sc >= 10 %}<span class="bd-cap" title="Đã đạt mức tối đa 10 điểm — phát hiện thêm không làm điểm tăng">kịch khung</span>{% endif %}
           </td>
         </tr>
       {% endfor %}
@@ -116,7 +119,7 @@
     </table>
 
     <p class="se-muted bd-denom">
-      Độ phơi nhiễm (mẫu số tỷ lệ): NVL <strong>{{ denom.nvl or 0 }}</strong> mã ·
+      Quy mô dữ liệu (mẫu số của tỷ lệ): NVL <strong>{{ denom.nvl or 0 }}</strong> mã ·
       Thành phẩm <strong>{{ denom.tp or 0 }}</strong> mã ·
       Định mức <strong>{{ denom.m16 or 0 }}</strong> dòng.
     </p>

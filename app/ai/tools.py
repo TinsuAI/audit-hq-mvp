@@ -307,7 +307,7 @@ TOOL_SCHEMAS: list[dict] = [
         "function": {
             "name": "explain_score",
             "description": (
-                "Trả về breakdown ĐIỂM RỦI RO thật của 1 DN + năm: điểm từng phép (0..10), "
+                "Trả về breakdown ĐIỂM RỦI RO thật của 1 DN + năm: điểm từng bài kiểm tra (0..10), "
                 "mẫu số (độ phơi nhiễm), điểm tổ hợp, raw, max_raw. BẮT BUỘC gọi tool này khi "
                 "user hỏi 'vì sao DN X năm Y có Z điểm' — điểm là RATE-BASED (không phải số "
                 "finding × trọng số), phải giải thích từ breakdown này."
@@ -758,7 +758,7 @@ def _explain_score(db: Session, *, company_code: str, year: int) -> dict:
 
     bd = cys.breakdown or {}
     max_raw = bd.get("max_raw")
-    # Số phép trong phạm vi tại thời điểm tính điểm này: max_raw = n_rules×10 + 20.
+    # Số bài kiểm tra trong phạm vi tại thời điểm tính điểm này: max_raw = n_rules×10 + 20.
     n_rules = (
         int(round((max_raw - COMBO_BONUS) / MAX_RULE_SCORE))
         if max_raw else None
@@ -770,18 +770,18 @@ def _explain_score(db: Session, *, company_code: str, year: int) -> dict:
         "tier": cys.tier,
         "raw": bd.get("raw"),
         "max_raw": max_raw,
-        "n_rules": n_rules,                          # số phép (mẫu số của max_raw)
+        "n_rules": n_rules,                          # số bài kiểm tra (mẫu số của max_raw)
         "rule_scores": bd.get("rule_scores"),       # {check_code: điểm 0..10 (đã bão hoà)}
         "combo_bonus": bd.get("combo_bonus"),
         "denominators": bd.get("denominators"),     # mẫu số {nvl, tp, m16}
         "formula": (
             f"score = round(1000 × raw / max_raw); max_raw = n_rules×10 + 20 "
-            f"(= {n_rules}×10 + 20 = {max_raw}). raw = Σ(điểm từng phép ≤10) + combo_bonus. "
-            "Mỗi điểm phép = min(1, Σtrọng_số_finding/(10×mẫu_số)) × 10 → BÃO HOÀ ở 10."
+            f"(= {n_rules}×10 + 20 = {max_raw}). raw = Σ(điểm từng bài kiểm tra ≤10) + combo_bonus. "
+            "Mỗi điểm bài = min(1, Σtrọng_số_finding/(10×mẫu_số)) × 10 → KỊCH KHUNG ở 10."
         ),
         "note": (
-            "Giải thích điểm DỰA TRÊN rule_scores + denominators này. Nêu phép nào chạm trần "
-            "10 (bão hoà) và tỷ lệ so với mẫu số. TUYỆT ĐỐI không tính 'số finding × trọng số'."
+            "Giải thích điểm DỰA TRÊN rule_scores + denominators này. Nêu bài kiểm tra nào đã "
+            "kịch khung (đạt 10) và tỷ lệ so với mẫu số. TUYỆT ĐỐI không tính 'số finding × trọng số'."
         ),
     }
 

@@ -65,12 +65,12 @@ def _catalog_block() -> str:
 
     lines.append("""## Chấm điểm rủi ro — RATE-BASED, KHÔNG cộng dồn (đọc kỹ)
 **SAI nếu giải thích kiểu "N phát hiện × 10 = X điểm".** Điểm KHÔNG phải tổng số finding nhân trọng số. Cách tính thật:
-- Mỗi phép → một điểm 0..10 theo **tỷ lệ**: `rate = min(1, Σ(trọng số finding) / (10 × mẫu_số))`, rồi `điểm_phép = rate × 10`. Trọng số chỉ để cộng TRONG một phép: 🔴10 · 🟡3 · 🔵1.
-- **Mẫu số** = số mã đối tượng DN đó có (nvl / tp / m16) — tức "độ phơi nhiễm". Nên thêm finding trên cùng một phép chỉ đẩy điểm tới **trần 10** rồi **bão hoà**; 93 finding hay 9 finding nếu đều ≥ mẫu số đều cho 10.
-- `raw = Σ(điểm các phép, mỗi cái ≤10) + điểm tổ hợp (0 hoặc 20, một lần)`.
-- `score = round(1000 × raw / max_raw)`, với `max_raw = (số phép)×10 + 20`.
-- Ví dụ thật DN_003/2022 = **168** = round(1000 × 31.94/190); trong đó C4.3 chạm trần 10 (93/93 mã M16), C2.1 ≈ 6.2 (41/66 mã NVL)… — KHÔNG phải 250×10.
-- **Khi user hỏi "vì sao DN X năm Y có Z điểm" → GỌI `explain_score` để lấy breakdown thật**, rồi giải thích theo điểm-từng-phép + mẫu số + phép nào bão hoà. Đừng tự suy từ số lượng finding.
+- Mỗi **bài kiểm tra** → một điểm 0..10 theo **tỷ lệ**: `rate = min(1, Σ(trọng số finding) / (10 × mẫu_số))`, rồi `điểm_bài = rate × 10`. Trọng số chỉ để cộng TRONG một bài: 🔴10 · 🟡3 · 🔵1.
+- **Mẫu số** = số mã đối tượng DN đó có (nvl / tp / m16) — tức quy mô dữ liệu. Mỗi bài tối đa 10 điểm là **kịch khung**: khi sai lệch đã đủ nhiều so với quy mô thì điểm bài đó dừng ở 10, thêm finding nữa cũng không tăng (93 finding hay 9 finding nếu đều ≥ mẫu số đều cho 10).
+- `raw = Σ(điểm các bài, mỗi cái ≤10) + điểm tổ hợp (0 hoặc 20, một lần)`.
+- `score = round(1000 × raw / max_raw)`, với `max_raw = (số bài kiểm tra)×10 + 20`.
+- Ví dụ thật DN_003/2022 = **168** = round(1000 × 31.94/190); trong đó C4.3 kịch khung 10 (93/93 mã M16), C2.1 ≈ 6.2 (41/66 mã NVL)… — KHÔNG phải 250×10.
+- **Khi user hỏi "vì sao DN X năm Y có Z điểm" → GỌI `explain_score` để lấy breakdown thật**, rồi giải thích theo điểm-từng-bài + mẫu số + bài nào đã kịch khung (đạt 10). Đừng tự suy từ số lượng finding.
 - DN sạch (ít finding so với mẫu số) → điểm thấp → minh chứng "không phát hiện bừa".""")
 
     lines.append("""
