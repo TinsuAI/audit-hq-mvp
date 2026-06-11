@@ -693,6 +693,43 @@ p { margin: 0 0 var(--space-3); }
 .se-note { font-size: var(--fs-xs); color: var(--c-text-subtle); max-width: 70ch; line-height: 1.5; }
 .se-link { font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
 
+/* — Score breakdown table (trang DN: số thật của DN/năm) — */
+.score-bd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  margin: 0 0 var(--space-3);
+}
+.score-bd-table th,
+.score-bd-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--c-border);
+  text-align: left;
+}
+.score-bd-table th {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--c-text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.score-bd-table td.num { text-align: right; font-family: var(--font-mono); white-space: nowrap; }
+.score-bd-table .bd-extra td { color: var(--c-text-muted); }
+.score-bd-table .bd-sum td { border-top: 2px solid var(--c-border); border-bottom: none; }
+.bd-cap {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: #fce4e4;
+  color: #8b1a1a;
+  font-family: var(--font-sans);
+  font-size: 0.625rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.bd-denom { margin: 0; }
+
 /* — Companies table toolbar (search / filter / group) — */
 .table-toolbar {
   display: flex;

@@ -68,6 +68,70 @@
   </div>
 </div>
 
+{% if checks_run and year_score and year_score.breakdown %}
+{% set bd = year_score.breakdown %}
+{% set denom = bd.denominators or {} %}
+<details class="scoring-explainer score-breakdown">
+  <summary>
+    <span class="se-title">Cách tính điểm {{ ys_score }}/1000 — năm {{ selected_year }}</span>
+    <span class="se-sub">rate-based · bấm để xem chi tiết</span>
+    <span class="se-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="se-body">
+    <p class="se-intro">
+      Điểm <strong>không phải</strong> tổng số phát hiện nhân trọng số. Mỗi phép kiểm tra cho
+      <strong>tối đa 10 điểm theo tỷ lệ</strong> phát hiện so với <em>độ phơi nhiễm</em>
+      (số mã đối tượng doanh nghiệp có) — nên thêm phát hiện chỉ đẩy điểm tới <strong>trần</strong>
+      rồi bão hoà. Cộng điểm các phép, thêm điểm tổ hợp rủi ro, rồi quy về thang 0–1000.
+    </p>
+    <p class="se-formula">
+      <strong>{{ ys_score }}</strong> = round(1000 × <strong>{{ '%.2f' | format(bd.raw) }}</strong>
+      ÷ <strong>{{ bd.max_raw | int }}</strong>)
+      <span class="se-muted">· max = {{ ((bd.max_raw - 20) / 10) | int }} phép × 10 + 20 (tổ hợp)</span>
+    </p>
+
+    <table class="score-bd-table">
+      <thead><tr><th>Phép</th><th>Nội dung</th><th>Điểm /10</th></tr></thead>
+      <tbody>
+      {% for code, sc in bd.rule_scores | dictsort %}
+        {% set spec = all_specs.get(code) or SPECS.get(code) %}
+        <tr>
+          <td class="text-mono">{{ code }}</td>
+          <td>{{ spec.title if spec else '—' }}</td>
+          <td class="num">
+            {{ '%.2f' | format(sc) }}
+            {% if sc >= 10 %}<span class="bd-cap" title="Đã chạm trần — bão hoà">trần</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+        <tr class="bd-extra">
+          <td colspan="2">Điểm tổ hợp rủi ro {% if not bd.combo_bonus %}(không có){% endif %}</td>
+          <td class="num">+{{ bd.combo_bonus or 0 }}</td>
+        </tr>
+        <tr class="bd-sum">
+          <td colspan="2"><strong>Tổng điểm thô (raw)</strong></td>
+          <td class="num"><strong>{{ '%.2f' | format(bd.raw) }}</strong> <span class="se-muted">/ {{ bd.max_raw | int }}</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="se-muted bd-denom">
+      Độ phơi nhiễm (mẫu số tỷ lệ): NVL <strong>{{ denom.nvl or 0 }}</strong> mã ·
+      Thành phẩm <strong>{{ denom.tp or 0 }}</strong> mã ·
+      Định mức <strong>{{ denom.m16 or 0 }}</strong> dòng.
+    </p>
+
+    <div class="se-foot">
+      <span class="se-note">
+        Chỉ số nội bộ về chất lượng dữ liệu BCQT — <strong>không phải</strong> đánh giá tuân thủ
+        theo Thông tư 81/2019/TT-BTC.
+      </span>
+      <a href="/tai-lieu/scoring-methodology" class="se-link">Xem cách tính đầy đủ →</a>
+    </div>
+  </div>
+</details>
+{% endif %}
+
 {% if years %}
 <div class="tabs">
   {% for y in years %}
