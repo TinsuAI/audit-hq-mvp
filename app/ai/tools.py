@@ -856,10 +856,19 @@ def run_tool(name: str, args_json: str, db: Session) -> str:
     fn = TOOL_REGISTRY.get(name)
     if fn is None:
         return json.dumps({"error": f"Unknown tool: {name}"}, ensure_ascii=False)
-    try:
-        args = json.loads(args_json) if args_json else {}
-    except json.JSONDecodeError as e:
-        return json.dumps({"error": f"Tool args không phải JSON hợp lệ: {e}"}, ensure_ascii=False)
+    if args_json and args_json.strip():
+        try:
+            # raw_decode: khoan dung với args bị nối '{...}{...}' (Gemini phát call song
+            # song) — lấy object JSON đầu tiên thay vì lỗi "Extra data".
+            args, _ = json.JSONDecoder().raw_decode(args_json.strip())
+        except (json.JSONDecodeError, ValueError) as e:
+            return json.dumps(
+                {"error": f"Tool args không phải JSON hợp lệ: {e}"}, ensure_ascii=False
+            )
+        if not isinstance(args, dict):
+            return json.dumps({"error": "Tool args phải là object JSON."}, ensure_ascii=False)
+    else:
+        args = {}
     try:
         result = fn(db, **args)
     except TypeError as e:

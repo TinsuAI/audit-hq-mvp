@@ -50,6 +50,22 @@ router = APIRouter(prefix="/api")
 HISTORY_TURN_LIMIT = 20  # message count, not round-trip
 
 
+def _clean_tool_args(raw: str) -> str:
+    """Chuẩn hoá `arguments` của tool-call về JSON hợp lệ.
+
+    Một số provider (vd Gemini) phát nhiều call song song có thể khiến args bị nối
+    thành '{...}{...}'. Lấy object JSON ĐẦU TIÊN + bỏ phần thừa → tránh: (a) JSON
+    parse lỗi khi chạy tool, (b) provider 400 khi gửi lại message với args hỏng.
+    """
+    if not raw or not raw.strip():
+        return "{}"
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(raw.strip())
+        return json.dumps(obj, ensure_ascii=False)
+    except (json.JSONDecodeError, ValueError):
+        return raw  # để run_tool báo lỗi rõ nếu vẫn không parse được
+
+
 def _load_history(db: Session, conv_id: int) -> list[dict]:
     """Reload toàn bộ message của conversation thành OpenAI format.
 
@@ -229,7 +245,10 @@ async def chat(
                 {
                     "id": tc.id,
                     "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": _clean_tool_args(tc.function.arguments),
+                    },
                 }
                 for tc in msg.tool_calls
             ]
@@ -601,8 +620,12 @@ async def chat_stream(
                 )
 
                 acc_text = ""
-                # Accumulate tool calls by index — chunks gửi delta arguments.
-                acc_tool_calls: dict[int, dict] = {}
+                # Gom tool-call. Khoá theo `index`; provider KHÔNG đánh index (vd Gemini phát
+                # nhiều call song song với index=None) → khoá theo `id` để args các call khác
+                # nhau không bị nối thành '{...}{...}'. Chunk nối tiếp (không id/index) → nối
+                # vào call gần nhất.
+                acc_tool_calls: dict = {}
+                last_tc_key = None
                 finish_reason: str | None = None
                 tokens_in = 0
                 tokens_out = 0
@@ -625,9 +648,17 @@ async def chat_stream(
 
                     if delta and delta.tool_calls:
                         for tc in delta.tool_calls:
-                            idx = tc.index
+                            if tc.index is not None:
+                                key = tc.index
+                            elif tc.id:
+                                key = tc.id
+                            elif last_tc_key is not None:
+                                key = last_tc_key
+                            else:
+                                key = 0
+                            last_tc_key = key
                             slot = acc_tool_calls.setdefault(
-                                idx, {"id": "", "name": "", "arguments": ""}
+                                key, {"id": "", "name": "", "arguments": ""}
                             )
                             if tc.id:
                                 slot["id"] = tc.id
@@ -649,7 +680,10 @@ async def chat_stream(
                         {
                             "id": tc["id"],
                             "type": "function",
-                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": _clean_tool_args(tc["arguments"]),
+                            },
                         }
                         for tc in sorted(acc_tool_calls.values(), key=lambda x: x.get("id", ""))
                     ]
