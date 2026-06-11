@@ -60,18 +60,18 @@ Cách tính theo tỷ lệ triệt tiêu thiên lệch này: cả hai doanh nghi
 
 ## 4. Điểm rủi ro tổ hợp
 
-Một số tổ hợp phát hiện cùng xuất hiện trên một mã vật tư có ý nghĩa nghiệp vụ lớn hơn tổng các phát hiện riêng lẻ — chúng là dấu hiệu đặc trưng của một số hành vi rủi ro. Khi hệ thống nhận diện ít nhất một tổ hợp như vậy, **cộng thêm 20 điểm** vào tổng điểm thô. Điểm này chỉ tính một lần, không nhân theo số lần hay số loại tổ hợp.
+Khi nhiều phát hiện cùng xuất hiện trên một mã vật tư, đôi khi chúng đáng lưu ý hơn so với lúc đứng riêng lẻ — gợi mở một hướng nên rà soát kỹ hơn. Hệ thống ghi nhận một số **tổ hợp dấu hiệu** như vậy; khi nhận diện được ít nhất một tổ hợp, **cộng thêm 20 điểm** vào tổng điểm thô (chỉ tính một lần, không nhân theo số lần hay số loại tổ hợp).
 
-Các tổ hợp hệ thống hiện nhận diện:
+> **Lưu ý về phạm vi.** Bốn tổ hợp dưới đây là **bộ khởi đầu mang tính minh hoạ** cho bản demo, được phác ra từ một số kịch bản rủi ro thường gặp theo kinh nghiệm nghiệp vụ — **chưa phải** các mẫu hành vi đã được kiểm chứng thống kê trên dữ liệu thực. Cột cuối là **giả thuyết cần kiểm chứng**, không phải kết luận về DN. Danh mục được thiết kế để cán bộ Hải quan bổ sung, hiệu chỉnh hoặc loại bỏ dần theo thực tế.
 
-| Tổ hợp | Dấu hiệu kết hợp (trên cùng một mã) | Nghi vấn nghiệp vụ |
+| Tổ hợp (giả thuyết) | Dấu hiệu kết hợp (trên cùng một mã) | Hướng nên rà soát |
 |---|---|---|
-| Định mức ảo | Tồn cuối âm (C2.3) **+** tiêu hao Mẫu 16 vượt xuất sản xuất Mẫu 15 (C4.3) | Tạo định mức ảo để hợp thức hoá NVL nhập miễn thuế nhưng thực tế đã bán nội địa. |
-| NVL nội địa không khai báo | Nhập trên Mẫu 15 không có tờ khai (C1.3) **+** xuất sản xuất không có nguồn nhập/tồn (C5.1) | Dùng NVL mua trong nước không khai báo, đưa vào phạm vi hàng miễn thuế. |
-| Số liệu mâu thuẫn | Phương trình cân đối Mẫu 15 không khớp (C2.1) **+** tiêu hao Mẫu 16 vượt Mẫu 15 (C4.3) | Số liệu giữa các mẫu báo cáo không nhất quán; cần làm rõ nguồn sai trước khi xét các phát hiện khác. |
-| Phân loại sai có chủ đích | Mã HS không nhất quán (C3.2) **+** đơn vị tính lệch giữa Mẫu 15 và BCCT (C3.3) | Có thể cố tình đổi mã HS hoặc đơn vị tính để né chính sách quản lý hàng hoá. |
+| Nghi nâng khống định mức | Tồn cuối âm (C2.3) **+** tiêu hao Mẫu 16 vượt xuất sản xuất Mẫu 15 (C4.3) | Có thể là dấu hiệu nâng định mức để hợp thức hoá NVL đã ra khỏi sổ sách. *Lưu ý: hai dấu hiệu này một phần cùng phản ánh một mất cân đối, nên cần đối chiếu chứng từ gốc, không xem là hai bằng chứng độc lập.* |
+| Nghi NVL nội địa không khai báo | Nhập trên Mẫu 15 không có tờ khai (C1.3) **+** xuất sản xuất không có nguồn nhập/tồn (C5.1) | Có thể có NVL vào quy trình mà không qua tờ khai; cần xác minh nguồn gốc thực tế. |
+| Số liệu chưa nhất quán | Phương trình cân đối Mẫu 15 không khớp (C2.1) **+** tiêu hao Mẫu 16 vượt Mẫu 15 (C4.3) | Thiên về **dấu hiệu chất lượng số liệu** (các mẫu báo cáo chưa khớp) hơn là một hành vi cụ thể — cần làm rõ nguồn sai trước khi xét tiếp. |
+| Thuộc tính khai báo lệch nhau | Mã HS không nhất quán (C3.2) **+** đơn vị tính lệch giữa Mẫu 15 và BCCT (C3.3) | Khai báo thiếu nhất quán. *Chưa đủ để kết luận cố ý* — cần xem có tính hệ thống hay chỉ là sai sót rời rạc. |
 
-> **Danh mục tổ hợp sẽ tiếp tục được bổ sung.** Bốn tổ hợp trên là bộ khởi đầu, rút ra từ các kịch bản rủi ro phổ biến. Trong quá trình sử dụng, cán bộ Hải quan có thể đề xuất thêm các tổ hợp dấu hiệu mới theo kinh nghiệm thực tế để hệ thống nhận diện — đây là phần được thiết kế để mở rộng dần.
+Cách tính điểm tổ hợp (cộng 20 điểm cho bất kỳ tổ hợp nào) hiện áp dụng như nhau cho cả bốn — kể cả tổ hợp thiên về chất lượng số liệu. Đây là lựa chọn đơn giản hoá cho bản demo và sẽ được tinh chỉnh khi có thêm dữ liệu phản hồi.
 
 ---
 
