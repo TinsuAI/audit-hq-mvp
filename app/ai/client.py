@@ -74,11 +74,12 @@ def cache_supports_anthropic(base_url: str | None = None) -> bool:
 # ─────────────────────────── Fallback logic ───────────────────────────
 
 # Status codes worth retrying on a different provider.
+# 402: out of credits / payment required — fallback provider has independent billing.
 # 429: rate limit / quota — different provider has independent quota.
 # 5xx: provider outage.
 # 404: model not on this provider (e.g. switched provider but model name stale).
 # 408/424: timeout-ish.
-_RETRY_STATUSES = {404, 408, 424, 429, 500, 502, 503, 504}
+_RETRY_STATUSES = {402, 404, 408, 424, 429, 500, 502, 503, 504}
 
 
 def should_fallback(exc: BaseException) -> bool:

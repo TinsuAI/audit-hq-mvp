@@ -34,6 +34,19 @@ class TestShouldFallback:
         )
         assert should_fallback(e) is True
 
+    def test_402_out_of_credits_triggers_fallback(self):
+        from openai import APIStatusError
+
+        from app.ai.client import should_fallback
+
+        # 402 = hết credit OpenRouter → provider phụ (Gemini) có billing độc lập.
+        e = APIStatusError(
+            message="payment required",
+            response=MagicMock(status_code=402, request=MagicMock()),
+            body=None,
+        )
+        assert should_fallback(e) is True
+
     def test_4xx_auth_does_not_fallback(self):
         from openai import APIStatusError
 
