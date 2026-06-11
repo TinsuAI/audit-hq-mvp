@@ -12,28 +12,28 @@
 > trên trang DN, recompute điểm khi đổi status finding, format số nhỏ, từ ngữ
 > "bài kiểm tra", fix lỗi gộp args streaming (Gemini), fallback khi 402.
 
-## ⚠️ Việc cần để ý NGAY (chưa làm — user /handoff giữa chừng)
+## ⚠️ Việc cần để ý
 
-1. **Cost tracking SAI (dashboard đếm thiếu ~3×).** `app/ai/cost.py` PRICING thiếu
-   entry cho `anthropic/claude-sonnet-4` (chỉ có `~anthropic/claude-sonnet-latest`),
-   nên rơi vào `DEFAULT_PRICE = $1/$5` thay vì giá thật Sonnet `$3/$15`. Dashboard
-   báo $2.2 nhưng **tiền thật ~$6.7** (đã đốt ~$5 key bạn user + ~$2 key mới).
-   → **Fix:** thêm key đúng cho claude-sonnet-4 / claude-haiku-4-5 / claude-opus-4-7
-   + gemini-2.5-flash/flash-lite/pro vào PRICING.
-2. **Đốt tiền nhanh.** ~2M token input / ~100 lượt Claude (mỗi lượt ~20k vì gửi lại
-   full prompt+history+tool mỗi vòng tool). User đã lo. **Đề xuất chưa thực hiện:**
-   đảo **Gemini lên primary (free, giờ đã chạy sạch sau khi fix bug streaming)**,
-   Claude làm fallback → demo gần như $0. (User chọn Claude-primary trước đó, nhưng
-   sau khi biết cost thì gõ /handoff — cần hỏi lại có muốn đảo không.)
+1. **[ĐÃ XỬ LÝ sau /handoff] Provider → DeepSeek cho đỡ tốn tiền.** User bỏ Claude.
+   Live giờ: PRIMARY `deepseek/deepseek-v4-pro` (qua OpenRouter, ~$0.43/$0.87 — rẻ
+   ~7–17× Claude Sonnet $3/$15), FALLBACK Gemini free. Verify local + prod, 0 lỗi
+   (tool-use song song / SQL / explain_score đều OK, đúng từ ngữ). `deepseek-v4-pro`
+   CÓ trong `cost.py` PRICING ($0.50/$1.50) nên dashboard tracking đúng. Chỉ đổi
+   config `ai_settings`, không deploy.
+2. **[Bớt gấp] `cost.py` thiếu giá Claude.** PRICING vẫn thiếu `anthropic/claude-sonnet-4`
+   → rơi `DEFAULT_PRICE=$1/$5`, đếm thiếu ~3× (lý do dashboard từng báo $2.2 trong khi
+   thật ~$6.7, đốt ~$5 key bạn + ~$2 key mới). Không còn dùng Claude nên hết nóng; nếu
+   sau bật lại Claude thì thêm entry + cờ `pricing_known` cảnh báo khi rơi DEFAULT.
 
 ## Current State
 
 ### Production (`audit-hq-demo.tinsu.ai`)
 - Build **`11bbcdd`**, CI xanh, healthy. 4 DN demo (DN_001..004).
-- **AI provider:** PRIMARY OpenRouter → `anthropic/claude-sonnet-4` (key
-  `sk-or-v1-aca6…`, còn ~$7.86/$10). FALLBACK Gemini `gemini-2.5-flash` (key
+- **AI provider:** PRIMARY OpenRouter → `deepseek/deepseek-v4-pro` (key `sk-or-v1-aca6…`,
+  còn ~$7.8/$10; fast=`deepseek-v4-flash`). FALLBACK Gemini `gemini-2.5-flash` (key
   `AQ.Ab8…`, **Google FREE tier** → 429 khi bắn dồn nhiều tool). `fallback_enabled=True`.
-  Fallback kích hoạt khi 402/404/408/424/429/5xx/timeout/conn.
+  Fallback kích hoạt khi 402/404/408/424/429/5xx/timeout/conn. (Trước đó từng dùng
+  Claude Sonnet 4 primary — đã bỏ vì tốn tiền.)
 - **AI limits:** `max_tokens`=4096, `tool_call_cap`=10, `rate_limit_per_hour`=300,
   `daily_budget_usd`=100, `request_timeout_s`=120.
 - Điểm DN (live, 17-rule): DN_003=168(2022)/148(các năm khác cao nhất), DN_001=120ish,
@@ -77,14 +77,11 @@
 
 ## Next Steps (ưu tiên)
 
-1. **[NÓNG] Fix `cost.py` PRICING** (thêm model thật) → dashboard hết đếm sai. Xem mục ⚠️.
-2. **[NÓNG] Quyết provider:** đảo Gemini-primary (free) hay giữ Claude (đắt)? Hỏi user.
-   Nếu đảo: set base_url/api_key/models primary=Gemini, fallback=OpenRouter/Claude.
-3. **Combo +20 điểm tổ hợp — review logic** (user "note lại, quyết sau"). Flat +20
+1. **Combo +20 điểm tổ hợp — review logic** (user "note lại, quyết sau"). Flat +20
    cho mọi combo (kể cả combo "chất lượng dữ liệu") + magnitude tuỳ tiện. Cân nhắc:
    badge-không-tính-điểm / có-cấp-có-trần / trọng số khác nhau. (Phân tích đầy đủ ở
    session log + lịch sử chat.)
-4. **Disk tinsu** (xem Blockers) — dọn cho an toàn deploy lâu dài.
+2. **Disk tinsu** (xem Blockers) — dọn cho an toàn deploy lâu dài.
 
 ## Blockers
 
