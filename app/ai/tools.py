@@ -733,19 +733,29 @@ def _explain_score(db: Session, *, company_code: str, year: int) -> dict:
             "error": f"Chưa có điểm cho {company_code} năm {year} "
                      "(có thể chưa chạy kiểm tra cho năm này).",
         }
+    from app.checks.scoring import COMBO_BONUS, MAX_RULE_SCORE
+
     bd = cys.breakdown or {}
+    max_raw = bd.get("max_raw")
+    # Số phép trong phạm vi tại thời điểm tính điểm này: max_raw = n_rules×10 + 20.
+    n_rules = (
+        int(round((max_raw - COMBO_BONUS) / MAX_RULE_SCORE))
+        if max_raw else None
+    )
     return {
         "company_code": company.code,
         "year": year,
         "score": cys.score,
         "tier": cys.tier,
         "raw": bd.get("raw"),
-        "max_raw": bd.get("max_raw"),
+        "max_raw": max_raw,
+        "n_rules": n_rules,                          # số phép (mẫu số của max_raw)
         "rule_scores": bd.get("rule_scores"),       # {check_code: điểm 0..10 (đã bão hoà)}
         "combo_bonus": bd.get("combo_bonus"),
         "denominators": bd.get("denominators"),     # mẫu số {nvl, tp, m16}
         "formula": (
-            "score = round(1000 × raw / max_raw). raw = Σ(điểm từng phép ≤10) + combo_bonus. "
+            f"score = round(1000 × raw / max_raw); max_raw = n_rules×10 + 20 "
+            f"(= {n_rules}×10 + 20 = {max_raw}). raw = Σ(điểm từng phép ≤10) + combo_bonus. "
             "Mỗi điểm phép = min(1, Σtrọng_số_finding/(10×mẫu_số)) × 10 → BÃO HOÀ ở 10."
         ),
         "note": (

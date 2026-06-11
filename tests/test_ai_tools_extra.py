@@ -156,6 +156,9 @@ def test_explain_score_returns_breakdown(session, company):
     assert out["max_raw"] == 190.0
     assert out["rule_scores"]["C4.3"] == 10.0
     assert out["denominators"]["m16"] == 93
+    # n_rules suy từ max_raw=190 → (190-20)/10 = 17.
+    assert out["n_rules"] == 17
+    assert "17×10 + 20" in out["formula"]
     assert "rate" in out["formula"].lower() or "bão hoà" in out["note"].lower()
 
 
