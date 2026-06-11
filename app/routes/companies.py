@@ -1093,6 +1093,11 @@ def update_finding_status(
 
     finding.status = status
     finding.notes = notes.strip() or None
+    db.flush()
+    # Đổi trạng thái (vd "Loại trừ") → tính lại điểm năm đó NGAY từ findings hiện có
+    # (không chạy lại kiểm tra). Finding rejected sẽ rớt khỏi điểm tức thì.
+    from app.pipeline.recompute import recompute_company_year
+    recompute_company_year(db, finding.company_id, finding.period_year)
     db.commit()
 
     company = db.get(Company, finding.company_id)

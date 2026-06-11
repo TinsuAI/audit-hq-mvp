@@ -22,7 +22,7 @@ Mỗi phát hiện thuộc một trong ba mức:
 | Cảnh báo | 🟡 | 3 | Chênh lệch ở mức cần lưu ý, có thể do sai sót nghiệp vụ hoặc do bản chất số liệu. Ví dụ: lệch số lượng 5–20%; mã HS không nhất quán giữa các tờ khai. |
 | Thông tin | 🔵 | 1 | Chênh lệch nhỏ, ghi nhận để theo dõi. Ví dụ: lệch số lượng dưới 5%; đơn vị tính khác họ nhưng cùng quy đổi. |
 
-Các phát hiện do cán bộ Hải quan đánh dấu **Loại trừ** sẽ không được tính vào điểm.
+Các phát hiện do cán bộ Hải quan đánh dấu **Loại trừ** sẽ không được tính vào điểm — điểm rủi ro được **tính lại ngay** khi cán bộ thay đổi trạng thái phát hiện.
 
 ---
 
