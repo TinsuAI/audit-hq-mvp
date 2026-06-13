@@ -141,7 +141,7 @@ def get_available_models(refresh: bool = False) -> list[str] | None:
         expires_at, models = _MODELS_CACHE
         if time.time() < expires_at:
             return models
-    result = test_connection(timeout_s=8)
+    result = test_connection(timeout_s=8, verify_auth=False)
     if not result.ok or result.models is None:
         return None
     _MODELS_CACHE = (time.time() + _MODELS_TTL_S, result.models)
@@ -323,10 +323,17 @@ def test_connection(
     api_key: str | None = None,
     extra_headers: dict[str, str] | None = None,
     timeout_s: int = 10,
+    verify_auth: bool = True,
 ) -> ConnectionTestResult:
-    """Ping {base_url}/models để verify config trước khi save.
+    """Verify cấu hình AI.
 
     Nếu không truyền tham số → dùng setting hiện tại trong DB.
+
+    QUAN TRỌNG: `GET /models` của nhiều provider (vd OpenRouter) là PUBLIC —
+    key chết/rác vẫn liệt kê được model → 200 không chứng minh key sống. Vì vậy
+    khi `verify_auth=True` (mặc định, dùng cho nút "Test kết nối") ta gọi thêm 1
+    completion 1-token để kiểm tra key THẬT. `verify_auth=False` dùng cho
+    `available_models()` (chỉ cần danh sách model, không cần xác thực).
     """
     if base_url is None:
         base_url = get_setting("base_url")
@@ -338,24 +345,57 @@ def test_connection(
     if not api_key:
         return ConnectionTestResult(ok=False, error="API key chưa cấu hình")
 
-    url = f"{base_url.rstrip('/')}/models"
+    base = base_url.rstrip("/")
     headers = {"Authorization": f"Bearer {api_key}", **(extra_headers or {})}
+
+    # 1) Danh sách model — best-effort (có thể public, dùng cho dropdown).
+    models: list[str] | None = None
+    model_latency: int | None = None
     t0 = time.time()
     try:
-        r = httpx.get(url, headers=headers, timeout=timeout_s)
-        latency = int((time.time() - t0) * 1000)
-        if r.status_code != 200:
-            return ConnectionTestResult(
-                ok=False,
-                error=f"HTTP {r.status_code}: {r.text[:200]}",
-                latency_ms=latency,
-            )
-        payload = r.json()
-        # OpenAI format: {"data": [{"id": "..."}, ...]}
-        models_list = payload.get("data", []) if isinstance(payload, dict) else []
-        ids = [m.get("id") for m in models_list if m.get("id")]
-        return ConnectionTestResult(ok=True, models=ids[:50], latency_ms=latency)
+        r = httpx.get(f"{base}/models", headers=headers, timeout=timeout_s)
+        model_latency = int((time.time() - t0) * 1000)
+        if r.status_code == 200:
+            payload = r.json()
+            data = payload.get("data", []) if isinstance(payload, dict) else []
+            models = [m.get("id") for m in data if m.get("id")][:50]
+    except httpx.HTTPError:
+        models = None
+
+    if not verify_auth:
+        if models is not None:
+            return ConnectionTestResult(ok=True, models=models, latency_ms=model_latency)
+        return ConnectionTestResult(
+            ok=False, error="Không lấy được danh sách model", latency_ms=model_latency
+        )
+
+    # 2) Xác thực THẬT — completion 1-token (key chết sẽ lộ ở đây, không ở /models).
+    model = get_setting("model_default")
+    if models and model not in models:
+        model = models[0]
+    if not model:
+        return ConnectionTestResult(
+            ok=False, error="Chưa xác định được model để kiểm tra key", models=models,
+        )
+    t1 = time.time()
+    try:
+        r = httpx.post(
+            f"{base}/chat/completions",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"model": model, "messages": [{"role": "user", "content": "ping"}],
+                  "max_tokens": 1},
+            timeout=timeout_s,
+        )
+        latency = int((time.time() - t1) * 1000)
+        if r.status_code == 200:
+            return ConnectionTestResult(ok=True, models=models, latency_ms=latency)
+        hint = " — key không hợp lệ / tài khoản không tồn tại" if r.status_code == 401 else ""
+        return ConnectionTestResult(
+            ok=False, error=f"HTTP {r.status_code}{hint}: {r.text[:200]}",
+            models=models, latency_ms=latency,
+        )
     except httpx.HTTPError as e:
         return ConnectionTestResult(
-            ok=False, error=f"{type(e).__name__}: {e}", latency_ms=int((time.time() - t0) * 1000)
+            ok=False, error=f"{type(e).__name__}: {e}", models=models,
+            latency_ms=int((time.time() - t1) * 1000),
         )
