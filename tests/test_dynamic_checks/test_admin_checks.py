@@ -1,17 +1,18 @@
-"""Tests — admin routes cho catalog động (/admin/checks/*)."""
+"""Tests — admin routes soạn/quản lý kiểm tra mở rộng (/admin/checks/*)."""
 
 from __future__ import annotations
 
-import json
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 
 import app.database as dbmod
 from app.auth_users import seed_default_admin
+from app.checks.spec_gen import DraftResult, SpecGenError
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import CheckDefinition, CheckStatus
+from app.models import CheckDefinition, CheckStatus, Company, NvlBalance
 
 
 def _setup_db():
@@ -43,47 +44,38 @@ def _login_admin(client):
     assert r.status_code == 303
 
 
-VALID_SPEC = {
-    "kind": "threshold_compare",
-    "table": "nvl_balances",
-    "subject_col": "material_code",
-    "metric_col": "closing_qty",
-    "thresholds": [{"lt": 0, "severity": "critical"}],
-    "title_template": "Tồn cuối {subject_key} âm",
-}
+_SQL = (
+    "SELECT 'critical' AS severity, material_code AS subject_key, "
+    "'x' AS title, '' AS detail FROM nvl_balances "
+    "WHERE company_id=:company_id AND period_year=:period_year AND closing_qty < -0.01"
+)
 
 
-class TestListChecks:
+def _sql_check(**kw):
+    base = dict(code="X.1", kind="sql", title="Tồn cuối âm demo", description="",
+                spec={}, sql_snippet=_SQL, subject_table="nvl_balances",
+                subject_col="material_code", scope="nvl", default_severity="critical")
+    base.update(kw)
+    return CheckDefinition(**base)
+
+
+class TestListAndAuth:
     def test_list_requires_auth(self):
-        eng, sess = _setup_db()
+        eng, _ = _setup_db()
         try:
-            client = TestClient(app, raise_server_exceptions=True)
-            r = client.get("/admin/checks", follow_redirects=False)
+            r = TestClient(app).get("/admin/checks", follow_redirects=False)
             assert r.status_code in (302, 303)
         finally:
             _teardown(eng)
 
     def test_list_requires_admin(self):
-        eng, sess = _setup_db()
+        eng, _ = _setup_db()
         try:
-            client = TestClient(app)
-            # Dùng cookie officer trực tiếp (không cần đăng nhập thật).
             from app.auth import SessionUser, make_session_cookie
             from app.models.user import ROLE_OFFICER
             cookie = make_session_cookie(SessionUser(name="officer", role=ROLE_OFFICER))
-            r = client.get("/admin/checks", cookies={"ahq_session": cookie})
+            r = TestClient(app).get("/admin/checks", cookies={"ahq_session": cookie})
             assert r.status_code == 403
-        finally:
-            _teardown(eng)
-
-    def test_list_empty(self):
-        eng, sess = _setup_db()
-        try:
-            client = TestClient(app)
-            _login_admin(client)
-            r = client.get("/admin/checks")
-            assert r.status_code == 200
-            assert "Kiểm tra mở rộng" in r.text
         finally:
             _teardown(eng)
 
@@ -91,11 +83,7 @@ class TestListChecks:
         eng, sess = _setup_db()
         try:
             with sess() as db:
-                db.add(CheckDefinition(
-                    code="X.1", kind="threshold_compare",
-                    title="Tồn cuối âm demo", description="",
-                    spec={}, status=CheckStatus.PUBLISHED,
-                ))
+                db.add(_sql_check(status=CheckStatus.PUBLISHED))
                 db.commit()
             client = TestClient(app)
             _login_admin(client)
@@ -105,251 +93,181 @@ class TestListChecks:
         finally:
             _teardown(eng)
 
-
-class TestCreateCheck:
     def test_new_form_renders(self):
-        eng, sess = _setup_db()
+        eng, _ = _setup_db()
         try:
             client = TestClient(app)
             _login_admin(client)
             r = client.get("/admin/checks/new")
             assert r.status_code == 200
-        finally:
-            _teardown(eng)
-
-    def test_create_saves_draft(self):
-        eng, sess = _setup_db()
-        try:
-            client = TestClient(app)
-            _login_admin(client)
-            r = client.post("/admin/checks", data={
-                "title": "My check",
-                "description": "Mô tả",
-                "kind": "threshold_compare",
-                "spec_json": json.dumps(VALID_SPEC),
-            }, follow_redirects=False)
-            assert r.status_code in (302, 303)
-            from sqlalchemy import select
-            with sess() as db:
-                cd = db.scalar(select(CheckDefinition).where(CheckDefinition.title == "My check"))
-            assert cd is not None
-            assert cd.status == CheckStatus.DRAFT
-            assert cd.code.startswith("X.")
-        finally:
-            _teardown(eng)
-
-    def test_create_invalid_spec_returns_error(self):
-        eng, sess = _setup_db()
-        try:
-            client = TestClient(app)
-            _login_admin(client)
-            r = client.post("/admin/checks", data={
-                "title": "Bad check",
-                "description": "",
-                "kind": "threshold_compare",
-                "spec_json": json.dumps({"kind": "threshold_compare", "table": "rm_rf"}),
-            })
-            assert r.status_code in (200, 400)
-            from sqlalchemy import select
-            with sess() as db:
-                cd = db.scalar(select(CheckDefinition).where(CheckDefinition.title == "Bad check"))
-            assert cd is None
-        finally:
-            _teardown(eng)
-
-    def test_create_assigns_sequential_codes(self):
-        eng, sess = _setup_db()
-        try:
-            client = TestClient(app)
-            _login_admin(client)
-            for title in ["Check A", "Check B"]:
-                client.post("/admin/checks", data={
-                    "title": title,
-                    "description": "",
-                    "kind": "threshold_compare",
-                    "spec_json": json.dumps(VALID_SPEC),
-                }, follow_redirects=False)
-            from sqlalchemy import select
-            with sess() as db:
-                codes = [
-                    r.code for r in db.scalars(
-                        select(CheckDefinition).order_by(CheckDefinition.id)
-                    ).all()
-                ]
-            assert codes == ["X.1", "X.2"]
+            assert "ngôn ngữ tự nhiên" in r.text
         finally:
             _teardown(eng)
 
 
-class TestPublishCheck:
-    def test_publish_changes_status(self):
+class TestDraft:
+    def test_draft_renders_preview(self):
         eng, sess = _setup_db()
         try:
             with sess() as db:
-                cd = CheckDefinition(
-                    code="X.1", kind="threshold_compare",
-                    title="T", description="",
-                    spec=VALID_SPEC,
-                )
-                db.add(cd)
+                db.add(Company(code="DN_X", name="DN X"))
                 db.commit()
-                cd_id = cd.id
             client = TestClient(app)
             _login_admin(client)
-            r = client.post(f"/admin/checks/{cd_id}/publish", follow_redirects=False)
-            assert r.status_code in (302, 303)
+            fake = DraftResult(
+                nl_prompt="tồn âm", kind="sql", title="Tồn cuối NVL âm",
+                description="desc", slug="ton-am", base_severity="critical", scope="nvl",
+                subject_table="nvl_balances", subject_col="material_code",
+                sql_snippet=_SQL, detail_query="", code_snippet="", analysis="a",
+                plan=["b1"], self_review={"confidence": "medium",
+                                          "alternative_interpretation": "cách khác"},
+                sample_rows=[{"severity": "critical", "subject_key": "M1",
+                             "title": "t", "detail": "d"}],
+                matched_rows=[], matched_columns=[], finding_count=1,
+                ref_company_code="DN_X", ref_year=2024,
+            )
+            with patch("app.routes.admin_checks.draft_and_validate", return_value=fake), \
+                 patch("app.ai.config.get_setting", return_value="x"):
+                r = client.post("/admin/checks/draft", data={
+                    "nl_prompt": "tồn âm", "ref_company": "DN_X", "ref_year": 2024,
+                })
+            assert r.status_code == 200
+            assert "Hệ thống hiểu" in r.text
+            assert "Tồn cuối NVL âm" in r.text
+            assert "cách khác" in r.text  # alternative interpretation shown (medium conf)
+
+        finally:
+            _teardown(eng)
+
+    def test_draft_shows_error_on_specgen_failure(self):
+        eng, sess = _setup_db()
+        try:
             with sess() as db:
-                cd = db.get(CheckDefinition, cd_id)
-            assert cd.status == CheckStatus.PUBLISHED
+                db.add(Company(code="DN_X", name="DN X"))
+                db.commit()
+            client = TestClient(app)
+            _login_admin(client)
+            with patch("app.routes.admin_checks.draft_and_validate",
+                       side_effect=SpecGenError("AI lỗi")), \
+                 patch("app.ai.config.get_setting", return_value="x"):
+                r = client.post("/admin/checks/draft", data={
+                    "nl_prompt": "x", "ref_company": "DN_X", "ref_year": 2024,
+                })
+            assert r.status_code == 400
+            assert "AI lỗi" in r.text
+        finally:
+            _teardown(eng)
+
+
+class TestSave:
+    def _post_save(self, client, **over):
+        data = {
+            "nl_prompt": "tồn âm", "kind": "sql", "title": "Tồn cuối NVL âm",
+            "description": "desc", "base_severity": "critical", "scope": "nvl",
+            "subject_table": "nvl_balances", "subject_col": "material_code",
+            "sql_snippet": _SQL, "detail_query": "", "code_snippet": "",
+            "analysis": "a", "plan_json": '["b1"]', "self_review_json": '{"confidence":"high"}',
+        }
+        data.update(over)
+        return client.post("/admin/checks", data=data, follow_redirects=False)
+
+    def test_save_creates_draft(self):
+        eng, sess = _setup_db()
+        try:
+            client = TestClient(app)
+            _login_admin(client)
+            r = self._post_save(client)
+            assert r.status_code == 303
+            with sess() as db:
+                cd = db.query(CheckDefinition).first()
+                assert cd.code == "X.1"
+                assert cd.kind == "sql"
+                assert cd.scope == "nvl"
+                assert cd.subject_table == "nvl_balances"
+                assert cd.status == CheckStatus.DRAFT
+                assert cd.plan == ["b1"]
+                assert cd.self_review == {"confidence": "high"}
+        finally:
+            _teardown(eng)
+
+    def test_save_rejects_invalid_sql(self):
+        eng, _ = _setup_db()
+        try:
+            client = TestClient(app)
+            _login_admin(client)
+            # SQL thiếu :company_id → validate fail → 400
+            r = self._post_save(client, sql_snippet="SELECT 1 AS severity")
+            assert r.status_code == 400
+        finally:
+            _teardown(eng)
+
+    def test_save_sequential_codes(self):
+        eng, _ = _setup_db()
+        try:
+            client = TestClient(app)
+            _login_admin(client)
+            self._post_save(client)
+            self._post_save(client, title="Hai")
+            r = client.get("/admin/checks")
+            assert "X.1" in r.text and "X.2" in r.text
+        finally:
+            _teardown(eng)
+
+
+class TestPreviewAndStatus:
+    def test_preview_runs_check(self):
+        eng, sess = _setup_db()
+        try:
+            with sess() as db:
+                c = Company(code="DN_P", name="P")
+                db.add(c)
+                db.flush()
+                db.add(NvlBalance(company_id=c.id, period_year=2024,
+                                  material_code="BAD", unit="PCE", closing_qty=-5))
+                db.add(_sql_check(status=CheckStatus.DRAFT))
+                db.commit()
+                cid = db.query(CheckDefinition).first().id
+            client = TestClient(app)
+            _login_admin(client)
+            r = client.post(f"/admin/checks/{cid}/preview",
+                            json={"company_code": "DN_P", "year": 2024})
+            assert r.status_code == 200
+            data = r.json()
+            assert data["count"] == 1
+            assert data["findings"][0]["subject_key"] == "BAD"
+        finally:
+            _teardown(eng)
+
+    def test_publish_then_disable(self):
+        eng, sess = _setup_db()
+        try:
+            with sess() as db:
+                db.add(_sql_check(status=CheckStatus.DRAFT))
+                db.commit()
+                cid = db.query(CheckDefinition).first().id
+            client = TestClient(app)
+            _login_admin(client)
+            client.post(f"/admin/checks/{cid}/publish", follow_redirects=False)
+            with sess() as db:
+                assert db.get(CheckDefinition, cid).status == CheckStatus.PUBLISHED
+            client.post(f"/admin/checks/{cid}/disable", follow_redirects=False)
+            with sess() as db:
+                assert db.get(CheckDefinition, cid).status == CheckStatus.DISABLED
         finally:
             _teardown(eng)
 
     def test_publish_requires_admin(self):
         eng, sess = _setup_db()
         try:
-            from app.auth import SessionUser, make_session_cookie
-            from app.models.user import ROLE_OFFICER
-            cookie = make_session_cookie(SessionUser(name="officer", role=ROLE_OFFICER))
-            client = TestClient(app)
-            r = client.post("/admin/checks/1/publish", cookies={"ahq_session": cookie})
-            assert r.status_code == 403
-        finally:
-            _teardown(eng)
-
-
-class TestDisableCheck:
-    def test_disable_changes_status(self):
-        eng, sess = _setup_db()
-        try:
             with sess() as db:
-                cd = CheckDefinition(
-                    code="X.1", kind="threshold_compare",
-                    title="T", description="",
-                    spec={}, status=CheckStatus.PUBLISHED,
-                )
-                db.add(cd)
+                db.add(_sql_check(status=CheckStatus.DRAFT))
                 db.commit()
-                cd_id = cd.id
-            client = TestClient(app)
-            _login_admin(client)
-            r = client.post(f"/admin/checks/{cd_id}/disable", follow_redirects=False)
-            assert r.status_code in (302, 303)
-            with sess() as db:
-                cd = db.get(CheckDefinition, cd_id)
-            assert cd.status == CheckStatus.DISABLED
-        finally:
-            _teardown(eng)
-
-
-class TestPreviewCheck:
-    def _seed_check_and_company(self, sess):
-        from app.models import Company
-        with sess() as db:
-            cd = CheckDefinition(
-                code="X.1", kind="threshold_compare",
-                title="Test check", description="",
-                spec=VALID_SPEC, status=CheckStatus.PUBLISHED,
-            )
-            db.add(cd)
-            company = Company(
-                code="DN_TEST", name="Công ty Test",
-            )
-            db.add(company)
-            db.commit()
-            return cd.id, company.id
-
-    def test_preview_returns_findings(self):
-        eng, sess = _setup_db()
-        try:
-            cd_id, company_id = self._seed_check_and_company(sess)
-            from app.models.finding import Finding
-            mock_findings = [
-                Finding(
-                    company_id=company_id, period_year=2023,
-                    check_code="X.1", severity="critical",
-                    title="Tồn cuối NVL001 âm",
-                    details={"closing_qty": -5},
-                ),
-            ]
-            from unittest.mock import patch
-            with patch("app.checks.dynamic_runner.DynamicCheckRunner.run", return_value=mock_findings):
-                client = TestClient(app)
-                _login_admin(client)
-                r = client.post(
-                    f"/admin/checks/{cd_id}/preview",
-                    json={"company_code": "DN_TEST", "year": 2023},
-                )
-            assert r.status_code == 200
-            data = r.json()
-            assert data["error"] is None
-            assert data["count"] == 1
-            assert data["findings"][0]["title"] == "Tồn cuối NVL001 âm"
-            assert data["findings"][0]["severity"] == "critical"
-        finally:
-            _teardown(eng)
-
-    def test_preview_no_findings(self):
-        eng, sess = _setup_db()
-        try:
-            cd_id, _ = self._seed_check_and_company(sess)
-            from unittest.mock import patch
-            with patch("app.checks.dynamic_runner.DynamicCheckRunner.run", return_value=[]):
-                client = TestClient(app)
-                _login_admin(client)
-                r = client.post(
-                    f"/admin/checks/{cd_id}/preview",
-                    json={"company_code": "DN_TEST", "year": 2023},
-                )
-            assert r.status_code == 200
-            data = r.json()
-            assert data["error"] is None
-            assert data["count"] == 0
-            assert data["findings"] == []
-        finally:
-            _teardown(eng)
-
-    def test_preview_unknown_company_returns_error(self):
-        eng, sess = _setup_db()
-        try:
-            cd_id, _ = self._seed_check_and_company(sess)
-            client = TestClient(app)
-            _login_admin(client)
-            r = client.post(
-                f"/admin/checks/{cd_id}/preview",
-                json={"company_code": "GHOST", "year": 2023},
-            )
-            assert r.status_code == 200
-            data = r.json()
-            assert data["error"] is not None
-            assert data["findings"] is None
-        finally:
-            _teardown(eng)
-
-    def test_preview_check_not_found_returns_404(self):
-        eng, sess = _setup_db()
-        try:
-            client = TestClient(app)
-            _login_admin(client)
-            r = client.post(
-                "/admin/checks/9999/preview",
-                json={"company_code": "DN_TEST", "year": 2023},
-            )
-            assert r.status_code == 404
-        finally:
-            _teardown(eng)
-
-    def test_preview_requires_admin(self):
-        eng, sess = _setup_db()
-        try:
+                cid = db.query(CheckDefinition).first().id
             from app.auth import SessionUser, make_session_cookie
             from app.models.user import ROLE_OFFICER
-            cookie = make_session_cookie(SessionUser(name="officer", role=ROLE_OFFICER))
-            client = TestClient(app)
-            r = client.post(
-                "/admin/checks/1/preview",
-                json={"company_code": "DN_TEST", "year": 2023},
-                cookies={"ahq_session": cookie},
-            )
+            cookie = make_session_cookie(SessionUser(name="o", role=ROLE_OFFICER))
+            r = TestClient(app).post(f"/admin/checks/{cid}/publish",
+                                     cookies={"ahq_session": cookie}, follow_redirects=False)
             assert r.status_code == 403
         finally:
             _teardown(eng)

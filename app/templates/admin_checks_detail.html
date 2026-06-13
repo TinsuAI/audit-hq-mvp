@@ -50,8 +50,9 @@
   <table class="data-table">
     <tr><th>Mã</th><td><code>{{ check.code }}</code></td></tr>
     <tr><th>Loại</th><td>{{ kind_labels.get(check.kind, check.kind) }}</td></tr>
-    <tr><th>Nhóm</th><td>{{ check.group }}</td></tr>
-    <tr><th>Mức độ mặc định</th><td>{{ check.default_severity }}</td></tr>
+    <tr><th>Mức độ mặc định</th><td>{{ severity_labels.get(check.default_severity, check.default_severity) }}</td></tr>
+    <tr><th>Nhóm điểm (scope)</th><td>{{ scope_labels.get(check.scope, check.scope or '—') }}</td></tr>
+    <tr><th>Truy nguồn</th><td><code>{{ check.subject_table or '—' }}</code>{% if check.subject_col %} · <code>{{ check.subject_col }}</code>{% endif %}</td></tr>
     <tr><th>Tạo lúc</th><td>{{ check.created_at.strftime('%Y-%m-%d %H:%M') if check.created_at else '—' }}</td></tr>
     <tr><th>Cập nhật lúc</th><td>{{ check.updated_at.strftime('%Y-%m-%d %H:%M') if check.updated_at else '—' }}</td></tr>
   </table>
@@ -64,9 +65,33 @@
 </div>
 {% endif %}
 
+{% if check.nl_prompt %}
 <div class="card mt-2">
-  <h3 class="card-title">Đặc tả (JSON)</h3>
-  <pre style="font-size:var(--fs-sm);overflow:auto;margin:0;max-height:400px">{{ spec_json }}</pre>
+  <h3 class="card-title">Yêu cầu gốc (ngôn ngữ tự nhiên)</h3>
+  <blockquote style="margin:0;color:var(--c-text-muted)">{{ check.nl_prompt }}</blockquote>
+</div>
+{% endif %}
+
+{% set sr = check.self_review or {} %}
+{% if sr or check.plan %}
+<div class="card mt-2">
+  <h3 class="card-title">AI tự đánh giá lúc soạn</h3>
+  {% if sr.get('confidence') %}<p style="margin:.25rem 0"><strong>Độ tin cậy:</strong> {{ sr.get('confidence') }}</p>{% endif %}
+  {% set alt = sr.get('alternative_interpretation') %}
+  {% if alt and alt | lower not in ['không có', 'none', 'n/a', 'không'] %}
+  <p style="margin:.25rem 0"><strong>Cách hiểu khác:</strong> {{ alt }}</p>
+  {% endif %}
+  {% if sr.get('edge_cases_handled') %}<p class="form-hint" style="margin:.25rem 0">Đã xử lý: {{ sr.get('edge_cases_handled') | join(', ') }}</p>{% endif %}
+  {% if check.plan %}<details style="margin-top:.5rem"><summary>Các bước AI đã làm</summary><ol>{% for s in check.plan %}<li>{{ s }}</li>{% endfor %}</ol></details>{% endif %}
+</div>
+{% endif %}
+
+<div class="card mt-2">
+  <h3 class="card-title">Mã truy vấn ({{ kind_labels.get(check.kind, check.kind) }})</h3>
+  <pre class="uc-code-block">{% if check.kind == 'python' %}{{ check.code_snippet }}{% else %}{{ check.sql_snippet }}{% if check.detail_query %}
+
+-- Truy vấn dòng nguồn (preview):
+{{ check.detail_query }}{% endif %}{% endif %}</pre>
 </div>
 
 {% if check.status == CheckStatus.DRAFT %}

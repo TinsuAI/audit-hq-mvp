@@ -16,23 +16,45 @@ class CheckStatus(StrEnum):
 
 
 class CheckDefinition(Base):
-    """Check động do admin tạo qua DSL khai báo, lưu DB.
+    """Check mở rộng do admin soạn từ ngôn ngữ tự nhiên (qua AI), lưu DB.
 
     Code prefix `X.*` phân biệt với built-in `C1.*` — `X` = Extended.
-    Spec JSON định nghĩa logic theo 1 trong 5 kind DSL.
+    Logic là SQL hoặc Python tự do (`kind` = 'sql' | 'python') chạy read-only
+    trên dữ liệu Tầng 1, scope theo (company, year). Cột `spec` (JSON) giữ lại
+    cho tương thích ngược (DSL cũ) — check mới dùng `sql_snippet`/`code_snippet`.
     Chỉ status=published mới chạy trong pipeline.
+
+    Truy nguồn: `subject_table` + `subject_col` để tự dựng evidence_refs về Tầng 1.
+    Scoring: `scope` (nvl/tp/m16) chọn mẫu số rate-based.
     """
 
     __tablename__ = "check_definitions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(16), unique=True, index=True)
-    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # 'sql' | 'python'
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     group: Mapped[int] = mapped_column(Integer, nullable=False, default=99)
     default_severity: Mapped[str] = mapped_column(String(16), nullable=False, default="warning")
     spec: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    # --- Check SQL/Python (mới) ---
+    # Scope mẫu số rate-based: 'nvl' | 'tp' | 'm16'.
+    scope: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # Truy nguồn: bảng + cột subject để dựng evidence_refs về Tầng 1.
+    subject_table: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    subject_col: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sql_snippet: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    code_snippet: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- Vết soạn từ NL (audit + dynamic few-shot) ---
+    nl_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    self_review: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=CheckStatus.DRAFT, index=True,
     )

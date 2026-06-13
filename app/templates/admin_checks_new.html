@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Tạo kiểm tra mới — Audit-HQ{% endblock %}
+{% block title %}Soạn kiểm tra mới — Audit-HQ{% endblock %}
 {% block content %}
 
 <nav class="breadcrumbs">
@@ -7,188 +7,118 @@
   <span class="sep">›</span>
   <a href="/admin/checks">Kiểm tra mở rộng</a>
   <span class="sep">›</span>
-  Tạo mới
+  Soạn mới
 </nav>
 
 <div class="page-header">
-  <h1>Tạo kiểm tra mở rộng</h1>
+  <div class="page-title-group">
+    <h1>Soạn kiểm tra từ ngôn ngữ tự nhiên</h1>
+    <p class="page-subtitle">
+      Mô tả ý tưởng kiểm tra bằng tiếng Việt. AI sẽ <strong>tự khám phá dữ liệu thật</strong>,
+      viết truy vấn, <strong>chạy thử</strong> rồi trình bày kết quả để quý vị duyệt trước khi lưu.
+    </p>
+  </div>
 </div>
 
 {% if error %}
-<div class="alert alert-error" style="margin-bottom:1rem">
-  ⚠️ {{ error }}
+<div class="form-alert form-alert-error" role="alert">
+  <span class="form-alert-icon">⚠️</span>
+  <div><strong>Chưa soạn được:</strong> {{ error }}</div>
 </div>
 {% endif %}
 
-<!-- AI Assist Panel -->
-<div class="card" style="border-color:var(--c-info);background:var(--c-surface-alt,#f8fafd)">
-  <h3 class="card-title" style="color:var(--c-info)">🤖 Gợi ý đặc tả từ AI</h3>
-  <p style="font-size:var(--fs-sm);color:var(--c-text-muted);margin-top:0">
-    Mô tả ý tưởng kiểm tra bằng tiếng Việt — AI sẽ sinh đặc tả (JSON) và điền vào biểu mẫu bên dưới.
-    Quý vị có thể chỉnh sửa trước khi lưu.
-  </p>
-  <div class="form-field" style="margin-bottom:0.75rem">
-    <label class="form-label">Mô tả nghiệp vụ</label>
-    <textarea id="ai-description" class="form-input" rows="3"
-              placeholder="Ví dụ: Phát hiện mã NVL có tồn kho cuối kỳ âm (closing_qty &lt; 0)&#10;Ví dụ: So sánh số lượng nhập M15 với tờ khai BCCT, cảnh báo khi lệch quá 10%"
-              style="resize:vertical"></textarea>
-  </div>
-  <div class="form-row" style="align-items:center;gap:0.75rem;margin-bottom:0">
-    <div style="display:flex;align-items:center;gap:0.5rem">
-      <label class="form-label" style="margin:0;white-space:nowrap">Loại gợi ý (tuỳ chọn):</label>
-      <select id="ai-kind-hint" class="form-select" style="max-width:20rem">
-        <option value="">— Để AI tự chọn —</option>
-        {% for k, label in kind_labels.items() %}
-          <option value="{{ k }}">{{ k }} — {{ label }}</option>
-        {% endfor %}
-      </select>
+<form method="post" action="/admin/checks/draft" class="card form-card" id="draft-form">
+  <div class="form-field">
+    <label class="form-label" for="nl_prompt">Mô tả nghiệp vụ kiểm tra <span class="req">*</span></label>
+    <textarea class="form-input" id="nl_prompt" name="nl_prompt" rows="4" required autofocus
+              placeholder="VD: Tìm các mã nguyên vật liệu có tồn kho cuối kỳ âm">{{ nl_prompt }}</textarea>
+    <div class="uc-examples">
+      <span class="form-hint">Gợi ý — bấm để dùng:</span>
+      {% for ex in examples %}
+        <button type="button" class="uc-example-chip" data-prompt="{{ ex }}">{{ ex }}</button>
+      {% endfor %}
     </div>
-    <button type="button" id="ai-gen-btn" class="btn btn-primary"
-            onclick="generateSpec()">✨ Gợi ý đặc tả</button>
   </div>
-  <div id="ai-status" style="margin-top:0.75rem;font-size:var(--fs-sm);display:none"></div>
-</div>
 
-<!-- Main form -->
-<div class="card mt-2">
-  <form method="post" action="/admin/checks" id="check-form">
+  <div class="form-grid-2">
     <div class="form-field">
-      <label class="form-label">Tiêu đề <span class="required">*</span></label>
-      <input type="text" name="title" id="field-title" class="form-input" required
-             value="{{ form.get('title', '') }}" placeholder="Ví dụ: Tồn cuối NVL âm (mở rộng)">
-    </div>
-    <div class="form-field">
-      <label class="form-label">Mô tả (hiển thị trên giao diện)</label>
-      <textarea name="description" id="field-desc" class="form-input" rows="2"
-                placeholder="Mô tả ngắn nghiệp vụ kiểm tra">{{ form.get('description', '') }}</textarea>
-    </div>
-    <div class="form-field">
-      <label class="form-label">Loại kiểm tra <span class="required">*</span></label>
-      <select name="kind" id="field-kind" class="form-select" required>
-        {% for k, label in kind_labels.items() %}
-          <option value="{{ k }}" {% if form.get('kind') == k %}selected{% endif %}>{{ k }} — {{ label }}</option>
+      <label class="form-label" for="ref_company">Doanh nghiệp tham chiếu <span class="req">*</span></label>
+      <select class="form-select" id="ref_company" name="ref_company" required>
+        {% for c in companies %}
+          <option value="{{ c.code }}" {% if c.code == ref_company %}selected{% endif %}
+                  data-years="{{ c.years | join(',') }}">{{ c.code }}{% if c.name %} — {{ c.name }}{% endif %}</option>
         {% endfor %}
       </select>
+      <p class="form-hint">AI chạy thử trên DN này để kiểm chứng truy vấn trên dữ liệu thật.</p>
     </div>
     <div class="form-field">
-      <label class="form-label">Đặc tả (JSON) <span class="required">*</span></label>
-      <textarea name="spec_json" id="field-spec" class="form-input" rows="14" required
-                style="font-family:monospace;font-size:var(--fs-sm)"
-                placeholder='{"kind": "threshold_compare", "table": "nvl_balances", ...}'>{{ form.get('spec_json', '') }}</textarea>
-      <p class="form-hint">
-        Xem <a href="/tai-lieu/scoring-methodology" target="_blank">tài liệu phương pháp luận</a>
-        và ví dụ bên dưới.
-      </p>
+      <label class="form-label" for="ref_year">Năm tham chiếu <span class="req">*</span></label>
+      <select class="form-select mono-input" id="ref_year" name="ref_year" required style="max-width:160px"></select>
     </div>
-    <div class="form-field">
-      <label class="form-label">Nhóm</label>
-      <input type="number" name="group" class="form-input" value="{{ form.get('group', 99) }}"
-             style="max-width:8rem"> <small style="color:var(--c-text-muted)">99 = Kiểm tra mở rộng (mặc định)</small>
-    </div>
-    <div class="form-field">
-      <label class="form-label">Mức độ mặc định</label>
-      <select name="default_severity" class="form-select" style="max-width:16rem">
-        <option value="warning" {% if form.get('default_severity','warning') == 'warning' %}selected{% endif %}>Cảnh báo</option>
-        <option value="critical" {% if form.get('default_severity') == 'critical' %}selected{% endif %}>Nghiêm trọng</option>
-        <option value="info" {% if form.get('default_severity') == 'info' %}selected{% endif %}>Thông tin</option>
-      </select>
-    </div>
-    <div class="form-row">
-      <button type="submit" class="btn btn-primary">Lưu bản nháp</button>
-      <a href="/admin/checks" class="btn btn-secondary">Huỷ</a>
-    </div>
-  </form>
-</div>
+  </div>
+
+  <div class="form-actions form-actions-split">
+    <a href="/admin/checks" class="btn btn-secondary">← Quay lại</a>
+    <button type="submit" class="btn btn-primary" id="draft-submit">✨ Soạn kiểm tra</button>
+  </div>
+</form>
 
 <div class="card mt-3">
-  <h3 class="card-title">Bảng dữ liệu được phép truy vấn</h3>
+  <h3 class="card-title">Dữ liệu AI được phép truy vấn (read-only)</h3>
   <ul style="font-size:var(--fs-sm);margin:0;padding-left:1.5rem">
-    <li><code>nvl_balances</code> — Mẫu 15 cân đối NVL (material_code, opening/import/reexport/repurpose/production_out/other_out/closing_qty)</li>
-    <li><code>sp_balances</code> — Mẫu 15a cân đối TP (product_code, opening/intake/repurpose/export/other_out/closing_qty)</li>
-    <li><code>declaration_lines</code> — BCCT tờ khai XNK (item_code, customs_code, quantity, unit_price, value_total…)</li>
-    <li><code>norms</code> — Mẫu 16 định mức (product_code, material_code, norm_qty)</li>
+    <li><code>nvl_balances</code> — Mẫu 15 cân đối NVL</li>
+    <li><code>sp_balances</code> — Mẫu 15a cân đối thành phẩm</li>
+    <li><code>declaration_lines</code> — BCCT tờ khai XNK</li>
+    <li><code>norms</code> — Mẫu 16 định mức</li>
   </ul>
-  <h3 class="card-title mt-3">Định dạng ngưỡng (sắp xếp tăng dần theo lt, khớp lần đầu áp dụng)</h3>
-  <pre style="font-size:var(--fs-sm);margin:0">[
-  {"lt": 5,  "severity": null},      // &lt; 5% → không phát hiện
-  {"lt": 20, "severity": "info"},    // 5–20% → Thông tin
-  {"gte": 20, "severity": "warning"} // ≥ 20% → Cảnh báo
-]</pre>
+  <p class="form-hint">Kiểm tra chỉ đọc dữ liệu, không bao giờ ghi/sửa. Kết quả luôn truy nguồn về dòng dữ liệu gốc.</p>
+</div>
+
+<div id="draft-overlay" class="draft-overlay" hidden>
+  <div class="draft-overlay-box">
+    <div class="spinner" aria-hidden="true"></div>
+    <p><strong>Đang soạn kiểm tra…</strong></p>
+    <p class="form-hint">AI đang khám phá dữ liệu, viết truy vấn và chạy thử. Có thể mất 10–40 giây.</p>
+  </div>
 </div>
 
 <script>
-async function generateSpec() {
-  const description = document.getElementById('ai-description').value.trim();
-  const kindHint = document.getElementById('ai-kind-hint').value || null;
-  const btn = document.getElementById('ai-gen-btn');
-  const status = document.getElementById('ai-status');
-
-  if (!description) {
-    showStatus('⚠️ Nhập mô tả nghiệp vụ trước khi gọi AI.', 'warning');
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = '⏳ Đang gọi AI…';
-  showStatus('Đang gọi AI sinh đặc tả…', 'info');
-
-  try {
-    const resp = await fetch('/admin/checks/generate-spec', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({description, kind_hint: kindHint}),
+(function () {
+  // Cascading year select theo DN.
+  var companySel = document.getElementById('ref_company');
+  var yearSel = document.getElementById('ref_year');
+  var preferredYear = "{{ ref_year }}";
+  function fillYears() {
+    var opt = companySel.options[companySel.selectedIndex];
+    var years = (opt && opt.dataset.years ? opt.dataset.years.split(',') : []).filter(Boolean);
+    yearSel.innerHTML = '';
+    if (!years.length) {
+      var o = document.createElement('option'); o.value = preferredYear; o.textContent = preferredYear;
+      yearSel.appendChild(o); return;
+    }
+    years.forEach(function (y) {
+      var o = document.createElement('option'); o.value = y; o.textContent = y;
+      if (y === preferredYear) o.selected = true;
+      yearSel.appendChild(o);
     });
-    const data = await resp.json();
-
-    if (data.error) {
-      showStatus('❌ ' + data.error, 'error');
-      return;
-    }
-
-    // Fill form fields from spec
-    const spec = data.spec;
-    const specStr = JSON.stringify(spec, null, 2);
-    document.getElementById('field-spec').value = specStr;
-
-    // Update kind select if spec has kind
-    if (spec.kind) {
-      const kindSel = document.getElementById('field-kind');
-      for (const opt of kindSel.options) {
-        if (opt.value === spec.kind) { kindSel.value = spec.kind; break; }
-      }
-    }
-
-    // Suggest title from title_template if title is empty
-    const titleField = document.getElementById('field-title');
-    if (!titleField.value && spec.title_template) {
-      titleField.value = spec.title_template.replace(/\{[^}]+\}/g, '…');
-    }
-
-    // Fill description with AI prompt description if empty
-    const descField = document.getElementById('field-desc');
-    if (!descField.value) {
-      descField.value = description;
-    }
-
-    showStatus('✅ Đặc tả đã được điền. Quý vị kiểm tra và chỉnh sửa nếu cần trước khi lưu.', 'success');
-  } catch (err) {
-    showStatus('❌ Lỗi kết nối: ' + err.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '✨ Gợi ý đặc tả';
   }
-}
+  companySel.addEventListener('change', fillYears);
+  fillYears();
 
-function showStatus(msg, type) {
-  const el = document.getElementById('ai-status');
-  el.style.display = 'block';
-  const colors = {
-    info: 'var(--c-info)', success: 'var(--c-success,#2d8a4e)',
-    error: 'var(--c-critical,#c0392b)', warning: 'var(--c-warning,#e67e22)',
-  };
-  el.style.color = colors[type] || 'inherit';
-  el.textContent = msg;
-}
+  // Example chips → fill prompt.
+  document.querySelectorAll('.uc-example-chip').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var ta = document.getElementById('nl_prompt');
+      ta.value = btn.dataset.prompt; ta.focus();
+    });
+  });
+
+  // Spinner overlay on submit.
+  document.getElementById('draft-form').addEventListener('submit', function () {
+    document.getElementById('draft-submit').disabled = true;
+    document.getElementById('draft-overlay').hidden = false;
+  });
+})();
 </script>
 
 {% endblock %}

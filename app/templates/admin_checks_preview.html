@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Xem trước kiểm tra — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Audit-HQ</a>
+  <span class="sep">›</span>
+  <a href="/admin/checks">Kiểm tra mở rộng</a>
+  <span class="sep">›</span>
+  Xem trước
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Xem trước kiểm tra</h1>
+    <p class="page-subtitle">
+      AI đã chạy thử trên <strong class="text-mono">{{ r.ref_company_code }}</strong> năm
+      <strong>{{ r.ref_year }}</strong>. Kiểm tra kết quả rồi quyết định lưu.
+    </p>
+  </div>
+</div>
+
+{# Banner: Bạn yêu cầu → Hệ thống hiểu #}
+<div class="intent-banner">
+  <div class="intent-cell">
+    <div class="intent-label">Quý vị yêu cầu</div>
+    <blockquote>{{ r.nl_prompt }}</blockquote>
+  </div>
+  <div class="intent-arrow" aria-hidden="true">→</div>
+  <div class="intent-cell intent-understood">
+    <div class="intent-label">Hệ thống hiểu &amp; sẽ kiểm tra</div>
+    <blockquote><strong>{{ r.title }}</strong><br>{{ r.description or "—" }}</blockquote>
+  </div>
+</div>
+
+{% set sr = r.self_review or {} %}
+{% set conf = sr.get('confidence') or 'unknown' %}
+{% set conf_badge = {'high':'info','medium':'warning','low':'critical','unknown':'muted'} %}
+{% set conf_label = {'high':'Độ tin cậy cao','medium':'Độ tin cậy trung bình','low':'Độ tin cậy thấp','unknown':'Chưa rõ độ tin cậy'} %}
+<aside class="self-review self-review-{{ conf }}">
+  <div class="self-review-head">
+    <span class="badge {{ conf_badge[conf] }}">{{ conf_label[conf] }}</span>
+    <strong>AI tự đánh giá</strong>
+  </div>
+  {% set alt = sr.get('alternative_interpretation') %}
+  {% if alt and alt | lower not in ['không có', 'khong co', 'none', 'n/a', 'không'] %}
+  <p class="self-review-alt">
+    <strong>Cách hiểu khác có thể đúng:</strong> {{ alt }}
+    <span class="form-hint"> — nếu đây mới đúng ý, hãy bấm "Soạn lại" và mô tả rõ hơn.</span>
+  </p>
+  {% endif %}
+  {% if sr.get('edge_cases_handled') %}
+  <p class="self-review-edges form-hint">Đã xử lý: {{ sr.get('edge_cases_handled') | join(', ') }}</p>
+  {% endif %}
+  {% if r.analysis %}<p class="self-review-analysis">{{ r.analysis }}</p>{% endif %}
+  {% if r.plan %}
+  <details class="self-review-plan">
+    <summary>Các bước AI đã làm ({{ r.plan | length }})</summary>
+    <ol>{% for step in r.plan %}<li>{{ step }}</li>{% endfor %}</ol>
+  </details>
+  {% endif %}
+</aside>
+
+{# Dòng nguồn khớp — để cán bộ tự kiểm chứng #}
+{% if r.matched_rows %}
+<div class="card mt-2">
+  <h3 class="card-title">Dòng dữ liệu nguồn khớp điều kiện (mẫu)</h3>
+  <p class="form-hint" style="margin-top:0">Vài dòng thực tế thoả điều kiện — kiểm chứng nhanh trước khi lưu.</p>
+  <div class="data-table-wrapper">
+    <table class="data-table compact">
+      <thead><tr>{% for col in r.matched_columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in r.matched_rows %}
+        <tr>{% for col in r.matched_columns %}<td>{{ row[col] if row[col] is not none else '—' }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# Phát hiện mẫu #}
+<div class="card mt-2">
+  <h3 class="card-title">
+    Phát hiện thử nghiệm:
+    {% if r.finding_count %}<span class="badge warning">{{ r.finding_count }} phát hiện</span>
+    {% else %}<span class="badge muted">0 phát hiện trên DN tham chiếu</span>{% endif %}
+  </h3>
+  {% if r.sample_rows %}
+  <div class="data-table-wrapper">
+    <table class="data-table compact">
+      <thead><tr><th style="width:8rem">Mức</th><th style="width:10rem">Đối tượng</th><th>Tiêu đề</th><th>Chi tiết</th></tr></thead>
+      <tbody>
+        {% for f in r.sample_rows %}
+        <tr class="row-{{ f.severity }}">
+          <td><span class="badge {{ f.severity }}">{{ severity_labels.get(f.severity, f.severity) }}</span></td>
+          <td class="code-cell">{{ f.subject_key or '—' }}</td>
+          <td>{{ f.title }}</td>
+          <td class="form-hint">{{ f.detail or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="form-hint" style="margin:0">Không có phát hiện nào trên DN tham chiếu — có thể đúng (DN này sạch),
+  hoặc điều kiện chưa khớp ý. Cân nhắc đổi DN tham chiếu hoặc soạn lại.</p>
+  {% endif %}
+</div>
+
+{# Meta + code #}
+<div class="card mt-2">
+  <dl class="check-meta-grid">
+    <dt>Loại</dt><dd><code>{{ kind_labels.get(r.kind, r.kind) }}</code></dd>
+    <dt>Mức mặc định</dt><dd>{{ severity_labels.get(r.base_severity, r.base_severity) }}</dd>
+    <dt>Nhóm điểm (scope)</dt><dd>{{ scope_labels.get(r.scope, r.scope) }}</dd>
+    <dt>Truy nguồn</dt><dd><code>{{ r.subject_table or '—' }}</code>{% if r.subject_col %} · <code>{{ r.subject_col }}</code>{% endif %}</dd>
+  </dl>
+  <details class="mt-2">
+    <summary class="card-title" style="cursor:pointer">Xem mã truy vấn ({{ kind_labels.get(r.kind, r.kind) }})</summary>
+    <pre class="uc-code-block">{% if r.kind == 'python' %}{{ r.code_snippet }}{% else %}{{ r.sql_snippet }}{% if r.detail_query %}
+
+-- Truy vấn dòng nguồn (preview):
+{{ r.detail_query }}{% endif %}{% endif %}</pre>
+  </details>
+</div>
+
+{# Form lưu #}
+<form method="post" action="/admin/checks" class="check-save-form">
+  <input type="hidden" name="nl_prompt" value="{{ r.nl_prompt }}">
+  <input type="hidden" name="kind" value="{{ r.kind }}">
+  <input type="hidden" name="title" value="{{ r.title }}">
+  <input type="hidden" name="description" value="{{ r.description }}">
+  <input type="hidden" name="base_severity" value="{{ r.base_severity }}">
+  <input type="hidden" name="scope" value="{{ r.scope }}">
+  <input type="hidden" name="subject_table" value="{{ r.subject_table or '' }}">
+  <input type="hidden" name="subject_col" value="{{ r.subject_col or '' }}">
+  <input type="hidden" name="sql_snippet" value="{{ r.sql_snippet }}">
+  <input type="hidden" name="detail_query" value="{{ r.detail_query }}">
+  <input type="hidden" name="code_snippet" value="{{ r.code_snippet }}">
+  <input type="hidden" name="analysis" value="{{ r.analysis }}">
+  <input type="hidden" name="plan_json" value="{{ plan_json }}">
+  <input type="hidden" name="self_review_json" value="{{ self_review_json }}">
+  <div class="form-actions form-actions-split">
+    <a href="/admin/checks/new" class="btn btn-secondary">↻ Soạn lại</a>
+    <button type="submit" class="btn btn-primary">💾 Lưu bản nháp</button>
+  </div>
+</form>
+
+{% endblock %}

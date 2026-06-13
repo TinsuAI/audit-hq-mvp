@@ -125,8 +125,29 @@ def denominator_for_rule(
     return denominators.get(scope, 0)
 
 
+def extended_rule_scope(session) -> dict[str, str]:
+    """RULE_SCOPE built-in + scope của các check mở rộng đã publish.
+
+    Dùng cho scoring để check tự do (X.*) được tính vào cả mẫu số lẫn trần
+    `max_raw`. Check thiếu `scope` rơi về 'nvl' (an toàn) qua `.get` ở caller.
+    """
+    from sqlalchemy import select
+
+    from app.models.check_definition import CheckDefinition, CheckStatus
+
+    scope = dict(RULE_SCOPE)
+    for code, sc in session.execute(
+        select(CheckDefinition.code, CheckDefinition.scope).where(
+            CheckDefinition.status == CheckStatus.PUBLISHED
+        )
+    ).all():
+        scope[code] = sc if sc in ("nvl", "tp", "m16") else "nvl"
+    return scope
+
+
 __all__ = [
     "RULE_SCOPE",
     "compute_denominators",
     "denominator_for_rule",
+    "extended_rule_scope",
 ]

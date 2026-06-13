@@ -1,115 +1,98 @@
-"""Tests — dynamic checks tích hợp vào run_checks pipeline."""
+"""Tests — check mở rộng (SQL) tích hợp vào run_checks pipeline + scoring."""
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from app.models import CheckDefinition, CheckStatus, Finding
+from app.models import CheckDefinition, CheckStatus, CompanyYearScore, Finding
 from app.pipeline.run_checks import run_checks
 from tests.conftest import add_nvl
 
+_SQL_NEG = (
+    "SELECT 'critical' AS severity, material_code AS subject_key, "
+    "'Tồn âm ' || material_code AS title, '' AS detail "
+    "FROM nvl_balances WHERE company_id = :company_id AND period_year = :period_year "
+    "AND closing_qty < -0.01"
+)
 
-def test_published_dynamic_check_runs_in_pipeline(session, company):
-    """Check động published được include trong run_checks tự động."""
-    cd = CheckDefinition(
-        code="X.1",
-        kind="threshold_compare",
-        title="Tồn cuối âm mở rộng",
-        description="",
-        spec={
-            "kind": "threshold_compare",
-            "table": "nvl_balances",
-            "subject_col": "material_code",
-            "metric_col": "closing_qty",
-            "thresholds": [{"lt": 0, "severity": "critical"}],
-            "title_template": "Tồn cuối {subject_key} âm",
-        },
-        status=CheckStatus.PUBLISHED,
+
+def _sql_check(code: str, status: str, sql: str = _SQL_NEG) -> CheckDefinition:
+    return CheckDefinition(
+        code=code, kind="sql", title="Tồn cuối âm (mở rộng)", description="",
+        spec={}, sql_snippet=sql, subject_table="nvl_balances",
+        subject_col="material_code", scope="nvl", default_severity="critical",
+        status=status,
     )
-    session.add(cd)
-    session.flush()
 
+
+def test_published_sql_check_runs_in_pipeline(session, company):
+    session.add(_sql_check("X.1", CheckStatus.PUBLISHED))
     add_nvl(session, company.id, material_code="NVL_BAD", closing=-5)
     add_nvl(session, company.id, material_code="NVL_OK", closing=10)
     session.commit()
 
     stats = run_checks(company.code, 2024, session=session)
 
-    # Phải có finding X.1
     findings = session.scalars(
-        select(Finding).where(
-            Finding.company_id == company.id,
-            Finding.check_code == "X.1",
-        )
+        select(Finding).where(Finding.company_id == company.id, Finding.check_code == "X.1")
     ).all()
     assert len(findings) == 1
     assert findings[0].subject_key == "NVL_BAD"
+    assert findings[0].evidence_refs[0]["table"] == "nvl_balances"
     assert "X.1" in stats.findings_per_check
 
 
-def test_draft_dynamic_check_not_run(session, company):
-    """Draft check không chạy trong pipeline."""
-    cd = CheckDefinition(
-        code="X.99",
-        kind="threshold_compare",
-        title="Draft check",
-        description="",
-        spec={
-            "kind": "threshold_compare",
-            "table": "nvl_balances",
-            "subject_col": "material_code",
-            "metric_col": "closing_qty",
-            "thresholds": [{"lt": 999999, "severity": "critical"}],
-            "title_template": "Always fire {subject_key}",
-        },
-        status=CheckStatus.DRAFT,
-    )
-    session.add(cd)
-    add_nvl(session, company.id, material_code="NVL001", closing=5)
+def test_draft_sql_check_not_run(session, company):
+    session.add(_sql_check("X.99", CheckStatus.DRAFT))
+    add_nvl(session, company.id, material_code="NVL001", closing=-5)
     session.commit()
 
     run_checks(company.code, 2024, session=session)
 
-    findings = session.scalars(
-        select(Finding).where(Finding.check_code == "X.99")
-    ).all()
-    assert findings == []
+    assert session.scalars(select(Finding).where(Finding.check_code == "X.99")).all() == []
 
 
-def test_dynamic_check_included_in_wipe(session, company):
-    """Khi chạy lại, findings X.* từ run trước bị xóa."""
-    cd = CheckDefinition(
-        code="X.1",
-        kind="threshold_compare",
-        title="T",
-        description="",
-        spec={
-            "kind": "threshold_compare",
-            "table": "nvl_balances",
-            "subject_col": "material_code",
-            "metric_col": "closing_qty",
-            "thresholds": [{"lt": 0, "severity": "critical"}],
-            "title_template": "Âm {subject_key}",
-        },
-        status=CheckStatus.PUBLISHED,
-    )
-    session.add(cd)
+def test_sql_check_findings_wiped_on_rerun(session, company):
+    session.add(_sql_check("X.1", CheckStatus.PUBLISHED))
+    add_nvl(session, company.id, material_code="NVL_BAD", closing=-5)
+    session.commit()
+
+    def _count():
+        return session.scalar(
+            select(func.count()).select_from(Finding).where(Finding.check_code == "X.1")
+        )
+
+    run_checks(company.code, 2024, session=session)
+    c1 = _count()
+    run_checks(company.code, 2024, session=session)
+    c2 = _count()
+    assert c1 == c2 == 1  # không nhân đôi
+
+
+def test_bad_sql_check_does_not_crash_run(session, company):
+    """Check published có SQL lỗi → bỏ qua, không làm hỏng cả run."""
+    session.add(_sql_check("X.1", CheckStatus.PUBLISHED, sql="SELECT broken FROM nope"))
+    add_nvl(session, company.id, material_code="N", closing=-5)
+    session.commit()
+    stats = run_checks(company.code, 2024, session=session)  # không raise
+    assert session.scalars(select(Finding).where(Finding.check_code == "X.1")).all() == []
+    assert stats is not None
+
+
+def test_published_check_counted_in_score_max_raw(session, company):
+    """Check published mở rộng scope vào max_raw (trần điểm) — không lệch trần."""
+    session.add(_sql_check("X.1", CheckStatus.PUBLISHED))
     add_nvl(session, company.id, material_code="NVL_BAD", closing=-5)
     session.commit()
 
     run_checks(company.code, 2024, session=session)
-    count_1 = session.scalar(
-        select(Finding).where(Finding.check_code == "X.1").with_only_columns(
-            __import__("sqlalchemy").func.count()
+
+    cys = session.scalar(
+        select(CompanyYearScore).where(
+            CompanyYearScore.company_id == company.id, CompanyYearScore.period_year == 2024
         )
     )
-
-    # Run lại — findings cũ phải bị wipe, không duplicate
-    run_checks(company.code, 2024, session=session)
-    count_2 = session.scalar(
-        select(Finding).where(Finding.check_code == "X.1").with_only_columns(
-            __import__("sqlalchemy").func.count()
-        )
-    )
-
-    assert count_1 == count_2 == 1
+    assert cys is not None
+    # 17 built-in + 1 published dynamic = 18 rule → max_raw = 18*10 + 20 = 200.
+    assert cys.breakdown["max_raw"] == 200.0
+    assert "X.1" in cys.breakdown["rule_scores"]

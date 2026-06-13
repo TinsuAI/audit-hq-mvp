@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.checks.denominators import compute_denominators
+from app.checks.denominators import compute_denominators, extended_rule_scope
 from app.checks.scoring import compute_company_year_score
 from app.models import Company, CompanyYearScore, Finding
 
@@ -28,7 +28,9 @@ def recompute_company_year(session: Session, company_id: int, year: int) -> Comp
         )
     ).all()
     denominators = compute_denominators(session, company_id, year)
-    breakdown = compute_company_year_score(findings, denominators)
+    breakdown = compute_company_year_score(
+        findings, denominators, rule_scope=extended_rule_scope(session)
+    )
 
     cys = session.scalar(
         select(CompanyYearScore).where(

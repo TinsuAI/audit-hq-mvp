@@ -128,12 +128,17 @@ def tier_css_for(score: int) -> str:
 def compute_company_year_score(
     findings: Iterable[Finding],
     denominators: dict[str, int],
+    rule_scope: dict[str, str] | None = None,
 ) -> dict:
     """Score 0-1000 + tier + breakdown chi tiết cho 1 (DN, năm).
 
     Args:
         findings: tất cả Finding của (DN, năm), bao gồm cả COMBO_*.
         denominators: dict {nvl, tp, m16} từ `compute_denominators`.
+        rule_scope: map check_code → scope. Mặc định = built-in RULE_SCOPE.
+            Truyền map MỞ RỘNG (built-in + check mở rộng đã publish) để cả mẫu số
+            lẫn trần `max_raw` tính cả check tự do — nếu không, check X.* đẩy `raw`
+            lên mà `max_raw` cố định → lệch trần.
 
     Returns:
         {
@@ -147,6 +152,9 @@ def compute_company_year_score(
         }
     """
     from app.checks.denominators import RULE_SCOPE
+
+    if rule_scope is None:
+        rule_scope = RULE_SCOPE
 
     findings_list = list(findings)
 
@@ -162,7 +170,7 @@ def compute_company_year_score(
 
     rule_scores: dict[str, float] = {}
     for code, fs in by_rule.items():
-        scope = RULE_SCOPE.get(code, "nvl")
+        scope = rule_scope.get(code, "nvl")
         denom = denominators.get(scope, 0)
         score = compute_rule_score(fs, denom)
         if score > 0:
@@ -171,8 +179,8 @@ def compute_company_year_score(
     combo_bonus = COMBO_BONUS if has_combo else 0
     raw = sum(rule_scores.values()) + combo_bonus
 
-    # Trần lý thuyết: mọi rule trong RULE_SCOPE đều fire max + 1 combo.
-    max_raw = len(RULE_SCOPE) * MAX_RULE_SCORE + COMBO_BONUS
+    # Trần lý thuyết: mọi rule trong rule_scope đều fire max + 1 combo.
+    max_raw = len(rule_scope) * MAX_RULE_SCORE + COMBO_BONUS
 
     score = round(1000 * raw / max_raw) if max_raw > 0 else 0
     score = max(0, min(1000, score))

@@ -1,214 +1,121 @@
-"""Tests — AI spec generation cho catalog động."""
+"""Tests — spec_gen: agentic tool-loop soạn check từ NL (mock LLM client)."""
 
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace as NS
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
 
-import app.database as dbmod
-from app.auth_users import seed_default_admin
-from app.checks.spec_gen import SpecGenError, generate_spec
-from app.database import Base, SessionLocal, engine
-from app.main import app
+import app.checks.spec_gen as sg
+from app.checks.spec_gen import SpecGenError, draft_and_validate
+from tests.conftest import add_nvl
 
-# ---------------------------------------------------------------------------
-# Unit tests — generate_spec()
-# ---------------------------------------------------------------------------
-
-VALID_THRESHOLD_SPEC = {
-    "kind": "threshold_compare",
-    "table": "nvl_balances",
-    "subject_col": "material_code",
-    "metric_col": "closing_qty",
-    "thresholds": [{"lt": 0, "severity": "critical"}],
-    "title_template": "Tồn cuối {subject_key} âm ({value:.2f})",
-}
+_SQL_OK = (
+    "SELECT 'critical' AS severity, material_code AS subject_key, "
+    "'Tồn âm ' || material_code AS title, 'c=' || closing_qty AS detail "
+    "FROM nvl_balances WHERE company_id = :company_id AND period_year = :period_year "
+    "AND closing_qty < -0.01"
+)
 
 
-def _make_mock_response(content: str):
-    """Build minimal OpenAI-style response mock."""
-    msg = MagicMock()
-    msg.content = content
-    choice = MagicMock()
-    choice.message = msg
-    resp = MagicMock()
-    resp.choices = [choice]
-    return resp
+def _good_payload(**over):
+    p = {
+        "plan": ["Bảng nvl_balances", "Lọc closing_qty < -0.01", "subject material_code"],
+        "analysis": "Tìm mã NVL tồn cuối âm.",
+        "slug_hint": "ton-am", "title": "Tồn cuối NVL âm",
+        "description": "Mã NVL có tồn cuối kỳ âm.", "base_severity": "critical",
+        "scope": "nvl", "subject_table": "nvl_balances", "subject_col": "material_code",
+        "kind": "sql", "sql_snippet": _SQL_OK,
+        "self_review": {"confidence": "high", "alternative_interpretation": "không có",
+                        "edge_cases_handled": ["sai số -0.01"]},
+    }
+    p.update(over)
+    return p
 
 
-class TestGenerateSpec:
-    def test_returns_valid_spec(self):
-        """AI trả về JSON hợp lệ → generate_spec parse và validate."""
-        mock_resp = _make_mock_response(json.dumps(VALID_THRESHOLD_SPEC))
-        with patch("app.checks.spec_gen._call_ai", return_value=mock_resp):
-            spec = generate_spec("Tồn cuối NVL âm")
-        assert spec["kind"] == "threshold_compare"
-        assert spec["table"] == "nvl_balances"
-
-    def test_strips_markdown_fences(self):
-        """AI hay wrap JSON trong ```json``` block."""
-        content = "```json\n" + json.dumps(VALID_THRESHOLD_SPEC) + "\n```"
-        mock_resp = _make_mock_response(content)
-        with patch("app.checks.spec_gen._call_ai", return_value=mock_resp):
-            spec = generate_spec("Tồn cuối NVL âm")
-        assert spec["kind"] == "threshold_compare"
-
-    def test_invalid_json_raises_spec_gen_error(self):
-        """AI trả về text không phải JSON → SpecGenError."""
-        mock_resp = _make_mock_response("Tôi xin lỗi, tôi không hiểu yêu cầu.")
-        with patch("app.checks.spec_gen._call_ai", return_value=mock_resp):
-            with pytest.raises(SpecGenError, match="JSON"):
-                generate_spec("mô tả không rõ")
-
-    def test_invalid_spec_kind_raises(self):
-        """AI trả JSON hợp lệ nhưng kind không hợp lệ → SpecGenError."""
-        bad_spec = {**VALID_THRESHOLD_SPEC, "kind": "magic_check"}
-        mock_resp = _make_mock_response(json.dumps(bad_spec))
-        with patch("app.checks.spec_gen._call_ai", return_value=mock_resp):
-            with pytest.raises(SpecGenError, match="kind"):
-                generate_spec("mô tả")
-
-    def test_invalid_table_raises(self):
-        """Table không hợp lệ → SpecGenError."""
-        bad_spec = {**VALID_THRESHOLD_SPEC, "table": "DROP TABLE findings"}
-        mock_resp = _make_mock_response(json.dumps(bad_spec))
-        with patch("app.checks.spec_gen._call_ai", return_value=mock_resp):
-            with pytest.raises(SpecGenError):
-                generate_spec("mô tả")
-
-    def test_kind_hint_included_in_prompt(self):
-        """kind_hint được truyền vào và có mặt trong prompt gọi AI."""
-        mock_resp = _make_mock_response(json.dumps(VALID_THRESHOLD_SPEC))
-        with patch("app.checks.spec_gen._call_ai", return_value=mock_resp) as mock_call:
-            generate_spec("test description", kind_hint="ratio_threshold")
-        call_args = mock_call.call_args
-        messages = call_args[1]["messages"] if call_args[1] else call_args[0][0]
-        # Verify kind_hint appears somewhere in the messages
-        all_content = " ".join(
-            m.get("content", "") if isinstance(m, dict) else str(m)
-            for m in messages
-        )
-        assert "ratio_threshold" in all_content
-
-    def test_all_five_kinds_in_prompt(self):
-        """Prompt bao gồm ví dụ cho cả 5 kind."""
-        mock_resp = _make_mock_response(json.dumps(VALID_THRESHOLD_SPEC))
-        with patch("app.checks.spec_gen._call_ai", return_value=mock_resp) as mock_call:
-            generate_spec("test")
-        call_args = mock_call.call_args
-        messages = call_args[1]["messages"] if call_args[1] else call_args[0][0]
-        all_content = " ".join(
-            m.get("content", "") if isinstance(m, dict) else str(m)
-            for m in messages
-        )
-        for kind in ["threshold_compare", "presence_check", "aggregate_threshold",
-                     "cross_table_match", "ratio_threshold"]:
-            assert kind in all_content, f"Kind {kind!r} thiếu trong prompt"
+def _tc(name, args, tid="t1"):
+    return NS(id=tid, type="function", function=NS(name=name, arguments=json.dumps(args)))
 
 
-# ---------------------------------------------------------------------------
-# Route tests — POST /admin/checks/generate-spec
-# ---------------------------------------------------------------------------
+class _FakeCompletions:
+    def __init__(self, script):
+        self.script = script
+        self.i = 0
 
-def _setup_db():
-    new_engine = dbmod.create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
-    new_session = dbmod.sessionmaker(
-        bind=new_engine, autoflush=False, autocommit=False, future=True,
-    )
-    dbmod.engine = new_engine
-    dbmod.SessionLocal = new_session
-    Base.metadata.create_all(new_engine)
-    with new_session() as db:
-        seed_default_admin(db, "admin", "admin")
-    return new_engine, new_session
+    def create(self, **kw):
+        turn = self.script[min(self.i, len(self.script) - 1)]
+        self.i += 1
+        return NS(choices=[NS(message=NS(
+            content=turn.get("content", ""), tool_calls=turn.get("tool_calls"),
+        ))])
 
 
-def _teardown(new_engine):
-    new_engine.dispose()
-    dbmod.engine = engine
-    dbmod.SessionLocal = SessionLocal
+def _fake_client(script):
+    return NS(chat=NS(completions=_FakeCompletions(script)))
 
 
-class TestGenerateSpecRoute:
-    def test_requires_admin(self):
-        eng, sess = _setup_db()
-        try:
-            from app.auth import SessionUser, make_session_cookie
-            from app.models.user import ROLE_OFFICER
-            cookie = make_session_cookie(SessionUser(name="officer", role=ROLE_OFFICER))
-            client = TestClient(app)
-            r = client.post("/admin/checks/generate-spec",
-                            json={"description": "test"},
-                            cookies={"ahq_session": cookie})
-            assert r.status_code == 403
-        finally:
-            _teardown(eng)
+@pytest.fixture
+def _seed(session, company):
+    add_nvl(session, company.id, material_code="NVL_BAD", closing=-5)
+    add_nvl(session, company.id, material_code="NVL_OK", closing=10)
+    session.commit()
+    return company
 
-    def test_returns_spec_on_success(self):
-        eng, sess = _setup_db()
-        try:
-            mock_resp = _make_mock_response(json.dumps(VALID_THRESHOLD_SPEC))
-            with patch("app.checks.spec_gen._call_ai", return_value=mock_resp):
-                from app.auth import SessionUser, make_session_cookie
-                from app.models.user import ROLE_ADMIN
-                cookie = make_session_cookie(SessionUser(name="admin", role=ROLE_ADMIN))
-                client = TestClient(app)
-                r = client.post(
-                    "/admin/checks/generate-spec",
-                    json={"description": "Tồn cuối NVL âm", "kind_hint": "threshold_compare"},
-                    cookies={"ahq_session": cookie},
-                )
-            assert r.status_code == 200
-            data = r.json()
-            assert data["error"] is None
-            assert data["spec"]["kind"] == "threshold_compare"
-        finally:
-            _teardown(eng)
 
-    def test_returns_error_on_ai_failure(self):
-        eng, sess = _setup_db()
-        try:
-            with patch("app.checks.spec_gen._call_ai", side_effect=Exception("AI timeout")):
-                from app.auth import SessionUser, make_session_cookie
-                from app.models.user import ROLE_ADMIN
-                cookie = make_session_cookie(SessionUser(name="admin", role=ROLE_ADMIN))
-                client = TestClient(app)
-                r = client.post(
-                    "/admin/checks/generate-spec",
-                    json={"description": "test"},
-                    cookies={"ahq_session": cookie},
-                )
-            assert r.status_code == 200
-            data = r.json()
-            assert data["spec"] is None
-            assert data["error"] is not None
-        finally:
-            _teardown(eng)
+def test_full_loop_success(session, _seed, monkeypatch):
+    script = [
+        {"tool_calls": [_tc("get_table_schema", {"table": "nvl_balances"})]},
+        {"tool_calls": [_tc("submit_final_answer", {"payload": _good_payload()})]},
+    ]
+    client = _fake_client(script)
+    monkeypatch.setattr(sg, "make_client", lambda: client)
+    r = draft_and_validate(session, _seed.id, 2024, "Tìm mã NVL tồn cuối âm")
+    assert r.kind == "sql"
+    assert r.scope == "nvl"
+    assert r.subject_table == "nvl_balances"
+    assert r.self_review.get("confidence") == "high"
+    assert r.plan and len(r.plan) == 3
+    assert r.finding_count == 1  # NVL_BAD matched in dry-run
+    assert r.sample_rows[0]["subject_key"] == "NVL_BAD"
 
-    def test_empty_description_returns_error(self):
-        eng, sess = _setup_db()
-        try:
-            from app.auth import SessionUser, make_session_cookie
-            from app.models.user import ROLE_ADMIN
-            cookie = make_session_cookie(SessionUser(name="admin", role=ROLE_ADMIN))
-            client = TestClient(app)
-            r = client.post(
-                "/admin/checks/generate-spec",
-                json={"description": ""},
-                cookies={"ahq_session": cookie},
-            )
-            assert r.status_code == 200
-            data = r.json()
-            assert data["spec"] is None
-            assert data["error"] is not None
-        finally:
-            _teardown(eng)
+
+def test_retry_on_oracle_failure(session, _seed, monkeypatch):
+    """Lần đầu SQL thiếu :company_id → oracle reject → lần 2 hợp lệ."""
+    bad = _good_payload(sql_snippet="SELECT 'info' AS severity, material_code AS subject_key, "
+                        "'x' AS title, '' AS detail FROM nvl_balances WHERE period_year = :period_year")
+    script = [
+        {"tool_calls": [_tc("submit_final_answer", {"payload": bad})]},
+        {"tool_calls": [_tc("submit_final_answer", {"payload": _good_payload()})]},
+    ]
+    client = _fake_client(script)
+    monkeypatch.setattr(sg, "make_client", lambda: client)
+    r = draft_and_validate(session, _seed.id, 2024, "Tìm mã NVL tồn cuối âm", max_retries=2)
+    assert r.title == "Tồn cuối NVL âm"
+
+
+def test_no_tool_call_raises(session, _seed, monkeypatch):
+    script = [{"content": "Xin chào, đây là check của bạn.", "tool_calls": None}]
+    client = _fake_client(script)
+    monkeypatch.setattr(sg, "make_client", lambda: client)
+    with pytest.raises(SpecGenError):
+        draft_and_validate(session, _seed.id, 2024, "mô tả")
+
+
+def test_dry_run_failure_then_retry(session, _seed, monkeypatch):
+    """SQL tham chiếu cột không tồn tại → dry-run lỗi → retry."""
+    bad = _good_payload(sql_snippet="SELECT 'info' AS severity, nope AS subject_key, 'x' AS title, "
+                        "'' AS detail FROM nvl_balances WHERE company_id=:company_id AND period_year=:period_year")  # noqa: E501
+    script = [
+        {"tool_calls": [_tc("submit_final_answer", {"payload": bad})]},
+        {"tool_calls": [_tc("submit_final_answer", {"payload": _good_payload()})]},
+    ]
+    client = _fake_client(script)
+    monkeypatch.setattr(sg, "make_client", lambda: client)
+    r = draft_and_validate(session, _seed.id, 2024, "Tìm mã NVL tồn cuối âm", max_retries=2)
+    assert r.finding_count == 1
+
+
+def test_empty_prompt_raises(session, company):
+    with pytest.raises(SpecGenError):
+        draft_and_validate(session, company.id, 2024, "   ")

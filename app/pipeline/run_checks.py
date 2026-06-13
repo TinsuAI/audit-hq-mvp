@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.checks import ALL_CHECKS
 from app.checks.combos import detect_combos
 from app.checks.company_type import CompanyType, detect_company_type
-from app.checks.dynamic_runner import DynamicCheckRunner
+from app.checks.sql_runner import CheckRunError, run_check
 from app.database import SessionLocal
 from app.models import Company, Finding
 from app.models.check_definition import CheckDefinition, CheckStatus
@@ -82,15 +82,15 @@ def run_checks(
             )
         )
 
-        # Load dynamic checks (published) từ DB.
+        # Load dynamic checks (published) từ DB — kind 'sql' | 'python'.
         from sqlalchemy import select as _select
         dynamic_rows = s.scalars(
             _select(CheckDefinition).where(CheckDefinition.status == CheckStatus.PUBLISHED)
         ).all()
-        dynamic_checks = {row.code: DynamicCheckRunner(row.code, row.spec) for row in dynamic_rows}
+        dynamic_defs = {row.code: row for row in dynamic_rows}
 
         # Merge: built-in + dynamic. Built-in codes có priority nếu conflict.
-        all_codes = set(codes_to_run) | set(dynamic_checks)
+        all_codes = set(codes_to_run) | set(dynamic_defs)
         if only is not None:
             all_codes = all_codes & only
 
@@ -99,8 +99,16 @@ def run_checks(
             if code in ALL_CHECKS:
                 fn = ALL_CHECKS[code]
                 findings = fn(s, company.id, year)
-            elif code in dynamic_checks:
-                findings = dynamic_checks[code].run(s, company.id, year)
+            elif code in dynamic_defs:
+                # Check tự do (SQL/Python) — lỗi 1 check không được làm hỏng cả run.
+                try:
+                    findings = run_check(dynamic_defs[code], s, company.id, year)
+                except CheckRunError as exc:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "Check mở rộng %s lỗi khi chạy, bỏ qua: %s", code, exc
+                    )
+                    findings = []
             else:
                 continue
             for f in findings:
@@ -126,12 +134,14 @@ def run_checks(
             )
         ).all()
 
-        from app.checks.denominators import compute_denominators
+        from app.checks.denominators import compute_denominators, extended_rule_scope
         from app.checks.scoring import compute_company_year_score
         from app.models import CompanyYearScore
 
         denominators = compute_denominators(s, company.id, year)
-        breakdown = compute_company_year_score(all_year_findings, denominators)
+        breakdown = compute_company_year_score(
+            all_year_findings, denominators, rule_scope=extended_rule_scope(s)
+        )
         year_score = breakdown["score"]
 
         # Upsert CompanyYearScore cho (DN, năm).
