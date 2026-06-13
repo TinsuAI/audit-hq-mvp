@@ -8,7 +8,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -32,12 +32,14 @@ from app.items.operations import classify_operation, operation_label
 from app.models import (
     Company,
     CompanyYearScore,
+    DataFile,
     DeclarationLine,
     Finding,
     Norm,
     NvlBalance,
     SpBalance,
 )
+from app.models.data_file import SLOT_LABEL_VI, SLOT_ORDER
 from app.pipeline.export import build_export
 from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.validate import diagnose_upload
@@ -70,6 +72,24 @@ templates.env.globals["STATUS_LABEL"] = STATUS_LABEL_VI
 templates.env.globals["ALLOWED_STATUSES"] = sorted(ALLOWED_STATUSES)
 templates.env.globals["app_version"] = VERSION
 templates.env.globals["app_version_string"] = version_string()
+
+# Nhãn cho trang quản lý tài liệu (ma trận năm × loại file BCQT).
+templates.env.globals["SLOT_LABEL_VI"] = SLOT_LABEL_VI
+templates.env.globals["SLOT_ORDER"] = list(SLOT_ORDER)
+DATA_FILE_STATUS_LABEL = {
+    "pending": "Chưa nạp",
+    "ok": "Đã nạp",
+    "warning": "Cảnh báo",
+    "error": "Lỗi",
+}
+DATA_FILE_STATUS_BADGE = {
+    "pending": "muted",
+    "ok": "info",
+    "warning": "warning",
+    "error": "critical",
+}
+templates.env.globals["DATA_FILE_STATUS_LABEL"] = DATA_FILE_STATUS_LABEL
+templates.env.globals["DATA_FILE_STATUS_BADGE"] = DATA_FILE_STATUS_BADGE
 
 
 def _timeline_payload(lines: list) -> list[dict]:
@@ -178,7 +198,6 @@ def list_companies(
     )
 
 
-CODE_RE = re.compile(r"^[A-Z][A-Z0-9_-]{1,30}$")
 DEMO_SUFFIX = "(Demo)"
 YEAR_MIN, YEAR_MAX = 2015, 2030
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB per file
@@ -192,15 +211,10 @@ _UPLOAD_SLOTS = {
 }
 
 
-def _save_upload(upload: UploadFile, dest: Path) -> int:
+def _write_upload_stream(upload: UploadFile, dest: Path) -> int:
+    """Ghi 1 upload ra `dest` theo chunk, enforce giới hạn dung lượng. KHÔNG đụng
+    file khác — caller tự quyết việc thay/giữ file cũ (an toàn, không glob mù)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    # Wipe other files in cùng subdir cùng slot (tránh discover pick file cũ).
-    for sibling in dest.parent.glob(f"{dest.stem.split('_')[0]}*{dest.suffix}"):
-        if sibling != dest:
-            try:
-                sibling.unlink()
-            except OSError:
-                pass
     written = 0
     with dest.open("wb") as f:
         while chunk := upload.file.read(1024 * 1024):
@@ -214,6 +228,24 @@ def _save_upload(upload: UploadFile, dest: Path) -> int:
     return written
 
 
+def _save_upload(upload: UploadFile, dest: Path, slot: str) -> int:
+    """Lưu upload vào slot canonical (multi-slot form): thay file CÙNG SLOT đã có.
+
+    Dọn theo phân loại slot (`_classify_slot`) thay vì glob prefix — glob cũ
+    `M15*` còn xoá nhầm `M15a*` (cùng slot khác nhau trong BCQT/)."""
+    from app.pipeline.data_files import _classify_slot
+
+    subdir = dest.parent.name
+    for p in list(dest.parent.glob("*")):
+        if (
+            p.is_file()
+            and p.suffix.lower() in {".xls", ".xlsx"}
+            and _classify_slot(subdir, p.name) == slot
+        ):
+            p.unlink(missing_ok=True)
+    return _write_upload_stream(upload, dest)
+
+
 @router.get("/companies/new", response_class=HTMLResponse)
 def new_company_form(
     request: Request,
@@ -225,10 +257,22 @@ def new_company_form(
     )
 
 
+def _next_company_code(db: Session) -> str:
+    """Tự sinh mã DN kế tiếp dạng DN_NNN (khoá nội bộ cho URL + thư mục file).
+
+    Người dùng không phải nhập mã — định danh thật là Tên DN + MST.
+    """
+    nums = []
+    for c in db.scalars(select(Company.code).where(Company.code.like("DN\\_%", escape="\\"))).all():
+        m = re.match(r"^DN_(\d+)$", c)
+        if m:
+            nums.append(int(m.group(1)))
+    return f"DN_{(max(nums) + 1) if nums else 1:03d}"
+
+
 @router.post("/companies", response_model=None)
 def create_company(
     request: Request,
-    code: str = Form(...),
     name: str = Form(""),
     tax_id: str = Form(""),
     address: str = Form(""),
@@ -236,14 +280,13 @@ def create_company(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse | RedirectResponse:
-    code = code.strip().upper()
     name = name.strip()
     tax_id = tax_id.strip() or None
     address = address.strip() or None
     industry = industry.strip() or None
 
     form_state = {
-        "code": code, "name": name, "tax_id": tax_id or "",
+        "name": name, "tax_id": tax_id or "",
         "address": address or "", "industry": industry or "",
     }
 
@@ -254,16 +297,15 @@ def create_company(
             status_code=400,
         )
 
-    if not CODE_RE.match(code):
-        return _err("Mã DN không hợp lệ. Chỉ dùng chữ HOA + số + _ - (bắt đầu bằng chữ, tối đa 31 ký tự).")
-    if db.scalar(select(Company).where(Company.code == code)) is not None:
-        return _err(f"Mã DN '{code}' đã tồn tại.")
+    if not name:
+        return _err("Vui lòng nhập Tên doanh nghiệp.")
 
     # Demo mode: force (Demo) suffix vào tên — tránh nhầm với DN thật.
-    display_name = name or code
+    display_name = name
     if DEMO_SUFFIX not in display_name:
         display_name = f"{display_name} {DEMO_SUFFIX}"
 
+    code = _next_company_code(db)  # mã tự sinh, không nhận từ form
     company = Company(
         code=code, name=display_name, tax_id=tax_id, address=address,
         industry=industry, risk_score=0,
@@ -271,7 +313,7 @@ def create_company(
     db.add(company)
     db.commit()
 
-    return RedirectResponse(url=f"/companies/{code}/upload", status_code=303)
+    return RedirectResponse(url=f"/companies/{code}/documents", status_code=303)
 
 
 @router.get("/companies/{code}/edit", response_class=HTMLResponse)
@@ -339,12 +381,15 @@ def upload_form(
     company = db.scalar(select(Company).where(Company.code == code))
     if company is None:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    from datetime import date
+    selected = year or date.today().year
     return templates.TemplateResponse(
         request, "upload_data.html",
         {
             "user": user,
             "company": company,
-            "year": year or 2024,
+            "year": selected,
+            "year_options": _year_options(selected),
             "year_min": YEAR_MIN,
             "year_max": YEAR_MAX,
             "error": error,
@@ -381,7 +426,7 @@ def upload_data(
             raise HTTPException(status_code=400, detail=f"{slot}: chỉ chấp nhận .xls / .xlsx (gặp {ext})")
         subdir, stem = _UPLOAD_SLOTS[slot]
         dest = base / subdir / f"{stem}_{year}{ext}"
-        _save_upload(upload, dest)
+        _save_upload(upload, dest, slot)
         saved_any = True
 
     if not saved_any:
@@ -390,10 +435,18 @@ def upload_data(
             status_code=303,
         )
 
+    # Cập nhật registry file ngay sau khi lưu (kể cả khi sắp báo lỗi chẩn đoán).
+    from app.pipeline.data_files import record_parse_result, sync_data_files
+    sync_data_files(db, company)
+
     # CHẨN ĐOÁN trước khi nạp — chống misparse thầm lặng (file HQ sai mẫu/lệch cột).
     diagnosis = diagnose_upload(code, year, Path(settings.raw_data_path))
     if diagnosis.has_errors:
         from app.ai.config import get_setting
+        from app.pipeline.ingest import IngestStats
+        record_parse_result(
+            db, company, year, IngestStats(company_code=code, period_year=year), diagnosis,
+        )
         try:
             ai_enabled = bool(get_setting("enabled")) and bool(get_setting("api_key"))
         except Exception:  # noqa: BLE001 — AI optional, đừng để lỗi config chặn upload
@@ -402,6 +455,7 @@ def upload_data(
             request, "upload_data.html",
             {
                 "user": user, "company": company, "year": year,
+                "year_options": _year_options(year),
                 "year_min": YEAR_MIN, "year_max": YEAR_MAX, "error": None,
                 "diagnosis": diagnosis, "ai_enabled": ai_enabled,
             },
@@ -410,13 +464,17 @@ def upload_data(
 
     # Không lỗi nặng → NẠP dữ liệu (ingest). KHÔNG tự chạy kiểm tra (bước riêng).
     try:
-        run_ingest(code, year, raw_root=Path(settings.raw_data_path))
+        stats = run_ingest(code, year, raw_root=Path(settings.raw_data_path))
     except FileNotFoundError as e:
         raise HTTPException(status_code=400, detail=f"Discover lỗi: {e}") from e
     except Exception as e:  # noqa: BLE001 — show parser errors back to user
         raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
 
-    return RedirectResponse(url=f"/companies/{code}?year={year}&ingested=1", status_code=303)
+    record_parse_result(db, company, year, stats, diagnosis)
+    return RedirectResponse(
+        url=f"/companies/{code}/documents?msg=%C4%90%C3%A3+t%E1%BA%A3i+l%C3%AAn+%26+n%E1%BA%A1p+d%E1%BB%AF+li%E1%BB%87u+n%C4%83m+{year}",
+        status_code=303,
+    )
 
 
 @router.post("/companies/{code}/diagnose-ai", response_model=None)
@@ -452,9 +510,322 @@ def diagnose_ai(
         request, "upload_data.html",
         {
             "user": user, "company": company, "year": year,
+            "year_options": _year_options(year),
             "year_min": YEAR_MIN, "year_max": YEAR_MAX, "error": None,
             "diagnosis": diagnosis, "ai_enabled": True, "ai_result": ai_result,
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Quản lý tài liệu (documents) — ma trận năm × loại file BCQT
+# ---------------------------------------------------------------------------
+
+
+def _human_size(n: int | None) -> str:
+    if not n:
+        return "—"
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"
+
+
+def _data_years(db: Session, company_id: int) -> set[int]:
+    """Năm có dữ liệu Tầng 1 đã nạp (gộp 4 bảng)."""
+    years: set[int] = set()
+    for model in (NvlBalance, SpBalance, Norm, DeclarationLine):
+        years |= set(
+            db.scalars(
+                select(model.period_year).where(model.company_id == company_id).distinct()
+            ).all()
+        )
+    return years
+
+
+def _total_rows(db: Session, company_id: int, year: int) -> int:
+    """Tổng số dòng Tầng 1 đã nạp cho (DN, năm) — gộp 4 bảng."""
+    total = 0
+    for model in (NvlBalance, SpBalance, Norm, DeclarationLine):
+        total += db.scalar(
+            select(func.count()).select_from(model).where(
+                model.company_id == company_id, model.period_year == year
+            )
+        ) or 0
+    return total
+
+
+def _year_options(selected: int | None = None) -> list[int]:
+    """Danh sách năm gần đây cho dropdown chọn năm (gồm năm đang chọn nếu lệch range)."""
+    from datetime import date
+    this_year = date.today().year
+    opts = [y for y in range(this_year, this_year - 9, -1) if YEAR_MIN <= y <= YEAR_MAX]
+    if selected and selected not in opts and YEAR_MIN <= selected <= YEAR_MAX:
+        opts = sorted(set(opts) | {selected}, reverse=True)
+    return opts
+
+
+def _doc_year_status(has_files: bool, has_data: bool, total_rows: int) -> tuple[str, str]:
+    """Một nhãn trạng thái DUY NHẤT cho 1 năm — không để mâu thuẫn 'đã nạp' vs 'chưa có file'."""
+    if has_data:
+        if has_files:
+            return f"Đã nạp · {total_rows:,} dòng", "ok"
+        return "Đã nạp trước đó · file gốc không còn lưu", "warn"
+    if has_files:
+        return "Có file · chưa nạp", "pending"
+    return "Chưa có dữ liệu", "empty"
+
+
+def _resolve_within_root(rel_path: str) -> Path:
+    """Resolve stored_path tuyệt đối, đảm bảo nằm trong raw_data_path (chống traversal)."""
+    raw_root = Path(settings.raw_data_path).resolve()
+    abs_path = (raw_root / rel_path).resolve()
+    if raw_root not in abs_path.parents and abs_path != raw_root:
+        raise HTTPException(status_code=400, detail="Đường dẫn file không hợp lệ")
+    return abs_path
+
+
+@router.get("/companies/{code}/documents", response_class=HTMLResponse)
+def company_documents(
+    code: str,
+    request: Request,
+    msg: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    add: int | None = Query(default=None),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+
+    from app.pipeline.data_files import files_by_year_slot, sync_data_files
+
+    # Reconcile registry với filesystem (bắt file demo có sẵn / xoá ngoài app).
+    sync_data_files(db, company)
+    matrix = files_by_year_slot(db, company)
+
+    data_years = _data_years(db, company.id)
+    finding_years = set(
+        db.scalars(
+            select(Finding.period_year).where(Finding.company_id == company.id).distinct()
+        ).all()
+    )
+    score_rows = db.scalars(
+        select(CompanyYearScore).where(CompanyYearScore.company_id == company.id)
+    ).all()
+    scores = {r.period_year: r for r in score_rows}
+
+    years = set(matrix) | data_years | finding_years
+    # "+ Thêm năm" → hiển thị năm trống (chưa có gì) để upload vào.
+    added_empty = add if (add and YEAR_MIN <= add <= YEAR_MAX and add not in years) else None
+    if added_empty:
+        years.add(added_empty)
+    years = sorted(years, reverse=True)
+
+    year_rows = []
+    for i, y in enumerate(years):
+        slots = {slot: matrix.get(y, {}).get(slot, []) for slot in SLOT_ORDER}
+        has_files = any(slots.values())
+        has_data = y in data_years
+        total_rows = _total_rows(db, company.id, y) if has_data else 0
+        status_label, status_kind = _doc_year_status(has_files, has_data, total_rows)
+        year_rows.append({
+            "year": y,
+            "slots": slots,
+            "has_files": has_files,
+            "has_data": has_data,
+            "total_rows": total_rows,
+            "status_label": status_label,
+            "status_kind": status_kind,
+            "checks_run": y in scores or y in finding_years,
+            "score": scores[y].score if y in scores else None,
+            "tier": scores[y].tier if y in scores else None,
+            # Mở sẵn: năm vừa thêm, hoặc năm mới nhất nếu không thêm.
+            "open": (y == added_empty) if added_empty else (i == 0),
+        })
+
+    # Năm có thể thêm: vài năm gần đây chưa có trong danh sách.
+    from datetime import date
+    this_year = date.today().year
+    present = set(years)
+    add_years = [
+        y for y in range(this_year, this_year - 8, -1)
+        if YEAR_MIN <= y <= YEAR_MAX and y not in present
+    ]
+
+    return templates.TemplateResponse(
+        request,
+        "company_documents.html",
+        {
+            "user": user,
+            "company": company,
+            "year_rows": year_rows,
+            "add_years": add_years,
+            "year_min": YEAR_MIN,
+            "year_max": YEAR_MAX,
+            "human_size": _human_size,
+            "msg": msg,
+            "error": error,
+        },
+    )
+
+
+@router.post("/companies/{code}/documents/upload", response_model=None)
+def documents_upload_cell(
+    code: str,
+    year: int = Form(...),
+    slot: str = Form(...),
+    file: UploadFile | None = File(default=None),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Tải lên 1 ô (năm × loại). m15/m15a/m16 thay thế (1 file/ô); bcct cộng thêm."""
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    if slot not in _UPLOAD_SLOTS:
+        raise HTTPException(status_code=400, detail=f"Loại tài liệu không hợp lệ: {slot}")
+    if not (YEAR_MIN <= year <= YEAR_MAX):
+        raise HTTPException(status_code=400, detail=f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
+
+    def _redirect(params: str) -> RedirectResponse:
+        return RedirectResponse(url=f"/companies/{code}/documents?{params}", status_code=303)
+
+    if not file or not file.filename:
+        return _redirect("error=Ch%C6%B0a+ch%E1%BB%8Dn+file")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in {".xls", ".xlsx"}:
+        return _redirect("error=Ch%E1%BB%89+ch%E1%BA%A5p+nh%E1%BA%ADn+.xls+/+.xlsx")
+
+    raw_root = Path(settings.raw_data_path)
+    subdir, stem = _UPLOAD_SLOTS[slot]
+    dest_dir = raw_root / code / str(year) / subdir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    from app.pipeline.data_files import _classify_slot, sync_data_files
+
+    if slot == "bcct":
+        # Nhiều file/ô — giữ tên gốc đã làm sạch (thay nếu trùng tên).
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(file.filename).name).strip("_")
+        dest = dest_dir / (safe_name or f"BCCT_{year}{ext}")
+    else:
+        # 1 file/ô — xoá file cùng slot đã có trên đĩa rồi ghi tên canonical.
+        for p in list(dest_dir.glob("*")):
+            if (
+                p.is_file()
+                and p.suffix.lower() in {".xls", ".xlsx"}
+                and _classify_slot(subdir, p.name) == slot
+            ):
+                p.unlink(missing_ok=True)
+        dest = dest_dir / f"{stem}_{year}{ext}"
+
+    try:
+        _write_upload_stream(file, dest)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Lưu file lỗi: {e}") from e
+
+    sync_data_files(db, company)
+    # Gắn người tải cho dòng vừa tạo. Tên file lưu là tên canonical trên đĩa
+    # (đảm bảo discover nhận diện đúng slot) — sync giữ tên này nhất quán.
+    rel = str(dest.relative_to(raw_root))
+    from app.auth_users import get_user_by_username
+    row = db.scalar(select(DataFile).where(DataFile.company_id == company.id, DataFile.stored_path == rel))
+    if row is not None:
+        ur = get_user_by_username(db, user.name)
+        row.uploaded_by = ur.id if ur else None
+        db.commit()
+
+    label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
+    return _redirect(f"msg={label}+{year}+%C4%91%C3%A3+t%E1%BA%A3i+l%C3%AAn")
+
+
+@router.post("/companies/{code}/documents/file/{file_id}/delete", response_model=None)
+def documents_delete_file(
+    code: str,
+    file_id: int,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    row = db.get(DataFile, file_id)
+    if row is None or row.company_id != company.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file")
+    abs_path = _resolve_within_root(row.stored_path)
+    abs_path.unlink(missing_ok=True)
+    db.delete(row)
+    db.commit()
+    return RedirectResponse(
+        url=f"/companies/{code}/documents?msg=%C4%90%C3%A3+xo%C3%A1+file",
+        status_code=303,
+    )
+
+
+@router.get("/companies/{code}/documents/file/{file_id}/download")
+def documents_download_file(
+    code: str,
+    file_id: int,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    row = db.get(DataFile, file_id)
+    if row is None or row.company_id != company.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file")
+    abs_path = _resolve_within_root(row.stored_path)
+    if not abs_path.is_file():
+        raise HTTPException(status_code=404, detail="File không còn trên đĩa")
+    return FileResponse(
+        path=abs_path,
+        filename=row.original_filename,
+        media_type="application/vnd.ms-excel",
+    )
+
+
+@router.post("/companies/{code}/documents/ingest", response_model=None)
+def documents_ingest_year(
+    code: str,
+    year: int = Form(...),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Nạp lại dữ liệu cho 1 năm từ file đã tải lên (không cần upload lại)."""
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+
+    from app.pipeline.data_files import record_parse_result, sync_data_files
+
+    raw_root = Path(settings.raw_data_path)
+    diagnosis = diagnose_upload(code, year, raw_root)
+    if diagnosis.has_errors:
+        from app.pipeline.ingest import IngestStats
+        sync_data_files(db, company)
+        record_parse_result(
+            db, company, year, IngestStats(company_code=code, period_year=year), diagnosis,
+        )
+        return RedirectResponse(
+            url=f"/companies/{code}/documents?error=N%E1%BA%A1p+l%E1%BB%97i%2C+xem+chi+ti%E1%BA%BFt+%E1%BB%9F+trang+t%E1%BA%A3i+l%C3%AAn",
+            status_code=303,
+        )
+    try:
+        stats = run_ingest(code, year, raw_root=raw_root)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
+
+    sync_data_files(db, company)
+    record_parse_result(db, company, year, stats, diagnosis)
+    return RedirectResponse(
+        url=f"/companies/{code}/documents?msg=%C4%90%C3%A3+n%E1%BA%A1p+d%E1%BB%AF+li%E1%BB%87u+n%C4%83m+{year}",
+        status_code=303,
     )
 
 

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Tài liệu — {{ company.code }} — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  <a href="/companies/{{ company.code }}">{{ company.code }}</a>
+  <span class="sep">›</span>
+  Tài liệu
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Tài liệu BCQT</h1>
+    <p class="page-subtitle">
+      {{ company.name or company.code }} · <span class="text-mono">{{ company.code }}</span>
+    </p>
+  </div>
+  <div class="btn-group">
+    <a href="/companies/{{ company.code }}" class="btn btn-secondary">← Về trang DN</a>
+    <a href="/companies/{{ company.code }}/upload" class="btn btn-secondary">📥 Tải lên nhiều file</a>
+  </div>
+</div>
+
+{% if msg %}
+<div class="form-alert form-alert-success" role="status"><span class="form-alert-icon">✅</span><div>{{ msg }}</div></div>
+{% endif %}
+{% if error %}
+<div class="form-alert form-alert-error" role="alert"><span class="form-alert-icon">⚠️</span><div>{{ error }}</div></div>
+{% endif %}
+
+<div class="doc-bar">
+  <p class="form-hint" style="margin:0">
+    Mỗi năm gồm 4 loại tài liệu. Tải file lên → bấm <strong>Nạp dữ liệu</strong> → <strong>Chạy kiểm tra</strong>.
+    Mẫu 15/15a/16 mỗi loại một file (tải lại sẽ thay); BCCT có thể nhiều file.
+  </p>
+  {% if add_years %}
+  <form method="get" action="/companies/{{ company.code }}/documents" class="doc-addyear">
+    <label class="form-label" for="add">Thêm năm:</label>
+    <select class="form-select mono-input" id="add" name="add" style="max-width:120px">
+      {% for y in add_years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secondary btn-sm">+ Thêm</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not year_rows %}
+<div class="card doc-empty-state">
+  <p class="text-muted">DN này chưa có tài liệu nào.</p>
+  <a href="/companies/{{ company.code }}/upload" class="btn btn-primary">📥 Tải lên dữ liệu BCQT</a>
+</div>
+{% endif %}
+
+{% set status_badge = {'ok':'info','warn':'warning','pending':'muted','empty':'muted'} %}
+
+{% for yr in year_rows %}
+<details class="doc-year card" {% if yr.open %}open{% endif %}>
+  <summary class="doc-year-summary">
+    <span class="doc-year-name">Năm {{ yr.year }}</span>
+    <span class="badge {{ status_badge[yr.status_kind] }}">{{ yr.status_label }}</span>
+    {% if yr.checks_run %}<span class="badge {{ tier_css_for(yr.score) }}">Rủi ro {{ yr.score }}/1000</span>{% endif %}
+    <span class="doc-caret" aria-hidden="true">▾</span>
+  </summary>
+
+  <div class="doc-year-body">
+    <div class="doc-year-actions">
+      <form method="post" action="/companies/{{ company.code }}/documents/ingest">
+        <input type="hidden" name="year" value="{{ yr.year }}">
+        <button type="submit" class="btn btn-sm {% if yr.has_files and not yr.has_data %}btn-primary{% else %}btn-secondary{% endif %}"
+                {% if not yr.has_files %}disabled title="Chưa có file để nạp"{% endif %}>⤵️ Nạp dữ liệu</button>
+      </form>
+      <form method="post" action="/companies/{{ company.code }}/run-checks">
+        <input type="hidden" name="year" value="{{ yr.year }}">
+        <button type="submit" class="btn btn-sm {% if yr.has_data and not yr.checks_run %}btn-primary{% else %}btn-secondary{% endif %}"
+                {% if not yr.has_data %}disabled title="Cần nạp dữ liệu trước"{% endif %}>▶️ Chạy kiểm tra</button>
+      </form>
+      {% if yr.has_data %}<a href="/companies/{{ company.code }}/data?year={{ yr.year }}&table=m15" class="btn btn-sm btn-secondary">📋 Dữ liệu gốc</a>{% endif %}
+      {% if yr.checks_run %}<a href="/companies/{{ company.code }}?year={{ yr.year }}" class="btn btn-sm btn-secondary">🔎 Phát hiện</a>{% endif %}
+    </div>
+
+    <ul class="doc-files">
+      {% for slot in SLOT_ORDER %}
+      {% set files = yr.slots[slot] %}
+      {% set is_bcct = slot == 'bcct' %}
+      <li class="doc-file-row">
+        <span class="doc-file-type">{{ SLOT_LABEL_VI[slot].split(' — ')[0] }}</span>
+        <div class="doc-file-items">
+          {% if files %}
+            {% for f in files %}
+            <span class="doc-file-item">
+              <span class="badge {{ DATA_FILE_STATUS_BADGE[f.parse_status] }} doc-file-badge">{{ DATA_FILE_STATUS_LABEL[f.parse_status] }}</span>
+              <a href="/companies/{{ company.code }}/documents/file/{{ f.id }}/download" class="doc-file-name" title="Tải xuống">{{ f.original_filename }}</a>
+              <span class="doc-file-meta">{{ human_size(f.size_bytes) }}{% if f.row_count is not none %} · {{ '{:,}'.format(f.row_count) }} dòng{% endif %}</span>
+              {% if f.parse_message %}<span class="doc-file-msg" title="{{ f.parse_message }}">⚠️</span>{% endif %}
+              <a href="/companies/{{ company.code }}/documents/file/{{ f.id }}/download" class="doc-mini-btn" title="Tải xuống">↓</a>
+              <form method="post" action="/companies/{{ company.code }}/documents/file/{{ f.id }}/delete"
+                    class="doc-mini-form" onsubmit="return confirm('Xoá file {{ f.original_filename }}?');">
+                <button type="submit" class="doc-mini-btn" title="Xoá">🗑</button>
+              </form>
+            </span>
+            {% endfor %}
+          {% else %}
+            <span class="doc-file-none">— chưa có file —</span>
+          {% endif %}
+        </div>
+        <form method="post" action="/companies/{{ company.code }}/documents/upload"
+              enctype="multipart/form-data" class="doc-upload-inline">
+          <input type="hidden" name="year" value="{{ yr.year }}">
+          <input type="hidden" name="slot" value="{{ slot }}">
+          <label class="doc-upload-link">
+            {% if files and not is_bcct %}↻ Thay{% elif is_bcct %}+ Thêm{% else %}📤 Tải lên{% endif %}
+            <input type="file" name="file" accept=".xls,.xlsx" class="doc-upload-input" onchange="this.form.submit()">
+          </label>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</details>
+{% endfor %}
+
+{% endblock %}

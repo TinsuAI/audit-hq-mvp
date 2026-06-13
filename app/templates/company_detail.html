@@ -24,6 +24,7 @@
   </div>
   <div class="btn-group">
     <a href="/companies/{{ company.code }}/edit" class="btn btn-secondary">✏️ Sửa</a>
+    <a href="/companies/{{ company.code }}/documents" class="btn btn-secondary">🗂 Tài liệu</a>
     <a href="/companies/{{ company.code }}/upload{% if selected_year %}?year={{ selected_year }}{% endif %}" class="btn btn-secondary">📥 Tải lên dữ liệu</a>
     {% if selected_year %}
     <form method="post" action="/companies/{{ company.code }}/run-checks" style="display:inline;margin:0">

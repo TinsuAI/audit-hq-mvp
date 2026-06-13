@@ -24,20 +24,13 @@
 
 <form method="post" action="/companies" class="card form-card">
   <div class="form-field">
-    <label class="form-label" for="code">Mã DN <span class="req">*</span></label>
-    <input class="form-input mono-input" type="text" id="code" name="code" required
-           value="{{ form.code or '' }}" pattern="[A-Z][A-Z0-9_\-]{1,30}"
-           placeholder="VD: DN_007, CONG_TY_XYZ" autofocus>
-    <p class="form-hint">Chữ HOA + số + dấu <code>_ -</code>, bắt đầu bằng chữ, tối đa 31 ký tự. Dùng làm thư mục lưu file.</p>
+    <label class="form-label" for="name">Tên doanh nghiệp <span class="req">*</span></label>
+    <input class="form-input" type="text" id="name" name="name" required autofocus
+           value="{{ form.name or '' }}" placeholder="VD: Công ty TNHH May Mặc ABC">
+    <p class="form-hint">Tự thêm <code>(Demo)</code> nếu chưa có. Mã DN do hệ thống tự gán (vd <code>DN_005</code>) — không cần nhập.</p>
   </div>
 
   <div class="form-grid-2">
-    <div class="form-field">
-      <label class="form-label" for="name">Tên DN</label>
-      <input class="form-input" type="text" id="name" name="name"
-             value="{{ form.name or '' }}" placeholder="VD: Công ty TNHH May Mặc ABC">
-      <p class="form-hint">Tự thêm <code>(Demo)</code> nếu chưa có.</p>
-    </div>
     <div class="form-field">
       <label class="form-label" for="industry">Ngành</label>
       <input class="form-input" type="text" id="industry" name="industry" list="industry-list"
@@ -54,25 +47,24 @@
       </datalist>
       <p class="form-hint">Dùng để lọc / nhóm ở bảng tổng quan.</p>
     </div>
-  </div>
-
-  <div class="form-grid-2">
     <div class="form-field">
       <label class="form-label" for="tax_id">MST</label>
       <input class="form-input mono-input" type="text" id="tax_id" name="tax_id"
              value="{{ form.tax_id or '' }}" placeholder="VD: 0123456789">
     </div>
-    <div class="form-field">
-      <label class="form-label" for="address">Địa chỉ</label>
-      <input class="form-input" type="text" id="address" name="address"
-             value="{{ form.address or '' }}" placeholder="VD: KCN Tân Tạo, Q. Bình Tân, TP.HCM">
-    </div>
+  </div>
+
+  <div class="form-field">
+    <label class="form-label" for="address">Địa chỉ</label>
+    <input class="form-input" type="text" id="address" name="address"
+           value="{{ form.address or '' }}" placeholder="VD: KCN Tân Tạo, Q. Bình Tân, TP.HCM">
   </div>
 
   <div class="form-actions">
     <a href="/companies" class="btn btn-secondary">Huỷ</a>
-    <button type="submit" class="btn btn-primary">Tạo DN & chuyển sang tải lên →</button>
+    <button type="submit" class="btn btn-primary">Tạo DN & quản lý tài liệu →</button>
   </div>
+  <p class="form-hint" style="text-align:right">Bước tiếp theo: tải lên file BCQT theo từng năm.</p>
 </form>
 
 {% endblock %}

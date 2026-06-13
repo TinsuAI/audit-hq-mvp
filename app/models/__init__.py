@@ -3,6 +3,7 @@ from app.models.app_setting import AppSetting
 from app.models.bcqt import Norm, NvlBalance, SpBalance
 from app.models.check_definition import CheckDefinition, CheckStatus
 from app.models.company import Company
+from app.models.data_file import DataFile, DataFileStatus
 from app.models.declaration import DeclarationLine
 from app.models.finding import Finding
 from app.models.job import Job, JobKind, JobStatus
@@ -19,6 +20,8 @@ __all__ = [
     "CheckStatus",
     "Company",
     "CompanyYearScore",
+    "DataFile",
+    "DataFileStatus",
     "DeclarationLine",
     "Finding",
     "Job",
