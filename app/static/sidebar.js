@@ -13,20 +13,48 @@
   let metaCache = null;
 
   // ───────────── Page context auto-detect ─────────────
+  // Nhãn loại trang (tiếng Việt) để AI biết user đang ở đâu, không chỉ DN/năm.
+  function pageLabel(path) {
+    if (path === '/companies') return 'Danh sách doanh nghiệp';
+    if (/^\/companies\/[^/]+\/documents/.test(path)) return 'Quản lý tài liệu';
+    if (/^\/companies\/[^/]+\/data/.test(path)) return 'Bảng dữ liệu Tầng 1';
+    if (/^\/companies\/[^/]+\/items\//.test(path)) return 'Chi tiết mã hàng';
+    if (/^\/companies\/[^/]+\/(upload|edit)/.test(path)) return 'Tải / sửa dữ liệu DN';
+    if (/^\/companies\/[^/]+$/.test(path)) return 'Tổng quan doanh nghiệp';
+    if (/^\/findings\/\d+/.test(path)) return 'Chi tiết phát hiện';
+    if (path.startsWith('/admin/checks/new')) return 'Soạn kiểm tra mở rộng';
+    if (path.startsWith('/admin/')) return 'Trang quản trị';
+    if (path.startsWith('/jobs')) return 'Hàng đợi công việc';
+    if (path.startsWith('/danh-muc-kiem-tra')) return 'Danh mục kiểm tra';
+    if (path.startsWith('/tai-lieu')) return 'Tài liệu hướng dẫn';
+    return null;
+  }
+
   function getPageContext() {
     const path = window.location.pathname;
     const search = window.location.search;
+    const params = new URLSearchParams(search);
     const ctx = { url: path + search };
     let m;
     if ((m = path.match(/^\/companies\/([A-Za-z0-9_-]+)/))) {
       ctx.dn_code = m[1];
     }
-    if ((m = search.match(/[?&]year=(\d{4})/))) {
-      ctx.year = parseInt(m[1], 10);
-    }
+    const yr = params.get('year');
+    if (yr && /^\d{4}$/.test(yr)) ctx.year = parseInt(yr, 10);
     if ((m = path.match(/^\/findings\/(\d+)/))) {
       ctx.finding_id = parseInt(m[1], 10);
     }
+    // Trang chi tiết mã hàng: /companies/{code}/items/{item_code}
+    if ((m = path.match(/^\/companies\/[A-Za-z0-9_-]+\/items\/([^/?#]+)/))) {
+      ctx.item_code = decodeURIComponent(m[1]);
+    }
+    // Bảng dữ liệu Tầng 1: /companies/{code}/data?table=&q=
+    if (/^\/companies\/[A-Za-z0-9_-]+\/data/.test(path)) {
+      ctx.table = params.get('table') || 'm15';
+      if (params.get('q')) ctx.q = params.get('q');
+    }
+    const label = pageLabel(path);
+    if (label) ctx.view_label = label;
     return ctx;
   }
 
@@ -34,6 +62,11 @@
     const out = [];
     if (ctx.finding_id) {
       out.push('Giải thích finding này — căn cứ pháp lý và mức độ nghiêm trọng?');
+    } else if (ctx.item_code && ctx.dn_code) {
+      out.push(`Phân tích mã hàng ${ctx.item_code} của ${ctx.dn_code} qua các năm.`);
+      out.push(`Mã ${ctx.item_code} có phát hiện (finding) nào không?`);
+    } else if (ctx.table && ctx.dn_code) {
+      out.push(`Bảng ${ctx.table.toUpperCase()} của ${ctx.dn_code}${ctx.year ? ' năm ' + ctx.year : ''} có bất thường gì?`);
     } else if (ctx.dn_code && ctx.year) {
       out.push(`Tóm tắt rủi ro DN ${ctx.dn_code} năm ${ctx.year} trong 3 câu.`);
       out.push(`Liệt kê findings nghiêm trọng của ${ctx.dn_code} năm ${ctx.year}.`);
@@ -338,51 +371,97 @@
   }
 
   // ───────────── History panel ─────────────
+  let historyConvs = [];
+
+  function convDnCode(c) {
+    const m = (c.page_url_seed || '').match(/\/companies\/([A-Za-z0-9_-]+)/);
+    return m ? m[1] : null;
+  }
+
+  function dateBucket(iso) {
+    if (!iso) return 'Cũ hơn';
+    const d = new Date(iso);
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((startToday - dDay) / 86400000);
+    if (diffDays <= 0) return 'Hôm nay';
+    if (diffDays === 1) return 'Hôm qua';
+    if (diffDays <= 7) return '7 ngày qua';
+    return 'Cũ hơn';
+  }
+
   async function openHistory() {
-    const panel = document.getElementById('ai-history-panel');
-    panel.hidden = false;
+    document.getElementById('ai-history-panel').hidden = false;
     const listBox = document.getElementById('ai-history-list');
     listBox.innerHTML = '<div class="ai-history-empty">Đang tải...</div>';
+    const search = document.getElementById('ai-history-search');
+    if (search) search.value = '';
     try {
       const r = await fetch('/api/chat/conversations', { credentials: 'same-origin' });
       const data = await r.json();
-      const convs = data.conversations || [];
-      if (convs.length === 0) {
-        listBox.innerHTML = '<div class="ai-history-empty">Chưa có cuộc trò chuyện nào.<br>Hỏi gì đó để bắt đầu.</div>';
-        return;
-      }
-      listBox.innerHTML = '';
-      for (const c of convs) {
-        const item = el('div', {
-          class: 'ai-history-item' + (c.id === convId ? ' active' : ''),
-          'data-conv-id': String(c.id),
-        });
-        const title = el('div', { class: 'h-title', text: c.title });
-        const meta = el('div', { class: 'h-meta' });
-        const date = c.started_at ? new Date(c.started_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '';
-        meta.textContent = `${c.msg_count} tin nhắn · ${date}`;
-        const del = el('button', { class: 'h-delete', type: 'button', 'aria-label': 'Xoá', title: 'Xoá', text: '🗑' });
-        del.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (!confirm('Xoá cuộc trò chuyện này?')) return;
-          const dr = await fetch(`/api/chat/conversations/${c.id}`, { method: 'DELETE', credentials: 'same-origin' });
-          if (dr.ok) {
-            if (c.id === convId) {
-              convId = null;
-              sessionStorage.removeItem(STORAGE_KEY);
-              clearChat();
-            }
-            openHistory();  // refresh list
-          }
-        });
-        item.appendChild(title);
-        item.appendChild(meta);
-        item.appendChild(del);
-        item.addEventListener('click', () => loadConversation(c.id));
-        listBox.appendChild(item);
-      }
+      historyConvs = data.conversations || [];
+      renderHistory('');
     } catch (e) {
       listBox.innerHTML = `<div class="ai-history-empty">Lỗi tải lịch sử: ${e.message}</div>`;
+    }
+  }
+
+  // Lọc theo nội dung/mã DN + nhóm theo mốc thời gian. Danh sách đã sort mới→cũ
+  // nên các nhóm hiện đúng thứ tự Hôm nay → Cũ hơn.
+  function renderHistory(filter) {
+    const listBox = document.getElementById('ai-history-list');
+    const f = (filter || '').trim().toLowerCase();
+    const items = historyConvs.filter((c) => {
+      if (!f) return true;
+      const dn = (convDnCode(c) || '').toLowerCase();
+      return (c.title || '').toLowerCase().includes(f) || dn.includes(f);
+    });
+    if (items.length === 0) {
+      listBox.innerHTML = `<div class="ai-history-empty">${f
+        ? 'Không có cuộc nào khớp.'
+        : 'Chưa có cuộc trò chuyện nào.<br>Hỏi gì đó để bắt đầu.'}</div>`;
+      return;
+    }
+    listBox.innerHTML = '';
+    let lastBucket = null;
+    for (const c of items) {
+      const bucket = dateBucket(c.started_at);
+      if (bucket !== lastBucket) {
+        listBox.appendChild(el('div', { class: 'ai-history-group', text: bucket }));
+        lastBucket = bucket;
+      }
+      const item = el('div', {
+        class: 'ai-history-item' + (c.id === convId ? ' active' : ''),
+        'data-conv-id': String(c.id),
+      });
+      const title = el('div', { class: 'h-title', text: c.title });
+      const meta = el('div', { class: 'h-meta' });
+      const dn = convDnCode(c);
+      if (dn) meta.appendChild(el('span', { class: 'h-dn', text: dn }));
+      const date = c.started_at ? new Date(c.started_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '';
+      meta.appendChild(document.createTextNode(`${c.msg_count} tin nhắn · ${date}`));
+      const del = el('button', { class: 'h-delete', type: 'button', 'aria-label': 'Xoá', title: 'Xoá', text: '🗑' });
+      del.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Xoá cuộc trò chuyện này?')) return;
+        const dr = await fetch(`/api/chat/conversations/${c.id}`, { method: 'DELETE', credentials: 'same-origin' });
+        if (dr.ok) {
+          if (c.id === convId) {
+            convId = null;
+            sessionStorage.removeItem(STORAGE_KEY);
+            clearChat();
+          }
+          historyConvs = historyConvs.filter((x) => x.id !== c.id);
+          const s = document.getElementById('ai-history-search');
+          renderHistory(s ? s.value : '');
+        }
+      });
+      item.appendChild(title);
+      item.appendChild(meta);
+      item.appendChild(del);
+      item.addEventListener('click', () => loadConversation(c.id));
+      listBox.appendChild(item);
     }
   }
 
@@ -492,6 +571,8 @@
     document.getElementById('ai-close').addEventListener('click', closePanel);
     document.getElementById('ai-history').addEventListener('click', openHistory);
     document.getElementById('ai-history-close').addEventListener('click', closeHistory);
+    const histSearch = document.getElementById('ai-history-search');
+    if (histSearch) histSearch.addEventListener('input', () => renderHistory(histSearch.value));
     document.getElementById('ai-new').addEventListener('click', startNewConversation);
     document.getElementById('ai-expand').addEventListener('click', toggleFull);
 
