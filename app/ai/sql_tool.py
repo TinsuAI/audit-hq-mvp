@@ -57,17 +57,17 @@ _LIMIT_RE = re.compile(r"\blimit\b", re.IGNORECASE)
 DEFAULT_ROW_CAP = 200
 DEFAULT_TIMEOUT_MS = 2000
 
-# DDL cho 6 view — join company_id → code, ẩn cột nội bộ (id/company_id/source_file).
-_VIEW_DDL: dict[str, str] = {
+# Inner SELECT cho 6 view — join company_id → code, ẩn cột nội bộ. MỌI view đều
+# phơi cột `company_code` để phân quyền theo DN (scoped temp view lọc trên cột này).
+# Dùng dựng cả VIEW thật (admin, không giới hạn) lẫn TEMP VIEW scoped (officer).
+_VIEW_SELECT: dict[str, str] = {
     "v_findings": """
-        CREATE VIEW IF NOT EXISTS v_findings AS
         SELECT f.id AS finding_id, c.code AS company_code, f.period_year,
                f.check_code, f.severity, f.subject_type, f.subject_key,
                f.title, f.status, f.notes
         FROM findings f JOIN companies c ON c.id = f.company_id
     """,
     "v_m15": """
-        CREATE VIEW IF NOT EXISTS v_m15 AS
         SELECT c.code AS company_code, n.period_year, n.row_no,
                n.material_code, n.material_name, n.unit,
                n.opening_qty, n.import_qty, n.reexport_qty, n.repurpose_qty,
@@ -75,7 +75,6 @@ _VIEW_DDL: dict[str, str] = {
         FROM nvl_balances n JOIN companies c ON c.id = n.company_id
     """,
     "v_m15a": """
-        CREATE VIEW IF NOT EXISTS v_m15a AS
         SELECT c.code AS company_code, s.period_year, s.row_no,
                s.product_code, s.product_name, s.unit,
                s.opening_qty, s.intake_qty, s.repurpose_qty,
@@ -83,7 +82,6 @@ _VIEW_DDL: dict[str, str] = {
         FROM sp_balances s JOIN companies c ON c.id = s.company_id
     """,
     "v_m16": """
-        CREATE VIEW IF NOT EXISTS v_m16 AS
         SELECT c.code AS company_code, m.period_year,
                m.product_code, m.product_name, m.product_unit,
                m.material_code, m.material_name, m.material_unit,
@@ -91,7 +89,6 @@ _VIEW_DDL: dict[str, str] = {
         FROM norms m JOIN companies c ON c.id = m.company_id
     """,
     "v_bcct": """
-        CREATE VIEW IF NOT EXISTS v_bcct AS
         SELECT c.code AS company_code, d.period_year, d.declaration_no,
                d.declaration_date, d.customs_code, d.line_no, d.item_code,
                d.item_name, d.hs_code, d.origin, d.quantity, d.unit,
@@ -100,7 +97,6 @@ _VIEW_DDL: dict[str, str] = {
         FROM declaration_lines d JOIN companies c ON c.id = d.company_id
     """,
     "v_company_scores": """
-        CREATE VIEW IF NOT EXISTS v_company_scores AS
         SELECT c.code AS company_code, c.name AS company_name, c.industry,
                c.risk_score AS overall_risk_score,
                cys.period_year, cys.score, cys.tier
@@ -114,15 +110,51 @@ class SqlGuardError(ValueError):
     """SQL bị guard từ chối — message tiếng Việt để trả thẳng cho LLM/cán bộ."""
 
 
+def _is_sqlite(db: Session) -> bool:
+    return db.bind is None or db.bind.dialect.name == "sqlite"
+
+
 def ensure_views(db: Session) -> None:
-    """Tạo 6 view (idempotent). Gọi đầu mỗi query — CREATE VIEW IF NOT EXISTS rẻ.
+    """Tạo 6 view thật (idempotent). Gọi đầu mỗi query — CREATE VIEW IF NOT EXISTS rẻ.
 
     Chỉ áp dụng cho SQLite (toàn bộ stack). Bỏ qua dialect khác.
     """
-    if db.bind is not None and db.bind.dialect.name != "sqlite":
+    if not _is_sqlite(db):
         return
-    for ddl in _VIEW_DDL.values():
-        db.execute(text(ddl))
+    for name, sel in _VIEW_SELECT.items():
+        db.execute(text(f"CREATE VIEW IF NOT EXISTS {name} AS {sel}"))
+
+
+def _quoted_code_list(codes: set[str]) -> str | None:
+    """`'DN_001', 'DN_003'` cho mệnh đề IN. None nếu rỗng (officer chưa được gán DN nào)."""
+    if not codes:
+        return None
+    return ", ".join("'" + c.replace("'", "''") + "'" for c in sorted(codes))
+
+
+def install_scoped_views(db: Session, allowed_codes: set[str]) -> None:
+    """Tạo TEMP VIEW cùng tên 6 view, lọc `company_code IN (allowed)`.
+
+    SQLite ưu tiên schema `temp` → câu SQL của officer tham chiếu `v_findings`…
+    sẽ resolve vào temp view đã lọc (lọc TẠI NGUỒN, trước mọi aggregate — wrap
+    LIMIT ngoài cùng không đủ an toàn cho COUNT/SUM). Set rỗng → `WHERE 0` (không
+    dòng nào). Phải gọi TRƯỚC khi bật `PRAGMA query_only` (đây là DDL).
+    """
+    if not _is_sqlite(db):
+        return
+    inlist = _quoted_code_list(allowed_codes)
+    where = "WHERE 0" if inlist is None else f"WHERE company_code IN ({inlist})"
+    for name, sel in _VIEW_SELECT.items():
+        db.execute(text(f"DROP VIEW IF EXISTS temp.{name}"))
+        db.execute(text(f"CREATE TEMP VIEW {name} AS SELECT * FROM ({sel}) AS _s {where}"))
+
+
+def drop_scoped_views(db: Session) -> None:
+    """Gỡ TEMP VIEW scoped (gọi trong finally để không rò sang request sau)."""
+    if not _is_sqlite(db):
+        return
+    for name in _VIEW_SELECT:
+        db.execute(text(f"DROP VIEW IF EXISTS temp.{name}"))
 
 
 def _strip_comments(sql: str) -> str:
@@ -195,14 +227,22 @@ def run_query(
     *,
     row_cap: int = DEFAULT_ROW_CAP,
     timeout_ms: int = DEFAULT_TIMEOUT_MS,
+    allowed_codes: set[str] | None = None,
 ) -> dict:
-    """Chạy SQL chỉ-đọc an toàn. Trả dict cho tool (KHÔNG raise — gói lỗi vào `error`)."""
+    """Chạy SQL chỉ-đọc an toàn. Trả dict cho tool (KHÔNG raise — gói lỗi vào `error`).
+
+    `allowed_codes=None` → không giới hạn DN (admin). Set → officer: cài TEMP VIEW
+    lọc theo DN được phân công trước khi chạy (xem `install_scoped_views`).
+    """
     try:
         display_sql, exec_sql = validate_sql(sql, row_cap=row_cap)
     except SqlGuardError as e:
         return {"error": str(e), "sql": sql}
 
     ensure_views(db)
+    scoped = allowed_codes is not None
+    if scoped:
+        install_scoped_views(db, allowed_codes)
     cap = max(1, int(row_cap))
 
     raw = _dbapi_connection(db)
@@ -234,6 +274,8 @@ def run_query(
         if is_sqlite:
             raw.set_progress_handler(None, 2000)
             sa_conn.exec_driver_sql("PRAGMA query_only=OFF")
+        if scoped:
+            drop_scoped_views(db)
 
     return {
         "sql": display_sql,

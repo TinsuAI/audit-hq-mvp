@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Nhật ký truy cập — Audit-HQ{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Nhật ký truy cập</h1>
+    <p class="page-subtitle">
+      {{ events | length }} sự kiện gần nhất (tối đa {{ limit }}) · tải file, xuất báo cáo, chạy kiểm tra
+    </p>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:var(--space-4)">
+  <form method="get" action="/admin/audit" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+    <div class="form-field" style="margin:0">
+      <label class="form-label">Mã DN</label>
+      <input class="form-input" type="text" name="company" value="{{ company }}" placeholder="vd DN_001" style="width:160px">
+    </div>
+    <div class="form-field" style="margin:0">
+      <label class="form-label">Hành động</label>
+      <select class="form-input" name="action" style="width:200px">
+        <option value="">— Tất cả —</option>
+        {% for key, label in action_labels.items() %}
+        <option value="{{ key }}" {% if action == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Lọc</button>
+    {% if company or action %}
+    <a href="/admin/audit" class="btn btn-secondary btn-sm">Xoá lọc</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card">
+  {% if not events %}
+  <p class="text-subtle">Chưa có sự kiện nào khớp.</p>
+  {% else %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Thời gian</th>
+        <th>Người dùng</th>
+        <th>Hành động</th>
+        <th>DN</th>
+        <th>Chi tiết</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td class="text-subtle">{{ e.created_at.strftime('%d/%m/%Y %H:%M:%S') if e.created_at else '—' }}</td>
+        <td class="text-mono">{{ e.username }}</td>
+        <td><span class="badge info">{{ action_labels.get(e.action, e.action) }}</span></td>
+        <td class="text-mono">{{ e.company_code or '—' }}</td>
+        <td class="text-subtle" style="max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ e.detail or '' }}">{{ e.detail or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

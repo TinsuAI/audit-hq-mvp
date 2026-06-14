@@ -248,15 +248,17 @@ def build_export(session: Session, company: Company, year: int) -> bytes:
 
 def build_query_export(
     session: Session, sql: str, title: str | None = None, row_cap: int = 5000,
+    allowed_codes: set[str] | None = None,
 ) -> bytes:
     """Xuất Excel TÙY BIẾN từ một câu SQL chỉ-đọc (kết quả query_sql).
 
     File tự-tài-liệu: hiển thị câu SQL đã chạy + kết quả + ghi chú truy nguồn
     (không hộp đen). Raise ValueError nếu SQL bị guard từ chối / lỗi chạy.
+    `allowed_codes` (officer) → run_query lọc theo DN được phân công.
     """
     from app.ai.sql_tool import run_query
 
-    res = run_query(session, sql, row_cap=row_cap)
+    res = run_query(session, sql, row_cap=row_cap, allowed_codes=allowed_codes)
     if "error" in res:
         raise ValueError(res["error"])
     cols: list[str] = res["columns"]

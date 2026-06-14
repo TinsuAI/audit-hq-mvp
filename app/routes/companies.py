@@ -13,6 +13,12 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.audit import (
+    ACTION_DOWNLOAD,
+    ACTION_EXPORT,
+    ACTION_RUN_CHECKS,
+    log_access,
+)
 from app.auth import SessionUser, require_user
 from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
@@ -43,6 +49,7 @@ from app.models.data_file import SLOT_LABEL_VI, SLOT_ORDER
 from app.pipeline.export import build_export
 from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.validate import diagnose_upload
+from app.scoping import allowed_company_ids, can_access_company_id, get_company_or_404
 from app.settings import settings
 from app.version import VERSION, version_string
 
@@ -148,7 +155,12 @@ def list_companies(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    companies = db.scalars(select(Company)).all()
+    # Officer chỉ thấy DN được phân công; admin (allowed=None) thấy tất cả.
+    allowed = allowed_company_ids(db, user)
+    stmt = select(Company)
+    if allowed is not None:
+        stmt = stmt.where(Company.id.in_(allowed))
+    companies = db.scalars(stmt).all()
     # Điểm hiển thị = max(company_year_scores), KHÔNG đọc cache company.risk_score.
     # Cache có thể "drift" khỏi điểm theo năm (đổi rule/chạy lẻ không recompute) →
     # đọc thẳng từ CYS để list luôn khớp trang chi tiết.
@@ -211,13 +223,40 @@ _UPLOAD_SLOTS = {
 }
 
 
-def _write_upload_stream(upload: UploadFile, dest: Path) -> int:
+# Magic-byte chữ ký Excel — chặn file đổi đuôi (vd .txt → .xlsx) trước khi lưu.
+_XLSX_MAGIC = b"PK\x03\x04"        # OOXML = zip container
+_XLS_MAGIC = b"\xd0\xcf\x11\xe0"   # BIFF/OLE2 compound document
+
+
+def _looks_like_excel(head: bytes, ext: str) -> bool:
+    if ext == ".xlsx":
+        return head.startswith(_XLSX_MAGIC)
+    if ext == ".xls":
+        return head.startswith(_XLS_MAGIC)
+    return False
+
+
+def _write_upload_stream(upload: UploadFile, dest: Path, expected_ext: str | None = None) -> int:
     """Ghi 1 upload ra `dest` theo chunk, enforce giới hạn dung lượng. KHÔNG đụng
-    file khác — caller tự quyết việc thay/giữ file cũ (an toàn, không glob mù)."""
+    file khác — caller tự quyết việc thay/giữ file cũ (an toàn, không glob mù).
+
+    `expected_ext` (.xls/.xlsx) → kiểm magic-byte chunk đầu, chặn file đổi đuôi.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     written = 0
+    first = True
     with dest.open("wb") as f:
         while chunk := upload.file.read(1024 * 1024):
+            if first:
+                first = False
+                if expected_ext and not _looks_like_excel(chunk[:8], expected_ext):
+                    f.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Nội dung file không đúng định dạng {expected_ext} "
+                               "(có thể bị đổi đuôi). Hãy tải lên đúng file Excel.",
+                    )
             written += len(chunk)
             if written > MAX_UPLOAD_BYTES:
                 f.close()
@@ -243,7 +282,7 @@ def _save_upload(upload: UploadFile, dest: Path, slot: str) -> int:
             and _classify_slot(subdir, p.name) == slot
         ):
             p.unlink(missing_ok=True)
-    return _write_upload_stream(upload, dest)
+    return _write_upload_stream(upload, dest, expected_ext=dest.suffix.lower())
 
 
 @router.get("/companies/new", response_class=HTMLResponse)
@@ -311,6 +350,14 @@ def create_company(
         industry=industry, risk_score=0,
     )
     db.add(company)
+    db.flush()
+
+    # Tự phân công người tạo cho DN mới — nếu là officer, tạo xong vẫn thấy được
+    # (admin thấy mọi DN nên không cần, nhưng gán cũng vô hại).
+    from app.auth_users import get_user_by_username
+    creator = get_user_by_username(db, user.name)
+    if creator is not None and company not in creator.companies:
+        creator.companies.append(company)
     db.commit()
 
     return RedirectResponse(url=f"/companies/{code}/documents", status_code=303)
@@ -323,9 +370,7 @@ def edit_company_form(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
     form_state = {
         "code": company.code,
         "name": company.name or "",
@@ -350,9 +395,7 @@ def update_company(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
 
     # Mã DN cố định (dùng làm thư mục lưu file) — không nhận từ form.
     name = name.strip()
@@ -378,9 +421,7 @@ def upload_form(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
     from datetime import date
     selected = year or date.today().year
     return templates.TemplateResponse(
@@ -409,9 +450,7 @@ def upload_data(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
     if not (YEAR_MIN <= year <= YEAR_MAX):
         raise HTTPException(status_code=400, detail=f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
 
@@ -486,9 +525,7 @@ def diagnose_ai(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Nhờ AI chẩn đoán cấu trúc file khi nạp lỗi (escalation của validate)."""
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
 
     from app.ai.config import get_setting
     from app.ai.limits import check_daily_budget, check_rate_limit
@@ -597,9 +634,7 @@ def company_documents(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
 
     from app.pipeline.data_files import files_by_year_slot, sync_data_files
 
@@ -683,9 +718,7 @@ def documents_upload_cell(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     """Tải lên 1 ô (năm × loại). m15/m15a/m16 thay thế (1 file/ô); bcct cộng thêm."""
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
     if slot not in _UPLOAD_SLOTS:
         raise HTTPException(status_code=400, detail=f"Loại tài liệu không hợp lệ: {slot}")
     if not (YEAR_MIN <= year <= YEAR_MAX):
@@ -723,7 +756,7 @@ def documents_upload_cell(
         dest = dest_dir / f"{stem}_{year}{ext}"
 
     try:
-        _write_upload_stream(file, dest)
+        _write_upload_stream(file, dest, expected_ext=ext)
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
@@ -751,9 +784,7 @@ def documents_delete_file(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
     row = db.get(DataFile, file_id)
     if row is None or row.company_id != company.id:
         raise HTTPException(status_code=404, detail="Không tìm thấy file")
@@ -774,15 +805,15 @@ def documents_download_file(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> FileResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
     row = db.get(DataFile, file_id)
     if row is None or row.company_id != company.id:
         raise HTTPException(status_code=404, detail="Không tìm thấy file")
     abs_path = _resolve_within_root(row.stored_path)
     if not abs_path.is_file():
         raise HTTPException(status_code=404, detail="File không còn trên đĩa")
+    log_access(db, username=user.name, action=ACTION_DOWNLOAD,
+               company_code=code, detail=row.original_filename)
     return FileResponse(
         path=abs_path,
         filename=row.original_filename,
@@ -798,9 +829,7 @@ def documents_ingest_year(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     """Nạp lại dữ liệu cho 1 năm từ file đã tải lên (không cần upload lại)."""
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
 
     from app.pipeline.data_files import record_parse_result, sync_data_files
 
@@ -845,9 +874,7 @@ def rerun_checks(
     from app.jobs import enqueue_job
     from app.models.job import JobKind
 
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
@@ -871,6 +898,8 @@ def rerun_checks(
             company_id=company.id,
             period_year=year,
         )
+    log_access(db, username=user.name, action=ACTION_RUN_CHECKS, company_code=code,
+               detail=("batch" if year is None else f"year={year}"))
     return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
@@ -883,9 +912,7 @@ def company_detail(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
 
     finding_years = set(
         db.scalars(
@@ -1011,10 +1038,10 @@ def export_recommendations(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
     payload = build_export(db, company, year)
+    log_access(db, username=user.name, action=ACTION_EXPORT,
+               company_code=code, detail=f"year={year}")
     filename = f"audit-hq_{code}_{year}_kien-nghi-kiem-tra.xlsx"
     return Response(
         content=payload,
@@ -1165,9 +1192,7 @@ def company_data(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
 
     config = _TABLE_CONFIG.get(table)
     if config is None:
@@ -1231,9 +1256,7 @@ def item_detail(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    company = db.scalar(select(Company).where(Company.code == code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+    company = get_company_or_404(db, code, user)
 
     detected_kind = detect_item_kind(db, company.id, item_code)
     years = item_years(db, company.id, item_code)
@@ -1425,6 +1448,8 @@ def finding_detail(
     finding = db.get(Finding, finding_id)
     if finding is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy phát hiện")
+    if not can_access_company_id(db, user, finding.company_id):
+        raise HTTPException(status_code=404, detail="Không tìm thấy phát hiện")
     company = db.get(Company, finding.company_id)
     is_combo = finding.check_code.startswith("COMBO_")
     spec = COMBO_SPECS.get(finding.check_code) if is_combo else SPECS.get(finding.check_code)
@@ -1466,6 +1491,8 @@ def update_finding_status(
 
     finding = db.get(Finding, finding_id)
     if finding is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phát hiện")
+    if not can_access_company_id(db, user, finding.company_id):
         raise HTTPException(status_code=404, detail="Không tìm thấy phát hiện")
 
     finding.status = status

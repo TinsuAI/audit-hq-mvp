@@ -43,6 +43,7 @@
         <a href="/admin/units" class="nav-dropdown-item">📐 Đơn vị tính</a>
         <a href="/admin/ai" class="nav-dropdown-item">🤖 Cấu hình AI</a>
         <a href="/admin/users" class="nav-dropdown-item">👥 Người dùng</a>
+        <a href="/admin/audit" class="nav-dropdown-item">📜 Nhật ký truy cập</a>
       </div>
     </details>
     {% endif %}
@@ -51,6 +52,7 @@
         <span class="user-name">👤 {{ user }}</span> <span class="nav-caret">▾</span>
       </summary>
       <div class="nav-dropdown-menu nav-dropdown-menu-right">
+        <a href="/change-password" class="nav-dropdown-item">🔑 Đổi mật khẩu</a>
         <form method="post" action="/logout" class="nav-dropdown-form">
           <button type="submit" class="nav-dropdown-item nav-dropdown-logout">Đăng xuất</button>
         </form>

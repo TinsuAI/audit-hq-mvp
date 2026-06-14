@@ -77,8 +77,14 @@ def authenticate(db: Session, username: str, password: str) -> User | None:
     return user
 
 
-def create_user(db: Session, username: str, password: str, role: str) -> User:
-    """Tạo user mới. Raise ValueError nếu username trùng hoặc role không hợp lệ."""
+def create_user(
+    db: Session, username: str, password: str, role: str, *, must_change: bool = False
+) -> User:
+    """Tạo user mới. Raise ValueError nếu username trùng hoặc role không hợp lệ.
+
+    `must_change=True` (tài khoản admin tạo qua giao diện) → buộc đổi mật khẩu ở
+    lần đăng nhập đầu. Seed admin bootstrap để False (operator tự đổi qua cảnh báo).
+    """
     username = username.strip()
     if not username:
         raise ValueError("Username không được trống")
@@ -86,14 +92,20 @@ def create_user(db: Session, username: str, password: str, role: str) -> User:
         raise ValueError(f"Role không hợp lệ: {role!r} (chọn từ {sorted(VALID_ROLES)})")
     if get_user_by_username(db, username):
         raise ValueError(f"Username {username!r} đã tồn tại")
-    user = User(username=username, password_hash=hash_password(password), role=role)
+    user = User(
+        username=username, password_hash=hash_password(password), role=role,
+        must_change_password=must_change,
+    )
     db.add(user)
     db.flush()
     return user
 
 
-def set_password(db: Session, user: User, new_password: str) -> None:
+def set_password(db: Session, user: User, new_password: str, *, must_change: bool = False) -> None:
+    """Đặt mật khẩu mới. `must_change=True` (admin đặt lại) → buộc user đổi lần sau;
+    `False` (user tự đổi) → gỡ cờ buộc đổi."""
     user.password_hash = hash_password(new_password)
+    user.must_change_password = must_change
     db.flush()
 
 

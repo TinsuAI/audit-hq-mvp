@@ -30,6 +30,7 @@ class SessionUser:
 
     name: str
     role: str
+    must_change: bool = False  # buộc đổi mật khẩu trước khi dùng tiếp
 
     def __str__(self) -> str:  # template `{{ user }}` render tên cho thân thiện
         return self.name
@@ -44,7 +45,7 @@ class SessionUser:
 
 
 def make_session_cookie(user: SessionUser) -> str:
-    return _signer.dumps({"u": user.name, "r": user.role})
+    return _signer.dumps({"u": user.name, "r": user.role, "c": user.must_change})
 
 
 def read_session(request: Request) -> SessionUser | None:
@@ -59,7 +60,7 @@ def read_session(request: Request) -> SessionUser | None:
     role = data.get("r") or ROLE_OFFICER  # fallback an toàn cho cookie cũ
     if not name:
         return None
-    return SessionUser(name=name, role=role)
+    return SessionUser(name=name, role=role, must_change=bool(data.get("c")))
 
 
 def login_with_credentials(db: Session, username: str, password: str) -> SessionUser | None:
@@ -69,7 +70,10 @@ def login_with_credentials(db: Session, username: str, password: str) -> Session
         return None
     user.last_login_at = datetime.utcnow()
     db.commit()
-    return SessionUser(name=user.username, role=user.role)
+    return SessionUser(
+        name=user.username, role=user.role,
+        must_change=bool(user.must_change_password),
+    )
 
 
 def require_user(request: Request) -> SessionUser:
