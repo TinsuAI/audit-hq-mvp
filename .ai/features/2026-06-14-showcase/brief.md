@@ -6,7 +6,10 @@ emphasizing the AI assistant / smart capabilities — to share publicly (no logi
 ## What ships
 
 - `app/static/showcase.html` — self-contained page (inline CSS, base64 JPEG images,
-  tiny lightbox JS). ~2.7 MB. Vietnamese, formal tone, on-brand palette (navy `#1d3557`).
+  tiny lightbox JS). ~1.5 MB. Vietnamese, formal tone. **Government/serious palette**:
+  deep navy `#102a43` dominant + white/gray, restrained deep-red `#8c1d1d` accent only
+  (top hairline, eyebrows, combo border). No gradients, no emoji in chrome, squared/flat.
+  Screenshots are retina (2×) viewport crops with the demo banner hidden — crisp & uniform.
 - Public route `GET /showcase` in `app/main.py` (NO `require_user`) → served to anyone.
   Also reachable at `/static/showcase.html`. Auth on every other route is unchanged.
 - Live URL after deploy: **https://audit-hq-demo.tinsu.ai/showcase**
