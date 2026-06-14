@@ -1,112 +1,88 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-06-14 — redesign chat, P3 backlog):**
-> Phiên này hoàn tất **redesign Trợ lý AI** (3 phase + phân quyền chat), commit **`444f5ed`**.
-> **`main` ĐANG AHEAD origin 1 commit — CHƯA PUSH, CHƯA DEPLOY.** Prod live vẫn `5eef7c5`.
-> **533 test pass**, ruff sạch. Migration head **`d3e4f5a6b7c8`** (KHÔNG đổi — chat dùng lại
-> bảng `ai_conversations`/`ai_messages` sẵn có, không thêm schema).
+> **Trạng thái (2026-06-14 — trang showcase công khai):**
+> Phiên này dựng **trang giới thiệu tính năng công khai** tại `/showcase`, đã deploy.
+> **`main` = `origin/main` = prod = `b7334f4`** (sạch, không ahead/behind, không uncommitted).
+> Migration head **`d3e4f5a6b7c8`** (KHÔNG đổi phiên này). Test suite ~533 pass (không động vào).
 
 ## Current State
 
 ### Git / deploy
-- **Local `main` = `444f5ed`** (chat redesign), **origin/main = `5eef7c5`** → ahead 1, **chưa push**.
-  Push `main` sẽ kích CI "Test & Deploy to Tinsu" → build + deploy + `alembic upgrade head`.
-  Vì không có migration mới, deploy chat redesign chỉ là code/static/template (an toàn).
-- Uncommitted còn lại (CHỦ ĐÍCH để ngoài commit chat): ` M .ai/STATUS.md` (file này),
-  `?? .ai/sessions/2026-06-14-company-slug-urls.md` (session log phiên slug trước, chưa commit).
+- **`main` = `origin/main` = `b7334f4`**, working tree sạch. Prod live `audit-hq-demo.tinsu.ai`
+  đang chạy `b7334f4` (đã verify `/healthz`).
+- Deploy = push `main` → CI "Test & Deploy to Tinsu" (self-hosted): test+lint → docker build →
+  restart → `alembic upgrade head` + seed UOM → healthcheck. Watch: `gh run watch <id> --exit-status`.
+- **LƯU Ý sửa note cũ:** STATUS trước ghi "chat redesign `444f5ed` chưa push" — SAI/đã cũ.
+  `git fetch` đầu phiên cho thấy `444f5ed` + `b11cf4a` đã ở origin từ trước (đã deploy).
 
-### Trợ lý AI — redesign (MỚI phiên này)
-- **Tool-use gọn**: mỗi tool = 1 pill `⚙ tên…`→`✓ tên` (bấm bung preview) thay hộp vàng to.
-- **Trang riêng `/chat`** (nav "💬 Trợ lý"): 2 cột (danh sách cuộc trái + chat phải),
-  **URL có nghĩa `/chat/{id}`** (pushState + back/forward), FAB ẩn trên trang này.
-- **Mention `@DN`/`@finding`**: gõ `@` ra dropdown (🏢 DN + 📎 finding), chèn chip, gửi kèm.
-- **Lõi chung** `app/static/chat-core.js` — sidebar (FAB) lẫn trang `/chat` cùng mount lên nó.
-- **AI provider**: OpenRouter → `deepseek/deepseek-v4-pro` (primary), fallback Gemini. Key chung.
+### Trang showcase (MỚI phiên này)
+- **URL công khai:** **https://audit-hq-demo.tinsu.ai/showcase** — KHÔNG cần đăng nhập (để gửi mọi người).
+- **Route:** `GET /showcase` trong `app/main.py` (không `require_user`) → `FileResponse` file tĩnh.
+  Demo KHÔNG có auth ở edge (ingress qua Cloudflare tunnel, auth chỉ ở tầng app) → bỏ `require_user` = public.
+- **File:** `app/static/showcase.html` (~1.3 MB, self-contained: CSS inline + ảnh base64 + lightbox JS).
+  Sinh từ `.ai/features/2026-06-14-showcase/build_showcase.py` (nén PNG đã commit → JPEG → base64).
+- **Phong cách:** ĐỒNG NHẤT với hệ thống — dùng token của `app/static/style.css` (nền sáng `#f6f7f9`,
+  header navy `#1d3557` như app, card/button/badge hệ thống, banner "Dữ liệu mẫu" vàng). Sáng, không tối,
+  không gradient/emoji lòe loẹt. Tiếng Việt đầy đủ, chuyên nghiệp.
+- **Nội dung:** Trợ lý ảo (trọng tâm — 6 nhóm năng lực, KHÔNG nêu tên hàm/tool) · tiếp nhận dữ liệu (AI
+  chẩn đoán file, chuẩn hoá ĐƠN VỊ TÍNH, tự nhận loại hình DN, magic-byte) · 16 kiểm tra + 4 tổ hợp ·
+  chấm điểm minh bạch · truy nguồn · phân quyền + nhật ký · tài liệu.
 
-### Phân quyền chat (đã siết + có test)
-- **AI tool theo DN**: `chat_stream` tính `allowed_company_codes(db, user)` → mọi `run_tool`;
-  `query_sql` lọc bằng TEMP VIEW. Mention cũng resolve lại scope server-side (`_resolve_mentions`).
-- **Cuộc trò chuyện**: **admin ĐỌC ĐƯỢC HẾT** (list của mọi user + badge 👤 chủ; mở messages +
-  trang `/chat/{id}` của bất kỳ ai). **Xoá/ghi vẫn OWNER-ONLY** (admin không lỡ tay xoá lịch sử
-  người khác — chủ đích "giám sát ≠ quản trị dữ liệu người khác"). Officer chỉ thấy của mình.
+### Phần còn lại của sản phẩm (carry, không đổi phiên này)
+- Trợ lý AI redesign (trang `/chat`, tool-pill gọn, @mention) — đã deploy.
+- Phân quyền theo DN (admin/officer), áp cho cả AI tool + `query_sql` scoped views — đã có.
+- Nhật ký truy cập `/admin/audit`, rate-limit login, magic-byte upload — đã có.
+- Stack: Python 3.12, FastAPI, SQLAlchemy+Alembic, SQLite (WAL). Dev port **8200**.
 
-### Định danh DN (slug vs code) — giữ nguyên từ phiên trước
-- `code` (DN_xxx) = khoá lưu trữ/AI/job/log nội bộ, KHÔNG hiển thị. `slug` = URL + hiển thị.
-- Resolver `get_company_or_404(db, slug-or-code, user)`. Chi tiết: session `2026-06-14-company-slug-urls.md`.
-
-### Stack / DB
-- Python 3.12, FastAPI, SQLAlchemy+Alembic, SQLite (WAL). Dev port **8200**.
-- Migration head **`d3e4f5a6b7c8`**.
-
-## Recent Changes (2026-06-14 — commit `444f5ed`)
-Xem chi tiết: session `2026-06-14-chat-redesign.md` + feature proof `.ai/features/2026-06-14-chat-redesign/`.
-1. **Phase 1** — tool-use compact pills (`sidebar.js`/`chat-core.js` + CSS).
-2. **Phase 2** — tách `chat-core.js` (lõi chung); `sidebar.js` thành mount mỏng; trang `/chat`
-   (`chat.html`, `chat-page.js`, `chat-page.css`, route `app/routes/chat_page.py`); URL `/chat/{id}`.
-3. **Phase 3** — mention: endpoint `/api/chat/mentions` (scoped), `_resolve_mentions`, inject vào
-   `build_page_context` (`app/ai/system_prompt.py`).
-4. **Phân quyền chat** — admin read-all conversation (`/api/chat/conversations` + messages + page);
-   owner-only delete/write; `/api/ai/meta` thêm `username`; FE badge chủ + ẩn nút xoá cuộc người khác.
-5. **Test** — `tests/test_chat_ownership.py` (6), `tests/test_chat_mentions.py` (4).
+## Recent Changes (2026-06-14 — commits `06fe771`..`b7334f4`)
+Xem chi tiết: session `2026-06-14-public-showcase-page.md` + proof `.ai/features/2026-06-14-showcase/`.
+1. `06fe771` — tạo trang showcase + route public (bản đầu, theme tự chế tối màu).
+2. `41cd604` — chụp lại ảnh retina/crop gọn/ẩn banner (sửa ảnh full-page bị li ti).
+3. `627be6d` — **làm lại theo phản hồi user:** sáng + đồng bộ style hệ thống; AI trình bày theo
+   năng lực (bỏ tên hàm); bỏ phần "Quản trị AI"; viết lại tiếng Việt đầy đủ.
+4. `b7334f4` — **sửa overclaim:** "chuẩn hoá tên hàng hoá" KHÔNG có thật (chỉ trong đề án §5.3) →
+   thay bằng "chuẩn hoá đơn vị tính" (thật, `app/checks/uom.py`).
 
 ## Next Steps (ưu tiên)
-1. **Push `main`** để deploy chat redesign (nếu user muốn) — watch `gh run watch <id> --exit-status`.
-   Không cần thao tác migration tay (head không đổi).
-2. **Phân công DN cho officer trên prod** (admin → `/admin/users` → "Phân công DN") — carry, thao tác tay.
-3. **Combo +20 điểm tổ hợp — review logic** (carry, user "quyết sau"): flat +20 mọi combo, nhị phân
-   (`app/checks/scoring.py:179`). Cân nhắc badge-không-điểm / có-trần / weighted.
-4. (Tuỳ) Polish carry: admin còn hiện text `code` (`admin_user_scope.html`, `admin_checks_new.html`);
-   tên hiển thị còn hậu tố `(Demo)`; bật lại buộc đổi mật khẩu; xoá nhánh local đã merge; quyết `ZZ_DEMO`.
-5. (Tuỳ) Mở rộng chat: phân trang list cho admin (đang cap 30); mention nhiều thực thể; rich-chip input.
+1. Chờ user duyệt trang showcase. Sửa tiếp (bố cục/câu chữ/ảnh) thì: sửa `TEMPLATE` trong
+   `build_showcase.py` → chạy lại script → commit → push (CI tự deploy).
+2. (Carry) Phân công DN cho officer trên prod (`/admin/users` → "Phân công DN") — thao tác tay.
+3. (Carry) Combo +20 điểm tổ hợp — review logic (`app/checks/scoring.py:179`), user "quyết sau".
+4. (Carry, polish) admin còn hiện text `code`; tên DN còn hậu tố `(Demo)`; quyết `ZZ_DEMO`.
 
 ## Blockers
 - Không có. Lưu ý đĩa tinsu ~97% (theo dõi khi deploy lâu dài).
 
 ## Notes for Next AI Session
 
-### Chat redesign — điểm cắm (MỚI)
-- **Lõi chung** `app/static/chat-core.js`: `AuditChat.create({messagesEl,inputEl,submitEl,isAdmin,
-  onConversationChange,pageContextFn})` → instance (stream, render, tool-pill, mention, loadConversation).
-  `AuditChat.util` = el/getPageContext/getSuggestions/renderMarkdown/parseCitations/apiList/
-  apiMessages/apiDelete/apiMeta/renderConversationList. **Sửa hành vi chat → sửa ở đây, KHÔNG ở 2 mount.**
-- **Mount**: `sidebar.js` (FAB/panel/history overlay) + `chat-page.js` (trang, pushState, list luôn hiện).
-  Thêm mặt mới → tạo mount mỏng gọi `AuditChat.create`, đừng nhân đôi engine.
-- **Backend chat** ở `app/routes/ai.py` (prefix `/api`): `/chat/stream` (SSE), `/chat/conversations`
-  (+`/{id}/messages`, DELETE), `/chat/mentions`, `/chat/run-checks`, `/chat/export-query`, `/ai/meta`.
-  Trang HTML ở `app/routes/chat_page.py` (`/chat`, `/chat/{id}` — enforce ownership, admin bypass).
-- **Mention an toàn**: client gửi `mentions:[{type,code/id}]`; `_resolve_mentions(db, raw, allowed_codes)`
-  tra DB + chặn scope lại (KHÔNG tin client) rồi nhét `page_context["mentions"]` → system prompt.
-- **base.html**: sidebar chỉ include khi `not hide_chat_fab`; trang `/chat` set `hide_chat_fab=True`.
+### Showcase — điểm cắm
+- **Sửa nội dung/style:** chỉ sửa `TEMPLATE` (string) trong `.ai/features/2026-06-14-showcase/build_showcase.py`,
+  rồi `.venv/bin/python .ai/features/2026-06-14-showcase/build_showcase.py` → ghi đè `app/static/showcase.html`.
+  KHÔNG sửa tay file HTML đã sinh (sẽ bị ghi đè).
+- **Chụp lại ảnh:** `PYTHONPATH=. .venv/bin/python .ai/features/2026-06-14-showcase/ui_smoke.py` (cần dev :8200).
+  Seed admin `shot_show` + officer `shot_off` (gán DN_001) + cuộc chat, chụp retina 2× crop gọn ẩn banner,
+  rồi xoá. **GOTCHA đã gặp:** mỗi vai PHẢI dùng `browser.new_context()` riêng — chung context = chung cookie,
+  login sau ghi đè login trước → trang admin bị 404/từ chối.
+- **SOURCES** trong build script chỉ giữ key ĐANG dùng trong template (placeholder no-op nếu thừa, nhưng để sạch).
+  Ảnh chụp ở năm DN_003 = 2022 (điểm 148) để khoe bảng tính điểm bung ra.
 
-### Phân quyền (P1, carry)
-- `admin` = `allowed_* → None`. `officer` = tập DN trong `user_companies`. Mọi lối vào lọc theo đó.
-- AI tool scoping `app/ai/tools.py run_tool`: `_GUARD_COMPANY_CODE` + `_INJECT_ALLOWED` + `args.pop(
-  "allowed_codes")`; `query_sql` → `app/ai/sql_tool.py install_scoped_views`. Tool mới đụng DN → thêm vào.
+### CHỐNG OVERCLAIM (quan trọng — user bắt lỗi phiên này)
+- **"Chuẩn hoá tên hàng hoá" CHƯA implement** — chỉ trong đề án §5.3. Đối chiếu theo `material_code`, không theo tên.
+  Cái CÓ thật: chuẩn hoá **đơn vị tính** (`app/checks/uom.py`, canonical+alias, `/admin/units`, dùng ở C3.3).
+- Các claim "thông minh" KHÁC đều đã verify có code: AI ingest doctor `app/ai/ingest_doctor.py`;
+  magic-byte `app/routes/companies.py:227`; tự nhận loại hình DN `app/checks/company_type.py`; guardrails AI.
+- Bài học: **trước khi viết "tính năng X" lên tài liệu khách → grep code xác minh đã ship**, đừng tin đề án.
 
-### Render trang thật / chụp ảnh UI (carry + cập nhật)
-- **Mật khẩu admin local KHÔNG biết** (DB mirror prod). Render/chụp cần auth: seed user tạm `shot_*`
-  (role admin) qua `app.auth_users.create_user`, login `TestClient`/Playwright (field `user`+`password`,
-  POST `/login`), thao tác, rồi xoá.
-- **Proof commit**: `.ai/features/<slug>/ui_smoke.py` (Playwright 1.60 ở `.venv`, chromium cached),
-  ảnh dưới `screenshots/`. Phiên này: `.ai/features/2026-06-14-chat-redesign/ui_smoke.py` —
-  **deterministic, KHÔNG gọi LLM** (seed cuộc có sẵn tool message để replay pill; mention dùng endpoint DB).
-  Chạy: `PYTHONPATH=. .venv/bin/python .ai/features/2026-06-14-chat-redesign/ui_smoke.py` (dev :8200 + AI bật).
-- Scratch screenshot → thư mục gitignored `.tmp-*` (đừng commit).
+### Render / verify nhanh
+- `curl -s -o /dev/null -w "%{http_code}" http://localhost:8200/showcase` (200, không redirect login).
+- Chụp render để soi: Playwright goto `/showcase` full_page. Scratch ảnh → `.tmp-*` (gitignored).
 
 ### Môi trường / gotcha (carry)
-- Dev server :8200 hay đã chạy sẵn (`make dev`/`--reload`). `curl :8200/healthz` 200 = đang sống.
-  Nền: `nohup .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8200 > /tmp/audit-hq-dev.log 2>&1 &`.
-- **Frontend JS verify**: `node --check app/static/<file>.js` (dòng `compdef…` là noise zsh, bỏ qua) + ảnh.
-- DB local = mirror prod (DN_001..005) nhưng `data/` symlink trỏ tên thật → DN demo không có file local;
-  test upload bằng DN throwaway (ZZ_DEMO). DN_001..004 CÓ findings/score.
-- Lint scope = `app tests scripts` (Makefile); `migrations/` KHÔNG lint.
-- Backup DB trước migrate bằng `sqlite3 .backup` (WAL-safe), KHÔNG `cp` file đơn lẻ.
-- Shell mặc định **zsh**. WSL ssh: `ssh.exe -F 'C:\Users\vuong\.ssh\config' tinsu`.
+- Dev :8200 hay chạy sẵn. `curl :8200/healthz` 200 = sống. Shell zsh (dòng `compdef` là noise, bỏ qua).
+- DB local = mirror prod (DN_001..005). `convert` (ImageMagick) có sẵn — dùng để nén ảnh showcase.
+- Lint scope CI = `app tests scripts` (Makefile); `.ai/` KHÔNG lint (E501 trong build script là bình thường).
+- Backup DB trước migrate bằng `sqlite3 .backup` (WAL-safe), KHÔNG `cp` đơn lẻ.
 
-### Deploy flow (carry)
-- Push `main` → CI "Test & Deploy to Tinsu" (self-hosted): test+lint → docker build → restart →
-  entrypoint `alembic upgrade head` + seed UOM → healthcheck. Watch: `gh run watch <id> --exit-status`.
-
-### Văn phong điểm / disclaimer (giữ nguyên)
-- "bài kiểm tra", "kịch khung", "quy mô dữ liệu". Điểm rate-based, mỗi bài tối đa 10, không cộng dồn.
+### Văn phong (giữ nguyên)
+- Tiếng Việt full accents, tone formal. "bài kiểm tra", "kịch khung", "quy mô dữ liệu".
 - Disclaimer: "chỉ số rủi ro dữ liệu BCQT… KHÔNG phải đánh giá tuân thủ theo TT 81/2019/TT-BTC".
