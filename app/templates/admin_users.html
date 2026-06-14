@@ -84,6 +84,9 @@
               <button type="submit" class="btn btn-primary btn-sm">Lưu</button>
             </form>
           </details>
+          {% if u.role != "admin" %}
+          <a href="/admin/users/{{ u.id }}/scope" class="btn btn-secondary btn-sm">🏢 Phân công DN ({{ u.companies | length }})</a>
+          {% endif %}
           {% if u.username != user.name %}
           <form method="post" action="/admin/users/{{ u.id }}/delete" style="display:inline"
                 onsubmit="return confirm('Xóa tài khoản {{ u.username }}?')">

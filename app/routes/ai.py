@@ -36,12 +36,14 @@ from app.ai.guardrails import apply_guardrails
 from app.ai.limits import check_daily_budget, check_rate_limit
 from app.ai.system_prompt import build_messages_system
 from app.ai.tools import get_tool_schemas, run_tool
+from app.audit import ACTION_EXPORT_QUERY, ACTION_RUN_CHECKS, log_access
 from app.auth import SessionUser, require_user
 from app.auth_users import get_user_by_username
 from app.database import get_db
 from app.jobs import enqueue_job
-from app.models import AiConversation, AiMessage, Company
+from app.models import AiConversation, AiMessage
 from app.models.job import JobKind
+from app.scoping import allowed_company_codes, get_company_or_404
 
 log = logging.getLogger(__name__)
 
@@ -150,6 +152,9 @@ async def chat(
         raise HTTPException(status_code=503, detail="Chưa cấu hình API key. Cấu hình ở /admin/ai.")
     check_rate_limit(user.name, db)
     check_daily_budget(db)
+
+    # Ranh giới phân quyền DN cho tool (officer: chỉ DN được phân công; admin: None).
+    allowed_codes = allowed_company_codes(db, user)
 
     try:
         body = await request.json()
@@ -273,7 +278,7 @@ async def chat(
             for tc in msg.tool_calls:
                 tool_name = tc.function.name
                 tool_args = tc.function.arguments or "{}"
-                result_str = run_tool(tool_name, tool_args, db)
+                result_str = run_tool(tool_name, tool_args, db, allowed_codes)
                 tool_trace.append({
                     "name": tool_name,
                     "args": tool_args,
@@ -481,9 +486,7 @@ async def chat_run_checks(
     if not company_code:
         raise HTTPException(status_code=400, detail="Thiếu company_code.")
 
-    company = db.scalar(select(Company).where(Company.code == company_code))
-    if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {company_code}")
+    company = get_company_or_404(db, company_code, user)
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
@@ -501,6 +504,8 @@ async def chat_run_checks(
             payload={"company_code": company_code, "year": year},
             created_by=user_row.id, company_id=company.id, period_year=year,
         )
+    log_access(db, username=user.name, action=ACTION_RUN_CHECKS, company_code=company_code,
+               detail=("batch" if year is None else f"year={year}"))
     return {"job_id": job.id, "status_url": f"/jobs/{job.id}", "company_code": company_code, "year": year}
 
 
@@ -518,12 +523,16 @@ def chat_export_query(
     """
     from app.pipeline.export import build_query_export
 
+    # Cùng ranh giới DN với query_sql — officer chỉ xuất được DN được phân công.
+    allowed_codes = allowed_company_codes(db, user)
     try:
         payload = build_query_export(
             db, sql, title=title, row_cap=int(get_setting("sql_export_row_cap")),
+            allowed_codes=allowed_codes,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Không xuất được: {e}") from e
+    log_access(db, username=user.name, action=ACTION_EXPORT_QUERY, detail=sql)
     return Response(
         content=payload,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -550,6 +559,9 @@ async def chat_stream(
         raise HTTPException(status_code=503, detail="AI assistant đang tắt.")
     if not get_setting("api_key"):
         raise HTTPException(status_code=503, detail="Chưa cấu hình API key.")
+
+    # Ranh giới phân quyền DN cho tool (officer: chỉ DN được phân công; admin: None).
+    allowed_codes = allowed_company_codes(db, user)
 
     try:
         body = await request.json()
@@ -708,7 +720,7 @@ async def chat_stream(
                         name = tc["function"]["name"]
                         args = tc["function"]["arguments"] or "{}"
                         yield _sse("tool_call", {"name": name, "args": args})
-                        result_str = run_tool(name, args, db)
+                        result_str = run_tool(name, args, db, allowed_codes)
                         _save_msg(
                             db, conv_id_resolved, "tool",
                             content=result_str,

@@ -122,3 +122,25 @@ Ghi lại các quyết định kiến trúc và phạm vi. Mỗi entry: ngày, q
 - DN có cả file per-year lẫn file gộp (HONG_AN) → nạp hết một lần sẽ **trùng** năm; cơ chế per-year + fallback multi_year hiện tại đảm bảo mỗi năm đúng 1 nguồn.
 
 **Alternatives loại:** dùng thẳng `declaration_date` trong check (rejected — M15/M16 không có ngày, không join được); decouple BCCT ingest toàn DN (rejected — vỡ curation theo BCQT + trùng nguồn).
+
+### 14. Phân quyền theo DN — nội bộ, một ranh giới chung cho UI lẫn AI (2026-06-14)
+
+**Bối cảnh:** chuyển mục tiêu từ demo nội bộ sang **thí điểm thật, dữ liệu BCQT thật**. User chốt mô hình **(a) nội bộ**: chỉ người Trọng Tín/cơ quan dùng, mỗi officer được phân công một số DN; **khách (DN) KHÔNG đăng nhập**. 2 role (admin/officer).
+
+**Quyết định:**
+- Bảng nối `user_companies` (nhiều-nhiều). Officer chỉ thấy DN được gán; admin = sentinel "không giới hạn" (`allowed_* → None`). DN ngoài phạm vi trả **404** (không phải 403) để không lộ tồn tại.
+- Cưỡng chế **server-side ở mọi lối vào**: `app/scoping.py` (`allowed_company_ids/codes`, `get_company_or_404`, `can_access_company_id`) dùng ở mọi route `/companies/{code}` + `/findings/{id}` và lọc danh sách DN.
+- **AI chat dùng CHUNG ranh giới đó** — đây là điểm cốt lõi: nếu chỉ khoá UI mà không khoá tool thì officer hỏi AI "liệt kê hết DN" là lách. `run_tool(..., allowed_codes)` chặn tool theo `company_code` + lọc `list_companies`/`get_finding`; **`query_sql` lọc bằng TEMP VIEW** shadow `v_*` với `WHERE company_code IN (allowed)` (an toàn cả với COUNT/SUM — wrap LIMIT ngoài không đủ; schema-qualified `main.v_*` bị guard chặn).
+- Người tạo DN tự-được-gán DN đó (officer tạo xong vẫn thấy).
+
+**Lý do không làm (b) multi-tenant:** user chốt nội bộ; tenant layer là chi phí thừa cho pilot này. Schema giữ sạch để thêm sau nếu cần.
+
+**Phạm vi:** **P1** (cô lập dữ liệu) ✅ + **P2** (siết auth) ✅. P3 (redesign chat: context phân-giải-cao + history dễ duyệt) chưa làm.
+
+**P2 đã làm (2026-06-14, migration `c2d3e4f5a6b7`):**
+- **Đổi mật khẩu**: trang tự đổi ở `/change-password` (menu user) — GIỮ. ~~Buộc đổi lần đầu~~ **đã GỠ theo yêu cầu user (2026-06-14, "hơi phiền")**: bỏ gate trong `require_user`, không set cờ khi admin tạo/đặt lại. Plumbing giữ lại (cột `users.must_change_password`, field `SessionUser.must_change`, tham số `set_password(must_change=)`) để bật lại dễ nếu cần. Vẫn **cảnh báo to lúc startup** nếu `AUTH_PASSWORD` mặc định.
+- **Rate-limit login** (`app/login_guard.py`): khoá tạm theo IP sau 8 lần sai/5 phút (in-memory, reset khi restart — đủ làm chậm brute-force cho 1 process pilot).
+- **Nhật ký truy cập** (`AccessEvent` + `app/audit.py`): ghi egress/hành động (tải file, xuất Excel, xuất truy vấn, chạy kiểm tra). Xem ở `/admin/audit` (admin-only). KHÔNG ghi lượt xem trang (nhiễu).
+- **Validate magic-byte upload**: chặn file đổi đuôi (xlsx=`PK`, xls=OLE2) trên cả 2 đường upload, cộng kiểm size + đuôi sẵn có.
+
+**Alternatives loại:** ẩn menu/nav theo role (rejected — không phải bảo mật thật, data vẫn query được); chỉ thêm role không theo DN (rejected — không giải quyết "officer thấy mọi DN"); multi-tenant (hoãn — vượt scope pilot nội bộ).

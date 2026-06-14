@@ -418,11 +418,17 @@ def _search_findings(
     return result
 
 
-def _get_finding(db: Session, *, finding_id: int) -> dict:
+def _get_finding(
+    db: Session, *, finding_id: int, allowed_codes: set[str] | None = None
+) -> dict:
     finding = db.get(Finding, finding_id)
     if finding is None:
         return {"error": f"Không tìm thấy finding #{finding_id}"}
     company = db.get(Company, finding.company_id)
+    # Officer chỉ xem finding của DN được phân công — báo "không tìm thấy" để
+    # không lộ sự tồn tại của finding ngoài phạm vi.
+    if allowed_codes is not None and (company is None or company.code not in allowed_codes):
+        return {"error": f"Không tìm thấy finding #{finding_id}"}
     return {
         "id": finding.id,
         "check_code": finding.check_code,
@@ -537,11 +543,12 @@ def _explain_check(db: Session, *, check_code: str) -> dict:
     }
 
 
-def _list_companies(db: Session) -> dict:
-    """Tất cả DN + score + count finding per year."""
-    companies = db.scalars(
-        select(Company).order_by(Company.risk_score.desc(), Company.code)
-    ).all()
+def _list_companies(db: Session, *, allowed_codes: set[str] | None = None) -> dict:
+    """DN + score + count finding per year (officer: chỉ DN được phân công)."""
+    stmt = select(Company).order_by(Company.risk_score.desc(), Company.code)
+    if allowed_codes is not None:
+        stmt = stmt.where(Company.code.in_(allowed_codes))
+    companies = db.scalars(stmt).all()
     out = []
     for c in companies:
         # Aggregate count theo (year, severity) — 1 query nhỏ per DN, ổn với <10 DN.
@@ -610,12 +617,16 @@ def _get_legal_context(db: Session, *, topic: str | None = None) -> dict:
     return {"full_section": text}
 
 
-def _query_sql(db: Session, *, sql: str) -> dict:
-    """SQL chỉ-đọc trên view có kiểm soát (xem app/ai/sql_tool)."""
+def _query_sql(db: Session, *, sql: str, allowed_codes: set[str] | None = None) -> dict:
+    """SQL chỉ-đọc trên view có kiểm soát (xem app/ai/sql_tool).
+
+    `allowed_codes` (officer) → run_query cài TEMP VIEW lọc theo DN được phân công.
+    """
     return run_query(
         db, sql,
         row_cap=int(get_setting("sql_row_cap")),
         timeout_ms=int(get_setting("sql_timeout_ms")),
+        allowed_codes=allowed_codes,
     )
 
 
@@ -847,11 +858,24 @@ def get_tool_schemas() -> list[dict]:
     return out
 
 
-def run_tool(name: str, args_json: str, db: Session) -> str:
+# Tool nhận `company_code` → chặn cứng nếu DN ngoài phạm vi officer (báo "không
+# tìm thấy" để không lộ sự tồn tại). Các tool còn lại lọc nội bộ qua allowed_codes.
+_GUARD_COMPANY_CODE = frozenset({
+    "search_findings", "query_raw_data", "export_excel",
+    "propose_check_run", "generate_report", "explain_score",
+})
+# Tool tự lọc theo allowed_codes (truyền vào implementation).
+_INJECT_ALLOWED = frozenset({"list_companies", "get_finding", "query_sql"})
+
+
+def run_tool(
+    name: str, args_json: str, db: Session, allowed_codes: set[str] | None = None
+) -> str:
     """Dispatcher: tên tool + args JSON string → kết quả JSON string.
 
-    Bắt mọi exception trả về JSON error để tool loop không crash request.
-    Truncate result > 4000 chars để không blow context window.
+    `allowed_codes=None` → admin (không giới hạn DN). Set → officer: chặn/lọc theo
+    DN được phân công (cùng ranh giới với UI). Bắt mọi exception trả JSON error để
+    tool loop không crash request.
     """
     fn = TOOL_REGISTRY.get(name)
     if fn is None:
@@ -869,6 +893,19 @@ def run_tool(name: str, args_json: str, db: Session) -> str:
             return json.dumps({"error": "Tool args phải là object JSON."}, ensure_ascii=False)
     else:
         args = {}
+
+    # Phân quyền theo DN — bỏ key client tự gửi (chống widen scope), rồi enforce.
+    args.pop("allowed_codes", None)
+    if allowed_codes is not None:
+        if name in _GUARD_COMPANY_CODE:
+            code = args.get("company_code")
+            if code and code not in allowed_codes:
+                return json.dumps(
+                    {"error": f"Không tìm thấy DN {code}"}, ensure_ascii=False
+                )
+        if name in _INJECT_ALLOWED:
+            args["allowed_codes"] = allowed_codes
+
     try:
         result = fn(db, **args)
     except TypeError as e:

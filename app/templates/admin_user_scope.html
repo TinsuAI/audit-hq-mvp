@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Phân công DN — {{ target.username }} — Audit-HQ{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Phân công doanh nghiệp</h1>
+    <p class="page-subtitle">
+      Tài khoản <strong class="text-mono">{{ target.username }}</strong> ·
+      {% if is_admin_target %}quản trị viên{% else %}cán bộ Hải quan{% endif %}
+    </p>
+  </div>
+  <a href="/admin/users" class="btn btn-secondary btn-sm">← Danh sách tài khoản</a>
+</div>
+
+{% if saved %}
+<div class="alert alert-success" style="margin-bottom:var(--space-4);padding:var(--space-3);background:#d1fae5;border:1px solid #6ee7b7;border-radius:var(--radius);color:#065f46">
+  ✅ Đã lưu phân công doanh nghiệp.
+</div>
+{% endif %}
+
+{% if is_admin_target %}
+<div class="alert alert-info" style="margin-bottom:var(--space-4);padding:var(--space-3);background:#dbeafe;border:1px solid #93c5fd;border-radius:var(--radius);color:#1e40af">
+  ℹ️ Quản trị viên luôn thấy <strong>tất cả</strong> doanh nghiệp — phân công dưới đây không có tác dụng với vai trò admin.
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 class="card-title" style="margin-bottom:var(--space-2)">Doanh nghiệp được phép xem</h2>
+  <p class="text-subtle" style="margin-bottom:var(--space-4)">
+    Cán bộ chỉ thấy & thao tác (xem, tải tài liệu, chạy kiểm tra, hỏi AI) trên các DN được tick.
+    DN không tick sẽ ẩn hoàn toàn — kể cả qua trợ lý AI.
+  </p>
+
+  {% if not companies %}
+  <p class="text-subtle">Chưa có doanh nghiệp nào trong hệ thống.</p>
+  {% else %}
+  <form method="post" action="/admin/users/{{ target.id }}/scope">
+    <div style="margin-bottom:var(--space-3);display:flex;gap:8px">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.querySelectorAll('.scope-cb').forEach(c=>c.checked=true)">Chọn tất cả</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.querySelectorAll('.scope-cb').forEach(c=>c.checked=false)">Bỏ chọn tất cả</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;max-height:60vh;overflow:auto;padding:4px">
+      {% for c in companies %}
+      <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer">
+        <input class="scope-cb" type="checkbox" name="company_ids" value="{{ c.id }}"
+               {% if c.id in assigned_ids %}checked{% endif %}>
+        <span>
+          <span class="text-mono">{{ c.code }}</span>
+          <span class="text-subtle" style="display:block;font-size:12px">{{ c.name or '—' }}</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    <div style="margin-top:var(--space-4)">
+      <button type="submit" class="btn btn-primary">Lưu phân công</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
