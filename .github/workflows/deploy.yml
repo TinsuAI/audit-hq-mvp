@@ -53,9 +53,16 @@ jobs:
           AUTH_USER: ${{ secrets.AUTH_USER || 'admin' }}
           AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD || 'admin' }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'change-me-in-prod' }}
-          # Persistent DB path outside the runner workdir (workdir gets wiped on checkout).
-          DB_DATA_PATH: /home/tinsu/audit-hq-mvp-deploy/db-data
-        run: docker compose up -d --no-deps app
+          # Persistent paths ngoài workdir runner (bị wipe khi checkout). Đặt qua
+          # GitHub repo Variables — KHÔNG hardcode deploy target trong file commit.
+          DB_DATA_PATH: ${{ vars.DB_DATA_PATH }}
+          RAW_DATA_PATH: ${{ vars.RAW_DATA_PATH }}
+        run: |
+          # Refuse to deploy if a path var is unset — avoids compose fallback to
+          # ./db-data inside the wiped workdir, which would lose the prod DB.
+          : "${DB_DATA_PATH:?repo variable DB_DATA_PATH not set — refusing deploy (would lose prod DB)}"
+          : "${RAW_DATA_PATH:?repo variable RAW_DATA_PATH not set — refusing deploy}"
+          docker compose up -d --no-deps app
 
       - name: Wait for healthcheck
         env:
