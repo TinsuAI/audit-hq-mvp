@@ -103,24 +103,60 @@ def cached_catalog() -> str:
     return _catalog_block()
 
 
+# Nhãn bảng dữ liệu Tầng 1 cho ngữ cảnh (khớp alias table của data viewer).
+_TABLE_LABEL = {
+    "m15": "M15 — cân đối NVL",
+    "m15a": "M15a — cân đối thành phẩm",
+    "m16": "M16 — định mức",
+    "bcct": "BCCT — tờ khai chi tiết",
+}
+
+
 def build_page_context(
     page_url: str | None,
     dn_code: str | None,
     year: int | None,
     finding_id: int | None,
+    *,
+    item_code: str | None = None,
+    table: str | None = None,
+    table_q: str | None = None,
+    view_label: str | None = None,
 ) -> str:
+    """Khối ngữ cảnh "user đang xem trang nào" để AI bám sát thay vì hỏi lại.
+
+    Phân giải cao: ngoài DN/năm/finding còn biết mã hàng đang mở, bảng dữ liệu +
+    bộ lọc, và loại trang (view_label do frontend gắn).
+    """
     parts = []
+    if view_label:
+        parts.append(f"Trang: {view_label}")
+    if dn_code:
+        loc = f"Đang xem DN `{dn_code}`"
+        if year:
+            loc += f", năm `{year}`"
+        parts.append(loc)
+    elif year:
+        parts.append(f"Năm `{year}`")
+    if item_code:
+        parts.append(f"Đang mở chi tiết mã hàng `{item_code}`")
+    if table:
+        label = _TABLE_LABEL.get(table, table)
+        line = f"Đang xem bảng dữ liệu {label}"
+        if table_q:
+            line += f" (lọc theo `{table_q}`)"
+        parts.append(line)
+    if finding_id:
+        parts.append(f"Đang xem chi tiết phát hiện `#{finding_id}`")
     if page_url:
         parts.append(f"URL: `{page_url}`")
-    if dn_code:
-        parts.append(f"Đang xem DN `{dn_code}`")
-    if year:
-        parts.append(f"Năm `{year}`")
-    if finding_id:
-        parts.append(f"Đang xem finding `#{finding_id}`")
     if not parts:
         return ""
-    return "## Ngữ cảnh user đang xem\n" + "\n".join(f"- {p}" for p in parts)
+    return (
+        "## Ngữ cảnh user đang xem\n"
+        + "\n".join(f"- {p}" for p in parts)
+        + "\nƯu tiên trả lời bám vào ngữ cảnh này khi câu hỏi không nêu rõ DN/năm/mã."
+    )
 
 
 def build_messages_system(
@@ -139,6 +175,10 @@ def build_messages_system(
             dn_code=page_context.get("dn_code"),
             year=page_context.get("year"),
             finding_id=page_context.get("finding_id"),
+            item_code=page_context.get("item_code"),
+            table=page_context.get("table"),
+            table_q=page_context.get("q"),
+            view_label=page_context.get("view_label"),
         )
 
     catalog = cached_catalog()

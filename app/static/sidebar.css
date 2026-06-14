@@ -161,6 +161,34 @@
 .ai-history-item:hover .h-delete { opacity: 1; }
 .ai-history-item .h-delete:hover { background: #fee2e2; color: #b91c1c; }
 .ai-history-empty { text-align: center; padding: 40px 16px; color: var(--c-text-subtle, #9ca3af); font-size: 13px; }
+.ai-history-search {
+  margin: 8px 10px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--c-border, #e5e7eb);
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+}
+.ai-history-search:focus { border-color: var(--c-brand-300, #93c5fd); }
+.ai-history-group {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--c-text-subtle, #9ca3af);
+  padding: 10px 6px 4px;
+}
+.ai-history-item .h-meta { display: flex; align-items: center; gap: 6px; }
+.ai-history-item .h-dn {
+  display: inline-block;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c-brand-700, #1d4ed8);
+  background: var(--c-brand-50, #dbeafe);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
 
 .ai-messages {
   flex: 1;
