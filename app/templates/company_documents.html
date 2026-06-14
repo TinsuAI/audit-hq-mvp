@@ -111,7 +111,7 @@
           <input type="hidden" name="year" value="{{ yr.year }}">
           <input type="hidden" name="slot" value="{{ slot }}">
           <label class="doc-upload-link">
-            {% if files and not is_bcct %}↻ Thay{% elif is_bcct %}+ Thêm{% else %}📤 Tải lên{% endif %}
+            {% if files and not is_bcct %}↻ Thay{% elif is_bcct %}+ Thêm tờ khai{% else %}📤 Tải lên{% endif %}
             <input type="file" name="file" accept=".xls,.xlsx" class="doc-upload-input" onchange="this.form.submit()">
           </label>
         </form>
