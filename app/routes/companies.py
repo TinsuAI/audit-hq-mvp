@@ -51,6 +51,7 @@ from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.validate import diagnose_upload
 from app.scoping import allowed_company_ids, can_access_company_id, get_company_or_404
 from app.settings import settings
+from app.slugs import slugify_name, unique_slug
 from app.version import VERSION, version_string
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -344,9 +345,10 @@ def create_company(
     if DEMO_SUFFIX not in display_name:
         display_name = f"{display_name} {DEMO_SUFFIX}"
 
-    code = _next_company_code(db)  # mã tự sinh, không nhận từ form
+    code = _next_company_code(db)  # mã lưu trữ tự sinh (khoá file/AI), không nhận từ form
+    slug = unique_slug(db, slugify_name(name))  # định danh URL có nghĩa từ tên
     company = Company(
-        code=code, name=display_name, tax_id=tax_id, address=address,
+        code=code, slug=slug, name=display_name, tax_id=tax_id, address=address,
         industry=industry, risk_score=0,
     )
     db.add(company)
@@ -360,7 +362,7 @@ def create_company(
         creator.companies.append(company)
     db.commit()
 
-    return RedirectResponse(url=f"/companies/{code}/documents", status_code=303)
+    return RedirectResponse(url=f"/companies/{slug}/documents", status_code=303)
 
 
 @router.get("/companies/{code}/edit", response_class=HTMLResponse)
@@ -454,7 +456,7 @@ def upload_data(
     if not (YEAR_MIN <= year <= YEAR_MAX):
         raise HTTPException(status_code=400, detail=f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
 
-    base = Path(settings.raw_data_path) / code / str(year)
+    base = Path(settings.raw_data_path) / company.code / str(year)
     saved_any = False
     uploads = {"m15": m15, "m15a": m15a, "m16": m16, "bcct": bcct}
     for slot, upload in uploads.items():
@@ -479,12 +481,12 @@ def upload_data(
     sync_data_files(db, company)
 
     # CHẨN ĐOÁN trước khi nạp — chống misparse thầm lặng (file HQ sai mẫu/lệch cột).
-    diagnosis = diagnose_upload(code, year, Path(settings.raw_data_path))
+    diagnosis = diagnose_upload(company.code, year, Path(settings.raw_data_path))
     if diagnosis.has_errors:
         from app.ai.config import get_setting
         from app.pipeline.ingest import IngestStats
         record_parse_result(
-            db, company, year, IngestStats(company_code=code, period_year=year), diagnosis,
+            db, company, year, IngestStats(company_code=company.code, period_year=year), diagnosis,
         )
         try:
             ai_enabled = bool(get_setting("enabled")) and bool(get_setting("api_key"))
@@ -503,7 +505,7 @@ def upload_data(
 
     # Không lỗi nặng → NẠP dữ liệu (ingest). KHÔNG tự chạy kiểm tra (bước riêng).
     try:
-        stats = run_ingest(code, year, raw_root=Path(settings.raw_data_path))
+        stats = run_ingest(company.code, year, raw_root=Path(settings.raw_data_path))
     except FileNotFoundError as e:
         raise HTTPException(status_code=400, detail=f"Discover lỗi: {e}") from e
     except Exception as e:  # noqa: BLE001 — show parser errors back to user
@@ -536,10 +538,10 @@ def diagnose_ai(
     check_daily_budget(db)
 
     raw_root = Path(settings.raw_data_path)
-    diagnosis = diagnose_upload(code, year, raw_root)
+    diagnosis = diagnose_upload(company.code, year, raw_root)
     try:
         from app.ai.ingest_doctor import diagnose_with_ai
-        ai_result = diagnose_with_ai(code, year, raw_root)
+        ai_result = diagnose_with_ai(company.code, year, raw_root)
     except Exception as e:  # noqa: BLE001 — AI lỗi không được làm sập trang
         ai_result = f"Không gọi được AI: {type(e).__name__}: {e}"
 
@@ -762,7 +764,7 @@ def documents_upload_cell(
 
     raw_root = Path(settings.raw_data_path)
     subdir, stem = _UPLOAD_SLOTS[slot]
-    dest_dir = raw_root / code / str(year) / subdir
+    dest_dir = raw_root / company.code / str(year) / subdir
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     from app.pipeline.data_files import _classify_slot, sync_data_files
@@ -840,7 +842,7 @@ def documents_download_file(
     if not abs_path.is_file():
         raise HTTPException(status_code=404, detail="File không còn trên đĩa")
     log_access(db, username=user.name, action=ACTION_DOWNLOAD,
-               company_code=code, detail=row.original_filename)
+               company_code=company.code, detail=row.original_filename)
     return FileResponse(
         path=abs_path,
         filename=row.original_filename,
@@ -946,19 +948,19 @@ def documents_ingest_year(
     from app.pipeline.data_files import record_parse_result, sync_data_files
 
     raw_root = Path(settings.raw_data_path)
-    diagnosis = diagnose_upload(code, year, raw_root)
+    diagnosis = diagnose_upload(company.code, year, raw_root)
     if diagnosis.has_errors:
         from app.pipeline.ingest import IngestStats
         sync_data_files(db, company)
         record_parse_result(
-            db, company, year, IngestStats(company_code=code, period_year=year), diagnosis,
+            db, company, year, IngestStats(company_code=company.code, period_year=year), diagnosis,
         )
         return RedirectResponse(
             url=f"/companies/{code}/documents?error=N%E1%BA%A1p+l%E1%BB%97i%2C+xem+chi+ti%E1%BA%BFt+%E1%BB%9F+trang+t%E1%BA%A3i+l%C3%AAn",
             status_code=303,
         )
     try:
-        stats = run_ingest(code, year, raw_root=raw_root)
+        stats = run_ingest(company.code, year, raw_root=raw_root)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
 
@@ -996,7 +998,7 @@ def rerun_checks(
         job = enqueue_job(
             db,
             kind=JobKind.BATCH_RUN,
-            payload={"company_code": code},
+            payload={"company_code": company.code},
             created_by=user_row.id,
             company_id=company.id,
             period_year=None,
@@ -1005,12 +1007,12 @@ def rerun_checks(
         job = enqueue_job(
             db,
             kind=JobKind.RUN_CHECKS,
-            payload={"company_code": code, "year": year},
+            payload={"company_code": company.code, "year": year},
             created_by=user_row.id,
             company_id=company.id,
             period_year=year,
         )
-    log_access(db, username=user.name, action=ACTION_RUN_CHECKS, company_code=code,
+    log_access(db, username=user.name, action=ACTION_RUN_CHECKS, company_code=company.code,
                detail=("batch" if year is None else f"year={year}"))
     return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
@@ -1153,8 +1155,8 @@ def export_recommendations(
     company = get_company_or_404(db, code, user)
     payload = build_export(db, company, year)
     log_access(db, username=user.name, action=ACTION_EXPORT,
-               company_code=code, detail=f"year={year}")
-    filename = f"audit-hq_{code}_{year}_kien-nghi-kiem-tra.xlsx"
+               company_code=company.code, detail=f"year={year}")
+    filename = f"audit-hq_{company.slug or company.code}_{year}_kien-nghi-kiem-tra.xlsx"
     return Response(
         content=payload,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1617,10 +1619,10 @@ def update_finding_status(
     db.commit()
 
     company = db.get(Company, finding.company_id)
-    code = company.code if company else None
-    if not code:
+    url_id = (company.slug or company.code) if company else None
+    if not url_id:
         return RedirectResponse(url="/companies", status_code=303)
     return RedirectResponse(
-        url=f"/companies/{code}?year={finding.period_year}#finding-{finding_id}",
+        url=f"/companies/{url_id}?year={finding.period_year}#finding-{finding_id}",
         status_code=303,
     )

@@ -67,12 +67,18 @@ def can_access_company_id(db: Session, user: SessionUser, company_id: int) -> bo
     )
 
 
-def get_company_or_404(db: Session, code: str, user: SessionUser) -> Company:
-    """Resolve DN theo mã + enforce phạm vi. 404 nếu không tồn tại HOẶC ngoài phạm vi."""
-    company = db.scalar(select(Company).where(Company.code == code))
+def get_company_or_404(db: Session, ident: str, user: SessionUser) -> Company:
+    """Resolve DN theo slug HOẶC code + enforce phạm vi. 404 nếu không tồn tại/ngoài phạm vi.
+
+    URL người dùng dùng `slug` (có nghĩa); link nội bộ cũ/AI/jobs/log dùng `code`
+    (DN_xxx) — chấp nhận cả hai để không gãy. Ưu tiên khớp slug.
+    """
+    company = db.scalar(select(Company).where(Company.slug == ident))
     if company is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+        company = db.scalar(select(Company).where(Company.code == ident))
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {ident}")
     if not can_access_company_id(db, user, company.id):
         # 404 cố ý — không tiết lộ DN ngoài phạm vi có tồn tại.
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {code}")
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy DN {ident}")
     return company
