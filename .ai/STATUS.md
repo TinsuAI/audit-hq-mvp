@@ -1,21 +1,36 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-06-14 — trang showcase công khai):**
-> Phiên này dựng **trang giới thiệu tính năng công khai** tại `/showcase`, đã deploy.
-> **`main` = `origin/main` = prod = `b7334f4`** (sạch, không ahead/behind, không uncommitted).
+> **Trạng thái (2026-06-14 — tài liệu hướng dẫn sử dụng):**
+> Phiên này viết **tài liệu hướng dẫn sử dụng hệ thống** (`docs/huong-dan-su-dung.md`), đăng ký vào
+> thư viện `/tai-lieu` dưới nhóm mới "Hướng dẫn sử dụng" (đặt đầu). Commit + push + CI deploy xanh.
+> **`main` = `origin/main` = prod = `00959b1`** (sạch, không ahead/behind, không uncommitted).
 > Migration head **`d3e4f5a6b7c8`** (KHÔNG đổi phiên này). Test suite ~533 pass (không động vào).
 
 ## Current State
 
 ### Git / deploy
-- **`main` = `origin/main` = `b7334f4`**, working tree sạch. Prod live `audit-hq-demo.tinsu.ai`
-  đang chạy `b7334f4` (đã verify `/healthz`).
+- **`main` = `origin/main` = `00959b1`**, working tree sạch. Prod live `audit-hq-demo.tinsu.ai`
+  đang chạy `00959b1` (CI run `27501049776` xanh; đã verify `/healthz` 200).
 - Deploy = push `main` → CI "Test & Deploy to Tinsu" (self-hosted): test+lint → docker build →
   restart → `alembic upgrade head` + seed UOM → healthcheck. Watch: `gh run watch <id> --exit-status`.
 - **LƯU Ý sửa note cũ:** STATUS trước ghi "chat redesign `444f5ed` chưa push" — SAI/đã cũ.
   `git fetch` đầu phiên cho thấy `444f5ed` + `b11cf4a` đã ở origin từ trước (đã deploy).
 
-### Trang showcase (MỚI phiên này)
+### Tài liệu hướng dẫn sử dụng (MỚI phiên này)
+- **File:** `docs/huong-dan-su-dung.md` — hướng dẫn tiếng Việt 11 mục cho cán bộ + quản trị viên:
+  đăng nhập/phân quyền · giao diện · quy trình 6 bước · nạp dữ liệu (M15/15a/16/BCCT + chẩn đoán AI) ·
+  chạy kiểm tra + hàng đợi Công việc · điểm + phát hiện · xử lý/truy nguồn (Mới/Xác nhận/Loại trừ/Đã ghi chú) ·
+  xuất kiến nghị + tra cứu · trợ lý AI · danh mục & tài liệu · mục quản trị · FAQ.
+- **Đăng ký:** `app/routes/docs.py` — thêm entry `huong-dan-su-dung` vào `PUBLIC_DOCS`, nhóm mới
+  `guide` ("Hướng dẫn sử dụng") đặt đầu `CATEGORY_ORDER`. Hiện ở `/tai-lieu` (đầu danh sách).
+- **Chống overclaim:** mọi năng lực đã grep code xác minh (12 tool AI `app/ai/tools.py`, export thật, chẩn đoán
+  file, trạng thái phát hiện, nhãn loại tệp). Ghi rõ "một số năng lực AI bật/tắt tuỳ admin" vì 3 tool gate
+  theo `_GATED_TOOLS`. KHÔNG nêu tên hàm/tool nội bộ trong văn bản khách.
+- **Gotcha render:** `[TOC]` của python-markdown tự sinh id từ tiêu đề tiếng Việt CÓ DẤU ra dạng lạ
+  (vd "Đăng nhập" → `#ang-nhap`). ĐỪNG viết tay `[..](#anchor)` — dùng `[TOC]` (links tự khớp) + tham chiếu
+  "Mục N" dạng text. Đã verify render: 34 link nội bộ không gãy, ruff pass.
+
+### Trang showcase (phiên trước)
 - **URL công khai:** **https://audit-hq-demo.tinsu.ai/showcase** — KHÔNG cần đăng nhập (để gửi mọi người).
 - **Route:** `GET /showcase` trong `app/main.py` (không `require_user`) → `FileResponse` file tĩnh.
   Demo KHÔNG có auth ở edge (ingress qua Cloudflare tunnel, auth chỉ ở tầng app) → bỏ `require_user` = public.
@@ -34,7 +49,12 @@
 - Nhật ký truy cập `/admin/audit`, rate-limit login, magic-byte upload — đã có.
 - Stack: Python 3.12, FastAPI, SQLAlchemy+Alembic, SQLite (WAL). Dev port **8200**.
 
-## Recent Changes (2026-06-14 — commits `06fe771`..`b7334f4`)
+## Recent Changes
+### 2026-06-14 (phiên này) — commit `00959b1`
+- `00959b1` — `docs(guide)`: thêm `docs/huong-dan-su-dung.md` + đăng ký vào `PUBLIC_DOCS` nhóm `guide`.
+  Đã push, CI run `27501049776` test+lint+build+deploy xanh, prod verify OK.
+
+### 2026-06-14 (phiên trước) — commits `06fe771`..`b7334f4` (showcase)
 Xem chi tiết: session `2026-06-14-public-showcase-page.md` + proof `.ai/features/2026-06-14-showcase/`.
 1. `06fe771` — tạo trang showcase + route public (bản đầu, theme tự chế tối màu).
 2. `41cd604` — chụp lại ảnh retina/crop gọn/ẩn banner (sửa ảnh full-page bị li ti).
@@ -44,8 +64,9 @@ Xem chi tiết: session `2026-06-14-public-showcase-page.md` + proof `.ai/featur
    thay bằng "chuẩn hoá đơn vị tính" (thật, `app/checks/uom.py`).
 
 ## Next Steps (ưu tiên)
-1. Chờ user duyệt trang showcase. Sửa tiếp (bố cục/câu chữ/ảnh) thì: sửa `TEMPLATE` trong
-   `build_showcase.py` → chạy lại script → commit → push (CI tự deploy).
+1. (Carry) Tài liệu hướng dẫn đã deploy. Sửa nội dung: sửa thẳng `docs/huong-dan-su-dung.md`
+   (render markdown trực tiếp, không build step) → commit → push. Thêm tài liệu mới: thêm entry
+   vào `PUBLIC_DOCS` (`app/routes/docs.py`). Showcase đã deploy; sửa = `TEMPLATE` trong `build_showcase.py`.
 2. (Carry) Phân công DN cho officer trên prod (`/admin/users` → "Phân công DN") — thao tác tay.
 3. (Carry) Combo +20 điểm tổ hợp — review logic (`app/checks/scoring.py:179`), user "quyết sau".
 4. (Carry, polish) admin còn hiện text `code`; tên DN còn hậu tố `(Demo)`; quyết `ZZ_DEMO`.
