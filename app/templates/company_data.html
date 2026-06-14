@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-{% block title %}{{ company.code }} — {{ table_label }} — Audit-HQ{% endblock %}
+{% block title %}{{ company.name or company.code }} — {{ table_label }} — Audit-HQ{% endblock %}
 {% block content %}
 
 <nav class="breadcrumbs">
   <a href="/companies">Doanh nghiệp</a>
   <span class="sep">›</span>
-  <a href="/companies/{{ company.code }}?year={{ year }}">{{ company.code }}</a>
+  <a href="/companies/{{ company.slug or company.code }}?year={{ year }}">{{ company.name or company.code }}</a>
   <span class="sep">›</span>
   Dữ liệu gốc kỳ {{ year }}
 </nav>
 
 <div class="page-header">
   <div class="page-title-group">
-    <h1>{{ company.code }} — Dữ liệu gốc</h1>
+    <h1>{{ company.name or company.code }} — Dữ liệu gốc</h1>
     <p class="page-subtitle">
       Bảng dữ liệu thô Tầng 1 — phục vụ kiểm tra nguyên trạng. Mọi phát hiện đều truy nguồn về dòng tại đây (§2.2 đề án — không "hộp đen").
     </p>
@@ -21,7 +21,7 @@
 
 <div class="tabs">
   {% for key, conf in tables %}
-    <a href="/companies/{{ company.code }}/data?year={{ year }}&table={{ key }}"
+    <a href="/companies/{{ company.slug or company.code }}/data?year={{ year }}&table={{ key }}"
        class="{% if key == table_key %}active{% endif %}">{{ conf.label }}</a>
   {% endfor %}
 </div>
@@ -36,7 +36,7 @@
   </div>
   <div>
     <button type="submit" class="btn btn-primary">Lọc</button>
-    {% if q %}<a href="/companies/{{ company.code }}/data?year={{ year }}&table={{ table_key }}{% if full %}&full=1{% endif %}" class="btn btn-secondary">Xoá lọc</a>{% endif %}
+    {% if q %}<a href="/companies/{{ company.slug or company.code }}/data?year={{ year }}&table={{ table_key }}{% if full %}&full=1{% endif %}" class="btn btn-secondary">Xoá lọc</a>{% endif %}
   </div>
 </form>
 
@@ -68,7 +68,7 @@
           {% if cls == "wrap" and value %}
             <td class="wrap"><div class="cell-clamp" title="{{ value }}">{{ value }}</div></td>
           {% elif cls == "item-link" and value %}
-            <td class="code-cell"><a href="/companies/{{ company.code }}/items/{{ value }}?year={{ year }}" title="Mở trang chi tiết mã {{ value }}">{{ value }}</a></td>
+            <td class="code-cell"><a href="/companies/{{ company.slug or company.code }}/items/{{ value }}?year={{ year }}" title="Mở trang chi tiết mã {{ value }}">{{ value }}</a></td>
           {% else %}
             <td class="{{ cls }}">{{ value }}</td>
           {% endif %}

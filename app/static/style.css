@@ -606,6 +606,8 @@ p { margin: 0 0 var(--space-3); }
   color: var(--c-brand-500);
 }
 .dn-name { font-size: var(--fs-sm); color: var(--c-text); }
+.dn-name-link { font-size: var(--fs-sm); font-weight: 600; color: var(--c-brand-500); text-decoration: none; }
+.dn-name-link:hover { text-decoration: underline; }
 
 /* — Scoring explainer (collapsible card on companies list) — */
 .scoring-explainer {

@@ -16,8 +16,8 @@
 
 <nav class="breadcrumbs">
   <a href="/companies">Doanh nghiệp</a><span class="sep">›</span>
-  <a href="/companies/{{ company.code }}">{{ company.code }}</a><span class="sep">›</span>
-  <a href="/companies/{{ company.code }}/documents">Tài liệu</a><span class="sep">›</span>
+  <a href="/companies/{{ company.slug or company.code }}">{{ company.name or company.code }}</a><span class="sep">›</span>
+  <a href="/companies/{{ company.slug or company.code }}/documents">Tài liệu</a><span class="sep">›</span>
   Xem file
 </nav>
 
@@ -30,8 +30,8 @@
     </p>
   </div>
   <div class="btn-group">
-    <a href="/companies/{{ company.code }}/documents" class="btn btn-secondary">← Về tài liệu</a>
-    <a href="/companies/{{ company.code }}/documents/file/{{ file.id }}/download" class="btn btn-secondary">↓ Tải xuống</a>
+    <a href="/companies/{{ company.slug or company.code }}/documents" class="btn btn-secondary">← Về tài liệu</a>
+    <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/download" class="btn btn-secondary">↓ Tải xuống</a>
   </div>
 </div>
 

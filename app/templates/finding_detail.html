@@ -5,7 +5,7 @@
 <nav class="breadcrumbs">
   <a href="/companies">Doanh nghiệp</a>
   <span class="sep">›</span>
-  <a href="/companies/{{ company.code }}?year={{ finding.period_year }}">{{ company.code }}</a>
+  <a href="/companies/{{ company.slug or company.code }}?year={{ finding.period_year }}">{{ company.name or company.code }}</a>
   <span class="sep">›</span>
   Phát hiện #{{ finding.id }}
 </nav>
@@ -18,9 +18,9 @@
       {% if spec %}— {{ spec.title }}{% endif %}
     </h1>
     <p class="page-subtitle">
-      DN <a href="/companies/{{ company.code }}">{{ company.code }}</a>
+      DN <a href="/companies/{{ company.slug or company.code }}">{{ company.name or company.code }}</a>
       · Kỳ {{ finding.period_year }}
-      {% if finding.subject_key %}· Đối tượng: <a class="text-mono" href="/companies/{{ company.code }}/items/{{ finding.subject_key }}?year={{ finding.period_year }}" title="Trang chi tiết mã {{ finding.subject_key }}">{{ finding.subject_key }}</a>{% endif %}
+      {% if finding.subject_key %}· Đối tượng: <a class="text-mono" href="/companies/{{ company.slug or company.code }}/items/{{ finding.subject_key }}?year={{ finding.period_year }}" title="Trang chi tiết mã {{ finding.subject_key }}">{{ finding.subject_key }}</a>{% endif %}
       · <span class="status-pill status-{{ finding.status }}">{{ STATUS_LABEL[finding.status] }}</span>
     </p>
   </div>
@@ -97,7 +97,7 @@
                 {% if cls == "wrap" and value %}
                   <td class="wrap"><div class="cell-clamp" title="{{ value }}">{{ value }}</div></td>
                 {% elif cls == "item-link" and value %}
-                  <td class="code-cell"><a href="/companies/{{ company.code }}/items/{{ value }}?year={{ finding.period_year }}" title="Trang chi tiết mã {{ value }}">{{ value }}</a></td>
+                  <td class="code-cell"><a href="/companies/{{ company.slug or company.code }}/items/{{ value }}?year={{ finding.period_year }}" title="Trang chi tiết mã {{ value }}">{{ value }}</a></td>
                 {% else %}
                   <td class="{{ cls }}">{{ value }}</td>
                 {% endif %}

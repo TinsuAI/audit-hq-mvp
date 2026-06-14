@@ -70,7 +70,7 @@
 {% else %}
 
 <div class="table-toolbar">
-  <input type="search" id="dn-search" class="toolbar-search" placeholder="🔍 Tìm mã / tên / MST…" autocomplete="off">
+  <input type="search" id="dn-search" class="toolbar-search" placeholder="🔍 Tìm tên / MST…" autocomplete="off">
   <select id="dn-tier-filter" class="toolbar-select" aria-label="Lọc theo mức cảnh báo">
     <option value="">Mọi mức cảnh báo</option>
   </select>
@@ -109,14 +109,13 @@
           data-mst="{{ c.tax_id or '' }}"
           data-tier="{{ tier_label }}"
           data-industry="{{ c.industry or '' }}"
-          data-search="{{ (c.code ~ ' ' ~ (c.name or '') ~ ' ' ~ (c.tax_id or '')) | lower }}">
+          data-search="{{ ((c.name or '') ~ ' ' ~ (c.slug or '') ~ ' ' ~ (c.tax_id or '')) | lower }}">
         <td class="rank"><span class="rank-badge {% if rank <= 3 %}rank-{{ rank }}{% endif %}">{{ rank }}</span></td>
         <td><span class="score-pill {{ tier_css }}">{{ score }}</span></td>
         <td><span class="tier-pill {{ tier_css }}">{{ tier_label }}</span></td>
         <td>
           <div class="dn-cell">
-            <a href="/companies/{{ c.code }}" class="dn-code text-mono">{{ c.code }}</a>
-            <div class="dn-name">{{ c.name or '—' }}</div>
+            <a href="/companies/{{ c.slug or c.code }}" class="dn-name-link">{{ c.name or c.code }}</a>
           </div>
         </td>
         <td>
@@ -131,7 +130,7 @@
                 {% set has_crit = counts.critical > 0 %}
                 {% set total = (counts.critical or 0) + (counts.warning or 0) + (counts.info or 0) %}
                 <a class="year-chip {% if has_crit %}has-critical{% endif %} {% if total == 0 %}empty{% endif %}"
-                   href="/companies/{{ c.code }}?year={{ year }}">
+                   href="/companies/{{ c.slug or c.code }}?year={{ year }}">
                   <span class="year-num">{{ year }}</span>
                   {% if counts.critical %}<span class="sev-dot critical"></span><span>{{ counts.critical }}</span>{% endif %}
                   {% if counts.warning %}<span class="sev-dot warning"></span><span>{{ counts.warning }}</span>{% endif %}

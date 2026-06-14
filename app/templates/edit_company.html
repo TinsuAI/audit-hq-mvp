@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Sửa DN {{ company.code }} — Audit-HQ{% endblock %}
+{% block title %}Sửa DN {{ company.name or company.code }} — Audit-HQ{% endblock %}
 {% block content %}
 
 <nav class="breadcrumbs">
   <a href="/companies">Doanh nghiệp</a>
   <span class="sep">›</span>
-  <a href="/companies/{{ company.code }}">{{ company.code }}</a>
+  <a href="/companies/{{ company.slug or company.code }}">{{ company.name or company.code }}</a>
   <span class="sep">›</span>
   Sửa thông tin
 </nav>
@@ -13,7 +13,7 @@
 <div class="page-header">
   <div class="page-title-group">
     <h1>Sửa thông tin doanh nghiệp</h1>
-    <p class="page-subtitle">Cập nhật tên, ngành, MST, địa chỉ. Mã DN không đổi (dùng làm thư mục lưu file).</p>
+    <p class="page-subtitle">Cập nhật tên, ngành, MST, địa chỉ. Định danh URL và mã lưu trữ cố định.</p>
   </div>
 </div>
 
@@ -24,11 +24,18 @@
 </div>
 {% endif %}
 
-<form method="post" action="/companies/{{ company.code }}/edit" class="card form-card">
-  <div class="form-field">
-    <label class="form-label" for="code">Mã DN</label>
-    <input class="form-input mono-input" type="text" id="code" value="{{ company.code }}" disabled>
-    <p class="form-hint">Mã DN cố định — dùng làm thư mục lưu file đã tải lên, không thể đổi.</p>
+<form method="post" action="/companies/{{ company.slug }}/edit" class="card form-card">
+  <div class="form-grid-2">
+    <div class="form-field">
+      <label class="form-label" for="slug">Định danh URL</label>
+      <input class="form-input mono-input" type="text" id="slug" value="{{ company.slug or '' }}" disabled>
+      <p class="form-hint">Sinh từ tên DN, dùng cho đường dẫn — cố định để không gãy link.</p>
+    </div>
+    <div class="form-field">
+      <label class="form-label" for="code">Mã lưu trữ</label>
+      <input class="form-input mono-input" type="text" id="code" value="{{ company.code }}" disabled>
+      <p class="form-hint">Khoá nội bộ — thư mục lưu file đã tải lên, không hiển thị cho người dùng.</p>
+    </div>
   </div>
 
   <div class="form-grid-2">
@@ -70,7 +77,7 @@
   </div>
 
   <div class="form-actions">
-    <a href="/companies/{{ company.code }}" class="btn btn-secondary">Huỷ</a>
+    <a href="/companies/{{ company.slug or company.code }}" class="btn btn-secondary">Huỷ</a>
     <button type="submit" class="btn btn-primary">💾 Lưu thay đổi</button>
   </div>
 </form>
