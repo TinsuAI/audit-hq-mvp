@@ -18,6 +18,7 @@ env/
 *.sqlite-journal
 *.db
 /db-data/
+/raw-data/
 
 # Anonymize mapping — chứa tên DN thật, KHÔNG commit. Lưu trong db-data/.
 

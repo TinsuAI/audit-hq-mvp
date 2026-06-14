@@ -11,6 +11,9 @@ services:
       - "127.0.0.1:${HOST_PORT:-8200}:8000"
     volumes:
       - ${DB_DATA_PATH:-./db-data}:/db-data
+      # Raw file tài liệu BCQT (raw_data_path = ./data → /app/data). Persist ngoài
+      # workdir runner (bị wipe khi checkout) — set RAW_DATA_PATH tới path tuyệt đối.
+      - ${RAW_DATA_PATH:-./raw-data}:/app/data
     environment:
       - DATABASE_URL=sqlite:////db-data/audit_hq.sqlite
       - AUTH_USER=${AUTH_USER:-admin}
