@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -121,6 +121,15 @@ app.include_router(jobs_router)
 app.include_router(docs_router)
 app.include_router(catalog_router)
 app.include_router(chat_page_router)
+
+
+@app.get("/showcase", response_class=HTMLResponse)
+def showcase() -> FileResponse:
+    """Trang giới thiệu tính năng — CÔNG KHAI (không cần đăng nhập) để chia sẻ.
+
+    File tĩnh self-contained sinh từ `.ai/features/2026-06-14-showcase/build_showcase.py`.
+    """
+    return FileResponse(BASE_DIR / "static" / "showcase.html", media_type="text/html")
 
 
 @app.get("/healthz")
