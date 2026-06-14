@@ -42,6 +42,11 @@ Deterministic, no LLM calls. Chat screenshots are reused from the chat-redesign 
 
 ## Notes
 
+- **Do not claim commodity NAME normalization** ("chuẩn hoá tên hàng hoá"): it is in the
+  đề án (§5.3) but NOT implemented. What exists is UOM (unit) normalization — `app/checks/uom.py`,
+  canonical+alias, managed at `/admin/units`, used by check C3.3. Checks match on `material_code`,
+  not names. Every other "smart" claim is verified in code (AI ingest doctor `app/ai/ingest_doctor.py`,
+  magic-byte `app/routes/companies.py`, company-type detection `app/checks/company_type.py`).
 - All data shown is anonymized demo data (DN_xxx) — page states this explicitly.
 - Screenshots taken at year 2022 for DN_003 (risk 148/1000) to show a non-trivial score
   with the scoring-breakdown `<details>` expanded.

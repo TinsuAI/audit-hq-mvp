@@ -327,7 +327,7 @@ section{padding:66px 0}
           tách riêng bước nạp dữ liệu với bước chạy kiểm tra để cán bộ chủ động rà soát.</p>
         <ul>
           <li><b>Chẩn đoán tệp lỗi bằng trí tuệ nhân tạo:</b> khi một tệp có cấu trúc lạ hoặc lệch cột, hệ thống đọc trích đoạn thực tế của tệp, đối chiếu với cấu trúc chuẩn rồi diễn giải bằng tiếng Việt và gợi ý cách khắc phục.</li>
-          <li><b>Chuẩn hoá tên hàng hoá:</b> những tên nguyên vật liệu được khai không thống nhất sẽ được chuẩn hoá lại để việc đối chiếu trở nên chính xác hơn.</li>
+          <li><b>Chuẩn hoá đơn vị tính:</b> các đơn vị tính được khai theo nhiều cách khác nhau được quy về một đơn vị chuẩn, dựa trên bảng đơn vị chuẩn và các tên gọi đồng nghĩa do cán bộ quản lý, giúp việc đối chiếu số lượng giữa các biểu mẫu chính xác hơn.</li>
           <li><b>Tự nhận diện loại hình doanh nghiệp</b> (sản xuất xuất khẩu, doanh nghiệp chế xuất, gia công) ngay từ dữ liệu tờ khai, cán bộ không cần khai báo thủ công.</li>
           <li><b>Kiểm tra định dạng thực của tệp</b> để ngăn các trường hợp đổi đuôi tệp, đồng thời giới hạn dung lượng và định dạng được phép tải lên.</li>
         </ul>
