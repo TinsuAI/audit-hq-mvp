@@ -27,9 +27,16 @@ templates.env.globals["app_version"] = VERSION
 templates.env.globals["app_version_string"] = version_string()
 
 # Mỗi entry: slug → (file, title, description, category).
-# category: "methodology" (phương pháp luận) | "legal" (văn bản pháp lý).
+# category: "guide" (hướng dẫn) | "methodology" (phương pháp luận) | "legal" (văn bản pháp lý).
 # Whitelist — chỉ slug ở đây mới được render. Thêm tài liệu mới: thêm 1 entry.
 PUBLIC_DOCS: dict[str, tuple[str, str, str, str]] = {
+    "huong-dan-su-dung": (
+        "huong-dan-su-dung.md",
+        "Hướng dẫn sử dụng hệ thống",
+        "Hướng dẫn từng bước cho cán bộ và quản trị viên: đăng nhập, nạp dữ liệu, "
+        "chạy kiểm tra, đọc điểm và phát hiện, xử lý truy nguồn, xuất kiến nghị.",
+        "guide",
+    ),
     "scoring-methodology": (
         "scoring-methodology.md",
         "Phương pháp tính điểm rủi ro",
@@ -61,10 +68,11 @@ PUBLIC_DOCS: dict[str, tuple[str, str, str, str]] = {
 }
 
 CATEGORY_LABEL: dict[str, str] = {
+    "guide": "Hướng dẫn sử dụng",
     "methodology": "Phương pháp luận",
     "legal": "Văn bản pháp lý",
 }
-CATEGORY_ORDER = ["methodology", "legal"]
+CATEGORY_ORDER = ["guide", "methodology", "legal"]
 
 
 @lru_cache(maxsize=8)
