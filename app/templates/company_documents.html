@@ -91,9 +91,10 @@
             {% for f in files %}
             <span class="doc-file-item">
               <span class="badge {{ DATA_FILE_STATUS_BADGE[f.parse_status] }} doc-file-badge">{{ DATA_FILE_STATUS_LABEL[f.parse_status] }}</span>
-              <a href="/companies/{{ company.code }}/documents/file/{{ f.id }}/download" class="doc-file-name" title="Tải xuống">{{ f.original_filename }}</a>
+              <a href="/companies/{{ company.code }}/documents/file/{{ f.id }}/preview" class="doc-file-name" title="Xem nội dung file">{{ f.original_filename }}</a>
               <span class="doc-file-meta">{{ human_size(f.size_bytes) }}{% if f.row_count is not none %} · {{ '{:,}'.format(f.row_count) }} dòng{% endif %}</span>
               {% if f.parse_message %}<span class="doc-file-msg" title="{{ f.parse_message }}">⚠️</span>{% endif %}
+              <a href="/companies/{{ company.code }}/documents/file/{{ f.id }}/preview" class="doc-mini-btn" title="Xem nội dung">👁</a>
               <a href="/companies/{{ company.code }}/documents/file/{{ f.id }}/download" class="doc-mini-btn" title="Tải xuống">↓</a>
               <form method="post" action="/companies/{{ company.code }}/documents/file/{{ f.id }}/delete"
                     class="doc-mini-form" onsubmit="return confirm('Xoá file {{ f.original_filename }}?');">

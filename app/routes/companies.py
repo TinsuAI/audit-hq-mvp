@@ -848,6 +848,91 @@ def documents_download_file(
     )
 
 
+PREVIEW_ROWS = 100
+PREVIEW_COLS = 40
+
+
+def _excel_col_letters(n: int) -> list[str]:
+    """['A','B',…,'AA',…] cho n cột — nhãn cột kiểu Excel cho header preview."""
+    out = []
+    for i in range(n):
+        s, x = "", i
+        while True:
+            s = chr(ord("A") + x % 26) + s
+            x = x // 26 - 1
+            if x < 0:
+                break
+        out.append(s)
+    return out
+
+
+@router.get("/companies/{code}/documents/file/{file_id}/preview", response_class=HTMLResponse)
+def documents_preview_file(
+    code: str,
+    request: Request,
+    file_id: int,
+    sheet: int = Query(default=0, ge=0),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Xem nhanh nội dung file Excel đã tải lên (raw, tối đa 100 dòng × 40 cột).
+
+    Đọc thẳng file gốc (không qua adapter) để kiểm layout trước/độc lập với nạp."""
+    company = get_company_or_404(db, code, user)
+    row = db.get(DataFile, file_id)
+    if row is None or row.company_id != company.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file")
+    abs_path = _resolve_within_root(row.stored_path)
+    if not abs_path.is_file():
+        raise HTTPException(status_code=404, detail="File không còn trên đĩa")
+
+    import pandas as pd
+
+    error = None
+    sheet_names: list[str] = []
+    columns: list[str] = []
+    rows_view: list[list[str]] = []
+    truncated_rows = truncated_cols = False
+    sel = 0
+    try:
+        xls = pd.ExcelFile(abs_path)
+        sheet_names = list(xls.sheet_names)
+        sel = sheet if 0 <= sheet < len(sheet_names) else 0
+        df = pd.read_excel(xls, sheet_name=sel, header=None, nrows=PREVIEW_ROWS + 1, dtype=object)
+        truncated_rows = len(df) > PREVIEW_ROWS
+        df = df.iloc[:PREVIEW_ROWS]
+        truncated_cols = df.shape[1] > PREVIEW_COLS
+        df = df.iloc[:, :PREVIEW_COLS]
+        columns = _excel_col_letters(df.shape[1])
+        rows_view = [
+            ["" if pd.isna(v) else str(v) for v in r]
+            for r in df.itertuples(index=False, name=None)
+        ]
+    except Exception as e:  # noqa: BLE001 — file hỏng/sai định dạng → báo nhẹ, không 500
+        error = f"{type(e).__name__}: {e}"
+
+    return templates.TemplateResponse(
+        request,
+        "document_preview.html",
+        {
+            "user": user,
+            "company": company,
+            "file": row,
+            "slot_label": SLOT_LABEL_VI.get(row.slot, row.slot),
+            "sheet_names": sheet_names,
+            "selected_sheet": sel,
+            "columns": columns,
+            "rows": rows_view,
+            "truncated_rows": truncated_rows,
+            "truncated_cols": truncated_cols,
+            "preview_rows": PREVIEW_ROWS,
+            "preview_cols": PREVIEW_COLS,
+            "human_size": _human_size,
+            "error": error,
+        },
+    )
+
+
 @router.post("/companies/{code}/documents/ingest", response_model=None)
 def documents_ingest_year(
     code: str,
