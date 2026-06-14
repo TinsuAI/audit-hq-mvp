@@ -11,6 +11,8 @@ class Company(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    # slug: định danh URL có nghĩa (sinh từ tên). code vẫn là khoá lưu trữ/AI nội bộ.
+    slug: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
     tax_id: Mapped[str | None] = mapped_column(String(20), index=True, nullable=True)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
