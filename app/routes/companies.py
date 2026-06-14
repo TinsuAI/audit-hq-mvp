@@ -582,16 +582,25 @@ def _data_years(db: Session, company_id: int) -> set[int]:
     return years
 
 
-def _total_rows(db: Session, company_id: int, year: int) -> int:
-    """Tổng số dòng Tầng 1 đã nạp cho (DN, năm) — gộp 4 bảng."""
-    total = 0
-    for model in (NvlBalance, SpBalance, Norm, DeclarationLine):
-        total += db.scalar(
+# Mỗi loại tài liệu BCQT ↔ 1 bảng Tầng 1 (để đếm "đã nạp mấy loại").
+_SLOT_MODELS = {
+    "m15": NvlBalance,
+    "m15a": SpBalance,
+    "m16": Norm,
+    "bcct": DeclarationLine,
+}
+
+
+def _slot_row_counts(db: Session, company_id: int, year: int) -> dict[str, int]:
+    """Số dòng Tầng 1 đã nạp theo TỪNG loại tài liệu cho (DN, năm)."""
+    return {
+        slot: db.scalar(
             select(func.count()).select_from(model).where(
                 model.company_id == company_id, model.period_year == year
             )
         ) or 0
-    return total
+        for slot, model in _SLOT_MODELS.items()
+    }
 
 
 def _year_options(selected: int | None = None) -> list[int]:
@@ -604,11 +613,25 @@ def _year_options(selected: int | None = None) -> list[int]:
     return opts
 
 
-def _doc_year_status(has_files: bool, has_data: bool, total_rows: int) -> tuple[str, str]:
-    """Một nhãn trạng thái DUY NHẤT cho 1 năm — không để mâu thuẫn 'đã nạp' vs 'chưa có file'."""
+def _doc_year_status(
+    has_files: bool,
+    has_data: bool,
+    total_rows: int,
+    loaded_types: int = 0,
+    total_types: int = len(SLOT_ORDER),
+) -> tuple[str, str]:
+    """Một nhãn trạng thái DUY NHẤT cho 1 năm.
+
+    'Đã nạp' (trơn) CHỈ khi đủ cả `total_types` loại tài liệu. Nạp thiếu loại →
+    'Đã nạp một phần · X/Y loại' để không hiểu nhầm nạp 1 loại = đã xong cả năm."""
     if has_data:
         if has_files:
-            return f"Đã nạp · {total_rows:,} dòng", "ok"
+            if loaded_types >= total_types:
+                return f"Đã nạp · {total_rows:,} dòng", "ok"
+            return (
+                f"Đã nạp một phần · {loaded_types}/{total_types} loại · {total_rows:,} dòng",
+                "warn",
+            )
         return "Đã nạp trước đó · file gốc không còn lưu", "warn"
     if has_files:
         return "Có file · chưa nạp", "pending"
@@ -665,8 +688,12 @@ def company_documents(
         slots = {slot: matrix.get(y, {}).get(slot, []) for slot in SLOT_ORDER}
         has_files = any(slots.values())
         has_data = y in data_years
-        total_rows = _total_rows(db, company.id, y) if has_data else 0
-        status_label, status_kind = _doc_year_status(has_files, has_data, total_rows)
+        slot_counts = _slot_row_counts(db, company.id, y) if has_data else {}
+        total_rows = sum(slot_counts.values())
+        loaded_types = sum(1 for n in slot_counts.values() if n > 0)
+        status_label, status_kind = _doc_year_status(
+            has_files, has_data, total_rows, loaded_types
+        )
         year_rows.append({
             "year": y,
             "slots": slots,

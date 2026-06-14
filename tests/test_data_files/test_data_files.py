@@ -108,3 +108,23 @@ def test_files_by_year_slot_groups(session, company, tmp_path):
     grouped = files_by_year_slot(session, company)
     assert set(grouped[2024].keys()) == {"m15", "bcct"}
     assert len(grouped[2024]["bcct"]) == 2  # nhiều file BCCT
+
+
+# --- _doc_year_status: 'Đã nạp' chỉ khi đủ loại, thiếu loại = 'một phần' ---
+
+def test_doc_year_status_partial_vs_full():
+    from app.routes.companies import _doc_year_status
+
+    # Nạp đủ 4/4 loại → 'Đã nạp' trơn.
+    label, kind = _doc_year_status(True, True, 896, loaded_types=4, total_types=4)
+    assert label == "Đã nạp · 896 dòng" and kind == "ok"
+
+    # Chỉ nạp 1/4 loại → 'một phần' (không hiểu nhầm là xong), badge warn.
+    label, kind = _doc_year_status(True, True, 99, loaded_types=1, total_types=4)
+    assert "một phần" in label and "1/4 loại" in label and kind == "warn"
+
+    # Có file chưa nạp / chưa có gì giữ nguyên.
+    assert _doc_year_status(True, False, 0)[1] == "pending"
+    assert _doc_year_status(False, False, 0)[1] == "empty"
+    # Đã nạp trước đó nhưng file gốc mất.
+    assert _doc_year_status(False, True, 50, loaded_types=2)[1] == "warn"
