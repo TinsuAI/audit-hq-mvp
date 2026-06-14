@@ -20,7 +20,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from openai import APIError, APIStatusError
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.ai.client import (
@@ -41,7 +41,7 @@ from app.auth import SessionUser, require_user
 from app.auth_users import get_user_by_username
 from app.database import get_db
 from app.jobs import enqueue_job
-from app.models import AiConversation, AiMessage
+from app.models import AiConversation, AiMessage, Company, Finding
 from app.models.job import JobKind
 from app.scoping import allowed_company_codes, get_company_or_404
 
@@ -50,6 +50,43 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
 HISTORY_TURN_LIMIT = 20  # message count, not round-trip
+
+
+def _resolve_mentions(
+    db: Session, raw: object, allowed_codes: set[str] | None
+) -> list[dict]:
+    """Resolve mention từ client (@DN/@finding) → dict đã XÁC THỰC LẠI phạm vi.
+
+    KHÔNG tin code/id client gửi: tra DB + chặn theo `allowed_codes` (officer). Mục
+    đích là đưa định danh CHÍNH XÁC vào ngữ cảnh để AI gọi tool đúng, không phải lối
+    đi vòng để truy cập DN ngoài phạm vi.
+    """
+    out: list[dict] = []
+    if not isinstance(raw, list):
+        return out
+    for m in raw[:10]:
+        if not isinstance(m, dict):
+            continue
+        if m.get("type") == "company":
+            code = m.get("code")
+            if not code or (allowed_codes is not None and code not in allowed_codes):
+                continue
+            c = db.scalar(select(Company).where(Company.code == code))
+            if c:
+                out.append({"type": "company", "code": c.code, "name": c.name})
+        elif m.get("type") == "finding":
+            try:
+                fid = int(m.get("id"))
+            except (TypeError, ValueError):
+                continue
+            f = db.get(Finding, fid)
+            if f is None:
+                continue
+            comp = db.get(Company, f.company_id)
+            if comp is None or (allowed_codes is not None and comp.code not in allowed_codes):
+                continue
+            out.append({"type": "finding", "id": f.id, "title": f.title, "company_code": comp.code})
+    return out
 
 
 def _clean_tool_args(raw: str) -> str:
@@ -164,6 +201,11 @@ async def chat(
     user_message: str = (body.get("message") or "").strip()
     conv_id: int | None = body.get("conversation_id")
     page_context: dict = body.get("page_context") or {}
+
+    # Mention @DN/@finding → resolve + xác thực lại phạm vi rồi nhét vào ngữ cảnh.
+    mentions = _resolve_mentions(db, body.get("mentions"), allowed_codes)
+    if mentions:
+        page_context = {**page_context, "mentions": mentions}
 
     if not user_message:
         raise HTTPException(status_code=400, detail="Message không được trống.")
@@ -336,13 +378,12 @@ def list_conversations(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """List conversation của user — 30 cái gần nhất."""
-    convs = db.scalars(
-        select(AiConversation)
-        .where(AiConversation.user == user.name)
-        .order_by(AiConversation.id.desc())
-        .limit(30)
-    ).all()
+    """List conversation — 30 cái gần nhất. Admin thấy của mọi user (giám sát);
+    officer chỉ của chính mình."""
+    stmt = select(AiConversation).order_by(AiConversation.id.desc()).limit(30)
+    if not user.is_admin:
+        stmt = stmt.where(AiConversation.user == user.name)
+    convs = db.scalars(stmt).all()
     out = []
     for c in convs:
         # Count messages
@@ -365,6 +406,7 @@ def list_conversations(
             "started_at": c.started_at.isoformat() if c.started_at else None,
             "msg_count": msg_count,
             "page_url_seed": c.page_url_seed,
+            "owner": c.user,  # admin xem list của nhiều user → FE hiện chủ + ẩn nút xoá cuộc người khác
         })
     return {"conversations": out}
 
@@ -375,9 +417,9 @@ def get_conversation_messages(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Resume — render full transcript của 1 conversation."""
+    """Resume — render full transcript của 1 conversation. Admin đọc được của mọi user."""
     conv = db.get(AiConversation, conv_id)
-    if conv is None or conv.user != user.name:
+    if conv is None or (conv.user != user.name and not user.is_admin):
         raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
     msgs = db.scalars(
         select(AiMessage)
@@ -417,6 +459,47 @@ def delete_conversation(
     return {"deleted": conv_id}
 
 
+@router.get("/chat/mentions")
+def chat_mentions(
+    q: str = Query(""),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Autocomplete mention @DN/@finding — LỌC theo DN được phân công (cùng ranh giới).
+
+    Officer chỉ thấy DN của mình + finding thuộc DN đó. Admin (`allowed=None`) thấy tất.
+    """
+    qs = (q or "").strip()
+    allowed = allowed_company_codes(db, user)
+    items: list[dict] = []
+
+    cstmt = select(Company)
+    if allowed is not None:
+        cstmt = cstmt.where(Company.code.in_(allowed))
+    if qs:
+        like = f"%{qs}%"
+        cstmt = cstmt.where(or_(Company.name.ilike(like), Company.slug.ilike(like), Company.code.ilike(like)))
+    for c in db.scalars(cstmt.order_by(Company.name).limit(6)).all():
+        items.append({"type": "company", "code": c.code, "slug": c.slug, "name": c.name, "label": c.name})
+
+    fstmt = select(Finding).join(Company, Finding.company_id == Company.id)
+    if allowed is not None:
+        fstmt = fstmt.where(Company.code.in_(allowed))
+    if qs:
+        conds = [Finding.title.ilike(f"%{qs}%")]
+        if qs.isdigit():
+            conds.append(Finding.id == int(qs))
+        fstmt = fstmt.where(or_(*conds))
+    for f in db.scalars(fstmt.order_by(Finding.id.desc()).limit(6)).all():
+        comp = db.get(Company, f.company_id)
+        items.append({
+            "type": "finding", "id": f.id, "title": f.title,
+            "company_code": comp.code if comp else None,
+            "label": f"#{f.id} {f.title or ''}".strip(),
+        })
+    return {"items": items}
+
+
 @router.get("/ai/meta")
 def ai_meta(user: SessionUser = Depends(require_user)) -> dict:
     """Frontend dùng để biết có nên render sidebar không."""
@@ -425,6 +508,7 @@ def ai_meta(user: SessionUser = Depends(require_user)) -> dict:
         "configured": bool(get_setting("api_key")),
         "model": get_setting("model_default"),
         "is_admin": user.is_admin,
+        "username": user.name,
     }
 
 
@@ -570,6 +654,11 @@ async def chat_stream(
     user_message: str = (body.get("message") or "").strip()
     conv_id: int | None = body.get("conversation_id")
     page_context: dict = body.get("page_context") or {}
+
+    # Mention @DN/@finding → resolve + xác thực lại phạm vi rồi nhét vào ngữ cảnh.
+    mentions = _resolve_mentions(db, body.get("mentions"), allowed_codes)
+    if mentions:
+        page_context = {**page_context, "mentions": mentions}
 
     if not user_message:
         raise HTTPException(status_code=400, detail="Message không được trống.")

@@ -33,6 +33,7 @@ from app.routes.admin_risk_tiers import router as admin_risk_tiers_router
 from app.routes.admin_users import router as admin_users_router
 from app.routes.ai import router as ai_router
 from app.routes.catalog import router as catalog_router
+from app.routes.chat_page import router as chat_page_router
 from app.routes.companies import router as companies_router
 from app.routes.docs import router as docs_router
 from app.routes.jobs import router as jobs_router
@@ -119,6 +120,7 @@ app.include_router(ai_router)
 app.include_router(jobs_router)
 app.include_router(docs_router)
 app.include_router(catalog_router)
+app.include_router(chat_page_router)
 
 
 @app.get("/healthz")

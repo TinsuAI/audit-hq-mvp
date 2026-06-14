@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Trợ lý AI · Audit-HQ{% endblock %}
+
+{% block content %}
+<div class="chat-page" id="chat-page-root">
+  <aside class="chat-list-col">
+    <div class="chat-list-head">
+      <span>💬 Cuộc trò chuyện</span>
+      <button type="button" id="chat-new" class="chat-new-btn" title="Cuộc trò chuyện mới">+ Mới</button>
+    </div>
+    <input id="chat-search" class="ai-history-search" type="search"
+           placeholder="Tìm theo nội dung hoặc mã DN..." aria-label="Tìm cuộc trò chuyện">
+    <div id="chat-list" class="ai-history-list"></div>
+  </aside>
+
+  <section class="chat-main-col">
+    <div class="chat-main-head">
+      <span class="chat-main-title">🤖 Trợ lý AI</span>
+      <span id="chat-model" class="ai-meta"></span>
+    </div>
+    <div class="ai-warn" role="note">
+      ⚠️ Trợ lý AI có thể tạo thông tin sai (hallucination). Mọi số liệu phải đối chiếu nguồn gốc trước khi sử dụng. Quyết định cuối thuộc cán bộ Hải quan.
+    </div>
+    <div id="chat-messages" class="ai-messages"></div>
+    <form id="chat-form" class="ai-form">
+      <textarea id="chat-input" placeholder="Hỏi gì đó… gõ @ để nhắc DN/phát hiện" rows="1" aria-label="Câu hỏi"></textarea>
+      <button id="chat-submit" type="submit">Gửi</button>
+    </form>
+  </section>
+</div>
+
+<link rel="stylesheet" href="/static/sidebar.css?v={{ app_version_string | urlencode }}">
+<link rel="stylesheet" href="/static/chat-page.css?v={{ app_version_string | urlencode }}">
+<script>window.__CHAT_CONV_ID__ = {{ conv_id if conv_id is not none else 'null' }};</script>
+<script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" defer></script>
+<script src="/static/chat-core.js?v={{ app_version_string | urlencode }}" defer></script>
+<script src="/static/chat-page.js?v={{ app_version_string | urlencode }}" defer></script>
+{% endblock %}

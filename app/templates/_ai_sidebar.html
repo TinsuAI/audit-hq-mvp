@@ -37,7 +37,7 @@
     </div>
   </div>
   <form id="ai-form" class="ai-form">
-    <textarea id="ai-input" placeholder="Hỏi gì đó về DN, phát hiện, pháp lý..." rows="1" aria-label="Câu hỏi"></textarea>
+    <textarea id="ai-input" placeholder="Hỏi gì đó… gõ @ để nhắc DN/phát hiện" rows="1" aria-label="Câu hỏi"></textarea>
     <button id="ai-submit" type="submit">Gửi</button>
   </form>
 </aside>
@@ -45,4 +45,5 @@
 <link rel="stylesheet" href="/static/sidebar.css?v={{ app_version_string | urlencode }}">
 <script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" defer></script>
+<script src="/static/chat-core.js?v={{ app_version_string | urlencode }}" defer></script>
 <script src="/static/sidebar.js?v={{ app_version_string | urlencode }}" defer></script>

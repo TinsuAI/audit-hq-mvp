@@ -122,6 +122,7 @@ def build_page_context(
     table: str | None = None,
     table_q: str | None = None,
     view_label: str | None = None,
+    mentions: list[dict] | None = None,
 ) -> str:
     """Khối ngữ cảnh "user đang xem trang nào" để AI bám sát thay vì hỏi lại.
 
@@ -148,6 +149,16 @@ def build_page_context(
         parts.append(line)
     if finding_id:
         parts.append(f"Đang xem chi tiết phát hiện `#{finding_id}`")
+    if mentions:
+        refs = []
+        for m in mentions:
+            if m.get("type") == "company":
+                refs.append(f"DN `{m.get('name')}` (mã `{m.get('code')}`)")
+            elif m.get("type") == "finding":
+                t = f" — {m['title']}" if m.get("title") else ""
+                refs.append(f"phát hiện `#{m.get('id')}` (DN `{m.get('company_code')}`){t}")
+        if refs:
+            parts.append("Người dùng vừa nhắc tới: " + "; ".join(refs))
     if page_url:
         parts.append(f"URL: `{page_url}`")
     if not parts:
@@ -179,6 +190,7 @@ def build_messages_system(
             table=page_context.get("table"),
             table_q=page_context.get("q"),
             view_label=page_context.get("view_label"),
+            mentions=page_context.get("mentions"),
         )
 
     catalog = cached_catalog()
