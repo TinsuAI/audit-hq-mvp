@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Audit-HQ — Runbook Demo & Phản biện</title>
+<style>
+  :root {
+    --ground: #f2f4f7;
+    --surface: #ffffff;
+    --surface-2: #f7f9fb;
+    --ink: #12233a;
+    --ink-soft: #40546b;
+    --ink-faint: #6b7d92;
+    --line: #dce3ea;
+    --line-strong: #c3ced9;
+    --navy: #1d3557;
+    --navy-soft: #2b4a70;
+    --accent: #1c6cc9;
+    --crit: #c0392b;
+    --crit-bg: #fbeceb;
+    --warn: #b7791f;
+    --warn-bg: #fbf3e2;
+    --info: #2b6cb0;
+    --info-bg: #eaf1f9;
+    --good: #2f855a;
+    --good-bg: #e8f3ec;
+    --shadow: 0 1px 2px rgba(18,35,58,.06), 0 8px 24px -16px rgba(18,35,58,.25);
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0e1620;
+      --surface: #16212e;
+      --surface-2: #1b2836;
+      --ink: #e7edf3;
+      --ink-soft: #aebccb;
+      --ink-faint: #7f91a3;
+      --line: #26333f;
+      --line-strong: #35485a;
+      --navy: #9fc3ef;
+      --navy-soft: #b9d3f2;
+      --accent: #67a7ec;
+      --crit: #f0847a;
+      --crit-bg: #2e1a19;
+      --warn: #e2b566;
+      --warn-bg: #2c2415;
+      --info: #7db2e6;
+      --info-bg: #14212e;
+      --good: #74c295;
+      --good-bg: #14251c;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #f2f4f7; --surface: #ffffff; --surface-2: #f7f9fb;
+    --ink: #12233a; --ink-soft: #40546b; --ink-faint: #6b7d92;
+    --line: #dce3ea; --line-strong: #c3ced9;
+    --navy: #1d3557; --navy-soft: #2b4a70; --accent: #1c6cc9;
+    --crit: #c0392b; --crit-bg: #fbeceb; --warn: #b7791f; --warn-bg: #fbf3e2;
+    --info: #2b6cb0; --info-bg: #eaf1f9; --good: #2f855a; --good-bg: #e8f3ec;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1620; --surface: #16212e; --surface-2: #1b2836;
+    --ink: #e7edf3; --ink-soft: #aebccb; --ink-faint: #7f91a3;
+    --line: #26333f; --line-strong: #35485a;
+    --navy: #9fc3ef; --navy-soft: #b9d3f2; --accent: #67a7ec;
+    --crit: #f0847a; --crit-bg: #2e1a19; --warn: #e2b566; --warn-bg: #2c2415;
+    --info: #7db2e6; --info-bg: #14212e; --good: #74c295; --good-bg: #14251c;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 20px 96px; }
+
+  code, .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace; }
+
+  /* ---- Masthead ---- */
+  header.mast {
+    background: linear-gradient(180deg, var(--navy) 0%, var(--navy-soft) 100%);
+    color: #fff;
+    margin-bottom: 28px;
+  }
+  @media (prefers-color-scheme: dark) {
+    header.mast { background: linear-gradient(180deg, #16283f 0%, #1c3350 100%); }
+  }
+  :root[data-theme="dark"] header.mast { background: linear-gradient(180deg, #16283f 0%, #1c3350 100%); }
+  header.mast .inner { max-width: 940px; margin: 0 auto; padding: 30px 20px 26px; }
+  .kicker {
+    text-transform: uppercase; letter-spacing: .16em; font-size: 12px; font-weight: 600;
+    color: #b9cde6; margin: 0 0 10px;
+  }
+  header.mast h1 {
+    font-size: clamp(26px, 4.4vw, 40px); line-height: 1.12; margin: 0 0 12px;
+    font-weight: 800; letter-spacing: -.01em; text-wrap: balance; color:#fff;
+  }
+  header.mast p.sub { margin: 0; color: #d6e3f1; font-size: 16px; max-width: 62ch; }
+  .mast-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 18px; font-size: 14px; color: #c4d5e8; }
+  .mast-meta b { color: #fff; font-weight: 600; }
+
+  /* ---- Cheat strip ---- */
+  .cheat {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line);
+    border-radius: var(--radius); overflow: hidden; margin: -46px 0 32px; box-shadow: var(--shadow);
+  }
+  .cheat .cell { background: var(--surface); padding: 12px 14px; }
+  .cheat .n { font-size: 22px; font-weight: 800; color: var(--navy); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .cheat .l { font-size: 11.5px; color: var(--ink-faint); line-height: 1.35; margin-top: 2px; }
+
+  /* ---- Section ---- */
+  section { margin: 0 0 40px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 6px; padding-top: 8px; }
+  .sec-num {
+    font-family: ui-monospace, monospace; font-size: 13px; font-weight: 700; color: #fff;
+    background: var(--navy); border-radius: 6px; padding: 3px 9px; letter-spacing: .02em; flex: none;
+  }
+  h2 { font-size: clamp(20px, 3vw, 26px); margin: 0; font-weight: 750; letter-spacing: -.01em; color: var(--ink); text-wrap: balance; }
+  .sec-lead { color: var(--ink-soft); margin: 4px 0 20px; max-width: 70ch; }
+
+  h3 { font-size: 17px; margin: 26px 0 10px; font-weight: 700; color: var(--navy); letter-spacing: -.005em; }
+
+  /* ---- Cards & callouts ---- */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+
+  .callout {
+    border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px;
+    padding: 13px 16px; background: var(--surface); font-size: 15px;
+  }
+  .callout p { margin: 0; }
+  .callout p + p { margin-top: 7px; }
+  .callout .tag { display:block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+  .c-crit { border-left-color: var(--crit); background: var(--crit-bg); }
+  .c-crit .tag { color: var(--crit); }
+  .c-warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .c-warn .tag { color: var(--warn); }
+  .c-good { border-left-color: var(--good); background: var(--good-bg); }
+  .c-good .tag { color: var(--good); }
+  .c-info { border-left-color: var(--info); background: var(--info-bg); }
+  .c-info .tag { color: var(--info); }
+
+  /* ---- Checklist ---- */
+  ul.check { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  ul.check li { display: flex; gap: 11px; align-items: flex-start; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+  ul.check li:last-child { border-bottom: 0; }
+  ul.check .box { flex: none; width: 17px; height: 17px; border: 2px solid var(--line-strong); border-radius: 4px; margin-top: 3px; }
+  ul.check .txt { font-size: 15px; }
+  ul.check .txt b { color: var(--ink); }
+  ul.check code { font-size: 13px; background: var(--surface-2); padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line); }
+
+  /* ---- Timeline table (demo script) ---- */
+  .scene { display: grid; grid-template-columns: 74px 1fr; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .scene > .row { display: contents; }
+  .scene .t {
+    background: var(--surface-2); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    padding: 14px 10px; font-family: ui-monospace, monospace; font-weight: 700; font-size: 14px; color: var(--navy);
+    text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .scene .c { background: var(--surface); border-bottom: 1px solid var(--line); padding: 14px 16px; }
+  .scene .row:last-child .t, .scene .row:last-child .c { border-bottom: 0; }
+  .scene h4 { margin: 0 0 4px; font-size: 15.5px; font-weight: 700; color: var(--ink); }
+  .scene .say { margin: 6px 0 0; padding-left: 12px; border-left: 3px solid var(--accent); color: var(--ink); font-size: 14.5px; }
+  .scene .say::before { content: "🎙 Nói: "; font-weight: 700; color: var(--accent); font-size: 12.5px; }
+  .scene .do { margin: 4px 0 0; color: var(--ink-soft); font-size: 13.5px; }
+  .scene .do::before { content: "Thao tác: "; font-weight: 700; color: var(--ink-faint); }
+  .scene ul { margin: 6px 0 0; padding-left: 20px; font-size: 14px; color: var(--ink-soft); }
+  .scene ul li { margin: 2px 0; }
+
+  /* ---- Q&A ---- */
+  .vector { margin-top: 24px; }
+  .vector > .vhead { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .vector .vtag { font-family: ui-monospace, monospace; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 5px; background: var(--navy); color: #fff; flex: none; }
+  .vector .vhead h3 { margin: 0; font-size: 16.5px; color: var(--ink); }
+  .qa { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+  .qa + .qa { margin-top: 12px; }
+  .qa .q { padding: 13px 16px; font-weight: 650; font-size: 15.5px; background: var(--surface-2); border-bottom: 1px solid var(--line); color: var(--ink); }
+  .qa .q::before { content: "Hỏi"; display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--crit); background: var(--crit-bg); padding: 1px 7px; border-radius: 4px; margin-right: 9px; vertical-align: 1.5px; }
+  .qa .a { padding: 13px 16px; font-size: 15px; }
+  .qa .a p { margin: 0 0 8px; }
+  .qa .a p:last-child { margin-bottom: 0; }
+  .qa .a strong { color: var(--ink); }
+  .qa .dont { margin-top: 10px; font-size: 13.5px; color: var(--crit); padding: 8px 11px; background: var(--crit-bg); border-radius: 7px; border: 1px solid color-mix(in srgb, var(--crit) 25%, transparent); }
+  .qa .dont b { text-transform: uppercase; letter-spacing: .05em; font-size: 12px; }
+  .qa .ok { margin-top: 8px; font-size: 13.5px; color: var(--good); padding: 8px 11px; background: var(--good-bg); border-radius: 7px; border: 1px solid color-mix(in srgb, var(--good) 25%, transparent); }
+  .qa .ok b { text-transform: uppercase; letter-spacing: .05em; font-size: 12px; }
+  .glossary td:first-child { font-weight: 650; color: var(--navy); white-space: nowrap; }
+
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 20px; letter-spacing: .01em; }
+  .p-crit { background: var(--crit-bg); color: var(--crit); }
+  .p-warn { background: var(--warn-bg); color: var(--warn); }
+  .p-info { background: var(--info-bg); color: var(--info); }
+  .p-good { background: var(--good-bg); color: var(--good); }
+
+  table.grid { width: 100%; border-collapse: collapse; font-size: 14.5px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .tbl-scroll { overflow-x: auto; border-radius: var(--radius); box-shadow: var(--shadow); }
+  table.grid th, table.grid td { text-align: left; padding: 10px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.grid th { background: var(--surface-2); font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint); font-weight: 700; }
+  table.grid tr:last-child td { border-bottom: 0; }
+  table.grid code { font-size: 13px; }
+  table.grid .sev { white-space: nowrap; }
+
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 30px; }
+  .toc a { text-decoration: none; font-size: 13.5px; font-weight: 600; color: var(--navy); background: var(--surface); border: 1px solid var(--line); padding: 6px 12px; border-radius: 20px; }
+  .toc a:hover { border-color: var(--accent); color: var(--accent); }
+  .toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  hr.soft { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+  .foot { text-align: center; color: var(--ink-faint); font-size: 13px; margin-top: 40px; }
+
+  strong.k { color: var(--navy); }
+  em.note { color: var(--ink-faint); font-style: normal; font-size: 13.5px; }
+
+  @media (max-width: 560px) {
+    .scene { grid-template-columns: 58px 1fr; }
+    .cheat { margin-top: -30px; }
+  }
+  @media print {
+    body { background: #fff; }
+    .toc, .cheat { box-shadow: none; }
+    section { break-inside: avoid; }
+    .qa, .scene, .card { box-shadow: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+  html { scroll-behavior: smooth; }
+</style>
+</head>
+<body>
+<header class="mast">
+  <div class="inner">
+    <p class="kicker">Runbook nội bộ · Chuẩn bị buổi trình diễn</p>
+    <h1>Audit-HQ — Kịch bản Demo &amp; Sổ tay Phản biện</h1>
+    <p class="sub">Hai phiên: (1) trình diễn toàn bộ tính năng thật thuyết phục, (2) tập đối đáp câu hỏi phản biện của cán bộ Hải quan phụ trách IT — người vừa rành công nghệ vừa thạo nghiệp vụ.</p>
+    <div class="mast-meta">
+      <span><b>Người trình:</b> Tú Anh</span>
+      <span><b>Hỗ trợ:</b> Vương (qua chat, hạn chế)</span>
+      <span><b>Địa chỉ demo:</b> <span class="mono">audit-hq-demo.tinsu.ai</span></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="cheat" aria-label="Các con số phải nhớ">
+    <div class="cell"><div class="n">17</div><div class="l">kiểm tra đã triển khai (MVP)</div></div>
+    <div class="cell"><div class="n">49</div><div class="l">kiểm tra trong danh mục</div></div>
+    <div class="cell"><div class="n">6</div><div class="l">nhóm kiểm tra (C1–C6)</div></div>
+    <div class="cell"><div class="n">4</div><div class="l">phát hiện tổ hợp</div></div>
+    <div class="cell"><div class="n">0–1000</div><div class="l">thang điểm rủi ro</div></div>
+    <div class="cell"><div class="n">5</div><div class="l">hạng cảnh báo</div></div>
+  </div>
+
+  <nav class="toc" aria-label="Mục lục">
+    <a href="#pre">① Trước giờ G</a>
+    <a href="#demo">② Kịch bản demo 5 phút</a>
+    <a href="#grill">③ Phản biện chung</a>
+    <a href="#hq">④ Phản biện chuyên môn Hải quan</a>
+    <a href="#mines">⑤ Bản đồ mìn &amp; quy tắc vàng</a>
+  </nav>
+
+  <!-- ============ PART 1 — PRE-FLIGHT ============ -->
+  <section id="pre">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Trước giờ G — kiểm tra tối nay</h2></div>
+    <p class="sec-lead">Demo thất bại 90% vì lỗi kỹ thuật vặt, không phải vì thiếu tính năng. Chạy hết checklist này <b>đêm trước</b>, trên đúng máy và đúng đường mạng sẽ dùng khi demo.</p>
+
+    <div class="card" style="padding:6px 18px;">
+      <ul class="check">
+        <li><span class="box"></span><span class="txt"><b>Đăng nhập được</b> vào <code>audit-hq-demo.tinsu.ai</code> bằng tài khoản sẽ dùng. Đổi mật khẩu sẵn nếu cần — <b>đừng</b> loay hoay mật khẩu trước mặt khách.</span></li>
+        <li><span class="box"></span><span class="txt"><b>Chọn sẵn "ngôi sao"</b>: một cặp (doanh nghiệp, năm) có phát hiện đẹp — có cả <span class="pill p-crit">Nghiêm trọng</span>, ít nhất một <b>tổ hợp</b>, và điểm ở hạng "Cần rà soát" trở lên. Gợi ý khởi điểm: <code>DN_003 · 2022</code>. <em class="note">Xác nhận lại điểm &amp; số phát hiện thật trên màn hình — đừng học thuộc số cũ.</em></span></li>
+        <li><span class="box"></span><span class="txt"><b>Ghi ra giấy con số thật</b> của ca demo: điểm, hạng, số phát hiện theo mức. Khách hỏi "bao nhiêu" phải trả lời không ấp úng.</span></li>
+        <li><span class="box"></span><span class="txt"><b>Thử trợ lý AI một lượt</b> tối nay: hỏi "Vì sao DN_003 năm 2022 điểm cao?" — chắc chắn AI trả lời được &amp; có nút truy nguồn. Nếu AI lỗi/chậm, biết trước để có phương án.</span></li>
+        <li><span class="box"></span><span class="txt"><b>Mở sẵn các tab</b> theo thứ tự demo, để không phải gõ URL/tìm đường lúc trình.</span></li>
+        <li><span class="box"></span><span class="txt"><b>Chụp màn hình dự phòng</b> (offline) của 4 khoảnh khắc chính: điểm + breakdown, tổ hợp, truy nguồn, trợ lý AI. Mạng rớt vẫn kể được câu chuyện.</span></li>
+        <li><span class="box"></span><span class="txt"><b>Phóng to trình duyệt</b> (Ctrl/Cmd +) để chữ đủ lớn khi chiếu. Tắt thông báo, tab riêng tư sạch.</span></li>
+        <li><span class="box"></span><span class="txt"><b>Nhắn Vương</b> khung giờ demo để online hỗ trợ nếu bí câu kỹ thuật sâu.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ PART 2 — DEMO SCRIPT ============ -->
+  <section id="demo">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Kịch bản demo 5 phút</h2></div>
+    <p class="sec-lead">Một mạch kể: <b>từ danh sách rủi ro → khoanh một doanh nghiệp → phát hiện tổ hợp → truy nguồn về dữ liệu gốc → cán bộ ra quyết định → trợ lý AI</b>. Mỗi cảnh có câu để nói và thao tác để làm. Cột thời gian là mốc gợi ý, không phải bấm giờ.</p>
+
+    <div class="callout c-info" style="margin-bottom:18px;">
+      <span class="tag">Câu mở màn — đặt kỳ vọng đúng (quan trọng với khách rành nghề)</span>
+      <p>"Audit-HQ là công cụ <b>sàng lọc rủi ro chất lượng dữ liệu</b> Báo cáo Quyết toán, giúp cán bộ <b>ưu tiên</b> doanh nghiệp cần rà. Đây <b>không</b> phải hệ thống kết luận doanh nghiệp vi phạm — thẩm quyền phân loại tuân thủ vẫn thuộc Tổng cục theo Thông tư 81/2019. Mọi phát hiện đều <b>truy nguồn được</b> về dòng dữ liệu gốc."</p>
+      <p><em class="note">Nói câu này trước sẽ "tước vũ khí" nhiều câu phản biện về pháp lý &amp; hộp đen ngay từ đầu.</em></p>
+    </div>
+
+    <div class="scene">
+      <div class="row"><div class="t">0:00</div><div class="c">
+        <h4>Danh sách doanh nghiệp — hệ thống tự xếp ưu tiên</h4>
+        <p class="do">Mở trang Doanh nghiệp.</p>
+        <p class="say">"Danh sách xếp <b>theo điểm rủi ro giảm dần</b> — doanh nghiệp đáng chú ý tự nổi lên đầu. Mỗi dòng cho biết các năm có dữ liệu, điểm cao nhất và số phát hiện theo mức độ."</p>
+      </div></div>
+      <div class="row"><div class="t">0:40</div><div class="c">
+        <h4>Mở hồ sơ &amp; điểm rủi ro — minh bạch, không hộp đen</h4>
+        <p class="do">Mở <code>DN_003</code>, chọn năm <code>2022</code>. Chỉ vào điểm + hạng, mở phần <b>breakdown điểm</b>.</p>
+        <p class="say">"Điểm 0–1000, ở đây là hạng <b>'Cần rà soát'</b>. Điểm được <b>chuẩn hoá theo tỷ lệ</b>, không cộng dồn số lượng phát hiện — nên doanh nghiệp lớn nhiều mã <b>không</b> bị đội điểm oan. Bảng này bung ra từng kiểm tra đóng góp bao nhiêu điểm."</p>
+      </div></div>
+      <div class="row"><div class="t">1:30</div><div class="c">
+        <h4>Phát hiện — tổ hợp lên đầu</h4>
+        <p class="do">Cuộn xuống danh sách phát hiện. Trỏ vào phần <b>tổ hợp</b> ở đầu, rồi mở một phát hiện tổ hợp.</p>
+        <p class="say">"Phát hiện nhóm theo từng kiểm tra. Riêng <b>tổ hợp</b> — nhiều dấu hiệu cùng trỏ về một mã vật tư — được đẩy lên đầu vì ý nghĩa vượt tổng các phần. Ví dụ tổ hợp này: vừa tồn kho âm, vừa tiêu hao định mức vượt xuất sản xuất — mẫu hình điển hình của <b>tạo định mức ảo</b> để hợp thức nguyên liệu miễn thuế đã bán nội địa."</p>
+      </div></div>
+      <div class="row"><div class="t">2:20</div><div class="c">
+        <h4>★ Truy nguồn — khoảnh khắc quyết định lòng tin</h4>
+        <p class="do">Trong phát hiện, mở phần <b>Chứng cứ truy nguồn</b> → chỉ vào đúng các dòng Mẫu 15 / BCCT làm phát sinh.</p>
+        <p class="say">"Đây là điểm cốt lõi: <b>không có phát hiện hộp đen</b>. Bấm vào là ra đúng những dòng dữ liệu gốc — Mẫu 15, tờ khai — tạo ra kết luận này. Cán bộ đối chiếu tận số, không phải tin lời máy."</p>
+        <p style="margin:8px 0 0; font-size:13.5px; color:var(--good);">Nếu chỉ chọn được một cảnh để "ăn điểm" với khách kỹ thuật — chọn cảnh này.</p>
+      </div></div>
+      <div class="row"><div class="t">3:05</div><div class="c">
+        <h4>Con người quyết định — Loại trừ &amp; tính điểm lại tức thì</h4>
+        <p class="do">Mở một phát hiện, bấm <b>Chỉnh sửa trạng thái</b> → <b>Loại trừ</b>, ghi chú ngắn, lưu. Cho khách thấy điểm đổi ngay.</p>
+        <p class="say">"Cán bộ luôn là người quyết. Đánh dấu <b>Loại trừ</b> — ví dụ giải thích được — thì phát hiện đó <b>không tính vào điểm</b> và điểm <b>được tính lại ngay</b>, không cần chạy lại. Hệ thống hỗ trợ phán đoán, không thay thế."</p>
+      </div></div>
+      <div class="row"><div class="t">3:45</div><div class="c">
+        <h4>Trợ lý ảo — hỏi tiếng Việt, trả lời có truy nguồn</h4>
+        <p class="do">Mở 💬 Trợ lý. Gõ: <em>"Vì sao DN_003 năm 2022 điểm cao?"</em> Chờ trả lời, chỉ vào phần dẫn nguồn.</p>
+        <p class="say">"Trợ lý làm việc <b>trên đúng dữ liệu</b> của doanh nghiệp cán bộ được phân công, trả lời bằng tiếng Việt và <b>dẫn nguồn</b> về phát hiện gốc. Nó tra cứu, giải thích, kết xuất — <b>không</b> tự bịa số: mọi câu trả lời đều đi qua dữ liệu thật."</p>
+      </div></div>
+      <div class="row"><div class="t">4:20</div><div class="c">
+        <h4>Đóng — phân quyền, xuất kiến nghị, lộ trình</h4>
+        <p class="do">Lướt nhanh: xuất Excel kiến nghị · (nếu là admin) nhật ký truy cập · trang Danh mục 49 kiểm tra.</p>
+        <p class="say">"Kết xuất hồ sơ ra Excel kèm chứng cứ; mọi lượt tải/xuất đều vào <b>nhật ký truy cập</b>. Cán bộ chỉ thấy doanh nghiệp được phân công. Danh mục có <b>49 kiểm tra</b>, hiện đã triển khai <b>17</b> cho Giai đoạn I — phần còn lại theo lộ trình. Hệ thống sẵn sàng thí điểm trên dữ liệu thật."</p>
+      </div></div>
+    </div>
+
+    <div class="callout c-warn" style="margin-top:18px;">
+      <span class="tag">Ba câu chốt để lặp lại xuyên suốt</span>
+      <p><b>1.</b> "Chỉ số rủi ro dữ liệu để <b>ưu tiên</b> — không phải kết luận vi phạm." · <b>2.</b> "Mọi phát hiện <b>truy nguồn</b> được về dữ liệu gốc." · <b>3.</b> "Cán bộ <b>quyết định cuối cùng</b>; máy chỉ hỗ trợ."</p>
+    </div>
+  </section>
+
+  <!-- ============ PART 3 — Q&A BANK ============ -->
+  <section id="grill">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Ngân hàng câu hỏi phản biện</h2></div>
+    <p class="sec-lead">Sắp theo <b>hướng tấn công</b>. Mỗi câu có <b>cách trả lời</b> (ngắn, thành thật, luôn bắc cầu về điểm mạnh) và <b>điều đừng nói</b>. Nguyên tắc số một khi bí: <b>thành thật &gt; ấn tượng</b> — khách rành nghề quý sự thẳng thắn và bắt được overclaim trong một nốt nhạc.</p>
+
+    <!-- Vector A -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">A</span><h3>Phương pháp &amp; độ chính xác của kiểm tra</h3></div>
+
+      <div class="qa">
+        <div class="q">Các ngưỡng như 5% / 20% ở đâu ra? Có căn cứ pháp lý không?</div>
+        <div class="a">
+          <p>"Đây là <b>ngưỡng phân mức cảnh báo</b> để xếp ưu tiên, không phải ngưỡng pháp lý. Ví dụ lệch số lượng nhập nguyên liệu: dưới 5% ghi nhận Thông tin, 5–20% Cảnh báo, trên 20% Nghiêm trọng. Ngưỡng này <b>cấu hình được</b> và sẽ hiệu chỉnh cùng nghiệp vụ Hải quan trong giai đoạn thí điểm. Mục tiêu là <b>sắp xếp mức chú ý</b>, còn kết luận vẫn do cán bộ."</p>
+          <div class="dont"><b>Đừng:</b> khẳng định ngưỡng lấy từ một điều khoản thông tư cụ thể (không đúng) — nói rõ đây là tham số nghiệp vụ hiệu chỉnh được.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Kiểm tra "M15 có nhập nhưng không có tờ khai" — chẳng phải rất nhiều dương tính giả sao? Có thể là tồn kỳ trước, hàng mua nội địa hợp lệ…</div>
+        <div class="a">
+          <p>"Đúng, và hệ thống <b>không kết luận sai phạm</b> — nó nêu <b>dấu hiệu cần đối chiếu</b>. Chính vì thế có ba lớp giảm sai: (1) tồn đầu kỳ được tính riêng nên tồn cũ không bị coi là 'không nguồn'; (2) cán bộ mở <b>truy nguồn</b> xem tận dòng; (3) đánh dấu <b>Loại trừ</b> nếu giải thích được, điểm tự trừ. Giá trị nằm ở <b>thu hẹp diện phải soi</b>, không phải tự động buộc tội."</p>
+          <div class="dont"><b>Đừng:</b> phủ nhận có dương tính giả. Thừa nhận thẳng rồi chỉ vào cơ chế Loại trừ + truy nguồn.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Điểm 0–1000 thực chất tính thế nào? "Chuẩn hoá theo tỷ lệ" là tỷ lệ trên cái gì?</div>
+        <div class="a">
+          <p>"Mỗi kiểm tra đóng góp tối đa một mức điểm cố định, dựa trên <b>tỷ lệ</b> số phát hiện (có trọng số theo mức độ) trên <b>quy mô phơi nhiễm</b> của doanh nghiệp — số mã nguyên liệu/thành phẩm/định mức liên quan. Cộng các kiểm tra lại, cộng thưởng nếu có tổ hợp, rồi quy về thang 0–1000. Nhờ chia cho quy mô, doanh nghiệp nhiều mã <b>không</b> tự động điểm cao. Chi tiết công thức có ở tài liệu <b>Phương pháp tính điểm</b> trong hệ thống."</p>
+          <div class="dont"><b>Đừng:</b> sa vào đọc công thức từng dòng nếu không chắc. Nói nguyên lý + chỉ sang trang tài liệu <span class="mono">/tai-lieu/scoring-methodology</span>.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vector B -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">B</span><h3>Chất lượng &amp; phạm vi dữ liệu</h3></div>
+
+      <div class="qa">
+        <div class="q">Doanh nghiệp nộp file sai mẫu, mỗi nơi một định dạng, hoặc gộp nhiều năm — hệ thống chịu được không?</div>
+        <div class="a">
+          <p>"Có tính đến. Bộ đọc <b>tự nhận hai định dạng</b> Mẫu 16 phổ biến; nếu cấu trúc file bất thường, hệ thống <b>cảnh báo trước khi nạp</b> và có nút <b>Chẩn đoán bằng AI</b> phân tích file sai ở đâu. Với file gộp nhiều năm, mỗi dòng tờ khai được gán kỳ theo <b>ngày tờ khai</b>, dòng lạc năm bị tách ra và <b>đếm lại</b> chứ không cắt âm thầm."</p>
+          <div class="dont"><b>Đừng:</b> hứa "đọc được mọi định dạng". Nói cụ thể cái đã xử lý + cơ chế chẩn đoán.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Hệ thống tự nhận loại hình doanh nghiệp (SXXK / gia công / chế xuất) bằng heuristic. Doanh nghiệp hỗn hợp thì sai chứ?</div>
+        <div class="a">
+          <p>"Đúng, đây là <b>hạn chế đã biết</b>. Hiện suy loại hình theo loại chiếm đa số dòng báo cáo, nên doanh nghiệp hỗn hợp có thể bị xếp theo mảng lớn hơn. Hướng xử lý đã có trong thiết kế: thêm trường cho phép cán bộ <b>ghi đè</b> loại hình. Trong thí điểm sẽ bổ sung khi gặp ca hỗn hợp thực tế."</p>
+          <div class="dont"><b>Đừng:</b> giả vờ nó luôn đúng. Thừa nhận hạn chế + nêu hướng override → tạo lòng tin.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Hệ thống có "hiểu" tên hàng hoá để đối chiếu các cách gọi khác nhau không?</div>
+        <div class="a">
+          <p>"Đối chiếu chéo giữa các báo cáo dựa trên <b>mã vật tư</b>, không dựa trên tên gọi tự do — nên tránh được nhập nhằng ngữ nghĩa. Phần <b>chuẩn hoá</b> hiện đã làm là <b>đơn vị tính</b>: 'cái', 'chiếc', 'pcs'… quy về một đơn vị chuẩn để so số lượng cho đúng, quản trị được ở mục Đơn vị tính. Chuẩn hoá <b>tên</b> hàng hoá thì <b>chưa</b> triển khai, nằm ở lộ trình."</p>
+          <div class="dont"><b>Đừng:</b> nói "hệ thống chuẩn hoá tên hàng hoá" — <b>chưa có</b>. Chỉ có chuẩn hoá đơn vị tính + đối chiếu theo mã.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vector C -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">C</span><h3>Trợ lý AI — độ tin cậy</h3></div>
+
+      <div class="qa">
+        <div class="q">AI có bịa số liệu (hallucinate) không? Sao tin được con số nó đưa?</div>
+        <div class="a">
+          <p>"Trợ lý <b>không tự tính</b> số trong đầu. Nó chỉ trả lời qua các <b>công cụ tra cứu</b> chạy thẳng trên cơ sở dữ liệu — tìm phát hiện, đọc dữ liệu gốc, giải thích điểm — và kết quả <b>dẫn nguồn</b> để cán bộ mở ra đối chiếu. Quan trọng: <b>logic các kiểm tra không gọi AI</b> — chấm điểm và phát hiện là mã tất định, chạy lại cho ra y hệt. AI chỉ là lớp <b>tra cứu &amp; giải thích</b> phía trên."</p>
+          <div class="dont"><b>Đừng:</b> nói "AI chấm điểm/chạy kiểm tra". Nó tra cứu &amp; giải thích; logic nghiệp vụ là mã tất định.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Cán bộ được phân công vài doanh nghiệp — hỏi AI "liệt kê tất cả doanh nghiệp" thì có lách xem được đơn vị ngoài phạm vi không?</div>
+        <div class="a">
+          <p>"Không. AI dùng <b>đúng ranh giới phân quyền</b> như giao diện. Công cụ tra cứu chặn theo doanh nghiệp được phân công; kể cả truy vấn dữ liệu nâng cao cũng bị <b>giới hạn ở tầng dữ liệu</b> (chỉ thấy phần được phép), không phải chỉ ẩn trên màn hình. Đây là điểm chúng tôi làm kỹ: khoá <b>cả</b> giao diện lẫn công cụ AI, vì chỉ khoá màn hình thì hỏi AI là lách được."</p>
+          <div class="dont"><b>Đừng:</b> nói mơ hồ "phân quyền theo vai trò". Nhấn: AI &amp; UI dùng <b>chung một ranh giới</b>, chặn ở tầng dữ liệu.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Dữ liệu BCQT gửi ra mô hình ngôn ngữ bên ngoài — không lo lộ dữ liệu doanh nghiệp à? <span class="pill p-crit">Câu khó nhất</span></div>
+        <div class="a">
+          <p>"Câu hỏi rất đúng trọng tâm. Ba điểm: (1) <b>Nhà cung cấp mô hình cấu hình được</b> — endpoint, khoá, mô hình đều đặt ở phần Quản trị, nên khi thí điểm thật <b>có thể trỏ về mô hình đặt nội bộ / on-prem</b>, dữ liệu không rời hạ tầng. (2) Từng nhóm năng lực AI <b>bật/tắt được</b>, có <b>giới hạn lượt &amp; ngân sách</b>, không ghi dữ liệu thô ra log. (3) Bản demo này chỉ chạy trên <b>dữ liệu đã ẩn danh</b>, không phải dữ liệu vận hành thật."</p>
+          <p><strong>Nếu bị ép "vậy hiện tại có gửi ra cloud không?":</strong> "Ở cấu hình demo thì có thể dùng dịch vụ đám mây. Với dữ liệu BCQT thật, phương án triển khai là <b>mô hình nội bộ</b> — đây là quyết định hạ tầng ta thống nhất trước khi thí điểm, không phải ràng buộc của phần mềm."</p>
+          <div class="dont"><b>Đừng:</b> nói chắc như đinh "dữ liệu không bao giờ ra ngoài". Trung thực: cấu hình được → chọn nội bộ cho dữ liệu thật.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout c-warn" style="margin-top:16px;">
+      <span class="tag">⚠ Sự thật về stack AI — kiểm lại trên PROD tối nay trước khi nói tên cụ thể</span>
+      <p><b>Cấu hình đã verify (bản dev):</b> AI chính = model <b>DeepSeek</b> nhưng <b>chạy qua OpenRouter</b> = đám mây, <b>không phải local</b>. Có <b>fallback bật sẵn sang Google Gemini</b> (máy chủ Google/US), tự kích hoạt khi OpenRouter lỗi/quá tải.</p>
+      <p><b>Ba việc phải làm:</b> ① Đừng dùng "đang chạy DeepSeek" làm bằng chứng chạy-được-nội-bộ — nó là DeepSeek đám mây; lập luận đúng &amp; mạnh hơn là <b>"DeepSeek là model MỞ, tự cài được"</b>. ② Đừng nói "chỉ dùng DeepSeek" — có fallback Gemini. <b>Cân nhắc TẮT fallback trên prod cho buổi demo</b> kẻo mạng nghẽn nó tự nhảy sang Gemini (ra ngoài VN) ngay lúc đang thề "chưa ra ngoài". ③ Con số "100 triệu / 1 card": để ở mức "cỡ khoảng", nói đội kỹ thuật khảo sát — bản pro đầy đủ không nhét vừa 1 card rẻ.</p>
+    </div>
+
+    <!-- Vector D -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">D</span><h3>Bảo mật &amp; phân quyền</h3></div>
+
+      <div class="qa">
+        <div class="q">Đăng nhập kiểu gì? Chịu được nhiều người dùng, chống dò mật khẩu không?</div>
+        <div class="a">
+          <p>"Hai vai trò — cán bộ và quản trị — <b>phân quyền theo từng doanh nghiệp</b>. Có <b>khoá tạm sau 5 lần sai</b> để chặn dò mật khẩu, phiên hết hạn sau 8 giờ, và <b>kiểm tra định dạng thật của file</b> khi tải lên (chống đổi đuôi). Bản demo dùng cơ chế đăng nhập gọn nhẹ; khi thí điểm thật, phần xác thực sẽ nâng lên chuẩn của cơ quan (SSO/định danh tập trung) — kiến trúc đã tách sẵn để lắp vào."</p>
+          <div class="dont"><b>Đừng:</b> nói demo đã "bảo mật cấp production". Nói rõ demo gọn nhẹ, có lộ trình nâng cấp xác thực.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Dữ liệu lưu ở đâu, bằng gì? SQLite chịu tải nổi không?</div>
+        <div class="a">
+          <p>"Demo dùng <b>SQLite</b> — một file, gọn, đủ cho quy mô trình diễn (vài chục nghìn dòng). Đây là <b>lựa chọn có chủ đích cho demo</b>, không phải giới hạn kiến trúc: tầng đọc dữ liệu tách khỏi logic nghiệp vụ, nên <b>chuyển sang PostgreSQL</b> khi thí điểm thật là thay cấu hình, không viết lại nghiệp vụ."</p>
+          <div class="dont"><b>Đừng:</b> phòng thủ về SQLite. Đóng khung là quyết định demo có kế hoạch nâng cấp rõ.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Ai làm gì trên hệ thống có ghi lại không? Tải dữ liệu ra ngoài có dấu vết?</div>
+        <div class="a">
+          <p>"Có. <b>Nhật ký truy cập</b> ghi các thao tác nhạy cảm — tải file, xuất kiến nghị, xuất truy vấn, chạy kiểm tra — kèm người thực hiện, thời điểm, doanh nghiệp liên quan, lọc tra cứu được ở mục Quản trị. Chủ ý <b>không</b> ghi lượt xem trang để nhật ký gọn, tập trung vào hành vi egress."</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vector E -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">E</span><h3>Pháp lý &amp; thẩm quyền</h3></div>
+
+      <div class="qa">
+        <div class="q">Điểm cao nghĩa là doanh nghiệp vi phạm? Hệ thống thay cán bộ ra kết luận?</div>
+        <div class="a">
+          <p>"Không, và đây là ranh giới chúng tôi giữ rất rõ. Điểm là <b>chỉ số chất lượng dữ liệu báo cáo</b> để <b>ưu tiên</b> rà soát, <b>không</b> phải đánh giá tuân thủ pháp luật — việc phân loại tuân thủ chính thức thuộc thẩm quyền Tổng cục theo <b>Thông tư 81/2019</b>. Hệ thống bày dấu hiệu &amp; chứng cứ; <b>cán bộ quyết định</b>. Dòng cảnh báo này in ngay trong tài liệu và giao diện."</p>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Các kiểm tra dựa trên căn cứ pháp lý nào?</div>
+        <div class="a">
+          <p>"Nghiệp vụ đối chiếu bám theo khung Báo cáo Quyết toán và quản lý nguyên liệu gia công/sản xuất xuất khẩu — <b>Thông tư 38/2015, 39/2018</b>, cùng tinh thần quản lý rủi ro của <b>81/2019</b>. Hệ thống có sẵn <b>thư viện tài liệu pháp lý</b> để tra cứu văn bản nền tảng ngay trong ứng dụng."</p>
+          <div class="dont"><b>Đừng:</b> trích số điều khoản cụ thể nếu không chắc. Nêu đúng ba thông tư + chỉ sang thư viện tài liệu.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vector F -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">F</span><h3>Quy mô, vận hành &amp; bảo trì</h3></div>
+
+      <div class="qa">
+        <div class="q">Chạy kiểm tra một doanh nghiệp mất bao lâu? Nhiều doanh nghiệp cùng lúc thì sao?</div>
+        <div class="a">
+          <p>"Chạy ở <b>chế độ nền</b>, đưa vào <b>hàng đợi Công việc</b> — cán bộ không phải ngồi chờ, xong thì có chấm báo. Với quy mô dữ liệu BCQT một doanh nghiệp/năm, mỗi lượt chạy nhanh. Kiến trúc hàng đợi cho phép mở rộng số lượng khi lên thí điểm."</p>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Rốt cuộc là 16, 17 hay 49 kiểm tra? <span class="pill p-warn">Bẫy con số</span></div>
+        <div class="a">
+          <p>"Danh mục đầy đủ có <b>49 kiểm tra</b>, chia hai giai đoạn. Giai đoạn I — chạy ngay trên dữ liệu Hải quan đã có — hiện <b>đã triển khai 17</b>, nhóm quanh số lượng nhập/xuất, cân đối tồn kho, phân loại hàng, định mức, truy nguồn và đối chiếu liên kỳ. Phần còn lại theo lộ trình, cần dữ liệu bổ sung từ doanh nghiệp."</p>
+          <div class="dont"><b>Đừng:</b> nói "16" theo thói quen. Màn hình Danh mục hiển thị <b>17</b> đã triển khai / <b>49</b> tổng. Nói cho khớp.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Thêm kiểm tra mới có phải sửa code / phụ thuộc đội kỹ thuật không?</div>
+        <div class="a">
+          <p>"Có chức năng <b>Kiểm tra mở rộng</b> cho phép soạn kiểm tra mới <b>từ mô tả bằng lời</b>, có <b>chạy thử</b> trên một doanh nghiệp tham chiếu trước khi áp dụng. Đây là năng lực nâng cao, dùng thận trọng và kiểm thử kỹ — nhưng cho thấy hệ thống <b>mở rộng được</b> mà không lệ thuộc hoàn toàn vào lập trình lại."</p>
+          <div class="dont"><b>Đừng:</b> thổi phồng thành "ai cũng tự tạo kiểm tra dễ dàng". Đóng khung là công cụ nâng cao, có bước chạy thử.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vector G -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">G</span><h3>Trung thực về bản demo</h3></div>
+
+      <div class="qa">
+        <div class="q">Trong demo này, cái gì là thật, cái gì được dàn dựng?</div>
+        <div class="a">
+          <p>"Thẳng thắn: <b>dữ liệu</b> là hồ sơ thật đã <b>ẩn danh</b>, có <b>chèn một số sai phạm chủ đích</b> để minh hoạ kịch bản — nên số doanh nghiệp nhỏ (5) và tình huống được chọn để kể chuyện rõ. Còn <b>logic kiểm tra, chấm điểm, truy nguồn, trợ lý</b> đều là <b>thật</b>, chạy trực tiếp trên dữ liệu đó — không có màn hình 'đóng giả'. Cùng bộ máy này chạy y hệt trên dữ liệu thật khi thí điểm."</p>
+          <div class="dont"><b>Đừng:</b> giả vờ đây là dữ liệu vận hành thật. Sự minh bạch này lại chính là điểm cộng lớn nhất với khách kỹ thuật.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Tôi tự bấm thử được không? Cho tôi một doanh nghiệp bất kỳ tự khám phá.</div>
+        <div class="a">
+          <p>"Được — mời anh/chị. <em>(Đưa chuột cho khách hoặc mở doanh nghiệp họ chỉ.)</em> Cứ mở phát hiện bất kỳ và bấm <b>truy nguồn</b> để kiểm chứng. Nếu gặp mục chưa hoàn thiện, tôi ghi nhận — bản MVP còn phần trên lộ trình."</p>
+          <p><em class="note">Cho khách tự bấm là nước cờ mạnh: thể hiện không có gì giấu. Chỉ cần tránh các mục biết chắc còn dở (xem Bản đồ mìn).</em></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PART 4 — HQ DOMAIN Q&A ============ -->
+  <section id="hq">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Phản biện chuyên môn Hải quan</h2></div>
+    <p class="sec-lead">Đây là mảng cán bộ đục sâu nhất và TA cần vững nhất. Nguyên tắc xuyên suốt: <b>nắm chắc hệ thống LÀM GÌ + rủi ro nghiệp vụ mỗi kiểm tra nhắm tới</b>; còn điều khoản pháp lý/mã loại hình chi tiết thì <b>nói ở mức bảo vệ được rồi để lại cho anh Vương/đội nghiệp vụ</b> — tuyệt đối đừng trích số điều khoản nếu không chắc. Mỗi câu có dòng xanh <b>"nói được tới đâu"</b>.</p>
+
+    <h3>Bảng thuật ngữ phải thuộc lòng</h3>
+    <div class="tbl-scroll">
+    <table class="grid glossary">
+      <thead><tr><th style="width:26%">Thuật ngữ</th><th>Nghĩa gọn (nói được với cán bộ)</th></tr></thead>
+      <tbody>
+        <tr><td>BCQT</td><td>Báo cáo quyết toán — doanh nghiệp nộp định kỳ, gồm <b>Mẫu 15 / 15a / 16</b>.</td></tr>
+        <tr><td>BCCT</td><td>Báo cáo hàng chi tiết — <b>từng dòng tờ khai XNK</b> (số tờ khai, ngày, loại hình, mã hàng, mã HS, lượng, trị giá, thuế).</td></tr>
+        <tr><td>Mẫu 15</td><td>Cân đối <b>nhập – xuất – tồn nguyên vật liệu</b> theo mã.</td></tr>
+        <tr><td>Mẫu 15a</td><td>Cân đối <b>nhập – xuất – tồn thành phẩm</b> theo mã.</td></tr>
+        <tr><td>Mẫu 16</td><td><b>Định mức thực tế</b>: lượng NVL tiêu hao để làm 1 đơn vị sản phẩm.</td></tr>
+        <tr><td>Loại hình NHẬP</td><td><span class="mono">E11/E15</span> chế xuất (DNCX) · <span class="mono">E31/E33</span> SXXK · <span class="mono">E21/E23</span> gia công · <span class="mono">E13</span> nhập tạo TSCĐ/máy móc.</td></tr>
+        <tr><td>Loại hình XUẤT</td><td><span class="mono">E42</span> DNCX · <span class="mono">E52</span> gia công · <span class="mono">E62</span> SXXK.</td></tr>
+        <tr><td>A42</td><td>Tờ khai <b>chuyển mục đích sử dụng / chuyển tiêu thụ nội địa</b> — phát sinh nghĩa vụ nộp thuế.</td></tr>
+        <tr><td>Mã HS</td><td>Mã phân loại hàng hoá <b>8 số (AHTN)</b> — <b>khác</b> mã hàng nội bộ của doanh nghiệp.</td></tr>
+        <tr><td>Miễn thuế có điều kiện</td><td>NVL nhập cho gia công/SXXK/chế xuất được <b>miễn thuế nhập khẩu</b> với điều kiện sản phẩm <b>được xuất khẩu</b>. Không xuất / bán nội địa mà không khai = <b>thất thu</b>.</td></tr>
+        <tr><td>3 thông tư nền</td><td><b>TT 38/2015</b> (thủ tục hải quan), <b>TT 39/2018</b> (sửa đổi 38 — khung BCQT), <b>TT 81/2019</b> (quản lý rủi ro). Có sẵn trong thư viện Tài liệu.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <!-- HQ-1 -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">HQ-1</span><h3>Bản chất BCQT &amp; nguồn dữ liệu</h3></div>
+
+      <div class="qa">
+        <div class="q">Tờ khai XNK thì cơ quan chúng tôi đã có sẵn trên hệ thống thông quan. Phần mềm của chị lấy dữ liệu tờ khai từ đâu — có kết nối VNACCS/VCIS không, hay bắt nhập tay lại?</div>
+        <div class="a">
+          <p>"Em xin nói thẳng: bản MVP hiện <b>nạp dữ liệu qua tệp</b> — gồm cả bảng dữ liệu tờ khai chi tiết được kết xuất ra Excel — <b>chưa</b> đấu nối trực tiếp VNACCS/VCIS. Đây là bước tự nhiên tiếp theo khi thí điểm: nối thẳng nguồn tờ khai sẵn có của cơ quan để bỏ khâu nạp tay. Phương pháp cốt lõi không đổi — vẫn là đối chiếu số doanh nghiệp tự khai với dữ liệu tờ khai."</p>
+          <div class="ok"><b>Nói được:</b> thừa nhận "nạp tệp, chưa nối VNACCS" là điểm cộng, đừng giấu. Nối hệ thống là roadmap, không phải năng lực đang có.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Mẫu 15/15a/16 do doanh nghiệp tự lập. Họ hoàn toàn có thể "xào" cho ba mẫu khớp nhau trước khi nộp. Vậy đối chiếu nội bộ ba mẫu đó có ý nghĩa gì?</div>
+        <div class="a">
+          <p>"Anh nói <b>đúng một nửa</b> — doanh nghiệp có thể làm ba mẫu khớp nhau. Nên sức mạnh của hệ thống <b>không</b> nằm ở đối chiếu ba mẫu đó với nhau, mà ở <b>hai lớp lưới độc lập</b>:"</p>
+          <p><b>Lưới 1 — đối chiếu với tờ khai hải quan:</b> Mẫu 15/15a so với <b>dữ liệu tờ khai</b> doanh nghiệp đã khai từ trước, từng lô, rải cả năm, <b>không sửa lại được</b>. Làm ba mẫu khớp nhau thì dễ; khớp luôn với hàng trăm tờ khai đã nộp thì khó. (C1.1–C1.4, C1.6.)</p>
+          <p><b>Lưới 2 — logic số học nội bộ:</b> phương trình cân đối, tồn âm — <b>không cần tin doanh nghiệp chút nào</b>. Gian lận thường sửa một số làm <b>hở chỗ khác</b>: cân đối lệch, tồn ra âm. Bộ mẫu 'đánh bóng' đến mấy cũng hay tự mâu thuẫn. (C2.1, C2.3, C2.4.)"</p>
+          <p style="margin-top:8px;"><b>⤷ Bẫy theo sau —</b> <i>"Nhưng tờ khai cũng do doanh nghiệp khai mà?"</i> → "Đúng, nhưng tờ khai chốt ở thời điểm thông quan, cơ quan mình nắm độc lập; 'nắn' báo cáo quyết toán cho khớp hàng trăm tờ khai rải cả năm tốn kém và rủi ro hơn nhiều — chính độ vênh chi phí đó tạo dấu vết."</p>
+          <div class="ok"><b>Thuộc CỨNG (1 trong 5 câu lõi):</b> hai lưới độc lập = đối chiếu tờ khai + logic số học. Trước màn hình thì mở một phát hiện C1.1, chỉ tận mắt "Mẫu 15 khai X, tổng tờ khai Y, lệch Z%".</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Kỳ quyết toán của doanh nghiệp không nhất thiết là năm dương lịch. Hệ thống hiểu "kỳ" hay chỉ cắt theo năm?</div>
+        <div class="a">
+          <p>"Hệ thống tách hai khái niệm. Mỗi bảng báo cáo gắn một <b>kỳ quyết toán</b> riêng; riêng dữ liệu tờ khai được gán kỳ <b>theo ngày tờ khai của từng dòng</b>, nên một tệp gộp nhiều năm không bị lẫn kỳ — dòng lạc kỳ bị tách ra và đếm lại, không cắt âm thầm. Kỳ quyết toán là khái niệm hành chính, không buộc trùng năm dương lịch."</p>
+          <div class="ok"><b>Nói được.</b> Nếu bị hỏi "doanh nghiệp nộp BCQT theo kỳ nào, điều nào quy định" → "theo quy định kỳ quyết toán ở TT 38/39, để em mở đúng điều trong thư viện Tài liệu" — đừng đọc số điều từ trí nhớ.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Một doanh nghiệp vừa gia công, vừa SXXK, vừa bán nội địa — ba dòng chính sách khác nhau. Hệ thống có trộn lẫn không?</div>
+        <div class="a">
+          <p>"Hệ thống nhận diện loại hình theo mã loại hình trên tờ khai và nhóm theo nhóm chính sách (chế xuất / SXXK / gia công). Hạn chế <b>đã biết</b>: với doanh nghiệp hỗn hợp, việc tự nhận 'loại hình chủ đạo' có thể xếp theo mảng lớn hơn — nên thiết kế có đường cho <b>cán bộ ghi đè</b> loại hình. Còn ở cấp từng dòng, mỗi tờ khai vẫn giữ đúng mã loại hình của nó."</p>
+          <div class="dont"><b>Đừng:</b> nói "hệ thống luôn tách đúng 100%". Thừa nhận ca hỗn hợp + nêu cơ chế ghi đè.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HQ-2 -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">HQ-2</span><h3>Loại hình &amp; chính sách mặt hàng</h3></div>
+
+      <div class="qa">
+        <div class="q">Các loại hình E11, E31, E21 khác nhau về chính sách thuế và điều kiện. Hệ thống có phân biệt, hay coi tất cả là "nhập" như nhau?</div>
+        <div class="a">
+          <p>"Hệ thống phân biệt ở mức <b>nhóm</b>: nhập tạo nguyên liệu (E11/E15 chế xuất, E31/E33 SXXK, E21/E23 gia công) so với nhập tạo <b>tài sản cố định</b> (E13). Đối chiếu lượng nhập gom đúng các mã loại hình nguyên liệu của từng nhóm. Còn khác biệt chính sách thuế chi tiết giữa từng mã là nghiệp vụ của cán bộ — hệ thống không thay việc áp chính sách, nó soi tính nhất quán số liệu."</p>
+          <div class="ok"><b>Nói được:</b> "phân biệt ở mức nhóm" là đúng và đủ. Chính sách chi tiết từng mã → để lại cho nghiệp vụ.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Kiểm tra C3.1 báo "cùng một mã vừa khai nguyên liệu vừa khai máy móc E13". Vì sao đó là vấn đề?</div>
+        <div class="a">
+          <p>"Vì bản chất khác nhau: hàng nhập theo E13 là <b>máy móc/thiết bị tạo tài sản cố định</b> — khấu hao, không tiêu hao vào sản phẩm; còn nguyên liệu (E11/E31/E21…) <b>tiêu hao vào sản phẩm xuất khẩu</b> và nằm trong cân đối định mức. Cùng một mã mà lúc khai nguyên liệu, lúc khai máy móc là mâu thuẫn bản chất — có thể nhầm, cũng có thể cố ý để đưa hàng vào diện xử lý có lợi hơn. Hệ thống nêu để cán bộ làm rõ."</p>
+          <div class="ok"><b>Nói được:</b> khung "TSCĐ khấu hao vs nguyên liệu tiêu hao" là chuẩn nghiệp vụ, thuộc.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Chuyển mục đích sử dụng — khi nào doanh nghiệp được làm, và C1.6 bắt cái gì?</div>
+        <div class="a">
+          <p>"Nguyên liệu nhập được miễn thuế với điều kiện dùng đúng mục đích sản xuất hàng xuất. Nếu doanh nghiệp đem nó dùng việc khác — ví dụ bán nội địa — thì phải làm tờ khai <b>chuyển mục đích sử dụng (A42)</b> và nộp thuế tương ứng. <b>C1.6 bắt trường hợp Mẫu 15 có phát sinh 'chuyển mục đích sử dụng' nhưng KHÔNG có tờ khai A42 tương ứng</b> — tức đã chuyển mục đích mà chưa hoàn thành nghĩa vụ khai/nộp thuế, vi phạm điều kiện miễn thuế."</p>
+          <div class="ok"><b>Nói được — đây là phát hiện "ăn tiền":</b> thuộc kỹ chuỗi "miễn thuế có điều kiện → chuyển mục đích → phải khai A42 + nộp thuế → C1.6 bắt chỗ thiếu A42".</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HQ-3 -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">HQ-3</span><h3>Định mức M16 — trái tim gian lận gia công</h3></div>
+
+      <div class="qa">
+        <div class="q">C4.3 báo "tiêu hao vượt xuất sản xuất". Nhưng sản xuất luôn có hao hụt, phế liệu, tỷ lệ lỗi. Hệ thống có trừ hao hụt không, hay cứ vượt là báo?</div>
+        <div class="a">
+          <p>"Có tính đến bằng <b>ngưỡng</b>, không báo mọi vượt: chỉ vượt <b>trên 5%</b> mới Cảnh báo, <b>trên 20%</b> mới Nghiêm trọng — biên này để hấp thụ hao hụt/phế liệu thông thường. Em nói thẳng: MVP <b>chưa</b> tách riêng phế liệu/phế phẩm — đó là nhóm 8 của danh mục, cần doanh nghiệp cung cấp thêm sổ kho phế liệu, hoá đơn bán phế liệu. Nên C4.3 nhắm cái <b>vượt lớn bất thường</b>, còn hao hụt nhỏ nằm trong biên."</p>
+          <div class="ok"><b>Nói được:</b> "ngưỡng hấp thụ hao hụt" + thừa nhận phế liệu là nhóm sau = trả lời trung thực và mạnh. Thuộc con số 5% / 20%.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Định mức "vống" — doanh nghiệp khai định mức cao hơn thực để dư nguyên liệu miễn thuế đem bán ngoài. Hệ thống bắt được không?</div>
+        <div class="a">
+          <p>"Đây đúng là rủi ro trọng tâm của gian lận gia công. Hệ thống tiếp cận bằng <b>tổ hợp dấu hiệu</b>: một mã vừa có tiêu hao định mức vượt xuất sản xuất (C4.3) vừa có tồn kho âm (C2.3) → tổ hợp <b>'nghi tạo định mức ảo'</b>; hoặc phương trình cân đối lệch + tiêu hao bất thường. Hệ thống nêu <b>mẫu hình</b> nghi vấn để cán bộ vào soi định mức, chứ không tự kết luận định mức sai — vì xác định định mức đúng phải khảo sát thực tế sản xuất."</p>
+          <div class="ok"><b>Nói được:</b> nêu tổ hợp "định mức ảo" + thừa nhận giới hạn (hệ thống không tự xác định định mức đúng). Cân bằng này rất được lòng dân nghề.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Sản phẩm nhiều công đoạn, bán thành phẩm nhiều tầng, định mức lồng nhau. Hệ thống tính định mức đa tầng không?</div>
+        <div class="a">
+          <p>"Chưa. MVP làm định mức <b>một tầng</b> (sản phẩm → nguyên liệu). Định mức đa tầng qua bán thành phẩm là <b>nhóm 9</b> trong danh mục, cần doanh nghiệp cung cấp sổ bán thành phẩm, sơ đồ công đoạn — thuộc giai đoạn sau. Em không nói quá năng lực hiện có."</p>
+          <div class="dont"><b>Đừng:</b> gật "có tính đa tầng". Chưa có — nói thẳng, quy về nhóm 9 lộ trình.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HQ-4 -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">HQ-4</span><h3>Cân đối nhập – xuất – tồn &amp; thanh khoản</h3></div>
+
+      <div class="qa">
+        <div class="q">Phương trình cân đối Mẫu 15 gồm những cột nào?</div>
+        <div class="a">
+          <p>"<b>Tồn cuối = tồn đầu + nhập trong kỳ − tái xuất − chuyển mục đích sử dụng − xuất sản xuất − xuất khác.</b> C2.1 báo khi phương trình không cân (sai số quá ±0,01), bao gồm cả trường hợp <b>tồn ảo</b> — tồn đầu bằng 0 mà tồn cuối lớn hơn lượng nhập. Mẫu 15a tương tự cho thành phẩm."</p>
+          <div class="ok"><b>Nói được — thuộc lòng công thức này.</b> Đọc trôi phương trình cân đối là tín hiệu "người này hiểu nghiệp vụ".</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Hệ thống soi số liệu trên báo cáo. Nhưng doanh nghiệp gian lận thì tồn kho THỰC khác tồn SỔ — sổ có thể khớp hoàn hảo mà kho rỗng. Vậy phần mềm bắt được gì?</div>
+        <div class="a">
+          <p>"Rất đúng, và em nói rõ ranh giới: hệ thống soi tính <b>nhất quán của số liệu khai báo</b> — giữa các mẫu và với tờ khai. Nó <b>không thay kiểm kho thực tế</b>. Vai trò của nó là <b>chọn đúng đối tượng</b> để cán bộ xuống kiểm tra sau thông quan/kiểm kho — thu hẹp diện từ hàng nghìn doanh nghiệp xuống số ít có dấu hiệu số liệu bất thường. Kiểm thực tế vẫn là khâu của cán bộ; hệ thống dẫn đường tới đó."</p>
+          <div class="ok"><b>Nói được — thuộc câu ranh giới này:</b> "soi sổ, không thay kiểm kho; vai trò là CHỌN ĐỐI TƯỢNG". Đây là câu tự bảo vệ mạnh nhất cho toàn bộ giới hạn của hệ thống.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Tồn cuối âm, và kiểm tra liên kỳ C6.1 — nghĩa nghiệp vụ là gì?</div>
+        <div class="a">
+          <p>"<b>Tồn âm</b> là bất khả thi vật lý: xuất/dùng nhiều hơn số đang có → hoặc khai khống lượng xuất, hoặc khai thiếu nhập, hoặc định mức sai 'ăn' quá vật tư — luôn là dấu hiệu cứng, nên để Nghiêm trọng. <b>C6.1</b> bắt tồn đầu kỳ này khác tồn cuối kỳ trước: số liệu phải liên tục, lệch nghĩa là có <b>điều chỉnh giữa hai kỳ không căn cứ</b> — nắn số để mỗi kỳ nhìn riêng thì cân, ghép lại thì hở. Cần ít nhất 2 kỳ dữ liệu."</p>
+          <div class="ok"><b>Nói được.</b> Hai câu này ngắn, nghĩa rõ — thuộc.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HQ-5 -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">HQ-5</span><h3>Miễn thuế &amp; thất thu — mục tiêu cuối</h3></div>
+
+      <div class="qa">
+        <div class="q">Nói cho tôi mục tiêu cuối: hệ thống nhắm bắt hành vi gì gây thất thu?</div>
+        <div class="a">
+          <p>"Cốt lõi: nguyên liệu nhập cho gia công/SXXK/chế xuất được <b>miễn thuế nhập khẩu với điều kiện làm ra sản phẩm xuất khẩu</b>. Thất thu xảy ra khi nguyên liệu miễn thuế đó <b>không đi vào hàng xuất mà tuồn ra nội địa không khai</b>. Hệ thống nhắm đúng chuỗi dấu hiệu đó: nhập trong Mẫu 15 không có tờ khai (C1.3), xuất sản xuất không có nguồn (C5.1), tiêu hao vượt (C4.3), chuyển mục đích không khai A42 (C1.6), cùng các tổ hợp 'nguồn nội địa không khai' và 'định mức ảo'. Đó là bản đồ dẫn tới hành vi thất thu."</p>
+          <div class="ok"><b>Chủ động nói câu này</b> — không cần đợi hỏi. Đây là "tuyên ngôn nghiệp vụ" cho thấy đội hiểu đúng mục tiêu, không làm công cụ máy móc vô hồn.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Hệ thống có tính ra được SỐ TIỀN thuế nghi thất thu không?</div>
+        <div class="a">
+          <p>"Chưa. MVP soi về <b>lượng</b> và logic cân đối, chưa quy ra số tiền thuế. Dữ liệu trị giá và thuế <b>có</b> trong bảng tờ khai chi tiết nên quy ra tiền là khả thi và nằm trong lộ trình — nhưng hiện em <b>không khẳng định con số thuế</b>, vì cần thêm bước xác định đúng trị giá tính thuế. Hệ thống hiện trả lời 'ở đâu bất thường', chưa trả lời 'thất thu bao nhiêu tiền'."</p>
+          <div class="ok"><b>Nói được:</b> ranh giới "lượng vs tiền" — thành thật. "Có dữ liệu nhưng chưa dùng" là khiêm tốn đúng mực, không phải yếu kém.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Gian lận TRỊ GIÁ, chuyển giá, gian lận XUẤT XỨ (C/O) — hệ thống soi không?</div>
+        <div class="a">
+          <p>"Không — ngoài phạm vi MVP này. Bộ kiểm tra hiện tập trung vào <b>cân đối lượng và logic BCQT</b> của hàng gia công/SXXK/chế xuất. Trị giá hải quan, chuyển giá, xuất xứ là các mảng rủi ro <b>khác</b>, cần dữ liệu và phương pháp riêng. Em không muốn nói hệ thống làm được điều nó chưa làm."</p>
+          <div class="dont"><b>Đừng:</b> cố "kéo" sang bảo hệ thống chạm tới trị giá/xuất xứ. Nói thẳng: ngoài phạm vi. Thành thật ở đây quý hơn cố gồng.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HQ-6 -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">HQ-6</span><h3>Mã HS &amp; phân loại</h3></div>
+
+      <div class="qa">
+        <div class="q">C3.2 báo mã HS không nhất quán. Nhưng một vật tư có thể hợp lệ ở vài mã HS gần nhau — chẳng phải rất nhiễu?</div>
+        <div class="a">
+          <p>"Có tính đến bằng cách <b>phân mức theo độ lệch</b>: cùng mã vật tư mà khác nhau ở phân nhóm 6 số → chỉ Thông tin; khác ở nhóm 4 số → Cảnh báo; khác tới <b>chương (2 số đầu)</b> → Nghiêm trọng. Lệch nhỏ trong cùng nhóm gần như bỏ qua; chỉ lệch lớn — đổi hẳn chương — mới đáng ngại, vì đó thường đi kèm đổi chính sách mặt hàng/thuế suất."</p>
+          <div class="ok"><b>Nói được — thuộc con số 6/4/2 số.</b> Cơ chế phân mức chính là câu trả lời cho mọi lo ngại "nhiễu".</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Hệ thống có kiểm mã HS doanh nghiệp khai ĐÚNG hay SAI theo biểu thuế không?</div>
+        <div class="a">
+          <p>"Không. Hệ thống chỉ kiểm tính <b>nhất quán nội bộ</b> — cùng một vật tư có bị khai nhiều mã HS khác nhau không. Việc áp mã HS <b>đúng</b> theo biểu thuế/AHTN là nghiệp vụ phân loại của cán bộ, hệ thống không thay; nó chỉ nêu chỗ doanh nghiệp tự mâu thuẫn."</p>
+          <div class="ok"><b>Nói được:</b> ranh giới "nhất quán" vs "áp mã đúng" — rõ ràng, không lấn sân chuyên môn phân loại.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HQ-7 -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">HQ-7</span><h3>Vị trí trong quy trình &amp; giá trị đầu ra</h3></div>
+
+      <div class="qa">
+        <div class="q">Hệ thống này đứng ở đâu trong quy trình của chúng tôi — chọn đối tượng kiểm tra sau thông quan, hay thanh tra, hay gì?</div>
+        <div class="a">
+          <p>"Định vị rõ: công cụ <b>sàng lọc rủi ro số liệu</b> để hỗ trợ <b>chọn đối tượng và trọng điểm</b> khi kiểm tra báo cáo quyết toán / kiểm tra sau thông quan. Nó không phải khâu ra quyết định. Đầu ra là danh sách phát hiện <b>có truy nguồn</b>, kết xuất Excel để cán bộ đưa vào hồ sơ nghiệp vụ."</p>
+          <div class="ok"><b>Nói được — thuộc định vị này:</b> "sàng lọc / chọn đối tượng, hỗ trợ KTSTQ", không phải "hệ thống ra quyết định".</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Kết quả của máy có giá trị pháp lý làm căn cứ xử lý doanh nghiệp không?</div>
+        <div class="a">
+          <p>"Không, và chúng em giữ ranh giới này rất rõ. Phát hiện của hệ thống là <b>chỉ số rủi ro nội bộ để định hướng</b>; căn cứ xử lý phải là hồ sơ kiểm tra chính thức do cán bộ lập theo quy trình, trên chứng cứ đã đối chiếu. Máy chỉ ra nơi cần nhìn, cán bộ mới là người xác lập vi phạm."</p>
+          <div class="ok"><b>Nói được:</b> đây là disclaimer ở khía cạnh pháp lý-đầu ra. Lặp lại nó bất cứ khi nào đụng "xử lý / căn cứ / thẩm quyền".</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout c-warn" style="margin-top:24px;">
+      <span class="tag">HQ-8 · Chủ động nêu giới hạn — hệ thống KHÔNG làm gì (nói trước khi bị bắt)</span>
+      <p>Bản MVP <b>không</b>: tính số tiền thuế thất thu · soi trị giá hải quan / chuyển giá / xuất xứ C/O · kiểm kho thực tế · tách phế liệu–phế phẩm (nhóm 8) · định mức đa tầng qua BTP (nhóm 9) · đối chiếu sổ kế toán 152/155/156 &amp; BCTC (nhóm 10) · TSCĐ &amp; năng lực sản xuất (nhóm 11) · so sánh liên doanh nghiệp cùng ngành (nhóm 7) · nhà cung cấp rủi ro (nhóm 12).</p>
+      <p><b>Cách nói:</b> "Những mảng đó nằm trong danh mục 49 kiểm tra và có lộ trình rõ, phần lớn cần thêm nguồn dữ liệu từ doanh nghiệp. MVP tập trung làm chắc phần <b>chạy ngay trên dữ liệu hải quan đã có</b> — cân đối lượng và logic BCQT." Nêu giới hạn <b>trước</b> khi bị hỏi = làm chủ cuộc chơi, không bị dồn.</p>
+    </div>
+
+    <!-- HQ-9 -->
+    <div class="vector">
+      <div class="vhead"><span class="vtag">HQ-9</span><h3>Năm câu khó nâng cao — kèm nhịp trả lời</h3></div>
+
+      <div class="qa">
+        <div class="q">Định mức trong Mẫu 16 do doanh nghiệp tự khai. Nếu họ khai cao hơn thực 10% ở MỌI mã, đều tay — mọi con số vẫn khớp nội bộ, cân đối vẫn cân, mà nguyên liệu dư vẫn tuồn ra được. Kiểm tra định mức dựa trên chính con số họ khai thì bắt kiểu gì?</div>
+        <div class="a">
+          <p>"Anh chỉ đúng vào giới hạn thật của mọi hệ thống đối chiếu dữ liệu — em không né. Nhưng khai định mức vống <b>không trôi êm</b>, vì nó buộc phải nói dối kèm ở chỗ khác: C4.3 so <b>tiêu hao lý thuyết (định mức × sản lượng xuất)</b> với <b>xuất sản xuất thực trên Mẫu 15</b>. Định mức vống thì tiêu hao lý thuyết vượt lượng xuất thực → C4.3 bắn. Muốn né, phải khai tăng luôn xuất sản xuất — nhưng lượng đó <b>phải có nguồn</b>: nhập thêm (cần tờ khai, không có thì C1.3/C5.1 bắn) hoặc rút tồn (âm → C2.3 bắn). <b>Sửa một số làm hở số khác</b> — đó là chỗ tổ hợp 'định mức ảo' đánh vào. Còn nếu doanh nghiệp dựng cả thế giới số liệu giả khớp hoàn toàn, dữ liệu thuần không bắt được — cái đó cần <b>kiểm tra thực địa</b>, hệ thống chỉ đúng doanh nghiệp để cán bộ xuống kiểm."</p>
+          <div class="ok"><b>Nhịp:</b> nhượng bộ giới hạn → cơ chế "nói dối dây chuyền" → phần không phủ được trả về kiểm thực địa.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Nếu tôi đưa bộ 17 kiểm tra này cho doanh nghiệp xem, họ biết luật chơi thì khai sao cho né sạch. Công khai logic có tự làm hệ thống vô dụng không?</div>
+        <div class="a">
+          <p>"Ba tầng: <b>Một</b>, nhiều kiểm tra bắt cái <b>bất khả thi vật lý</b> (tồn âm, cân đối) — 'né' nghĩa là buộc phải khai <b>đúng hơn</b>; doanh nghiệp vì biết luật mà khai chuẩn lại thì <b>đó chính là thắng lợi cho quản lý</b>, răn đe cũng là mục tiêu. <b>Hai</b>, né một kiểm tra thường <b>để lộ dấu hiệu ở kiểm tra khác</b> — đó là lý do có các tổ hợp. <b>Ba</b>, bộ kiểm tra <b>không tĩnh</b>: danh mục 49 và chức năng soạn kiểm tra mới nghĩa là nó tiến hoá nhanh hơn khả năng dò luật. Mục tiêu không phải cái bẫy bí mật, mà là <b>rào cản + chọn đối tượng</b>."</p>
+          <div class="ok"><b>Nhịp:</b> biến "công khai = yếu" thành "răn đe = mục tiêu". Tư duy quản lý rủi ro trưởng thành — cán bộ giỏi sẽ gật.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Cho tôi con số: trong các phát hiện hệ thống bắn ra, bao nhiêu phần trăm là thật? Chưa kiểm chứng thực tế thì sao tôi tin tỷ lệ nhiễu chấp nhận được?</div>
+        <div class="a">
+          <p>"Em trả lời thẳng: <b>hiện chưa có con số kiểm chứng thực địa</b>, vì đang ở bước demo trên dữ liệu ẩn danh — em <b>không bịa</b> một con số phần trăm. Nhưng đây chính là <b>mục tiêu của thí điểm</b>, và cơ chế đo <b>đã có sẵn</b>: mỗi phát hiện cán bộ đánh dấu <b>Xác nhận / Loại trừ</b>. Chạy trên dữ liệu thật một thời gian, hệ thống <b>tích luỹ tỷ lệ trúng theo từng kiểm tra</b>, từ đó hiệu chỉnh ngưỡng. Chúng em không xin anh tin một con số; chúng em đề xuất <b>cùng đo con số đó trên dữ liệu thật của cơ quan</b>."</p>
+          <div class="ok"><b>Nhịp:</b> không có số thì đừng bịa — trạng thái phát hiện (Xác nhận/Loại trừ) chính là bộ dữ liệu kiểm chứng đang chờ dữ liệu thật.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Doanh nghiệp nào chẳng có vài chỗ lệch. Điểm rủi ro có phân loại được thật không, hay bật lên ai cũng vàng cũng đỏ?</div>
+        <div class="a">
+          <p>"Điểm tính <b>theo tỷ lệ trên quy mô</b>, không cộng dồn — nên vài chỗ lệch lặt vặt trên hàng nghìn mã chỉ <b>nhích điểm nhẹ</b>, nằm hạng thấp 'chênh lệch nhỏ'. Chỉ khi <b>tỷ lệ phát hiện cao</b>, hoặc có phát hiện <b>nghiêm trọng / tổ hợp</b>, điểm mới lên hạng cao — đó là cách tránh 'ai cũng đỏ'. Mục tiêu không phải chấm tuyệt đối mà <b>xếp hạng tương đối để ưu tiên</b>, danh sách sắp giảm dần. <i>(Trước màn hình: mở danh sách — điểm trải từ xanh tới đỏ.)</i> Ngưỡng năm hạng chỉnh được để tinh chỉnh độ phân tán trên dữ liệu thật."</p>
+          <div class="ok"><b>Nhịp:</b> "rate-based, không cộng dồn" + "xếp hạng tương đối để ưu tiên". Nhượng bộ: demo dàn dựng nên phổ điểm đẹp, thật thì cần tinh chỉnh ngưỡng.</div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="q">Kiểm tra liên kỳ cần hai kỳ. Năm đầu doanh nghiệp vào hệ thống, tồn đầu kỳ lấy đâu ra để đối chiếu? Chị tin luôn tồn đầu do họ khai à?</div>
+        <div class="a">
+          <p>"Đúng, kỳ đầu chưa có kỳ trước nên C6.1 chưa chạy được (cần ≥2 kỳ). Nhưng tồn đầu kỳ đầu <b>không được tin trắng</b> — nó vẫn bị các kiểm tra khác soi <b>gián tiếp</b>: nếu khai khống tồn đầu để 'tạo nguồn' cho xuất sản xuất, thì khi mã đó không có tờ khai nhập, phương trình cân đối và các kiểm tra nguồn (C5.1, C1.3) vẫn vạch ra chỗ vô lý. Từ kỳ thứ hai trở đi, C6.1 <b>khoá luôn</b> tính liên tục. Em nói thật: kỳ đầu là <b>điểm mù tự nhiên</b> của mọi hệ thống liên kỳ — cách xử lý là <b>tích luỹ nhiều kỳ</b>, càng nhiều kỳ lưới càng kín."</p>
+          <div class="ok"><b>Nhịp:</b> thừa nhận điểm mù kỳ đầu + chỉ ra lưới khác vẫn phủ gián tiếp. "Điểm mù tự nhiên của mọi hệ thống liên kỳ" = hiểu bản chất, không phòng thủ.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout c-good" style="margin-top:18px;">
+      <span class="tag">★ Nhịp trả lời chung — thuộc cái này thì câu chưa gặp cũng ứng biến được</span>
+      <p><b>Nhượng bộ giới hạn thật → chỉ ra cơ chế bù</b> (nói dối dây chuyền · lưới độc lập khác · trạng thái phát hiện) <b>→ phần không phủ được thì trả về đúng khâu</b> (kiểm thực địa · thí điểm đo tỷ lệ · tinh chỉnh ngưỡng). Không gồng, không overclaim — dân nghề quý sự thẳng thắn có chiều sâu hơn lời tô hồng.</p>
+    </div>
+  </section>
+
+  <!-- ============ PART 5 — LANDMINES ============ -->
+  <section id="mines">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Bản đồ mìn &amp; quy tắc vàng</h2></div>
+    <p class="sec-lead">Những chỗ Tú Anh dễ vấp nhất — đã soi từ mã nguồn, không phải phỏng đoán. Đọc kỹ phần này lần cuối trước khi vào phòng.</p>
+
+    <h3>Sáu quả mìn cụ thể</h3>
+    <div class="tbl-scroll">
+    <table class="grid">
+      <thead><tr><th style="width:26%">Chỗ vấp</th><th>Sự thật &amp; cách xử lý</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Con số kiểm tra</b></td>
+          <td>Đừng nói "16". Màn hình hiển thị <b>17 đã triển khai / 49 tổng</b>. Cán bộ IT có thể ngồi đếm trên trang Danh mục — con số nói phải khớp màn hình.</td>
+        </tr>
+        <tr>
+          <td><b>"Buộc đổi mật khẩu lần đầu"</b></td>
+          <td>Tính năng này <b>đã được gỡ</b> theo yêu cầu. <b>Đừng</b> hứa hệ thống ép đổi mật khẩu lần đầu — nó sẽ không xảy ra, mất uy ngay. (Vẫn <b>đổi mật khẩu chủ động</b> được ở menu người dùng.)</td>
+        </tr>
+        <tr>
+          <td><b>"Chuẩn hoá tên hàng hoá"</b></td>
+          <td><b>Chưa triển khai.</b> Chỉ có: đối chiếu theo <b>mã vật tư</b> + chuẩn hoá <b>đơn vị tính</b>. Nói nhầm là overclaim dễ bị bắt.</td>
+        </tr>
+        <tr>
+          <td><b>Dữ liệu ra LLM ngoài</b></td>
+          <td>Câu khó nhất (mục C). Thật: AI chính = <b>DeepSeek qua OpenRouter</b> (đám mây), có <b>fallback Gemini</b> bật sẵn. Trả lời: nhà cung cấp <b>cấu hình được</b> → dữ liệu thật dùng <b>model mở tự cài nội bộ</b>. <b>Verify prod + cân nhắc tắt fallback</b> tối nay. Đừng tuyên bố tuyệt đối "không bao giờ ra ngoài".</td>
+        </tr>
+        <tr>
+          <td><b>Con số điểm / phát hiện</b></td>
+          <td>Đừng đọc số thuộc lòng. <b>Xác nhận số thật trên prod tối nay</b> và cầm theo giấy — dữ liệu demo có thể đã đổi.</td>
+        </tr>
+        <tr>
+          <td><b>Công thức điểm chi tiết</b></td>
+          <td>Nếu bị truy sâu mà không chắc: nói nguyên lý (tỷ lệ trên quy mô, không cộng dồn) rồi <b>chỉ sang tài liệu Phương pháp tính điểm</b> trong hệ thống. Đừng bịa công thức.</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Năm quy tắc vàng khi bị hỏi khó</h3>
+    <div class="stack" style="margin-top:6px;">
+      <div class="callout c-good"><span class="tag">1 · Thành thật thắng ấn tượng</span><p>Khách vừa rành công nghệ vừa thạo nghiệp vụ. Một câu thừa nhận hạn chế đúng lúc xây lòng tin nhiều hơn mười câu tô hồng. Overclaim là cách nhanh nhất để mất cả buổi.</p></div>
+      <div class="callout c-good"><span class="tag">2 · Không biết thì ghi nhận, đừng bịa</span><p>"Đây là câu hỏi hay về chi tiết kỹ thuật — cho phép tôi ghi lại để đội kỹ thuật (anh Vương) trả lời chính xác, tôi không muốn nói sai." Câu này hoàn toàn chấp nhận được và chuyên nghiệp.</p></div>
+      <div class="callout c-good"><span class="tag">3 · Luôn bắc cầu về truy nguồn</span><p>Bị dồn về độ tin cậy? Kéo về: "Ta mở dữ liệu gốc xem trực tiếp." Truy nguồn là lá bài mạnh nhất — dùng nó để biến câu hỏi hoài nghi thành màn trình diễn điểm mạnh.</p></div>
+      <div class="callout c-good"><span class="tag">4 · Đụng pháp lý thì lùi về disclaimer</span><p>Mọi câu về "vi phạm / tuân thủ / thẩm quyền" → lặp lại: chỉ số rủi ro dữ liệu để ưu tiên, không phải kết luận tuân thủ; thẩm quyền thuộc Tổng cục theo TT 81/2019; cán bộ quyết định.</p></div>
+      <div class="callout c-good"><span class="tag">5 · Đóng khung "demo có chủ đích", không phòng thủ</span><p>SQLite, đăng nhập gọn, dữ liệu ẩn danh — đều là <b>lựa chọn hợp lý cho một MVP demo</b>, mỗi cái có đường nâng cấp rõ khi thí điểm. Nói với tâm thế chủ động, không xin lỗi.</p></div>
+    </div>
+
+    <div class="callout c-info" style="margin-top:22px;">
+      <span class="tag">Một câu để kết thúc buổi demo</span>
+      <p>"Mục tiêu của bản MVP này là chứng minh <b>phương pháp chạy được trên dữ liệu thật và truy nguồn được đến từng dòng</b>. Những gì chưa hoàn thiện đều nằm trên lộ trình rõ ràng. Chúng tôi mong nhận phản hồi nghiệp vụ của anh/chị để bước vào giai đoạn thí điểm trên dữ liệu thật."</p>
+    </div>
+  </section>
+
+  <p class="foot">Runbook nội bộ · Audit-HQ MVP · Chuẩn bị cho buổi trình diễn Hải quan · Soạn từ mã nguồn đã kiểm chứng</p>
+
+</div>
+
+</body>
+</html>

@@ -132,6 +132,16 @@ def showcase() -> FileResponse:
     return FileResponse(BASE_DIR / "static" / "showcase.html", media_type="text/html")
 
 
+@app.get("/on-bai", response_class=HTMLResponse)
+def on_bai() -> FileResponse:
+    """Runbook chuẩn bị demo (nội bộ) — CÔNG KHAI để chia sẻ cho team.
+
+    File tĩnh self-contained. LƯU Ý: nội dung là tài liệu nội bộ (kịch bản, câu
+    phản biện, ghi chú chuẩn bị) — trang để `noindex`; không link công khai.
+    """
+    return FileResponse(BASE_DIR / "static" / "on-bai.html", media_type="text/html")
+
+
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {
