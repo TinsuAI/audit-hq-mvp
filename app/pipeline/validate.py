@@ -15,6 +15,7 @@ import pandas as pd
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
 from app.adapters.layout import BALANCE_EXPECT, find_header_columns
+from app.adapters.sheet_select import SheetNotFound
 from app.pipeline.discover import DiscoveredFiles, discover
 
 SLOT_LABEL = {
@@ -71,6 +72,18 @@ def _check_balance(diag: UploadDiagnosis, slot: str, path: Path, parse_fn) -> No
     label = SLOT_LABEL[slot]
     try:
         parsed = parse_fn(path)
+    except SheetNotFound as e:
+        # Không sheet nào khớp bố cục. Vẫn dò tiêu đề để nói ĐƯỢC lệch ở đâu —
+        # "không chọn được sheet" một mình thì cán bộ không sửa được gì.
+        exp = _BALANCE_EXPECT[slot]
+        hrow, hmap = _find_header_columns(
+            path, exp["code"][1], {k: v[1] for k, v in exp["fields"].items()}
+        )
+        detail = _mismatch_detail(slot, hrow, hmap, exp) if hrow is not None else str(e)
+        diag.diagnostics.append(Diagnostic(
+            slot, "error", f"{label}: không chọn được sheet đúng biểu", detail,
+        ))
+        return
     except Exception as e:  # noqa: BLE001 — surface parser error friendly
         diag.diagnostics.append(Diagnostic(
             slot, "error", f"{label}: không đọc được file",
@@ -142,7 +155,7 @@ def _check_simple(diag: UploadDiagnosis, slot: str, path: Path, parse_fn, rows_a
         extra = (
             "Mẫu 16 cần cấu trúc SP→NVL (sheet BCTT39 hoặc Sheet1)."
             if slot == "m16" else
-            "BCCT cần sheet tờ khai (Sheet1) với số tờ khai 9–13 chữ số ở cột thứ 2."
+            "BCCT cần sheet CHI TIẾT hàng hoá (không phải sheet tổng hợp cấp tờ khai)."
         )
         diag.diagnostics.append(Diagnostic(
             slot, "error", f"{label}: 0 dòng dữ liệu",

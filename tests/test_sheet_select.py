@@ -85,3 +85,23 @@ def test_data_start_skips_numbering_row_but_keeps_numeric_data(tmp_path: Path) -
 def test_data_start_falls_back_when_no_header(tmp_path: Path) -> None:
     grid = [[None] * 11 for _ in range(12)]
     assert find_data_start(grid, "m15") == 9
+
+
+def test_bcct_prefers_detail_sheet_over_declaration_summary(tmp_path: Path) -> None:
+    """Sheet tổng hợp cấp tờ khai cũng có "Số TK" ở c1 và số tờ khai khớp
+    `_DECLARATION_RE`, nên chọn nhầm nó sinh dòng SAI chứ không phải 0 dòng."""
+    def _grid(header: list) -> list[list]:
+        g: list[list] = [[None] * len(header) for _ in range(9)]
+        g[1] = ["", "BÁO CÁO"] + [None] * (len(header) - 2)
+        g.append(header)
+        g.append([1, "306974366810"] + [None] * (len(header) - 2))
+        return g
+
+    detail = _grid(["STT", "Số TK", "Ngày ĐK", "Mã loại hình", "Mã địa điểm đích",
+                    "Tên địa điểm đích", "Địa điểm dỡ hàng", "Mã hiệu PTVC"])
+    summary = _grid(["STT", "Số TK", "Số tờ khai đầu tiên", "Nhánh", "Ngày ĐK",
+                     "Mã HQ", "Mã loại hình", "Số tờ khai tạm nhập"])
+    p = tmp_path / "bcct.xlsx"
+    _write(p, {"Tổng hợp": summary, "Chi tiết": detail})
+
+    assert select_sheet(p, "bcct", 2024).name == "Chi tiết"

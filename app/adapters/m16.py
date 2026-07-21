@@ -17,6 +17,7 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.sheet_select import SheetNotFound, select_sheet
 
 
 @dataclass
@@ -88,18 +89,24 @@ def _detect_format(xls: pd.ExcelFile) -> str:
     return "tt39"
 
 
-def parse_m16(path: str | Path) -> M16File:
+def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = None) -> M16File:
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
-    fmt = _detect_format(xls)
-    if fmt == "tt39":
-        sheet = next((s for s in _M16_TT39_SHEETS if s in xls.sheet_names), xls.sheet_names[0])
-        cols = _M16_TT39_COLS
-        data_start = _M16_TT39_DATA_START
-    else:
-        sheet = "Sheet1"
-        cols = _M16_DINHMUC_COLS
-        data_start = 1
+    cols = _M16_TT39_COLS
+    data_start = _M16_TT39_DATA_START
+    if sheet is None:
+        try:
+            # Chọn theo nội dung trước: có DN gộp Mẫu 15/15a/16 vào một workbook,
+            # tên sheet không nói được sheet nào là định mức.
+            choice = select_sheet(p, "m16", year)
+            sheet, data_start = choice.name, choice.data_start
+        except SheetNotFound:
+            if _detect_format(xls) == "tt39":
+                sheet = next(
+                    (s for s in _M16_TT39_SHEETS if s in xls.sheet_names), xls.sheet_names[0]
+                )
+            else:
+                sheet, cols, data_start = "Sheet1", _M16_DINHMUC_COLS, 1
 
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()

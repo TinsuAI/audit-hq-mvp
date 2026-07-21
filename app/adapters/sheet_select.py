@@ -27,7 +27,11 @@ from app.adapters.layout import BALANCE_EXPECT, find_data_start, find_header_col
 # Nhãn đúng vị trí đáng giá gấp 3 nhãn chỉ đúng tên: sheet sai bố cục vẫn có thể
 # khớp nhiều nhãn (bảng tồn kho có đủ tồn đầu/nhập/tồn cuối) nhưng ở cột khác.
 _POSITION_WEIGHT = 3
-_MIN_SCORE = 5  # >= 1 nhãn đúng vị trí + >= 2 nhãn khớp tên
+_MIN_AT_POSITION = 2
+_MIN_SCORE = 5
+# Chấm điểm chỉ cần vùng tiêu đề. File tờ khai lớn nhất trong dữ liệu thật là 71 MB /
+# 6 sheet — đọc đủ mọi sheet chỉ để chấm điểm là không chấp nhận được.
+_PROFILE_ROWS = 40
 
 
 class SheetNotFound(LookupError):
@@ -72,7 +76,15 @@ def _score(cells: list[list[Any]], slot: str) -> tuple[int, dict[str, int]]:
     if hrow is None:
         return 0, {}
     expected = {"__code__": exp["code"][0], **{k: v[0] for k, v in exp["fields"].items()}}
+    # Cột mã phải nằm ĐÚNG chỗ adapter đọc, nếu không adapter không lấy được mã dù
+    # sheet có đúng biểu — coi như không dùng được, đừng cho điểm.
+    if hmap.get("__code__") != expected["__code__"]:
+        return 0, {}
     at_position = sum(1 for label, col in hmap.items() if expected.get(label) == col)
+    # Một nhãn đúng chỗ có thể là trùng hợp: sheet tổng hợp của BCCT cũng có "Số TK"
+    # ở c1 rồi lệch hết phần sau. Phải có ít nhất hai nhãn đúng chỗ.
+    if at_position < _MIN_AT_POSITION:
+        return 0, {}
     return _POSITION_WEIGHT * at_position + len(hmap), hmap
 
 
@@ -86,19 +98,26 @@ def _count_rows(cells: list[list[Any]], slot: str, data_start: int) -> int:
 
 
 def profile_sheets(path: Path, slot: str) -> list[SheetCandidate]:
+    """Chấm điểm mọi sheet. `row_count` để -1 (chưa đếm) — chỉ đếm khi cần phá hoà."""
     xls = pd.ExcelFile(path)
     out: list[SheetCandidate] = []
     for name in xls.sheet_names:
-        cells = pd.read_excel(xls, sheet_name=name, header=None).values.tolist()
+        cells = pd.read_excel(
+            xls, sheet_name=name, header=None, nrows=_PROFILE_ROWS
+        ).values.tolist()
         score, colmap = _score(cells, slot)
         start = find_data_start(cells, slot)
         header = parse_company_header(cells, scan_rows=14)
         out.append(SheetCandidate(
-            name=name, score=score, colmap=colmap, data_start=start,
-            row_count=_count_rows(cells, slot, start),
+            name=name, score=score, colmap=colmap, data_start=start, row_count=-1,
             period_from=header.period_from, period_to=header.period_to,
         ))
     return out
+
+
+def _fill_row_count(path: Path, slot: str, cand: SheetCandidate) -> None:
+    cells = pd.read_excel(path, sheet_name=cand.name, header=None).values.tolist()
+    cand.row_count = _count_rows(cells, slot, cand.data_start)
 
 
 def select_sheet(path: Path, slot: str, year: int | None = None) -> SheetCandidate:
@@ -121,6 +140,8 @@ def select_sheet(path: Path, slot: str, year: int | None = None) -> SheetCandida
         if matched:
             top = matched
     if len(top) > 1:
+        for c in top:
+            _fill_row_count(path, slot, c)
         top.sort(key=lambda c: -c.row_count)
     return top[0]
 

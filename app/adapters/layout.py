@@ -40,6 +40,29 @@ BALANCE_EXPECT: dict[str, dict[str, Any]] = {
             "Tồn cuối": (9, ["tồn cuối", "ton cuoi"]),
         },
     },
+    # Mẫu 16 — tiêu đề hai tầng: dòng cha có Mã SP / Đơn vị tính / "Nguyên liệu, vật tư"
+    # / Ghi chú, dòng con mới tách Mã · Tên · ĐVT · Lượng. Chấm điểm trên dòng cha.
+    "m16": {
+        "data_start": 11,
+        "code": (1, ["mã sản phẩm", "mã sp", "ma sp"]),
+        "fields": {
+            "Đơn vị tính SP": (3, ["đơn vị tính", "don vi tinh"]),
+            "Nguyên liệu": (4, ["nguyên liệu", "nguyen lieu"]),
+            "Ghi chú": (8, ["ghi chú", "ghi chu"]),
+        },
+    },
+    # BCCT — sheet chi tiết ("BÁO CÁO CHI TIẾT HÀNG HÓA…") vs sheet tổng hợp
+    # ("BÁO CÁO TỜ KHAI…") cùng có cột "Số TK" ở c1, nhưng tổng hợp chèn thêm
+    # "Số tờ khai đầu tiên"/"Nhánh" nên Ngày ĐK trượt sang c4, Mã loại hình sang c6.
+    "bcct": {
+        "data_start": 10,
+        "code": (1, ["số tk", "so tk"]),
+        "fields": {
+            "Ngày ĐK": (2, ["ngày đk", "ngay dk"]),
+            "Mã loại hình": (3, ["mã loại hình", "ma loai hinh"]),
+            "Mã hiệu PTVC": (7, ["mã hiệu ptvc", "ma hieu ptvc"]),
+        },
+    },
 }
 
 # Dòng đánh số dưới tiêu đề: "(1)", "(6a)", "(11)=(5)+(6)-(7)-(8)".

@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.adapters.sheet_select import select_sheet
+
 
 @dataclass
 class DiscoveredFiles:
@@ -71,6 +73,7 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
     bcct_candidates: list[Path] = []
 
     bcqt_dir = base / "BCQT"
+    unclassified: list[Path] = []
     if bcqt_dir.exists():
         for p in bcqt_dir.iterdir():
             if not p.is_file() or p.suffix.lower() not in {".xls", ".xlsx"}:
@@ -82,8 +85,7 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
             elif "_sp" in normalized or normalized.startswith("sp_") or "spgsql" in normalized:
                 m15a_candidates.append(p)
             else:
-                # Older mẫu cũ (TT38) — may contain both; skip for MVP
-                continue
+                unclassified.append(p)
 
     dm_dir = base / "DINH_MUC"
     if dm_dir.exists():
@@ -113,6 +115,24 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
                     continue
                 if _filename_covers_year(p.name, year):
                     bcct_candidates.append(p)
+
+    # Tên file không phải lúc nào cũng nói được biểu nào: DN viết thành phẩm là "TP"
+    # (không khớp `_sp`/`sp_`), và có DN gộp cả ba biểu vào MỘT workbook thành ba
+    # sheet. Trước đây các file này bị bỏ hẳn. Chỉ dò nội dung cho slot mà đường
+    # theo tên chưa tìm được gì — giữ đường theo tên làm đường nhanh, nên DN đang
+    # chạy được không đổi kết quả. Cùng một file có thể phục vụ nhiều slot.
+    probe = [p for p in unclassified if not _is_draft(p.name)]
+    for slot, bucket in (
+        ("m15", m15_candidates), ("m15a", m15a_candidates), ("m16", m16_candidates),
+    ):
+        if bucket:
+            continue
+        for p in probe:
+            try:
+                select_sheet(p, slot, year)
+            except Exception:  # noqa: BLE001 — file hỏng / không khớp biểu đều là "không dùng được"
+                continue
+            bucket.append(p)
 
     return DiscoveredFiles(
         m15=_pick_best(m15_candidates),
