@@ -17,6 +17,8 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.layout import find_data_start
+from app.adapters.sheet_select import select_sheet
 
 
 @dataclass
@@ -64,16 +66,17 @@ _DATA_START_ROW = 9  # row index where first data row appears
 _SHEET_NAMES = ("BCQT_NPL", "BCQT_NVL", "Sheet1")
 
 
-def parse_m15(path: str | Path) -> M15File:
+def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = None) -> M15File:
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
-    sheet = next((s for s in _SHEET_NAMES if s in xls.sheet_names), xls.sheet_names[0])
+    if sheet is None:
+        sheet = select_sheet(p, "m15", year).name
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
     rows: list[M15Row] = []
-    for raw in cells[_DATA_START_ROW:]:
+    for raw in cells[find_data_start(cells, "m15"):]:
         material_code = normalize_code(to_str(safe_get(raw, _COL["material_code"])))
         if not material_code:
             continue

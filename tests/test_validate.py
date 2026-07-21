@@ -22,9 +22,13 @@ def _write(path: Path, sheet: str, grid: list[list]) -> None:
 
 
 def _good_m15_grid() -> list[list]:
-    # 9 hàng tiêu đề + dữ liệu từ hàng 9 (cột chuẩn TT39).
+    # 9 hàng tiêu đề + dữ liệu từ hàng 9 (cột chuẩn TT39). Hàng 8 là dòng nhãn cột —
+    # file thật luôn có, và adapter dựa vào nó để nhận ra sheet đúng biểu.
     grid = [["Tên tổ chức: CTY DEMO"] + [None] * 10]
-    grid += [[None] * 11 for _ in range(8)]
+    grid += [[None] * 11 for _ in range(7)]
+    grid.append(["STT", "Mã NVL", "Tên NVL", "Đơn vị tính", "Tồn đầu kỳ",
+                 "Nhập trong kỳ", "Tái xuất", "Chuyển MĐSD", "Xuất sản xuất",
+                 "Xuất khác", "Tồn cuối kỳ"])
     # row_no, code, name, unit, opening, import, reexport, repurpose, prod, other, closing
     grid.append([1, "MAT01", "Vật tư A", "KG", 10, 100, 0, 0, 80, 0, 30])
     grid.append([2, "MAT02", "Vật tư B", "KG", 5, 50, 0, 0, 40, 0, 15])
@@ -40,7 +44,10 @@ def test_good_m15_no_errors(tmp_path: Path) -> None:
 def test_good_m15a_no_errors(tmp_path: Path) -> None:
     # Regression: M15a dùng intake_qty (không có import_qty) — không được crash.
     grid = [["Tên tổ chức: CTY DEMO"] + [None] * 9]
-    grid += [[None] * 10 for _ in range(8)]
+    grid += [[None] * 10 for _ in range(7)]
+    grid.append(["STT", "Mã SP", "Tên SP", "Đơn vị tính", "Tồn đầu kỳ",
+                 "Nhập kho trong kỳ", "Chuyển MĐSD", "Xuất khẩu", "Xuất khác",
+                 "Tồn cuối kỳ"])
     # row_no, code, name, unit, opening, intake, repurpose, export, other, closing
     grid.append([1, "SP01", "Áo sơ mi", "Cái", 10, 100, 0, 80, 0, 30])
     grid.append([2, "SP02", "Quần kaki", "Cái", 5, 50, 0, 40, 0, 15])

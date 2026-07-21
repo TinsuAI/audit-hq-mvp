@@ -64,8 +64,9 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         },
     )
 
-    m15 = parse_m15(files.m15) if files.m15 else None
-    m15a = parse_m15a(files.m15a) if files.m15a else None
+    # `year` để chọn sheet: hai sheet cùng bố cục khác kỳ chỉ phân biệt được bằng kỳ.
+    m15 = parse_m15(files.m15, year=year) if files.m15 else None
+    m15a = parse_m15a(files.m15a, year=year) if files.m15a else None
     m16 = parse_m16(files.m16) if files.m16 else None
     # DN có thể tách tờ khai NK / XK thành nhiều file — parse + gộp tất cả.
     bcct_files = [parse_bcct(p) for p in files.bcct]
