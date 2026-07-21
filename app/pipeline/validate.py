@@ -8,14 +8,13 @@ trước khi nạp, kèm heuristic dò cột thật để gợi ý sửa (không
 
 from __future__ import annotations
 
-import re
-import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
+from app.adapters.layout import BALANCE_EXPECT, find_header_columns
 from app.pipeline.discover import DiscoveredFiles, discover
 
 SLOT_LABEL = {
@@ -25,30 +24,9 @@ SLOT_LABEL = {
     "bcct": "BCCT — Báo cáo hàng chi tiết",
 }
 
-# Header mong đợi cho file cân đối (đồng bộ app/adapters/m15.py & m15a.py).
-# field -> (cột chuẩn 0-indexed, các từ khoá nhận diện trong ô tiêu đề).
-_BALANCE_EXPECT = {
-    "m15": {
-        "data_start": 9,
-        "code": (1, ["mã nvl", "mã npl", "mã vật tư", "mã nguyên", "ma nvl"]),
-        "fields": {
-            "Tồn đầu": (4, ["tồn đầu", "ton dau"]),
-            "Nhập trong kỳ": (5, ["nhập", "nhap"]),
-            "Xuất sản xuất": (8, ["xuất sản xuất", "đưa vào", "xuat san xuat"]),
-            "Tồn cuối": (10, ["tồn cuối", "ton cuoi"]),
-        },
-    },
-    "m15a": {
-        "data_start": 9,
-        "code": (1, ["mã sp", "mã thành phẩm", "mã sản phẩm", "ma sp"]),
-        "fields": {
-            "Tồn đầu": (4, ["tồn đầu", "ton dau"]),
-            "Nhập kho": (5, ["nhập", "nhap"]),
-            "Xuất khẩu": (7, ["xuất khẩu", "xuất", "xuat khau"]),
-            "Tồn cuối": (9, ["tồn cuối", "ton cuoi"]),
-        },
-    },
-}
+# Header mong đợi cho file cân đối — định nghĩa ở app/adapters/layout.py để adapter
+# và chẩn đoán dùng CHUNG một bộ từ khoá (adapter không import ngược được module này).
+_BALANCE_EXPECT = BALANCE_EXPECT
 
 
 @dataclass
@@ -77,12 +55,6 @@ class UploadDiagnosis:
         return bool(self.errors)
 
 
-def _norm(s: str) -> str:
-    s = unicodedata.normalize("NFD", str(s))
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    return re.sub(r"\s+", " ", s).strip().lower()
-
-
 def _find_header_columns(path: Path, code_kw: list[str], field_kw: dict[str, list[str]]):
     """Dò dòng tiêu đề thật + vị trí từng cột theo từ khoá.
 
@@ -92,22 +64,7 @@ def _find_header_columns(path: Path, code_kw: list[str], field_kw: dict[str, lis
         df = pd.read_excel(path, sheet_name=0, header=None, nrows=20)
     except Exception:  # noqa: BLE001
         return None, {}
-    rows = df.values.tolist()
-    all_kw = {"__code__": code_kw, **field_kw}
-    best_row, best_hits, best_map = None, 0, {}
-    for ri, raw in enumerate(rows):
-        cells = [_norm(c) for c in raw]
-        found: dict[str, int] = {}
-        for label, kws in all_kw.items():
-            for ci, cell in enumerate(cells):
-                if cell and any(k in cell for k in kws):
-                    found[label] = ci
-                    break
-        if len(found) > best_hits:
-            best_hits, best_row, best_map = len(found), ri, found
-    if best_hits < 2:
-        return None, {}
-    return best_row, best_map
+    return find_header_columns(df.values.tolist(), code_kw, field_kw)
 
 
 def _check_balance(diag: UploadDiagnosis, slot: str, path: Path, parse_fn) -> None:
