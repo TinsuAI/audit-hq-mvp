@@ -8,14 +8,14 @@ trước khi nạp, kèm heuristic dò cột thật để gợi ý sửa (không
 
 from __future__ import annotations
 
-import re
-import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
+from app.adapters.layout import BALANCE_EXPECT, find_header_columns
+from app.adapters.sheet_select import SheetNotFound
 from app.pipeline.discover import DiscoveredFiles, discover
 
 SLOT_LABEL = {
@@ -25,30 +25,9 @@ SLOT_LABEL = {
     "bcct": "BCCT — Báo cáo hàng chi tiết",
 }
 
-# Header mong đợi cho file cân đối (đồng bộ app/adapters/m15.py & m15a.py).
-# field -> (cột chuẩn 0-indexed, các từ khoá nhận diện trong ô tiêu đề).
-_BALANCE_EXPECT = {
-    "m15": {
-        "data_start": 9,
-        "code": (1, ["mã nvl", "mã npl", "mã vật tư", "mã nguyên", "ma nvl"]),
-        "fields": {
-            "Tồn đầu": (4, ["tồn đầu", "ton dau"]),
-            "Nhập trong kỳ": (5, ["nhập", "nhap"]),
-            "Xuất sản xuất": (8, ["xuất sản xuất", "đưa vào", "xuat san xuat"]),
-            "Tồn cuối": (10, ["tồn cuối", "ton cuoi"]),
-        },
-    },
-    "m15a": {
-        "data_start": 9,
-        "code": (1, ["mã sp", "mã thành phẩm", "mã sản phẩm", "ma sp"]),
-        "fields": {
-            "Tồn đầu": (4, ["tồn đầu", "ton dau"]),
-            "Nhập kho": (5, ["nhập", "nhap"]),
-            "Xuất khẩu": (7, ["xuất khẩu", "xuất", "xuat khau"]),
-            "Tồn cuối": (9, ["tồn cuối", "ton cuoi"]),
-        },
-    },
-}
+# Header mong đợi cho file cân đối — định nghĩa ở app/adapters/layout.py để adapter
+# và chẩn đoán dùng CHUNG một bộ từ khoá (adapter không import ngược được module này).
+_BALANCE_EXPECT = BALANCE_EXPECT
 
 
 @dataclass
@@ -77,43 +56,44 @@ class UploadDiagnosis:
         return bool(self.errors)
 
 
-def _norm(s: str) -> str:
-    s = unicodedata.normalize("NFD", str(s))
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    return re.sub(r"\s+", " ", s).strip().lower()
+def _find_header_columns(
+    path: Path, code_kw: list[str], field_kw: dict[str, list[str]], sheet: str | int = 0,
+):
+    """Dò dòng tiêu đề thật + vị trí từng cột theo từ khoá, TRÊN SHEET ĐÃ CHỌN.
 
-
-def _find_header_columns(path: Path, code_kw: list[str], field_kw: dict[str, list[str]]):
-    """Dò dòng tiêu đề thật + vị trí từng cột theo từ khoá.
+    Đọc sheet 0 là sai khi adapter chọn sheet khác — lời giải thích lệch cột sẽ mô tả
+    một sheet không hề được nạp.
 
     Trả (header_row_idx, {nhãn: col_idx_thực}). header_row_idx=None nếu không thấy.
     """
     try:
-        df = pd.read_excel(path, sheet_name=0, header=None, nrows=20)
+        df = pd.read_excel(path, sheet_name=sheet, header=None, nrows=20)
     except Exception:  # noqa: BLE001
         return None, {}
-    rows = df.values.tolist()
-    all_kw = {"__code__": code_kw, **field_kw}
-    best_row, best_hits, best_map = None, 0, {}
-    for ri, raw in enumerate(rows):
-        cells = [_norm(c) for c in raw]
-        found: dict[str, int] = {}
-        for label, kws in all_kw.items():
-            for ci, cell in enumerate(cells):
-                if cell and any(k in cell for k in kws):
-                    found[label] = ci
-                    break
-        if len(found) > best_hits:
-            best_hits, best_row, best_map = len(found), ri, found
-    if best_hits < 2:
-        return None, {}
-    return best_row, best_map
+    return find_header_columns(df.values.tolist(), code_kw, field_kw)
 
 
-def _check_balance(diag: UploadDiagnosis, slot: str, path: Path, parse_fn) -> None:
+def _check_balance(
+    diag: UploadDiagnosis, slot: str, path: Path, parse_fn, year: int | None = None,
+) -> None:
     label = SLOT_LABEL[slot]
     try:
-        parsed = parse_fn(path)
+        parsed = parse_fn(path, year=year)
+    except SheetNotFound as e:
+        # Không sheet nào khớp bố cục. Vẫn dò tiêu đề để nói ĐƯỢC lệch ở đâu —
+        # "không chọn được sheet" một mình thì cán bộ không sửa được gì.
+        exp = _BALANCE_EXPECT[slot]
+        # Giải thích trên sheet ĐIỂM CAO NHẤT, không phải sheet 0.
+        scores = e.scores
+        probe = max(scores, key=lambda n: scores[n]) if scores else 0
+        hrow, hmap = _find_header_columns(
+            path, exp["code"][1], {k: v[1] for k, v in exp["fields"].items()}, probe
+        )
+        detail = _mismatch_detail(slot, hrow, hmap, exp) if hrow is not None else str(e)
+        diag.diagnostics.append(Diagnostic(
+            slot, "error", f"{label}: không chọn được sheet đúng biểu", detail,
+        ))
+        return
     except Exception as e:  # noqa: BLE001 — surface parser error friendly
         diag.diagnostics.append(Diagnostic(
             slot, "error", f"{label}: không đọc được file",
@@ -125,7 +105,10 @@ def _check_balance(diag: UploadDiagnosis, slot: str, path: Path, parse_fn) -> No
     n = len(parsed.rows)
     if n == 0:
         exp = _BALANCE_EXPECT[slot]
-        hrow, hmap = _find_header_columns(path, exp["code"][1], {k: v[1] for k, v in exp["fields"].items()})
+        hrow, hmap = _find_header_columns(
+            path, exp["code"][1], {k: v[1] for k, v in exp["fields"].items()},
+            parsed.sheet if parsed.sheet is not None else 0,
+        )
         if hrow is None:
             detail = (
                 "Đọc được file nhưng 0 dòng dữ liệu. Không tìm thấy dòng tiêu đề mong đợi "
@@ -154,6 +137,32 @@ def _check_balance(diag: UploadDiagnosis, slot: str, path: Path, parse_fn) -> No
             "cột bị lệch so với mẫu chuẩn — kiểm tra lại vị trí cột.",
         ))
 
+    _report_parse_issues(diag, slot, parsed)
+
+
+def _report_parse_issues(diag: UploadDiagnosis, slot: str, parsed) -> None:
+    """Ô lỗi Excel + liên kết ngoài — cảnh báo, KHÔNG đổi số liệu đã nạp."""
+    issues = getattr(parsed, "issues", None)
+    if not issues:
+        return
+    label = SLOT_LABEL[slot]
+    parts: list[str] = []
+    if issues.error_cells:
+        breakdown = ", ".join(f"{k} ×{v}" for k, v in sorted(issues.error_cells.items()))
+        parts.append(
+            f"{issues.error_total} ô lỗi Excel trong vùng dữ liệu ({breakdown}). "
+            "Các ô này nạp vào thành 0 hoặc chuỗi rác, không phải số liệu thật."
+        )
+    if issues.external_workbooks:
+        parts.append(
+            f"{issues.external_workbooks} liên kết tới workbook NGOÀI bộ dữ liệu. "
+            "Giá trị đang đọc là bản cache của lần mở gần nhất; nếu liên kết gãy "
+            "thì các ô đó lặng lẽ về 0 mà không có dấu hiệu nào."
+        )
+    diag.diagnostics.append(Diagnostic(
+        slot, "warning", f"{label}: nguồn số liệu cần truy nguyên", " ".join(parts),
+    ))
+
 
 def _mismatch_detail(slot: str, hrow: int, hmap: dict, exp: dict) -> str:
     """So cột tìm được với cột chuẩn → câu giải thích lệch cụ thể."""
@@ -171,10 +180,13 @@ def _mismatch_detail(slot: str, hrow: int, hmap: dict, exp: dict) -> str:
     return head + "Vị trí cột khớp chuẩn nhưng vẫn 0 dòng — có thể header lệch dòng hoặc mã ở định dạng lạ."
 
 
-def _check_simple(diag: UploadDiagnosis, slot: str, path: Path, parse_fn, rows_attr: str = "rows") -> None:
+def _check_simple(
+    diag: UploadDiagnosis, slot: str, path: Path, parse_fn,
+    rows_attr: str = "rows", year: int | None = None,
+) -> None:
     label = SLOT_LABEL[slot]
     try:
-        parsed = parse_fn(path)
+        parsed = parse_fn(path, year=year)
     except Exception as e:  # noqa: BLE001
         diag.diagnostics.append(Diagnostic(
             slot, "error", f"{label}: không đọc được file",
@@ -185,12 +197,14 @@ def _check_simple(diag: UploadDiagnosis, slot: str, path: Path, parse_fn, rows_a
         extra = (
             "Mẫu 16 cần cấu trúc SP→NVL (sheet BCTT39 hoặc Sheet1)."
             if slot == "m16" else
-            "BCCT cần sheet tờ khai (Sheet1) với số tờ khai 9–13 chữ số ở cột thứ 2."
+            "BCCT cần sheet CHI TIẾT hàng hoá (không phải sheet tổng hợp cấp tờ khai)."
         )
         diag.diagnostics.append(Diagnostic(
             slot, "error", f"{label}: 0 dòng dữ liệu",
             f"Đọc được file nhưng không trích được dòng nào. {extra} File có thể sai mẫu/sai sheet.",
         ))
+        return
+    _report_parse_issues(diag, slot, parsed)
 
 
 def diagnose_upload(code: str, year: int, raw_root: Path) -> UploadDiagnosis:
@@ -213,13 +227,13 @@ def diagnose_upload(code: str, year: int, raw_root: Path) -> UploadDiagnosis:
     }
 
     if files.m15:
-        _check_balance(diag, "m15", files.m15, parse_m15)
+        _check_balance(diag, "m15", files.m15, parse_m15, year)
     if files.m15a:
-        _check_balance(diag, "m15a", files.m15a, parse_m15a)
+        _check_balance(diag, "m15a", files.m15a, parse_m15a, year)
     if files.m16:
-        _check_simple(diag, "m16", files.m16, parse_m16)
+        _check_simple(diag, "m16", files.m16, parse_m16, year=year)
     for p in files.bcct:
-        _check_simple(diag, "bcct", p, parse_bcct)
+        _check_simple(diag, "bcct", p, parse_bcct, year=year)
 
     if not any(diag.discovered.values()):
         diag.diagnostics.append(Diagnostic(

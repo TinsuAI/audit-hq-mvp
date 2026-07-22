@@ -2,21 +2,26 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 
 from app.adapters._common import (
     CompanyHeader,
+    ParseIssues,
+    count_external_workbooks,
     ensure_excel,
     normalize_code,
     normalize_name,
     parse_company_header,
     safe_get,
+    scan_error_cells,
     to_float,
     to_str,
 )
+from app.adapters.layout import find_data_start
+from app.adapters.sheet_select import select_sheet
 
 
 @dataclass
@@ -39,6 +44,8 @@ class M15File:
     header: CompanyHeader
     rows: list[M15Row]
     source_file: str
+    issues: ParseIssues = field(default_factory=ParseIssues)
+    sheet: str | None = None
 
 
 # Column index within the data sheet (0-indexed). Schema observed on
@@ -64,16 +71,20 @@ _DATA_START_ROW = 9  # row index where first data row appears
 _SHEET_NAMES = ("BCQT_NPL", "BCQT_NVL", "Sheet1")
 
 
-def parse_m15(path: str | Path) -> M15File:
+
+def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = None) -> M15File:
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
-    sheet = next((s for s in _SHEET_NAMES if s in xls.sheet_names), xls.sheet_names[0])
+    if sheet is None:
+        sheet = select_sheet(p, "m15", year).name
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
+    data_start = find_data_start(cells, "m15")
+
     rows: list[M15Row] = []
-    for raw in cells[_DATA_START_ROW:]:
+    for raw in cells[data_start:]:
         material_code = normalize_code(to_str(safe_get(raw, _COL["material_code"])))
         if not material_code:
             continue
@@ -99,4 +110,11 @@ def parse_m15(path: str | Path) -> M15File:
             )
         )
 
-    return M15File(header=header, rows=rows, source_file=str(p))
+    return M15File(
+        header=header, rows=rows, source_file=str(p), sheet=sheet,
+        issues=ParseIssues(
+            error_cells=scan_error_cells(p, sheet, data_start, _COL.values()),
+            external_workbooks=count_external_workbooks(p),
+            scanned=True,
+        ),
+    )

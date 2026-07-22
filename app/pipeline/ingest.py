@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlalchemy import delete, select
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
+from app.adapters.sheet_select import SheetNotFound
 from app.database import SessionLocal
 from app.models import Company, DeclarationLine, Norm, NvlBalance, SpBalance
 from app.pipeline.discover import DiscoveredFiles, discover
@@ -30,6 +31,7 @@ class IngestStats:
     m16_rows: int = 0
     bcct_rows: int = 0
     bcct_other_year: int = 0  # dòng BCCT bị loại vì ngày tờ khai thuộc kỳ khác
+    bcct_skipped: list[str] | None = None  # file trong HANG_CHI_TIET không phải BCCT
     files: dict[str, str | None] | None = None
 
 
@@ -64,11 +66,22 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         },
     )
 
-    m15 = parse_m15(files.m15) if files.m15 else None
-    m15a = parse_m15a(files.m15a) if files.m15a else None
-    m16 = parse_m16(files.m16) if files.m16 else None
-    # DN có thể tách tờ khai NK / XK thành nhiều file — parse + gộp tất cả.
-    bcct_files = [parse_bcct(p) for p in files.bcct]
+    # `year` để chọn sheet: hai sheet cùng bố cục khác kỳ chỉ phân biệt được bằng kỳ.
+    m15 = parse_m15(files.m15, year=year) if files.m15 else None
+    m15a = parse_m15a(files.m15a, year=year) if files.m15a else None
+    m16 = parse_m16(files.m16, year=year) if files.m16 else None
+    # DN có thể tách tờ khai NK / XK thành nhiều file — parse + gộp tất cả. Thư mục
+    # HANG_CHI_TIET đôi khi lẫn báo cáo KHÁC (vd "Báo cáo hàng hoá xuất khẩu" gộp theo
+    # mã hàng, không có số tờ khai). Bỏ QUA từng file như vậy thay vì hỏng cả kỳ —
+    # `diagnose_upload` vẫn báo riêng từng file cho cán bộ.
+    bcct_files = []
+    bcct_skipped: list[str] = []
+    for bp in files.bcct:
+        try:
+            bcct_files.append(parse_bcct(bp, year=year))
+        except SheetNotFound:
+            bcct_skipped.append(bp.name)
+    stats.bcct_skipped = bcct_skipped
 
     stats.m15_rows = len(m15.rows) if m15 else 0
     stats.m15a_rows = len(m15a.rows) if m15a else 0

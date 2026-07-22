@@ -18,6 +18,7 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.sheet_select import select_sheet
 
 
 @dataclass
@@ -47,6 +48,7 @@ class BcctFile:
     company_tax_id: str | None
     company_name: str | None
     source_file: str
+    sheet: str | None = None
 
 
 # BaoCaoHangChiTiet schema (HONG_AN 2024 sample, Sheet1):
@@ -88,10 +90,15 @@ def _split_item_code_name(raw_name: str | None) -> tuple[str | None, str | None]
     return None, normalize_name(raw_name)
 
 
-def parse_bcct(path: str | Path) -> BcctFile:
+def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = None) -> BcctFile:
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
-    sheet = next((s for s in _MAIN_SHEET_CANDIDATES if s in xls.sheet_names), xls.sheet_names[0])
+    data_start = _DATA_START
+    if sheet is None:
+        # Sheet tổng hợp (cấp tờ khai) cũng có số tờ khai ở cột 1 nên khớp
+        # `_DECLARATION_RE` — chọn nhầm nó sinh dòng SAI chứ không phải 0 dòng.
+        choice = select_sheet(p, "bcct", year)
+        sheet, data_start = choice.name, choice.data_start
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
 
@@ -102,7 +109,7 @@ def parse_bcct(path: str | Path) -> BcctFile:
     def cell(row: list, name: str):
         return safe_get(row, _COL[name])
 
-    for raw in cells[_DATA_START:]:
+    for raw in cells[data_start:]:
         declaration_no = normalize_code(to_str(cell(raw, "declaration_no")))
         if not declaration_no or not _DECLARATION_RE.match(declaration_no):
             continue
@@ -149,4 +156,5 @@ def parse_bcct(path: str | Path) -> BcctFile:
         company_tax_id=company_tax_id,
         company_name=company_name,
         source_file=str(p),
+        sheet=sheet,
     )

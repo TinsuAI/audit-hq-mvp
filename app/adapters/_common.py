@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 import re
 import unicodedata
-from dataclasses import dataclass
+import zipfile
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,87 @@ class CompanyHeader:
     address: str | None = None
     period_from: date | None = None
     period_to: date | None = None
+
+
+@dataclass
+class ParseIssues:
+    """Ô hỏng + liên kết ngoài của một sheet đã parse.
+
+    KHÔNG đổi giá trị số: ô hỏng vẫn ra 0.0 như cũ. Chỉ thôi im lặng.
+    """
+
+    error_cells: dict[str, int] = field(default_factory=dict)
+    external_workbooks: int = 0
+    scanned: bool = False
+
+    @property
+    def error_total(self) -> int:
+        return sum(self.error_cells.values())
+
+    def __bool__(self) -> bool:
+        return bool(self.error_cells) or self.external_workbooks > 0
+
+
+def count_external_workbooks(path: Path) -> int:
+    """Số workbook NGOÀI mà file này lấy giá trị sang.
+
+    Công thức trỏ sang file trên máy chủ nội bộ của DN vẫn hiện giá trị cache đúng;
+    nếu liên kết gãy thì giá trị lặng lẽ về 0. Đọc danh mục zip nên rất rẻ, không
+    phải mở cả workbook.
+    """
+    if path.suffix.lower() != ".xlsx":
+        return 0
+    try:
+        with zipfile.ZipFile(path) as z:
+            return sum(
+                1 for n in z.namelist()
+                if n.startswith("xl/externalLinks/externalLink") and n.endswith(".xml")
+            )
+    except (zipfile.BadZipFile, OSError):
+        return 0
+
+
+def scan_error_cells(
+    path: Path, sheet: str, data_start: int, columns: Iterable[int]
+) -> dict[str, int]:
+    """Đếm ô lỗi Excel (#REF!, #N/A, …) trong vùng dữ liệu của các cột được đọc.
+
+    pandas đổi ô lỗi thành NaN trước khi adapter nhìn thấy, nên chỉ đếm được ở tầng
+    openpyxl/xlrd. Chỉ quét đúng cột adapter đọc — ô lỗi ở cột phụ không thành số 0
+    trong dữ liệu nạp nên không tính.
+    """
+    wanted = {c + 1 for c in columns}  # openpyxl đánh số cột từ 1
+    counts: dict[str, int] = {}
+    suffix = path.suffix.lower()
+    try:
+        if suffix == ".xlsx":
+            import openpyxl
+
+            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            try:
+                ws = wb[sheet]
+                for row in ws.iter_rows(min_row=data_start + 1):
+                    for cell in row:
+                        if cell.column in wanted and cell.data_type == "e":
+                            key = str(cell.value)
+                            counts[key] = counts.get(key, 0) + 1
+            finally:
+                wb.close()
+        elif suffix == ".xls":
+            import xlrd
+
+            book = xlrd.open_workbook(path)
+            ws = book.sheet_by_name(sheet)
+            for r in range(data_start, ws.nrows):
+                for c in wanted:
+                    if c - 1 >= ws.ncols:
+                        continue
+                    if ws.cell_type(r, c - 1) == xlrd.XL_CELL_ERROR:
+                        key = xlrd.error_text_from_code.get(ws.cell_value(r, c - 1), "#ERR")
+                        counts[key] = counts.get(key, 0) + 1
+    except Exception:  # noqa: BLE001 — chẩn đoán không được làm hỏng việc parse
+        return counts
+    return counts
 
 
 def to_float(value: Any) -> float:

@@ -114,11 +114,34 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
             Norm.period_year == year,
         )
     ).all()
+    # Mẫu 16 của một số DN lặp lại NGUYÊN KHỐI định mức cho mỗi đợt sản xuất: cùng
+    # (mã SP, mã NVL) xuất hiện tới 26 lần, thường cùng một giá trị. Catalog định
+    # nghĩa tiêu hao = Σ(định_mức × xuất_khẩu) theo mã NVL — mỗi cặp tính MỘT lần.
+    # Cộng dồn qua từng DÒNG là nhân số lần lặp vào tiêu hao lý thuyết.
+    #
+    # LƯU Ý cho bố cục Mẫu 16 mở rộng (có cột sản lượng theo khối): ở đó các khối
+    # lặp là những ĐỢT SẢN XUẤT khác nhau và phải tính Σ(định_mức_khối × sản_lượng
+    # _khối), gộp lại sẽ nuốt mất sản lượng. `Norm` chưa có cột sản lượng nên đường
+    # đó chưa dựng được — khi thêm, rẽ nhánh tại đây.
+    bom: dict[tuple[str, str], float] = {}
+    divergent: dict[str, set[str]] = defaultdict(set)
     for n in norms:
-        sp_qty = sp_export.get(n.product_code) or 0.0
+        key = (n.product_code, n.material_code)
+        qty = n.norm_qty or 0.0
+        prev = bom.get(key)
+        if prev is None:
+            bom[key] = qty
+        elif abs(prev - qty) > 1e-9:
+            # Khối lặp lệch định mức — lấy MAX, nhưng ghi lại để hiện ra trong
+            # phát hiện thay vì chọn thầm.
+            bom[key] = max(prev, qty)
+            divergent[n.material_code].add(n.product_code)
+
+    for (product_code, material_code), norm_qty in bom.items():
+        sp_qty = sp_export.get(product_code) or 0.0
         if sp_qty <= 0:
             continue
-        theoretical[n.material_code] += (n.norm_qty or 0.0) * sp_qty
+        theoretical[material_code] += norm_qty * sp_qty
 
     # Compare against M15.production_out_qty
     m15_rows = {
@@ -162,6 +185,8 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
                 "theoretical_consumption": theor,
                 "actual_m15_production_out": actual,
                 "diff_pct": pct,
+                # Mã SP mà các khối định mức lặp lại KHÔNG khớp nhau — đã lấy MAX.
+                "divergent_norm_products": sorted(divergent.get(code, ())),
             },
             evidence_refs=[
                 {

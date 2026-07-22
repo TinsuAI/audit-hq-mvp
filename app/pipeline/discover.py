@@ -3,8 +3,17 @@
 from __future__ import annotations
 
 import re
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+
+from app.adapters.sheet_select import SheetNotFound, select_sheet
+
+# "File này không dùng được cho slot đó" = không sheet nào khớp, hoặc file không đọc
+# nổi. Đo trên data/: 40 file không mở được đều ném ValueError (pandas gói lỗi của
+# reader lại). KHÔNG bắt KeyError/AttributeError/TypeError — đó là bug trong spec
+# slot chứ không phải dữ liệu xấu, phải để nó nổ ra.
+_UNUSABLE = (SheetNotFound, ValueError, OSError, zipfile.BadZipFile)
 
 
 @dataclass
@@ -71,6 +80,7 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
     bcct_candidates: list[Path] = []
 
     bcqt_dir = base / "BCQT"
+    unclassified: list[Path] = []
     if bcqt_dir.exists():
         for p in bcqt_dir.iterdir():
             if not p.is_file() or p.suffix.lower() not in {".xls", ".xlsx"}:
@@ -82,8 +92,7 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
             elif "_sp" in normalized or normalized.startswith("sp_") or "spgsql" in normalized:
                 m15a_candidates.append(p)
             else:
-                # Older mẫu cũ (TT38) — may contain both; skip for MVP
-                continue
+                unclassified.append(p)
 
     dm_dir = base / "DINH_MUC"
     if dm_dir.exists():
@@ -113,6 +122,28 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
                     continue
                 if _filename_covers_year(p.name, year):
                     bcct_candidates.append(p)
+
+    # Tên file không phải lúc nào cũng nói được biểu nào: DN viết thành phẩm là "TP"
+    # (không khớp `_sp`/`sp_`), và có DN gộp cả ba biểu vào MỘT workbook thành ba
+    # sheet. Trước đây các file này bị bỏ hẳn. Chỉ dò nội dung cho slot mà đường
+    # theo tên chưa tìm được gì — giữ đường theo tên làm đường nhanh, nên DN đang
+    # chạy được không đổi kết quả. Cùng một file có thể phục vụ nhiều slot.
+    # Pool gồm CẢ file đã phân loại theo tên: một workbook tên "…NVL…" vẫn có thể
+    # chứa luôn sheet Mẫu 15a/16. Chỉ file trong BCQT (không lấy DINH_MUC — file định
+    # mức không phục vụ slot cân đối). Snapshot trước vòng lặp vì bucket bị sửa trong đó.
+    bcqt_pool = list(dict.fromkeys(unclassified + m15_candidates + m15a_candidates))
+    probe = [p for p in bcqt_pool if not _is_draft(p.name)]
+    for slot, bucket in (
+        ("m15", m15_candidates), ("m15a", m15a_candidates), ("m16", m16_candidates),
+    ):
+        if bucket:
+            continue
+        for p in probe:
+            try:
+                select_sheet(p, slot, year)
+            except _UNUSABLE:
+                continue
+            bucket.append(p)
 
     return DiscoveredFiles(
         m15=_pick_best(m15_candidates),

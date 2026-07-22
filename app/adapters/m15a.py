@@ -2,21 +2,26 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 
 from app.adapters._common import (
     CompanyHeader,
+    ParseIssues,
+    count_external_workbooks,
     ensure_excel,
     normalize_code,
     normalize_name,
     parse_company_header,
     safe_get,
+    scan_error_cells,
     to_float,
     to_str,
 )
+from app.adapters.layout import find_data_start
+from app.adapters.sheet_select import select_sheet
 
 
 @dataclass
@@ -38,6 +43,8 @@ class M15aFile:
     header: CompanyHeader
     rows: list[M15aRow]
     source_file: str
+    issues: ParseIssues = field(default_factory=ParseIssues)
+    sheet: str | None = None
 
 
 # HONG_AN 2024 `TT39_BaoCaoQuyetToan_SP 2024.xlsx`, sheet `BCQT_SP`:
@@ -61,16 +68,19 @@ _DATA_START_ROW = 9
 _SHEET_NAMES = ("BCQT_SP", "BCQT_SXXK", "Sheet1")
 
 
-def parse_m15a(path: str | Path) -> M15aFile:
+def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = None) -> M15aFile:
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
-    sheet = next((s for s in _SHEET_NAMES if s in xls.sheet_names), xls.sheet_names[0])
+    if sheet is None:
+        sheet = select_sheet(p, "m15a", year).name
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
+    data_start = find_data_start(cells, "m15a")
+
     rows: list[M15aRow] = []
-    for raw in cells[_DATA_START_ROW:]:
+    for raw in cells[data_start:]:
         product_code = normalize_code(to_str(safe_get(raw, _COL["product_code"])))
         if not product_code:
             continue
@@ -95,4 +105,11 @@ def parse_m15a(path: str | Path) -> M15aFile:
             )
         )
 
-    return M15aFile(header=header, rows=rows, source_file=str(p))
+    return M15aFile(
+        header=header, rows=rows, source_file=str(p), sheet=sheet,
+        issues=ParseIssues(
+            error_cells=scan_error_cells(p, sheet, data_start, _COL.values()),
+            external_workbooks=count_external_workbooks(p),
+            scanned=True,
+        ),
+    )

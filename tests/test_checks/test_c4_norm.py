@@ -133,3 +133,31 @@ def test_c4_3_critical_when_m15_has_no_production_out(session, company):
     findings = check_c4_3(session, company.id, 2024)
     assert len(findings) == 1
     assert findings[0].severity == "critical"
+
+
+def test_c4_3_repeated_bom_block_counted_once(session, company):
+    """Mẫu 16 lặp nguyên khối định mức cho MỖI đợt sản xuất.
+
+    Catalog (đề án §C4.3): tiêu hao = Σ(định_mức × xuất_khẩu). Cộng dồn qua mọi
+    DÒNG sẽ nhân thêm số lần lặp — 3 khối giống nhau thành 300 thay vì 100.
+    """
+    add_sp(session, company.id, product_code="TP", export_qty=100)
+    for _ in range(3):
+        add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0)
+    add_nvl(session, company.id, material_code="X", imported=100, production_out=100)
+    session.commit()
+    assert check_c4_3(session, company.id, 2024) == []
+
+
+def test_c4_3_divergent_repeated_norms_use_max_and_are_reported(session, company):
+    """Khối lặp mang định mức KHÁC nhau: lấy MAX, nhưng phải hiện ra, không chọn thầm."""
+    add_sp(session, company.id, product_code="TP", export_qty=100)
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0)
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0)
+    add_nvl(session, company.id, material_code="X", imported=200, production_out=100)
+    session.commit()
+    findings = check_c4_3(session, company.id, 2024)
+    assert len(findings) == 1
+    # MAX = 2.0 -> theoretical 200 vs actual 100
+    assert findings[0].details["theoretical_consumption"] == 200.0
+    assert findings[0].details["divergent_norm_products"] == ["TP"]

@@ -2,21 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 
 from app.adapters._common import (
     CompanyHeader,
+    ParseIssues,
+    count_external_workbooks,
     ensure_excel,
     normalize_code,
     normalize_name,
     parse_company_header,
     safe_get,
+    scan_error_cells,
     to_float,
     to_str,
 )
+from app.adapters.sheet_select import SheetNotFound, select_sheet
 
 
 @dataclass
@@ -44,6 +48,8 @@ class M16File:
     header: CompanyHeader
     rows: list[M16Row]
     source_file: str
+    issues: ParseIssues = field(default_factory=ParseIssues)
+    sheet: str | None = None
 
 
 # Mẫu 16 TT39 chuẩn (BCDM_TT39_*.xls, sheet `BCTT39`):
@@ -88,18 +94,24 @@ def _detect_format(xls: pd.ExcelFile) -> str:
     return "tt39"
 
 
-def parse_m16(path: str | Path) -> M16File:
+def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = None) -> M16File:
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
-    fmt = _detect_format(xls)
-    if fmt == "tt39":
-        sheet = next((s for s in _M16_TT39_SHEETS if s in xls.sheet_names), xls.sheet_names[0])
-        cols = _M16_TT39_COLS
-        data_start = _M16_TT39_DATA_START
-    else:
-        sheet = "Sheet1"
-        cols = _M16_DINHMUC_COLS
-        data_start = 1
+    cols = _M16_TT39_COLS
+    data_start = _M16_TT39_DATA_START
+    if sheet is None:
+        try:
+            # Chọn theo nội dung trước: có DN gộp Mẫu 15/15a/16 vào một workbook,
+            # tên sheet không nói được sheet nào là định mức.
+            choice = select_sheet(p, "m16", year)
+            sheet, data_start = choice.name, choice.data_start
+        except SheetNotFound:
+            if _detect_format(xls) == "tt39":
+                sheet = next(
+                    (s for s in _M16_TT39_SHEETS if s in xls.sheet_names), xls.sheet_names[0]
+                )
+            else:
+                sheet, cols, data_start = "Sheet1", _M16_DINHMUC_COLS, 1
 
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
@@ -143,4 +155,11 @@ def parse_m16(path: str | Path) -> M16File:
             )
         )
 
-    return M16File(header=header, rows=rows, source_file=str(p))
+    return M16File(
+        header=header, rows=rows, source_file=str(p), sheet=sheet,
+        issues=ParseIssues(
+            error_cells=scan_error_cells(p, sheet, data_start, cols.values()),
+            external_workbooks=count_external_workbooks(p),
+            scanned=True,
+        ),
+    )
