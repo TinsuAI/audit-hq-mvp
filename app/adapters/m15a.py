@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 
 from app.adapters._common import (
     CompanyHeader,
+    ParseIssues,
+    count_external_workbooks,
     ensure_excel,
     normalize_code,
     normalize_name,
     parse_company_header,
     safe_get,
+    scan_error_cells,
     to_float,
     to_str,
 )
@@ -40,6 +43,7 @@ class M15aFile:
     header: CompanyHeader
     rows: list[M15aRow]
     source_file: str
+    issues: ParseIssues = field(default_factory=ParseIssues)
 
 
 # HONG_AN 2024 `TT39_BaoCaoQuyetToan_SP 2024.xlsx`, sheet `BCQT_SP`:
@@ -72,8 +76,10 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
+    data_start = find_data_start(cells, "m15a")
+
     rows: list[M15aRow] = []
-    for raw in cells[find_data_start(cells, "m15a"):]:
+    for raw in cells[data_start:]:
         product_code = normalize_code(to_str(safe_get(raw, _COL["product_code"])))
         if not product_code:
             continue
@@ -98,4 +104,11 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
             )
         )
 
-    return M15aFile(header=header, rows=rows, source_file=str(p))
+    return M15aFile(
+        header=header, rows=rows, source_file=str(p),
+        issues=ParseIssues(
+            error_cells=scan_error_cells(p, sheet, data_start, _COL.values()),
+            external_workbooks=count_external_workbooks(p),
+            scanned=True,
+        ),
+    )

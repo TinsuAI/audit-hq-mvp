@@ -105,3 +105,31 @@ def test_bcct_prefers_detail_sheet_over_declaration_summary(tmp_path: Path) -> N
     _write(p, {"Tổng hợp": summary, "Chi tiết": detail})
 
     assert select_sheet(p, "bcct", 2024).name == "Chi tiết"
+
+
+def test_parse_issues_reports_error_cells_and_external_links() -> None:
+    from app.adapters._common import ParseIssues
+    from app.pipeline.validate import UploadDiagnosis, _report_parse_issues
+
+    clean = ParseIssues()
+    assert not clean and clean.error_total == 0
+
+    diag = UploadDiagnosis()
+    _report_parse_issues(diag, "m15", type("P", (), {
+        "issues": ParseIssues(error_cells={"#N/A": 276, "#REF!": 2}, external_workbooks=3)
+    })())
+    assert len(diag.warnings) == 1
+    detail = diag.warnings[0].detail
+    assert "278 ô lỗi" in detail          # tổng, không phải từng loại
+    assert "#N/A ×276" in detail
+    assert "3 liên kết" in detail
+    assert not diag.has_errors            # cảnh báo, không chặn nạp
+
+
+def test_no_warning_when_source_is_clean() -> None:
+    from app.adapters._common import ParseIssues
+    from app.pipeline.validate import UploadDiagnosis, _report_parse_issues
+
+    diag = UploadDiagnosis()
+    _report_parse_issues(diag, "m15", type("P", (), {"issues": ParseIssues()})())
+    assert not diag.diagnostics

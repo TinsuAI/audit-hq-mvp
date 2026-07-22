@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 
 from app.adapters._common import (
     CompanyHeader,
+    ParseIssues,
+    count_external_workbooks,
     ensure_excel,
     normalize_code,
     normalize_name,
     parse_company_header,
     safe_get,
+    scan_error_cells,
     to_float,
     to_str,
 )
@@ -45,6 +48,7 @@ class M16File:
     header: CompanyHeader
     rows: list[M16Row]
     source_file: str
+    issues: ParseIssues = field(default_factory=ParseIssues)
 
 
 # Mẫu 16 TT39 chuẩn (BCDM_TT39_*.xls, sheet `BCTT39`):
@@ -150,4 +154,11 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
             )
         )
 
-    return M16File(header=header, rows=rows, source_file=str(p))
+    return M16File(
+        header=header, rows=rows, source_file=str(p),
+        issues=ParseIssues(
+            error_cells=scan_error_cells(p, sheet, data_start, cols.values()),
+            external_workbooks=count_external_workbooks(p),
+            scanned=True,
+        ),
+    )

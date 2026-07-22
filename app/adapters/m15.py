@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 
 from app.adapters._common import (
     CompanyHeader,
+    ParseIssues,
+    count_external_workbooks,
     ensure_excel,
     normalize_code,
     normalize_name,
     parse_company_header,
     safe_get,
+    scan_error_cells,
     to_float,
     to_str,
 )
@@ -41,6 +44,7 @@ class M15File:
     header: CompanyHeader
     rows: list[M15Row]
     source_file: str
+    issues: ParseIssues = field(default_factory=ParseIssues)
 
 
 # Column index within the data sheet (0-indexed). Schema observed on
@@ -66,6 +70,7 @@ _DATA_START_ROW = 9  # row index where first data row appears
 _SHEET_NAMES = ("BCQT_NPL", "BCQT_NVL", "Sheet1")
 
 
+
 def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = None) -> M15File:
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
@@ -75,8 +80,10 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
+    data_start = find_data_start(cells, "m15")
+
     rows: list[M15Row] = []
-    for raw in cells[find_data_start(cells, "m15"):]:
+    for raw in cells[data_start:]:
         material_code = normalize_code(to_str(safe_get(raw, _COL["material_code"])))
         if not material_code:
             continue
@@ -102,4 +109,11 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
             )
         )
 
-    return M15File(header=header, rows=rows, source_file=str(p))
+    return M15File(
+        header=header, rows=rows, source_file=str(p),
+        issues=ParseIssues(
+            error_cells=scan_error_cells(p, sheet, data_start, _COL.values()),
+            external_workbooks=count_external_workbooks(p),
+            scanned=True,
+        ),
+    )

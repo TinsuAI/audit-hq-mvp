@@ -124,6 +124,32 @@ def _check_balance(diag: UploadDiagnosis, slot: str, path: Path, parse_fn) -> No
             "cột bị lệch so với mẫu chuẩn — kiểm tra lại vị trí cột.",
         ))
 
+    _report_parse_issues(diag, slot, parsed)
+
+
+def _report_parse_issues(diag: UploadDiagnosis, slot: str, parsed) -> None:
+    """Ô lỗi Excel + liên kết ngoài — cảnh báo, KHÔNG đổi số liệu đã nạp."""
+    issues = getattr(parsed, "issues", None)
+    if not issues:
+        return
+    label = SLOT_LABEL[slot]
+    parts: list[str] = []
+    if issues.error_cells:
+        breakdown = ", ".join(f"{k} ×{v}" for k, v in sorted(issues.error_cells.items()))
+        parts.append(
+            f"{issues.error_total} ô lỗi Excel trong vùng dữ liệu ({breakdown}). "
+            "Các ô này nạp vào thành 0 hoặc chuỗi rác, không phải số liệu thật."
+        )
+    if issues.external_workbooks:
+        parts.append(
+            f"{issues.external_workbooks} liên kết tới workbook NGOÀI bộ dữ liệu. "
+            "Giá trị đang đọc là bản cache của lần mở gần nhất; nếu liên kết gãy "
+            "thì các ô đó lặng lẽ về 0 mà không có dấu hiệu nào."
+        )
+    diag.diagnostics.append(Diagnostic(
+        slot, "warning", f"{label}: nguồn số liệu cần truy nguyên", " ".join(parts),
+    ))
+
 
 def _mismatch_detail(slot: str, hrow: int, hmap: dict, exp: dict) -> str:
     """So cột tìm được với cột chuẩn → câu giải thích lệch cụ thể."""
@@ -161,6 +187,8 @@ def _check_simple(diag: UploadDiagnosis, slot: str, path: Path, parse_fn, rows_a
             slot, "error", f"{label}: 0 dòng dữ liệu",
             f"Đọc được file nhưng không trích được dòng nào. {extra} File có thể sai mẫu/sai sheet.",
         ))
+        return
+    _report_parse_issues(diag, slot, parsed)
 
 
 def diagnose_upload(code: str, year: int, raw_root: Path) -> UploadDiagnosis:
