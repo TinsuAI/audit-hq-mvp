@@ -144,3 +144,42 @@ Ghi lại các quyết định kiến trúc và phạm vi. Mỗi entry: ngày, q
 - **Validate magic-byte upload**: chặn file đổi đuôi (xlsx=`PK`, xls=OLE2) trên cả 2 đường upload, cộng kiểm size + đuôi sẵn có.
 
 **Alternatives loại:** ẩn menu/nav theo role (rejected — không phải bảo mật thật, data vẫn query được); chỉ thêm role không theo DN (rejected — không giải quyết "officer thấy mọi DN"); multi-tenant (hoãn — vượt scope pilot nội bộ).
+
+### 15. Bố cục Mẫu 15/15a/16 lạ — suy map cột từ dòng đánh số của chính file, kiểm chứng bằng đẳng thức của biểu (2026-07-22)
+
+**Bối cảnh:** bộ dữ liệu 3 DN do cán bộ cung cấp có bố cục khác 6 DN đang chạy. 004 chèn thêm cột `Mã kế toán` và tách `Tồn đầu` thành 3 cột con, `Nhập` thành 5 (`6a`–`6d` + Tổng) — đọc bằng vị trí cột cố định thì mọi trường đều sai. Hướng cũ (`notes/12` Tầng D) là viết **layout spec theo từng DN**.
+
+**Quyết định:** KHÔNG viết spec theo DN. Bố cục lấy từ chính file, rồi **chứng minh bằng số học**:
+
+1. Đọc **dòng đánh số** `(1) (2) … (12)` của sheet → map *số biểu → chỉ số cột*.
+2. Cột tổng của biểu **tự ghi công thức** dưới dạng text, vd `(11)=(5)+(6)-(7)-(8)-(9)-(10)`. Tính đẳng thức đó trên **mọi dòng**; chỉ nhận map khi khớp gần như toàn bộ.
+3. Mẫu 16 không có đẳng thức cân đối. Nơi DN thêm cột sản lượng thì kiểm bằng `lượng NVL dùng theo định mức = định mức × sản lượng` (sản lượng chỉ có ở dòng đầu khối → forward-fill).
+4. **AI chỉ là bước SỬA**, chạy khi (1) hoặc (2) hỏng: đưa header + vài dòng + đẳng thức đang sai cho LLM đề xuất map, rồi **bắt buộc chạy lại bước (2)**. Mô hình không có tiếng nói cuối. Cán bộ xác nhận; map đã nhận cache theo vân tay bố cục.
+
+**Số đo (đã chạy trên dữ liệu thật):**
+
+| | đẳng thức khớp |
+|---|---|
+| 004 EPE Mẫu 15 | 104/104 |
+| 006 Mẫu 15 (2024 · 2025) | 7.882/7.882 · 10.560/10.560 |
+| 004 EPE Mẫu 15a | 43/43 |
+| 006 Mẫu 15a (2024 · 2025) | 436/436 · 501/501 |
+| 004 Mẫu 16 — `lượng dùng = định mức × sản lượng` | 664/664 |
+| 004 cột con: `(5)=Tồn E13+E11` · `(6)=6a+6b+6c+6d` · `Tổng xuất` | 104/104 mỗi cái |
+
+**Lý do:** kiểu hỏng nguy hiểm ở đây KHÔNG phải "không đoán được bố cục" mà là "**map trông hợp lý nhưng ra số sai, im lặng**". Đã xảy ra thật: whitelist tên sheet chọn đúng `Sheet1` của một workbook Mẫu 15 — nhưng đó là bảng cân đối tồn kho 9 cột — và DN đó nạp 41 dòng rác/năm suốt nhiều kỳ, `material_code` giữ số thứ tự. Vì vậy thứ có **thẩm quyền** phải là đẳng thức, không phải mô hình (cũng không phải bảng từ khoá). Bản thân file đã mang sẵn map — không cần đoán. Bước AI nằm ở **ingest-time**, không nằm trong rule logic (`CLAUDE.md`), và map được *chứng minh + ghi lại* nên không vi phạm truy nguồn.
+
+**Cạm bẫy đã gặp (đừng mất công lại):**
+- 004 gõ `-6` thay cho `(6)` ở dòng đánh số → regex bỏ mất số hạng → đẳng thức tụt còn 11/104. Parser **phải chịu được nhãn hỏng**; đây chính là chỗ AI đáng giá.
+- 004 sổ GC (Mẫu 15a) dùng **nhãn gộp**: `(10) = (5)+(6ab)-(7)-(8ab)-(9abc)` trong khi cột đánh `(6a)(6b)`, `(8a)(8b)(8c)`, `(9a)(9b)(9c)` → phải khai triển nhóm trước khi tính.
+- 002 (bản xuất ECUS) **không có** dòng đánh số — nhưng đúng bố cục chuẩn nên đường cột cố định vẫn đúng. Dòng đánh số chỉ xuất hiện ở bản làm tay.
+- Ô gộp: dòng tiêu đề con đọc qua pandas gần như rỗng (giá trị chỉ nằm ở ô neo).
+
+**Hệ quả:** thay được phần lớn Tầng D — không cần spec theo DN. Mở đường cho `Norm.product_qty` + nhánh `Σ(định mức khối × sản lượng khối)` của C4.3, vì cột sản lượng giờ xác định và kiểm chứng được (664/664).
+
+**CHƯA quyết — cần sửa đề án trước:** dùng sản lượng của Mẫu 16 làm hệ số nhân thay `xuất_khẩu_M15a` là **đổi định nghĩa C4.3** (`de-an-audit-hq.md:228` ghi rõ `Σ(định_mức × xuất_khẩu_M15a)`). Cùng nhóm với B2 (đổi sang lượng nhập kho sản xuất) và với quy ước `import_qty := cột (6b)` của `audit-hq-pilot/notes/09`. Cả ba phải update `../audit-hq/de-an-audit-hq.md` trước khi vào code.
+
+**Alternatives loại:**
+- *Layout spec viết tay theo DN* (rejected — không mở rộng được; đã đo 004 EPE và 004 GC khác nhau ngay ở cùng vị trí cột `(8)`, tức một spec/DN vẫn chưa đủ, phải một spec/sổ).
+- *AI sinh map rồi dùng thẳng* (rejected — đúng kiểu hỏng "sai mà trông đúng", không kiểm được, vi phạm truy nguồn).
+- *Chỉ dò theo từ khoá tên cột* (rejected — đã đo hỏng: `tồn đầu` không khớp `Lượng NL, VT tồn kho đầu kỳ`; `Xuất khẩu` khớp nhầm `Mã sản phẩm xuất khẩu` ở cột 1).
