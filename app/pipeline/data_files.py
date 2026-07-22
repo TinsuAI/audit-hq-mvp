@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, DataFile, DataFileStatus
 from app.models.data_file import SLOT_SUBDIR
+from app.pipeline.discover import content_slots
 from app.settings import settings
 
 _EXCEL_EXT = {".xls", ".xlsx"}
@@ -45,26 +46,50 @@ def _classify_slot(subdir: str, filename: str) -> str | None:
     return None
 
 
+def _excel_files(d: Path) -> list[Path]:
+    if not d.is_dir():
+        return []
+    return sorted(p for p in d.iterdir() if p.is_file() and p.suffix.lower() in _EXCEL_EXT)
+
+
 def _iter_company_files(raw_root: Path, code: str):
-    """Yield (year:int, slot:str, abs_path:Path) cho mọi file Excel nhận diện được."""
+    """Yield (year, slot, abs_path) cho mọi file Excel nhận diện được.
+
+    Lặp lại ĐÚNG thuật toán của `discover`: tên file trước, dò nội dung CHỈ cho slot
+    mà tên không lấp được. Registry lệch với discover thì trang tài liệu báo
+    "chưa có file" trong khi dữ liệu của chính file đó đã nạp — và dò nội dung cho
+    mọi file thì mỗi lần vào trang phải mở lại từng workbook.
+    """
     company_dir = raw_root / code
     if not company_dir.is_dir():
         return
-    for year_dir in company_dir.iterdir():
+    for year_dir in sorted(company_dir.iterdir()):
         if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue  # bỏ qua multi_year và thư mục không phải năm
         year = int(year_dir.name)
-        for subdir in ("BCQT", "DINH_MUC", "HANG_CHI_TIET"):
-            sub = year_dir / subdir
-            if not sub.is_dir():
-                continue
-            for p in sorted(sub.iterdir()):
-                if not p.is_file() or p.suffix.lower() not in _EXCEL_EXT:
-                    continue
-                slot = _classify_slot(subdir, p.name)
-                if slot is None:
-                    continue
+        bcqt = _excel_files(year_dir / "BCQT")
+        dinh_muc = _excel_files(year_dir / "DINH_MUC")
+        for p in dinh_muc:
+            yield year, "m16", p
+        for p in _excel_files(year_dir / "HANG_CHI_TIET"):
+            yield year, "bcct", p
+
+        named: dict[str, list[Path]] = {"m15": [], "m15a": []}
+        for p in bcqt:
+            slot = _classify_slot("BCQT", p.name)
+            if slot in named:
+                named[slot].append(p)
                 yield year, slot, p
+
+        unfilled = [s for s in ("m15", "m15a") if not named[s]]
+        if not dinh_muc:
+            unfilled.append("m16")
+        if not unfilled:
+            continue
+        for p in bcqt:
+            for slot in content_slots(p, year):
+                if slot in unfilled:
+                    yield year, slot, p
 
 
 def sync_data_files(session: Session, company: Company, raw_root: Path | None = None) -> None:
@@ -76,21 +101,21 @@ def sync_data_files(session: Session, company: Company, raw_root: Path | None = 
     raw_root = Path(raw_root or settings.raw_data_path)
 
     existing = {
-        row.stored_path: row
+        (row.stored_path, row.slot): row
         for row in session.scalars(
             select(DataFile).where(DataFile.company_id == company.id)
         ).all()
     }
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
 
     for year, slot, abs_path in _iter_company_files(raw_root, company.code):
         try:
             rel = str(abs_path.relative_to(raw_root))
         except ValueError:
             rel = str(abs_path)
-        seen.add(rel)
+        seen.add((rel, slot))
         size = abs_path.stat().st_size
-        row = existing.get(rel)
+        row = existing.get((rel, slot))
         if row is None:
             session.add(DataFile(
                 company_id=company.id,
@@ -108,8 +133,8 @@ def sync_data_files(session: Session, company: Company, raw_root: Path | None = 
             row.slot = slot
 
     # Prune: file không còn trên đĩa → xoá khỏi registry.
-    for rel, row in existing.items():
-        if rel not in seen:
+    for key, row in existing.items():
+        if key not in seen:
             session.delete(row)
 
     session.commit()

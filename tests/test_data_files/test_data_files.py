@@ -128,3 +128,38 @@ def test_doc_year_status_partial_vs_full():
     assert _doc_year_status(False, False, 0)[1] == "empty"
     # Đã nạp trước đó nhưng file gốc mất.
     assert _doc_year_status(False, True, 50, loaded_types=2)[1] == "warn"
+
+
+def test_one_workbook_registers_under_every_slot_it_serves(tmp_path):
+    """Một DN gộp Mẫu 15/15a/16 vào MỘT workbook, tên file không nói được biểu nào.
+
+    Registry phải khớp `discover`; lệch thì trang tài liệu báo "chưa có file" trong
+    khi dữ liệu của chính file đó đã nạp.
+    """
+    import openpyxl
+
+    from app.pipeline.data_files import _iter_company_files
+
+    def sheet(ws, header, code_prefix):
+        for _ in range(8):
+            ws.append([None] * len(header))
+        ws.append(header)
+        for i in range(2):
+            ws.append([i + 1, f"{code_prefix}{i}", "Tên", "KG", 10, 100, 0, 0, 80, 0, 30])
+
+    d = tmp_path / "DN_G" / "2025" / "BCQT"
+    d.mkdir(parents=True)
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    sheet(wb.create_sheet("15-BCQT-NVL"),
+          ["STT", "Mã NVL", "Tên NVL", "Đơn vị tính", "Tồn đầu kỳ", "Nhập trong kỳ",
+           "Tái xuất", "Chuyển MĐSD", "Xuất sản xuất", "Xuất khác", "Tồn cuối kỳ"], "MAT")
+    sheet(wb.create_sheet("TP-15a"),
+          ["STT", "Mã SP", "Tên SP", "Đơn vị tính", "Tồn đầu kỳ", "Nhập kho trong kỳ",
+           "Chuyển MĐSD", "Xuất khẩu", "Xuất khác", "Tồn cuối kỳ"], "SP")
+    wb.save(d / "Báo cáo quyết toán 2025.xlsx")
+
+    slots = {slot for _y, slot, _p in _iter_company_files(tmp_path, "DN_G")}
+    # Tên file khớp không rule nào -> trước đây bị bỏ hẳn, registry rỗng.
+    assert "m15" in slots
+    assert "m15a" in slots
