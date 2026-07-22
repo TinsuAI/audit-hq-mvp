@@ -29,6 +29,11 @@ from app.adapters.layout import BALANCE_EXPECT, find_data_start, find_header_col
 _POSITION_WEIGHT = 3
 _MIN_AT_POSITION = 2
 _MIN_SCORE = 5
+# Các hằng số trên là ĐO rồi chọn, không suy ra từ đâu. Dải điểm quan sát được trên
+# dữ liệu thật (2026-07-22, 12 cặp DN×năm whitelist + 3 DN pilot), sheet đúng biểu:
+#   m15 = 8 · m15a = 9 · m16 = 16 · bcct = 16   (mọi file đều đúng bằng các số này)
+# Tức biên so với ngưỡng 5 là 3 điểm ở chỗ hẹp nhất (m15). Sửa cách chấm điểm thì
+# đo lại dải này TRƯỚC, đừng chỉnh ngưỡng theo cảm tính.
 # Chấm điểm chỉ cần vùng tiêu đề. File tờ khai lớn nhất trong dữ liệu thật là 71 MB /
 # 6 sheet — đọc đủ mọi sheet chỉ để chấm điểm là không chấp nhận được.
 _PROFILE_ROWS = 40

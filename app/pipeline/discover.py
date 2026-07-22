@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import re
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.adapters.sheet_select import select_sheet
+from app.adapters.sheet_select import SheetNotFound, select_sheet
+
+# "File này không dùng được cho slot đó" = không sheet nào khớp, hoặc file không đọc
+# nổi. Đo trên data/: 40 file không mở được đều ném ValueError (pandas gói lỗi của
+# reader lại). KHÔNG bắt KeyError/AttributeError/TypeError — đó là bug trong spec
+# slot chứ không phải dữ liệu xấu, phải để nó nổ ra.
+_UNUSABLE = (SheetNotFound, ValueError, OSError, zipfile.BadZipFile)
 
 
 @dataclass
@@ -134,7 +141,7 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
         for p in probe:
             try:
                 select_sheet(p, slot, year)
-            except Exception:  # noqa: BLE001 — file hỏng / không khớp biểu đều là "không dùng được"
+            except _UNUSABLE:
                 continue
             bucket.append(p)
 
