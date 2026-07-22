@@ -44,6 +44,7 @@ class M15aFile:
     rows: list[M15aRow]
     source_file: str
     issues: ParseIssues = field(default_factory=ParseIssues)
+    sheet: str | None = None
 
 
 # HONG_AN 2024 `TT39_BaoCaoQuyetToan_SP 2024.xlsx`, sheet `BCQT_SP`:
@@ -105,7 +106,7 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
         )
 
     return M15aFile(
-        header=header, rows=rows, source_file=str(p),
+        header=header, rows=rows, source_file=str(p), sheet=sheet,
         issues=ParseIssues(
             error_cells=scan_error_cells(p, sheet, data_start, _COL.values()),
             external_workbooks=count_external_workbooks(p),

@@ -48,6 +48,7 @@ class BcctFile:
     company_tax_id: str | None
     company_name: str | None
     source_file: str
+    sheet: str | None = None
 
 
 # BaoCaoHangChiTiet schema (HONG_AN 2024 sample, Sheet1):
@@ -155,4 +156,5 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
         company_tax_id=company_tax_id,
         company_name=company_name,
         source_file=str(p),
+        sheet=sheet,
     )

@@ -56,28 +56,38 @@ class UploadDiagnosis:
         return bool(self.errors)
 
 
-def _find_header_columns(path: Path, code_kw: list[str], field_kw: dict[str, list[str]]):
-    """Dò dòng tiêu đề thật + vị trí từng cột theo từ khoá.
+def _find_header_columns(
+    path: Path, code_kw: list[str], field_kw: dict[str, list[str]], sheet: str | int = 0,
+):
+    """Dò dòng tiêu đề thật + vị trí từng cột theo từ khoá, TRÊN SHEET ĐÃ CHỌN.
+
+    Đọc sheet 0 là sai khi adapter chọn sheet khác — lời giải thích lệch cột sẽ mô tả
+    một sheet không hề được nạp.
 
     Trả (header_row_idx, {nhãn: col_idx_thực}). header_row_idx=None nếu không thấy.
     """
     try:
-        df = pd.read_excel(path, sheet_name=0, header=None, nrows=20)
+        df = pd.read_excel(path, sheet_name=sheet, header=None, nrows=20)
     except Exception:  # noqa: BLE001
         return None, {}
     return find_header_columns(df.values.tolist(), code_kw, field_kw)
 
 
-def _check_balance(diag: UploadDiagnosis, slot: str, path: Path, parse_fn) -> None:
+def _check_balance(
+    diag: UploadDiagnosis, slot: str, path: Path, parse_fn, year: int | None = None,
+) -> None:
     label = SLOT_LABEL[slot]
     try:
-        parsed = parse_fn(path)
+        parsed = parse_fn(path, year=year)
     except SheetNotFound as e:
         # Không sheet nào khớp bố cục. Vẫn dò tiêu đề để nói ĐƯỢC lệch ở đâu —
         # "không chọn được sheet" một mình thì cán bộ không sửa được gì.
         exp = _BALANCE_EXPECT[slot]
+        # Giải thích trên sheet ĐIỂM CAO NHẤT, không phải sheet 0.
+        scores = e.scores
+        probe = max(scores, key=lambda n: scores[n]) if scores else 0
         hrow, hmap = _find_header_columns(
-            path, exp["code"][1], {k: v[1] for k, v in exp["fields"].items()}
+            path, exp["code"][1], {k: v[1] for k, v in exp["fields"].items()}, probe
         )
         detail = _mismatch_detail(slot, hrow, hmap, exp) if hrow is not None else str(e)
         diag.diagnostics.append(Diagnostic(
@@ -95,7 +105,10 @@ def _check_balance(diag: UploadDiagnosis, slot: str, path: Path, parse_fn) -> No
     n = len(parsed.rows)
     if n == 0:
         exp = _BALANCE_EXPECT[slot]
-        hrow, hmap = _find_header_columns(path, exp["code"][1], {k: v[1] for k, v in exp["fields"].items()})
+        hrow, hmap = _find_header_columns(
+            path, exp["code"][1], {k: v[1] for k, v in exp["fields"].items()},
+            parsed.sheet if parsed.sheet is not None else 0,
+        )
         if hrow is None:
             detail = (
                 "Đọc được file nhưng 0 dòng dữ liệu. Không tìm thấy dòng tiêu đề mong đợi "
@@ -167,10 +180,13 @@ def _mismatch_detail(slot: str, hrow: int, hmap: dict, exp: dict) -> str:
     return head + "Vị trí cột khớp chuẩn nhưng vẫn 0 dòng — có thể header lệch dòng hoặc mã ở định dạng lạ."
 
 
-def _check_simple(diag: UploadDiagnosis, slot: str, path: Path, parse_fn, rows_attr: str = "rows") -> None:
+def _check_simple(
+    diag: UploadDiagnosis, slot: str, path: Path, parse_fn,
+    rows_attr: str = "rows", year: int | None = None,
+) -> None:
     label = SLOT_LABEL[slot]
     try:
-        parsed = parse_fn(path)
+        parsed = parse_fn(path, year=year)
     except Exception as e:  # noqa: BLE001
         diag.diagnostics.append(Diagnostic(
             slot, "error", f"{label}: không đọc được file",
@@ -211,13 +227,13 @@ def diagnose_upload(code: str, year: int, raw_root: Path) -> UploadDiagnosis:
     }
 
     if files.m15:
-        _check_balance(diag, "m15", files.m15, parse_m15)
+        _check_balance(diag, "m15", files.m15, parse_m15, year)
     if files.m15a:
-        _check_balance(diag, "m15a", files.m15a, parse_m15a)
+        _check_balance(diag, "m15a", files.m15a, parse_m15a, year)
     if files.m16:
-        _check_simple(diag, "m16", files.m16, parse_m16)
+        _check_simple(diag, "m16", files.m16, parse_m16, year=year)
     for p in files.bcct:
-        _check_simple(diag, "bcct", p, parse_bcct)
+        _check_simple(diag, "bcct", p, parse_bcct, year=year)
 
     if not any(diag.discovered.values()):
         diag.diagnostics.append(Diagnostic(

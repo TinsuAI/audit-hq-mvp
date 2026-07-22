@@ -54,18 +54,23 @@ class SheetCandidate:
     score: int
     colmap: dict[str, int]
     data_start: int
-    row_count: int
+    row_count: int | None
     period_from: Any = None
     period_to: Any = None
 
-    def covers(self, year: int) -> bool:
+    def period_rank(self, year: int) -> int:
+        """2 = kỳ bắt đầu ĐÚNG năm đang nạp · 1 = năm nằm trong kỳ · 0 = không liên quan.
+
+        Không dùng boolean: kỳ tài chính 01/04/2025–31/03/2026 vừa "bắt đầu năm 2025"
+        vừa "chứa năm 2026", nên hai sheet kỳ liên tiếp sẽ cùng khớp và hoà tiếp.
+        """
         if self.period_from is None:
-            return False
+            return 0
         if self.period_from.year == year:
-            return True
-        if self.period_to is not None:
-            return self.period_from.year <= year <= self.period_to.year
-        return False
+            return 2
+        if self.period_to is not None and self.period_from.year <= year <= self.period_to.year:
+            return 1
+        return 0
 
 
 def _score(cells: list[list[Any]], slot: str) -> tuple[int, dict[str, int]]:
@@ -109,7 +114,7 @@ def profile_sheets(path: Path, slot: str) -> list[SheetCandidate]:
         start = find_data_start(cells, slot)
         header = parse_company_header(cells, scan_rows=14)
         out.append(SheetCandidate(
-            name=name, score=score, colmap=colmap, data_start=start, row_count=-1,
+            name=name, score=score, colmap=colmap, data_start=start, row_count=None,
             period_from=header.period_from, period_to=header.period_to,
         ))
     return out
@@ -136,13 +141,14 @@ def select_sheet(path: Path, slot: str, year: int | None = None) -> SheetCandida
 
     top = [c for c in candidates if c.score == best]
     if len(top) > 1 and year is not None:
-        matched = [c for c in top if c.covers(year)]
-        if matched:
-            top = matched
+        ranks = [c.period_rank(year) for c in top]
+        best_rank = max(ranks)
+        if best_rank > 0:
+            top = [c for c, r in zip(top, ranks, strict=True) if r == best_rank]
     if len(top) > 1:
         for c in top:
             _fill_row_count(path, slot, c)
-        top.sort(key=lambda c: -c.row_count)
+        top.sort(key=lambda c: -(c.row_count or 0))
     return top[0]
 
 

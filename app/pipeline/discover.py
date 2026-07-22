@@ -121,7 +121,11 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
     # sheet. Trước đây các file này bị bỏ hẳn. Chỉ dò nội dung cho slot mà đường
     # theo tên chưa tìm được gì — giữ đường theo tên làm đường nhanh, nên DN đang
     # chạy được không đổi kết quả. Cùng một file có thể phục vụ nhiều slot.
-    probe = [p for p in unclassified if not _is_draft(p.name)]
+    # Pool gồm CẢ file đã phân loại theo tên: một workbook tên "…NVL…" vẫn có thể
+    # chứa luôn sheet Mẫu 15a/16. Chỉ file trong BCQT (không lấy DINH_MUC — file định
+    # mức không phục vụ slot cân đối). Snapshot trước vòng lặp vì bucket bị sửa trong đó.
+    bcqt_pool = list(dict.fromkeys(unclassified + m15_candidates + m15a_candidates))
+    probe = [p for p in bcqt_pool if not _is_draft(p.name)]
     for slot, bucket in (
         ("m15", m15_candidates), ("m15a", m15a_candidates), ("m16", m16_candidates),
     ):

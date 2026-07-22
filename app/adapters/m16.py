@@ -49,6 +49,7 @@ class M16File:
     rows: list[M16Row]
     source_file: str
     issues: ParseIssues = field(default_factory=ParseIssues)
+    sheet: str | None = None
 
 
 # Mẫu 16 TT39 chuẩn (BCDM_TT39_*.xls, sheet `BCTT39`):
@@ -155,7 +156,7 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
         )
 
     return M16File(
-        header=header, rows=rows, source_file=str(p),
+        header=header, rows=rows, source_file=str(p), sheet=sheet,
         issues=ParseIssues(
             error_cells=scan_error_cells(p, sheet, data_start, cols.values()),
             external_workbooks=count_external_workbooks(p),

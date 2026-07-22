@@ -151,6 +151,9 @@ def record_parse_result(
     }
     diag_errors = diagnosis.errors if diagnosis else []
     diag_warnings = diagnosis.warnings if diagnosis else []
+    # File nằm trong HANG_CHI_TIET nhưng không phải báo cáo chi tiết tờ khai đã bị bỏ
+    # qua lúc nạp — không được hiển thị "ok" kèm số dòng của các file khác.
+    skipped = set(getattr(stats, "bcct_skipped", None) or ())
 
     rows = session.scalars(
         select(DataFile).where(
@@ -159,6 +162,14 @@ def record_parse_result(
         )
     ).all()
     for row in rows:
+        if row.slot == "bcct" and row.original_filename in skipped:
+            row.parse_status = DataFileStatus.WARNING
+            row.parse_message = (
+                "Không phải báo cáo chi tiết tờ khai (thiếu số tờ khai / ngày ĐK) — "
+                "đã bỏ qua khi nạp, không đóng góp dòng nào."
+            )
+            row.row_count = 0
+            continue
         rc = row_counts.get(row.slot, 0)
         status, message = _slot_status(row.slot, rc, diag_errors, diag_warnings)
         row.parse_status = status

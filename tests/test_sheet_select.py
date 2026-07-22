@@ -133,3 +133,45 @@ def test_no_warning_when_source_is_clean() -> None:
     diag = UploadDiagnosis()
     _report_parse_issues(diag, "m15", type("P", (), {"issues": ParseIssues()})())
     assert not diag.diagnostics
+
+
+def test_fiscal_year_period_rank_prefers_exact_start_year(tmp_path: Path) -> None:
+    """Kỳ tài chính 01/04/2025–31/03/2026 vừa 'bắt đầu 2025' vừa 'chứa 2026'.
+
+    Boolean covers() làm hai sheet kỳ liên tiếp cùng khớp rồi hoà tiếp sang số dòng.
+    """
+    from datetime import date
+
+    from app.adapters.sheet_select import SheetCandidate
+
+    fy = SheetCandidate(name="FY", score=8, colmap={}, data_start=9, row_count=None,
+                        period_from=date(2025, 4, 1), period_to=date(2026, 3, 31))
+    assert fy.period_rank(2025) == 2      # bắt đầu đúng năm
+    assert fy.period_rank(2026) == 1      # chỉ nằm trong kỳ
+    assert fy.period_rank(2024) == 0
+
+    p = tmp_path / "m15.xlsx"
+    _write(p, {
+        "FY 2025-26": _m15_grid("Kỳ báo cáo: Từ ngày 01/04/2025 đến ngày 31/03/2026"),
+        "FY 2026-27": _m15_grid("Kỳ báo cáo: Từ ngày 01/04/2026 đến ngày 31/03/2027"),
+    })
+    assert select_sheet(p, "m15", 2026).name == "FY 2026-27"
+    assert select_sheet(p, "m15", 2025).name == "FY 2025-26"
+
+
+def test_diagnosis_parses_with_the_same_year_as_ingest() -> None:
+    """Chẩn đoán gọi parse KHÔNG kèm year thì phá hoà theo kỳ bị bỏ qua — cán bộ
+    duyệt một sheet, ingest nạp sheet khác."""
+    from app.pipeline.validate import UploadDiagnosis, _check_balance, _check_simple
+
+    seen: list[int | None] = []
+
+    row = type("R", (), {"opening_qty": 1.0, "import_qty": 1.0, "closing_qty": 1.0})()
+
+    def fake_parse(path, year=None):
+        seen.append(year)
+        return type("P", (), {"rows": [row], "issues": None, "sheet": "S"})()
+
+    _check_balance(UploadDiagnosis(), "m15", Path("x.xlsx"), fake_parse, 2025)
+    _check_simple(UploadDiagnosis(), "m16", Path("x.xlsx"), fake_parse, year=2025)
+    assert seen == [2025, 2025]
