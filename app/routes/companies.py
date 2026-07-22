@@ -65,6 +65,10 @@ templates.env.globals["COMBO_SPECS"] = COMBO_SPECS
 templates.env.globals["tier_css_for"] = tier_css_for
 templates.env.globals["tier_for"] = tier_for
 
+# Trang DN chỉ xem trước vài dòng mỗi kiểm tra; xem đủ thì mở riêng từng kiểm tra.
+_PREVIEW_PER_GROUP = 15
+_PAGE_SIZE = 100
+
 _SEVERITY_ORDER = {Severity.CRITICAL.value: 0, Severity.WARNING.value: 1, Severity.INFO.value: 2}
 
 ALLOWED_STATUSES = {"new", "confirmed", "rejected", "noted"}
@@ -1023,6 +1027,8 @@ def company_detail(
     request: Request,
     year: int | None = Query(default=None),
     ingested: int = Query(default=0),
+    check: str | None = Query(default=None),
+    page: int = Query(default=1),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -1044,32 +1050,69 @@ def company_detail(
     years = sorted(finding_years | data_years, reverse=True)
     selected_year = year if year is not None else (years[0] if years else None)
 
-    findings: list[Finding] = []
+    # Đếm bằng SQL, KHÔNG nạp hết Finding vào bộ nhớ: một DN thật đã sinh 11.003
+    # phát hiện cho một kỳ, render hết ra một trang là 18,7 MB HTML.
+    counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    severity_totals = {"critical": 0, "warning": 0, "info": 0}
+    combo_findings: list[Finding] = []
     if selected_year is not None:
-        findings = db.scalars(
-            select(Finding)
+        for ccode, sev, n in db.execute(
+            select(Finding.check_code, Finding.severity, func.count())
             .where(Finding.company_id == company.id, Finding.period_year == selected_year)
-            .order_by(Finding.check_code, Finding.subject_key)
+            .group_by(Finding.check_code, Finding.severity)
+        ).all():
+            if ccode.startswith("COMBO_"):
+                continue
+            counts[ccode][sev] += n
+            if sev in severity_totals:
+                severity_totals[sev] += n
+        combo_findings = db.scalars(
+            select(Finding)
+            .where(
+                Finding.company_id == company.id,
+                Finding.period_year == selected_year,
+                Finding.check_code.startswith("COMBO_"),
+            )
+            .order_by(Finding.subject_key)
         ).all()
 
-    # Tách combo (meta-finding) khỏi findings thường để render riêng ở đầu trang.
-    combo_findings = [f for f in findings if f.check_code.startswith("COMBO_")]
-    regular_findings = [f for f in findings if not f.check_code.startswith("COMBO_")]
+    total_findings = sum(sum(s.values()) for s in counts.values())
 
-    grouped: dict[str, list[Finding]] = defaultdict(list)
-    severity_totals = {"critical": 0, "warning": 0, "info": 0}
-    for f in regular_findings:
-        grouped[f.check_code].append(f)
-        if f.severity in severity_totals:
-            severity_totals[f.severity] += 1
+    def _rank(ccode: str) -> tuple[int, str]:
+        sevs = counts[ccode]
+        return (min(_SEVERITY_ORDER.get(s, 99) for s in sevs), ccode)
 
-    ordered_groups = sorted(
-        grouped.items(),
-        key=lambda kv: (
-            min(_SEVERITY_ORDER.get(f.severity, 99) for f in kv[1]),
-            kv[0],
-        ),
-    )
+    codes = sorted(counts, key=_rank)
+    # Xem sâu một kiểm tra: phân trang thay vì đổ cả nghìn dòng.
+    focus = check if check in counts else None
+    page = max(1, page)
+
+    def _rows(ccode: str, limit: int, offset: int = 0) -> list[Finding]:
+        return db.scalars(
+            select(Finding)
+            .where(
+                Finding.company_id == company.id,
+                Finding.period_year == selected_year,
+                Finding.check_code == ccode,
+            )
+            .order_by(Finding.severity, Finding.subject_key)
+            .limit(limit)
+            .offset(offset)
+        ).all()
+
+    # (mã, dòng hiển thị, tổng, đếm theo mức) — template chỉ nhận phần cần vẽ.
+    ordered_groups: list[tuple[str, list[Finding], int, dict[str, int]]] = []
+    if focus:
+        total = sum(counts[focus].values())
+        ordered_groups.append(
+            (focus, _rows(focus, _PAGE_SIZE, (page - 1) * _PAGE_SIZE), total, dict(counts[focus]))
+        )
+    else:
+        for ccode in codes:
+            total = sum(counts[ccode].values())
+            ordered_groups.append(
+                (ccode, _rows(ccode, _PREVIEW_PER_GROUP), total, dict(counts[ccode]))
+            )
 
     year_score = None
     if selected_year is not None:
@@ -1084,7 +1127,7 @@ def company_detail(
 
     # Trạng thái tách upload/kiểm tra: có dữ liệu năm này chưa? đã chạy kiểm tra chưa?
     has_data = selected_year in data_years if selected_year is not None else False
-    checks_run = year_score is not None or bool(findings)
+    checks_run = year_score is not None or total_findings > 0 or bool(combo_findings)
 
     return templates.TemplateResponse(
         request,
@@ -1097,7 +1140,11 @@ def company_detail(
             "ordered_groups": ordered_groups,
             "combo_findings": combo_findings,
             "severity_totals": severity_totals,
-            "total_findings": len(regular_findings),
+            "total_findings": total_findings,
+            "focus_check": focus,
+            "page": page,
+            "page_size": _PAGE_SIZE,
+            "preview_per_group": _PREVIEW_PER_GROUP,
             "year_score": year_score,
             "all_specs": all_specs,
             "has_data": has_data,
