@@ -15,6 +15,32 @@ from app.adapters.sheet_select import SheetNotFound, select_sheet
 # slot chứ không phải dữ liệu xấu, phải để nó nổ ra.
 _UNUSABLE = (SheetNotFound, ValueError, OSError, zipfile.BadZipFile)
 
+_BALANCE_SLOTS = ("m15", "m15a", "m16")
+# Dò nội dung phải mở Excel, mà `sync_data_files` chạy ở MỌI lần vào trang tài liệu.
+# Cache theo (đường dẫn, mtime, size): file không đổi thì chỉ mở một lần.
+_SLOT_CACHE: dict[tuple[str, int, int], tuple[str, ...]] = {}
+
+
+def content_slots(path: Path, year: int | None = None) -> tuple[str, ...]:
+    """Các slot mà file này phục vụ được, xét theo NỘI DUNG (một file có thể nhiều slot)."""
+    try:
+        st = path.stat()
+    except OSError:
+        return ()
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    cached = _SLOT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    found: list[str] = []
+    for slot in _BALANCE_SLOTS:
+        try:
+            select_sheet(path, slot, year)
+        except _UNUSABLE:
+            continue
+        found.append(slot)
+    _SLOT_CACHE[key] = tuple(found)
+    return _SLOT_CACHE[key]
+
 
 @dataclass
 class DiscoveredFiles:
@@ -139,11 +165,8 @@ def discover(company: str, year: int, raw_root: Path) -> DiscoveredFiles:
         if bucket:
             continue
         for p in probe:
-            try:
-                select_sheet(p, slot, year)
-            except _UNUSABLE:
-                continue
-            bucket.append(p)
+            if slot in content_slots(p, year):
+                bucket.append(p)
 
     return DiscoveredFiles(
         m15=_pick_best(m15_candidates),

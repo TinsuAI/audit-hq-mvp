@@ -196,14 +196,23 @@
     </div>
   {% endif %}
 
-  {% for code, findings in ordered_groups %}
+  {% if focus_check %}
+    <p style="margin:0 0 12px"><a href="?year={{ selected_year }}">← Về tất cả kiểm tra</a></p>
+  {% endif %}
+
+  {% for code, findings, group_total, group_sev in ordered_groups %}
     {% set spec = all_specs.get(code) or SPECS.get(code) %}
-    <details class="finding-group" id="group-{{ code }}">
+    <details class="finding-group" id="group-{{ code }}"{% if focus_check %} open{% endif %}>
       <summary>
         <span class="badge muted text-mono">{{ code }}</span>
         {% if code.startswith('X.') %}<span class="badge info" style="font-size:var(--fs-xs);vertical-align:middle">Tuỳ chỉnh</span> {% endif %}
         <strong>{{ spec.title if spec else code }}</strong>
-        <span class="group-meta">{{ findings | length }} phát hiện</span>
+        <span class="group-meta">
+          {{ group_total }} phát hiện
+          {%- for sev in ['critical', 'warning', 'info'] %}{% if group_sev.get(sev) %}
+            · {{ SEVERITY_BADGE[sev] }} {{ group_sev[sev] }}
+          {%- endif %}{% endfor %}
+        </span>
       </summary>
       <p class="group-desc">{{ spec.description if spec else '' }}</p>
       <div class="data-table-wrapper">
@@ -250,6 +259,27 @@
           </tbody>
         </table>
       </div>
+      {% if focus_check %}
+        {% set pages = (group_total + page_size - 1) // page_size %}
+        {% if pages > 1 %}
+        <nav class="group-more" style="display:flex;gap:8px;align-items:center;margin-top:10px">
+          {% if page > 1 %}
+            <a class="btn btn-sm btn-secondary" href="?year={{ selected_year }}&check={{ code }}&page={{ page - 1 }}">← Trước</a>
+          {% endif %}
+          <span class="text-muted">Trang {{ page }}/{{ pages }} · {{ page_size }} dòng/trang</span>
+          {% if page < pages %}
+            <a class="btn btn-sm btn-secondary" href="?year={{ selected_year }}&check={{ code }}&page={{ page + 1 }}">Sau →</a>
+          {% endif %}
+        </nav>
+        {% endif %}
+      {% elif group_total > findings | length %}
+        <p class="group-more" style="margin-top:10px">
+          <a href="?year={{ selected_year }}&check={{ code }}">
+            Xem tất cả {{ group_total }} phát hiện của {{ code }} →
+          </a>
+          <span class="text-muted">(đang hiện {{ findings | length }} dòng đầu)</span>
+        </p>
+      {% endif %}
     </details>
   {% endfor %}
 
