@@ -183,3 +183,22 @@ Ghi lại các quyết định kiến trúc và phạm vi. Mỗi entry: ngày, q
 - *Layout spec viết tay theo DN* (rejected — không mở rộng được; đã đo 004 EPE và 004 GC khác nhau ngay ở cùng vị trí cột `(8)`, tức một spec/DN vẫn chưa đủ, phải một spec/sổ).
 - *AI sinh map rồi dùng thẳng* (rejected — đúng kiểu hỏng "sai mà trông đúng", không kiểm được, vi phạm truy nguồn).
 - *Chỉ dò theo từ khoá tên cột* (rejected — đã đo hỏng: `tồn đầu` không khớp `Lượng NL, VT tồn kho đầu kỳ`; `Xuất khẩu` khớp nhầm `Mã sản phẩm xuất khẩu` ở cột 1).
+
+**Đã thực hiện (2026-07-23) — Mẫu 15:** `app/adapters/extended_layout.py`. Suy map từ dòng
+đánh số + số biểu→trường CỐ ĐỊNH của Mẫu 15 (ổn định: 006 nén lẫn 004 mở rộng đều
+`(11)=(5)+(6)-(7)-(8)-(9)-(10)`), chứng minh bằng đẳng thức trên ≥98% dòng. Chạy trong
+`parse_m15` CHỈ khi `select_sheet` (đường cột cố định) trượt → 6 DN whitelist không đổi
+(verify 419 finding y hệt). 004 EPE M15 nạp 104 dòng (đẳng thức 0/104 sai), 004 GC 37 dòng
+(0/37). Bug đã sửa trong lúc làm: số hạng ĐẦU của công thức `(5)+(6)-...` không có dấu →
+regex bỏ mất → 004 GC "lọt" giả vì tồn đầu của nó toàn 0; cổng đẳng thức bắt được.
+
+**CHƯA thực hiện — Mẫu 15a (và độ chính xác cột Mẫu 16 của 004):**
+- **M15a mở rộng không làm đợt này** vì số biểu KHÔNG ổn định: 006 là `(10)=(5)+(6)-(7)-(8)-(9)`,
+  004 EPE là `(11)=(5)+(6)+(7)-(8)-(9)-(10)` (11 số, (6)(7) đều cộng), 004 GC dùng nhãn
+  gộp `(6ab)(8ab)(9abc)`. Xác định cột `export_qty` phải dựa nhãn phân mảnh ("đăng ký tờ
+  khai"/"xuất bán"/"xuất kho để…") — map sai thì C4.3 ra số sai âm thầm, đúng kiểu hỏng
+  ADR này chống. → 004 hiện nạp **không có M15a**: C4.3/C1.4 KHÔNG chạy (đúng, thà không có
+  hơn sai). Đây là việc tiếp theo, cần map M15a theo nhãn + cổng đẳng thức riêng.
+- **Cột định mức Mẫu 16 của 004**: file có `ĐM kỹ thuật` (c7) và `ĐM thực tế` (c8); adapter
+  đọc c7. Chưa sửa — Mẫu 16 không có đẳng thức cân đối để gate; và C4.3 đang tắt nên chưa
+  fire số sai. Làm cùng đợt M15a.

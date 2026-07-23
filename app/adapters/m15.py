@@ -20,8 +20,9 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.extended_layout import ColMap, select_extended_m15
 from app.adapters.layout import find_data_start
-from app.adapters.sheet_select import select_sheet
+from app.adapters.sheet_select import SheetNotFound, select_sheet
 
 
 @dataclass
@@ -75,15 +76,37 @@ _SHEET_NAMES = ("BCQT_NPL", "BCQT_NVL", "Sheet1")
 def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = None) -> M15File:
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
+    colmap: ColMap | None = None
     if sheet is None:
-        sheet = select_sheet(p, "m15", year).name
+        try:
+            sheet = select_sheet(p, "m15", year).name
+        except SheetNotFound:
+            # Đường cột cố định trượt — thử bố cục MỞ RỘNG: suy map từ dòng đánh số,
+            # chứng minh bằng đẳng thức của biểu (ADR #15). Không xác thực được thì
+            # ném lại SheetNotFound gốc (không nạp bừa).
+            picked = select_extended_m15(p, year)
+            if picked is None:
+                raise
+            sheet, colmap = picked
+
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
-    data_start = find_data_start(cells, "m15")
+    if colmap is not None:
+        rows = _rows_from_colmap(cells, colmap)
+        scan_cols = [c for cols in colmap.cols.values() for c in cols]
+        return M15File(
+            header=header, rows=rows, source_file=str(p), sheet=sheet,
+            issues=ParseIssues(
+                error_cells=scan_error_cells(p, sheet, colmap.data_start, scan_cols),
+                external_workbooks=count_external_workbooks(p),
+                scanned=True,
+            ),
+        )
 
-    rows: list[M15Row] = []
+    data_start = find_data_start(cells, "m15")
+    rows = []
     for raw in cells[data_start:]:
         material_code = normalize_code(to_str(safe_get(raw, _COL["material_code"])))
         if not material_code:
@@ -118,3 +141,30 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
             scanned=True,
         ),
     )
+
+
+def _rows_from_colmap(cells: list, colmap: ColMap) -> list[M15Row]:
+    """Dựng dòng M15 từ map cột đã xác thực (bố cục mở rộng)."""
+    code_cols = colmap.cols["material_code"]
+    name_cols = colmap.cols.get("material_name", [])
+    unit_cols = colmap.cols.get("unit", [])
+    rows: list[M15Row] = []
+    for raw in cells[colmap.data_start:]:
+        code = next((normalize_code(to_str(safe_get(raw, c))) for c in code_cols
+                     if normalize_code(to_str(safe_get(raw, c)))), None)
+        if not code:
+            continue
+        rows.append(M15Row(
+            row_no=None,
+            material_code=code,
+            material_name=normalize_name(to_str(safe_get(raw, name_cols[0]))) if name_cols else None,
+            unit=normalize_code(to_str(safe_get(raw, unit_cols[0]))) if unit_cols else None,
+            opening_qty=colmap.value(raw, "opening_qty"),
+            import_qty=colmap.value(raw, "import_qty"),
+            reexport_qty=colmap.value(raw, "reexport_qty"),
+            repurpose_qty=colmap.value(raw, "repurpose_qty"),
+            production_out_qty=colmap.value(raw, "production_out_qty"),
+            other_out_qty=colmap.value(raw, "other_out_qty"),
+            closing_qty=colmap.value(raw, "closing_qty"),
+        ))
+    return rows
