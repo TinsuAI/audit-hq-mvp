@@ -58,6 +58,20 @@
 3. `56c54bd` bố cục mở rộng Mẫu 15 (ADR 15) → merge `c82ffa9`.
 
 ## Next Steps (theo ưu tiên)
+0. **C1 — `period_from`/`period_to` cho kỳ báo cáo (custom date). USER ĐÃ CHỐT LÀM, để session
+   sau.** Bắt đầu bằng **`/discover`** (feature brief) — thiết kế chưa nhốt, chạm schema + ngữ
+   nghĩa kỳ báo cáo khách. Rồi `/v_tdd` từng lát + `/rev`. **Quyết định phải chốt đầu session:**
+   - **Đường RẺ (~1 ngày, notes/12 khuyến nghị):** giữ `period_year` làm nhãn, thêm bảng
+     `company_periods(from,to)`, sửa đúng **2 dòng** suy năm từ ngày (`ingest.py:93` và `:184`
+     `declaration_date.year == year`). 17 check KHÔNG đổi chữ ký.
+   - Đường ĐẦY ĐỦ (~3-5 ngày): thêm `period_from`/`period_to` vào mọi dòng 4 bảng Tầng 1 —
+     chạm 214 tham chiếu `period_year`, rủi ro cao. `notes/12` mục "KHÔNG làm" #4 loại đường này.
+   - Vì sao cần: 002/004 là **năm tài chính 01/04–31/03**, ingest lọc `declaration_date.year`
+     xoá 27-30% dòng tờ khai (đo: PILOT_002 mất đúng 3.014/11.115). 006 dương lịch → mất 0.
+   - `CompanyHeader.period_from/to` đã ĐỌC được từ tiêu đề file (hiện chỉ dùng phá hoà chọn
+     sheet, chưa vào DB). ADR #13 chốt `period_year` là khoá join chung — C1 phải tôn trọng.
+   - **KIỂM đầu session:** C1 có tính "sửa catalog" không? Đổi ingest/schema, KHÔNG đổi mô tả
+     check → nhiều khả năng KHÔNG cần update đề án (khác B2/B4). Xác nhận lại.
 1. **M15a mở rộng + cột M16 của 004** — việc tiếp ADR 15. Số biểu M15a KHÔNG ổn định giữa DN
    (006 trừ (7), 004 EPE cộng, 004 GC nhãn gộp), nên map `export_qty` phải theo NHÃN + cổng
    đẳng thức riêng. Mở khoá C4.3/C1.4 cho 004. Cột định mức M16 của 004 đang đọc c7 (ĐM kỹ
