@@ -138,9 +138,12 @@
 {% if years %}
 <div class="tabs">
   {% for y in years %}
-    <a href="/companies/{{ company.slug or company.code }}?year={{ y }}" class="{% if y == selected_year %}active{% endif %}">{{ y }}</a>
+    <a href="/companies/{{ company.slug or company.code }}?year={{ y }}" class="{% if y == selected_year %}active{% endif %}"{% if period_windows.get(y) %} title="Năm tài chính {{ period_windows[y][0].strftime('%d/%m/%Y') }} – {{ period_windows[y][1].strftime('%d/%m/%Y') }}"{% endif %}>{{ y }}{% if period_windows.get(y) %}<sup style="font-size:.65em;color:var(--c-warn,#b45309);font-weight:700;margin-left:2px">TC</sup>{% endif %}</a>
   {% endfor %}
 </div>
+{% endif %}
+{% if selected_year and period_windows.get(selected_year) %}
+<p class="text-subtle" style="margin:var(--space-2) 0 0">📅 Kỳ báo cáo <strong>{{ selected_year }}</strong> là <strong>năm tài chính {{ period_windows[selected_year][0].strftime('%d/%m/%Y') }} – {{ period_windows[selected_year][1].strftime('%d/%m/%Y') }}</strong> — nhãn "{{ selected_year }}" là kỳ quyết toán, không phải năm dương lịch. Tờ khai có thể mang ngày sang năm sau.</p>
 {% endif %}
 
 {% if selected_year is none %}

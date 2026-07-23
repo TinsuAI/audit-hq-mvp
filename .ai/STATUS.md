@@ -1,5 +1,13 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — C1 kỳ báo cáo custom-date, full-stack):**
+> Xong C1 `period_from/to` (ADR #16). BCCT chọn theo cửa sổ kỳ `[from,to]` thay `==year`;
+> `period_year` = nhãn kỳ (tách khỏi `declaration_date`). Bảng `company_periods` + migration
+> `e4f5a6b7c8d9`. Frontend: trang tài liệu sửa được kỳ (form + banner + về mặc định). 20 test
+> mới, full suite **573 xanh**. Harness: PILOT_002 phục hồi **đúng 3.014** dòng (window tự đọc
+> 2025-04-01..2026-03-31), whitelist **1.331** finding BẤT BIẾN (code cũ cũng 1.331 — mốc "419"
+> cũ đã lỗi thời). **CHƯA commit** (working tree có thay đổi). Migration head giờ **`e4f5a6b7c8d9`**.
+>
 > **Trạng thái (2026-07-23 — Tier A parse layer + B1 + ADR 15 Mẫu 15):**
 > Phiên dài, xử lý bộ dữ liệu mới 3 DN (002/004/006) từ `audit-hq-pilot`. Viết lại **tầng
 > parse**: chọn sheet theo nội dung, dò dòng dữ liệu, đếm ô hỏng, chọn cột theo bố cục mở
@@ -58,20 +66,11 @@
 3. `56c54bd` bố cục mở rộng Mẫu 15 (ADR 15) → merge `c82ffa9`.
 
 ## Next Steps (theo ưu tiên)
-0. **C1 — `period_from`/`period_to` cho kỳ báo cáo (custom date). USER ĐÃ CHỐT LÀM, để session
-   sau.** Bắt đầu bằng **`/discover`** (feature brief) — thiết kế chưa nhốt, chạm schema + ngữ
-   nghĩa kỳ báo cáo khách. Rồi `/v_tdd` từng lát + `/rev`. **Quyết định phải chốt đầu session:**
-   - **Đường RẺ (~1 ngày, notes/12 khuyến nghị):** giữ `period_year` làm nhãn, thêm bảng
-     `company_periods(from,to)`, sửa đúng **2 dòng** suy năm từ ngày (`ingest.py:93` và `:184`
-     `declaration_date.year == year`). 17 check KHÔNG đổi chữ ký.
-   - Đường ĐẦY ĐỦ (~3-5 ngày): thêm `period_from`/`period_to` vào mọi dòng 4 bảng Tầng 1 —
-     chạm 214 tham chiếu `period_year`, rủi ro cao. `notes/12` mục "KHÔNG làm" #4 loại đường này.
-   - Vì sao cần: 002/004 là **năm tài chính 01/04–31/03**, ingest lọc `declaration_date.year`
-     xoá 27-30% dòng tờ khai (đo: PILOT_002 mất đúng 3.014/11.115). 006 dương lịch → mất 0.
-   - `CompanyHeader.period_from/to` đã ĐỌC được từ tiêu đề file (hiện chỉ dùng phá hoà chọn
-     sheet, chưa vào DB). ADR #13 chốt `period_year` là khoá join chung — C1 phải tôn trọng.
-   - **KIỂM đầu session:** C1 có tính "sửa catalog" không? Đổi ingest/schema, KHÔNG đổi mô tả
-     check → nhiều khả năng KHÔNG cần update đề án (khác B2/B4). Xác nhận lại.
+0. **C1 — `period_from`/`period_to` — ✅ XONG (2026-07-24, ADR #16, đường RẺ).** Bảng
+   `company_periods` + migration `e4f5a6b7c8d9`; BCCT lọc theo cửa sổ `[from,to]`; `period_year`
+   = nhãn kỳ; frontend sửa được kỳ. Full-stack + 20 test + full suite 573 xanh. **Còn:** commit;
+   (tuỳ chọn) cảnh báo cửa sổ sửa tay chồng lấn chéo năm — hiện là giới hạn manual-only có chủ
+   đích (xem ADR #16). Đường tự động an toàn (FY liền kề không chồng).
 1. **M15a mở rộng + cột M16 của 004** — việc tiếp ADR 15. Số biểu M15a KHÔNG ổn định giữa DN
    (006 trừ (7), 004 EPE cộng, 004 GC nhãn gộp), nên map `export_qty` phải theo NHÃN + cổng
    đẳng thức riêng. Mở khoá C4.3/C1.4 cho 004. Cột định mức M16 của 004 đang đọc c7 (ĐM kỹ
@@ -97,8 +96,10 @@
   KHÔNG biết → đăng nhập bằng user throwaway seed qua `create_user` rồi purge (xem
   [[ui-screenshots-convention]]). Screenshot scratch, KHÔNG commit.
 - **Harness verify** (scratchpad, session-specific, có thể mất): ingest+run_checks toàn bộ
-  whitelist vào DB tạm, dump finding đã sort, diff trước/sau. Kết quả chuẩn: **419 finding**
-  trên 12 cặp DN×năm. Chạy lại mỗi khi chạm tầng parse/check.
+  whitelist vào DB tạm, dump finding đã sort, diff trước/sau. **Mốc chuẩn hiện tại (2026-07-24):
+  1.331 finding trên 12 cặp DN×năm** (đo lại code cũ = code mới sau C1 → C1 trung tính). Con số
+  "419" trong ghi chú cũ ĐÃ LỖI THỜI (khác bộ dữ liệu/thời điểm) — đừng dùng làm tiêu chí. Chạy
+  lại mỗi khi chạm tầng parse/check.
 - **Kỷ luật số liệu:** số của `audit-hq-pilot/notes/` đếm theo luật parser CỦA PILOT, không
   phải sản phẩm — phải phát biểu lại theo luật đếm sản phẩm trước khi dùng làm tiêu chí. Xem
   [[tier-a-thu-tu-a1-truoc-a2]] và [[so-lieu-phai-co-mau-so-va-nguon-doc-lap]].

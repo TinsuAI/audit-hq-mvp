@@ -19,6 +19,7 @@ from app.adapters.sheet_select import SheetNotFound
 from app.database import SessionLocal
 from app.models import Company, DeclarationLine, Norm, NvlBalance, SpBalance
 from app.pipeline.discover import DiscoveredFiles, discover
+from app.pipeline.period import default_bounds, in_period, resolve_period_bounds
 from app.settings import settings
 
 
@@ -30,7 +31,7 @@ class IngestStats:
     m15a_rows: int = 0
     m16_rows: int = 0
     bcct_rows: int = 0
-    bcct_other_year: int = 0  # dòng BCCT bị loại vì ngày tờ khai thuộc kỳ khác
+    bcct_other_year: int = 0  # dòng BCCT bị loại vì ngày tờ khai ngoài cửa sổ kỳ
     bcct_skipped: list[str] | None = None  # file trong HANG_CHI_TIET không phải BCCT
     files: dict[str, str | None] | None = None
 
@@ -86,18 +87,18 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
     stats.m15_rows = len(m15.rows) if m15 else 0
     stats.m15a_rows = len(m15a.rows) if m15a else 0
     stats.m16_rows = len(m16.rows) if m16 else 0
-    # BCCT: tách dòng thuộc kỳ đang nạp (theo ngày tờ khai) khỏi dòng kỳ khác.
+    # BCCT: giữ dòng có ngày tờ khai trong cửa sổ kỳ [period_from, period_to]
+    # (năm tài chính ≠ dương lịch). Dòng ngoài cửa sổ đếm vào bcct_other_year.
     bcct_all = [r for b in bcct_files for r in b.rows]
-    stats.bcct_rows = sum(
-        1 for r in bcct_all
-        if r.declaration_date is None or r.declaration_date.year == year
-    )
-    stats.bcct_other_year = len(bcct_all) - stats.bcct_rows
+    company_meta = next((x.header for x in (m15, m15a, m16) if x is not None), None)
 
     if dry_run:
+        # Xem trước: cửa sổ suy tự động (bản sửa tay cần session, không xét ở dry-run).
+        pf, pt = default_bounds(company_meta, year)
+        stats.bcct_rows = sum(1 for r in bcct_all if in_period(r.declaration_date, pf, pt))
+        stats.bcct_other_year = len(bcct_all) - stats.bcct_rows
         return stats
 
-    company_meta = next((x.header for x in (m15, m15a, m16) if x is not None), None)
     bcct_tax = next((b.company_tax_id for b in bcct_files if b.company_tax_id), None)
     bcct_name = next((b.company_name for b in bcct_files if b.company_name), None)
     tax_id = (company_meta.tax_id if company_meta else None) or bcct_tax
@@ -106,6 +107,13 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
 
     with SessionLocal() as session:
         company = _get_or_create_company(session, company_code, tax_id, name, address)
+
+        # Cửa sổ kỳ (from,to): bản sửa tay > tiêu đề file > dương lịch; ghi company_periods.
+        period_from, period_to = resolve_period_bounds(session, company.id, year, company_meta)
+        stats.bcct_rows = sum(
+            1 for r in bcct_all if in_period(r.declaration_date, period_from, period_to)
+        )
+        stats.bcct_other_year = len(bcct_all) - stats.bcct_rows
 
         # Wipe previous data for this company × year so re-ingest is idempotent.
         for model in (NvlBalance, SpBalance, Norm, DeclarationLine):
@@ -174,19 +182,18 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                 for r in m16.rows
             )
 
-        # period_year của BCCT suy TỪ ngày tờ khai của từng dòng (không gán cứng
-        # `year`). Chỉ giữ dòng thuộc kỳ đang nạp — file gộp nhiều năm chỉ đóng góp
-        # phần đúng năm; phần năm khác do lần nạp năm đó xử lý. Dòng thiếu ngày →
-        # quy về kỳ đang nạp (không suy được năm).
+        # BCCT gán period_year = NHÃN kỳ (`year`), tách khỏi mốc giao dịch. Chỉ giữ
+        # dòng có ngày trong cửa sổ kỳ [period_from, period_to] — file gộp nhiều kỳ
+        # chỉ đóng góp phần đúng cửa sổ; phần ngoài do lần nạp kỳ đó xử lý. Dòng
+        # thiếu ngày → quy về kỳ đang nạp (không suy được năm).
         for bcct in bcct_files:
             to_add = []
             for r in bcct.rows:
-                row_year = r.declaration_date.year if r.declaration_date else year
-                if row_year != year:
+                if not in_period(r.declaration_date, period_from, period_to):
                     continue
                 to_add.append(DeclarationLine(
                     company_id=company.id,
-                    period_year=row_year,
+                    period_year=year,
                     declaration_no=r.declaration_no,
                     declaration_date=r.declaration_date,
                     customs_code=r.customs_code,
