@@ -1,109 +1,97 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-06-14 — tài liệu hướng dẫn sử dụng):**
-> Phiên này viết **tài liệu hướng dẫn sử dụng hệ thống** (`docs/huong-dan-su-dung.md`), đăng ký vào
-> thư viện `/tai-lieu` dưới nhóm mới "Hướng dẫn sử dụng" (đặt đầu). Commit + push + CI deploy xanh.
-> **`main` = `origin/main` = prod = `00959b1`** (sạch, không ahead/behind, không uncommitted).
-> Migration head **`d3e4f5a6b7c8`** (KHÔNG đổi phiên này). Test suite ~533 pass (không động vào).
+> **Trạng thái (2026-07-23 — Tier A parse layer + B1 + ADR 15 Mẫu 15):**
+> Phiên dài, xử lý bộ dữ liệu mới 3 DN (002/004/006) từ `audit-hq-pilot`. Viết lại **tầng
+> parse**: chọn sheet theo nội dung, dò dòng dữ liệu, đếm ô hỏng, chọn cột theo bố cục mở
+> rộng qua đẳng thức của biểu. Sửa C4.3 nhân trùng khối định mức (B1). Sửa trang finding
+> (18,7 MB → 294 KB) + trang tài liệu nhiều slot. **4 lần deploy, đều xanh.**
+> **`main` = `origin/main` = prod = `c82ffa9`**, working tree sạch.
+> Migration head **`d3e4f5a6b7c8`** (KHÔNG đổi phiên này — không có migration nào phiên này).
+> 523 test function, full suite pass.
 
 ## Current State
 
 ### Git / deploy
-- **`main` = `origin/main` = `00959b1`**, working tree sạch. Prod live `audit-hq-demo.tinsu.ai`
-  đang chạy `00959b1` (CI run `27501049776` xanh; đã verify `/healthz` 200).
-- Deploy = push `main` → CI "Test & Deploy to Tinsu" (self-hosted): test+lint → docker build →
-  restart → `alembic upgrade head` + seed UOM → healthcheck. Watch: `gh run watch <id> --exit-status`.
-- **LƯU Ý sửa note cũ:** STATUS trước ghi "chat redesign `444f5ed` chưa push" — SAI/đã cũ.
-  `git fetch` đầu phiên cho thấy `444f5ed` + `b11cf4a` đã ở origin từ trước (đã deploy).
+- **`main` = `origin/main` = prod = `c82ffa9`**, working tree sạch. Prod live
+  `audit-hq-demo.tinsu.ai` chạy `c82ffa9` (đã verify `/healthz` 200, build_sha khớp).
+- Deploy = push `main` → CI "Test & Deploy to Tinsu" (self-hosted `tinsu-prod`): test+lint →
+  docker build → restart → `alembic upgrade head` → healthcheck. Watch: `gh run watch <id> --exit-status`.
+  **LƯU Ý:** runner self-hosted đôi khi queue 10+ phút trước khi chạy — không phải lỗi.
+- 9 commit phiên này (từ `fadc427`): xem session log `2026-07-23-tier-a-parse-layer.md`.
 
-### Tài liệu hướng dẫn sử dụng (MỚI phiên này)
-- **File:** `docs/huong-dan-su-dung.md` — hướng dẫn tiếng Việt 11 mục cho cán bộ + quản trị viên:
-  đăng nhập/phân quyền · giao diện · quy trình 6 bước · nạp dữ liệu (M15/15a/16/BCCT + chẩn đoán AI) ·
-  chạy kiểm tra + hàng đợi Công việc · điểm + phát hiện · xử lý/truy nguồn (Mới/Xác nhận/Loại trừ/Đã ghi chú) ·
-  xuất kiến nghị + tra cứu · trợ lý AI · danh mục & tài liệu · mục quản trị · FAQ.
-- **Đăng ký:** `app/routes/docs.py` — thêm entry `huong-dan-su-dung` vào `PUBLIC_DOCS`, nhóm mới
-  `guide` ("Hướng dẫn sử dụng") đặt đầu `CATEGORY_ORDER`. Hiện ở `/tai-lieu` (đầu danh sách).
-- **Chống overclaim:** mọi năng lực đã grep code xác minh (12 tool AI `app/ai/tools.py`, export thật, chẩn đoán
-  file, trạng thái phát hiện, nhãn loại tệp). Ghi rõ "một số năng lực AI bật/tắt tuỳ admin" vì 3 tool gate
-  theo `_GATED_TOOLS`. KHÔNG nêu tên hàm/tool nội bộ trong văn bản khách.
-- **Gotcha render:** `[TOC]` của python-markdown tự sinh id từ tiêu đề tiếng Việt CÓ DẤU ra dạng lạ
-  (vd "Đăng nhập" → `#ang-nhap`). ĐỪNG viết tay `[..](#anchor)` — dùng `[TOC]` (links tự khớp) + tham chiếu
-  "Mục N" dạng text. Đã verify render: 34 link nội bộ không gãy, ruff pass.
+### Prod ≠ local — ĐỌC KỸ trước khi đụng dữ liệu
+- **DB prod ở server** (`/home/tinsu/audit-hq-mvp-deploy/db-data/audit_hq.sqlite`, 101 MB, 14 DN,
+  1.727 finding), truy cập qua `ssh tinsu` + `docker exec audit-hq-mvp`. KHÁC local
+  (`audit_hq.sqlite`, giờ ~300 MB sau khi nạp pilot).
+- **raw-data prod dùng tên anonymize** `DN_001/DN_103/DN_104/DN_105/DN_106`, mỗi DN chỉ 2024+2025.
+  `DN_103`=HONG_AN, `DN_104/105/106`=ba bản sao GROWATT. 10/14 DN prod KHÔNG có file nguồn.
+- **`run_all` tìm 0 cặp trên prod** (whitelist là HONG_AN/GROWATT/DO_THANH/KIM_LONG — không tồn
+  tại ở server). Re-ingest prod bằng `run_all` là no-op.
+- **Local `data/` symlink** → `../audit-hq/data/raw`, có tên THẬT (HONG_AN…) + PILOT_002/004/006.
+  Ingest theo `code` → tạo company mới, KHÔNG ghi đè `DN_xxx`. Xem [[local-data-symlink-mismatch]].
 
-### Trang showcase (phiên trước)
-- **URL công khai:** **https://audit-hq-demo.tinsu.ai/showcase** — KHÔNG cần đăng nhập (để gửi mọi người).
-- **Route:** `GET /showcase` trong `app/main.py` (không `require_user`) → `FileResponse` file tĩnh.
-  Demo KHÔNG có auth ở edge (ingress qua Cloudflare tunnel, auth chỉ ở tầng app) → bỏ `require_user` = public.
-- **File:** `app/static/showcase.html` (~1.3 MB, self-contained: CSS inline + ảnh base64 + lightbox JS).
-  Sinh từ `.ai/features/2026-06-14-showcase/build_showcase.py` (nén PNG đã commit → JPEG → base64).
-- **Phong cách:** ĐỒNG NHẤT với hệ thống — dùng token của `app/static/style.css` (nền sáng `#f6f7f9`,
-  header navy `#1d3557` như app, card/button/badge hệ thống, banner "Dữ liệu mẫu" vàng). Sáng, không tối,
-  không gradient/emoji lòe loẹt. Tiếng Việt đầy đủ, chuyên nghiệp.
-- **Nội dung:** Trợ lý ảo (trọng tâm — 6 nhóm năng lực, KHÔNG nêu tên hàm/tool) · tiếp nhận dữ liệu (AI
-  chẩn đoán file, chuẩn hoá ĐƠN VỊ TÍNH, tự nhận loại hình DN, magic-byte) · 16 kiểm tra + 4 tổ hợp ·
-  chấm điểm minh bạch · truy nguồn · phân quyền + nhật ký · tài liệu.
+### Dữ liệu mới 3 DN (002/004/006) — đã nạp vào LOCAL DB
+- Local DB giờ có `PILOT_002` (279 finding), `PILOT_006` (14.883), `PILOT_004_EPE` (111),
+  `PILOT_004_GC` (99). Chỉ ở local — KHÔNG ở prod.
+- Symlink tree đã tạo cố định: `../audit-hq/data/raw/PILOT_{002,004_EPE,004_GC,006}/<năm>/{BCQT,DINH_MUC,HANG_CHI_TIET}`
+  (trỏ tới `raw-hq-2026`, gitignored). `discover`/`ingest` đọc trực tiếp được.
+- **File nguồn:** `/mnt/p/Downloads/audit-v2.zip` (148 MB) = giải nén sẵn ở `audit-hq/data/raw-hq-2026/`.
+- Verify chéo với parser độc lập của pilot: 006 điểm 154/190 y hệt, M15 10.560 dòng, sai lệch
+  2/21.878 finding. → tầng parse đúng.
 
-### Phần còn lại của sản phẩm (carry, không đổi phiên này)
-- Trợ lý AI redesign (trang `/chat`, tool-pill gọn, @mention) — đã deploy.
-- Phân quyền theo DN (admin/officer), áp cho cả AI tool + `query_sql` scoped views — đã có.
-- Nhật ký truy cập `/admin/audit`, rate-limit login, magic-byte upload — đã có.
-- Stack: Python 3.12, FastAPI, SQLAlchemy+Alembic, SQLite (WAL). Dev port **8200**.
+### Tầng parse — trạng thái từng phần
+- **Chọn sheet theo nội dung** (`app/adapters/sheet_select.py`): chấm điểm nhãn cột đúng vị
+  trí, phá hoà theo kỳ báo cáo (rank), báo `SheetNotFound` nếu không khớp. 4 slot đều dùng.
+- **Dò dòng dữ liệu + P-01** (`app/adapters/layout.py`): `_norm` gập đ/Đ (U+0111/U+0110), dò
+  header 2 dòng + dòng đánh số `(1)(2)…`.
+- **Bố cục mở rộng Mẫu 15** (`app/adapters/extended_layout.py`, ADR #15): suy map cột từ dòng
+  đánh số, chứng minh bằng đẳng thức `(11)=(5)+(6)-(7)-(8)-(9)-(10)` ≥98% dòng. Chỉ chạy khi
+  `select_sheet` trượt → prod (16 file, 0 trượt) KHÔNG đụng. 004 nạp được M15 (EPE 104, GC 37).
+- **A3 ô hỏng** (`_common.py`): đếm ô lỗi Excel + liên kết workbook ngoài, cảnh báo không đổi số.
+- **B1 C4.3** (`c4_norm.py`): mỗi cặp BOM tính 1 lần thay vì 1 lần/khối lặp.
 
-## Recent Changes
-### 2026-06-14 (phiên này) — commit `00959b1`
-- `00959b1` — `docs(guide)`: thêm `docs/huong-dan-su-dung.md` + đăng ký vào `PUBLIC_DOCS` nhóm `guide`.
-  Đã push, CI run `27501049776` test+lint+build+deploy xanh, prod verify OK.
+## Recent Changes (2026-07-23)
+9 commit trên `main`, 4 lần deploy:
+1. `a7f685a` P-01 · `e8dbea3` A1+A2 · `8c69f0b` A1 m16/bcct + discover · `3d98e4f` A3 ·
+   `d6b1bf1` B1 · `2847724` ADR 15 · `665e315`+`216afd3` sửa 6 lỗi từ `/rev` → merge `65c88cf`.
+2. `f09116b` phân trang finding · `41794d7` fix trang tài liệu nhiều slot → merge `5b0de04`.
+3. `56c54bd` bố cục mở rộng Mẫu 15 (ADR 15) → merge `c82ffa9`.
 
-### 2026-06-14 (phiên trước) — commits `06fe771`..`b7334f4` (showcase)
-Xem chi tiết: session `2026-06-14-public-showcase-page.md` + proof `.ai/features/2026-06-14-showcase/`.
-1. `06fe771` — tạo trang showcase + route public (bản đầu, theme tự chế tối màu).
-2. `41cd604` — chụp lại ảnh retina/crop gọn/ẩn banner (sửa ảnh full-page bị li ti).
-3. `627be6d` — **làm lại theo phản hồi user:** sáng + đồng bộ style hệ thống; AI trình bày theo
-   năng lực (bỏ tên hàm); bỏ phần "Quản trị AI"; viết lại tiếng Việt đầy đủ.
-4. `b7334f4` — **sửa overclaim:** "chuẩn hoá tên hàng hoá" KHÔNG có thật (chỉ trong đề án §5.3) →
-   thay bằng "chuẩn hoá đơn vị tính" (thật, `app/checks/uom.py`).
-
-## Next Steps (ưu tiên)
-1. (Carry) Tài liệu hướng dẫn đã deploy. Sửa nội dung: sửa thẳng `docs/huong-dan-su-dung.md`
-   (render markdown trực tiếp, không build step) → commit → push. Thêm tài liệu mới: thêm entry
-   vào `PUBLIC_DOCS` (`app/routes/docs.py`). Showcase đã deploy; sửa = `TEMPLATE` trong `build_showcase.py`.
-2. (Carry) Phân công DN cho officer trên prod (`/admin/users` → "Phân công DN") — thao tác tay.
-3. (Carry) Combo +20 điểm tổ hợp — review logic (`app/checks/scoring.py:179`), user "quyết sau".
-4. (Carry, polish) admin còn hiện text `code`; tên DN còn hậu tố `(Demo)`; quyết `ZZ_DEMO`.
+## Next Steps (theo ưu tiên)
+1. **M15a mở rộng + cột M16 của 004** — việc tiếp ADR 15. Số biểu M15a KHÔNG ổn định giữa DN
+   (006 trừ (7), 004 EPE cộng, 004 GC nhãn gộp), nên map `export_qty` phải theo NHÃN + cổng
+   đẳng thức riêng. Mở khoá C4.3/C1.4 cho 004. Cột định mức M16 của 004 đang đọc c7 (ĐM kỹ
+   thuật) thay c8 (ĐM thực tế) — sửa cùng đợt.
+2. **Sửa đề án `../audit-hq/de-an-audit-hq.md:228` TRƯỚC** rồi mới làm B2 (đổi hệ số nhân C4.3
+   sang lượng nhập kho SX), B4 (báo độ phủ C4.3), và hệ số nhân theo sản lượng Mẫu 16. Cả ba
+   mâu thuẫn định nghĩa `Σ(định_mức × xuất_khẩu_M15a)` hiện tại — là "sửa catalog" theo AGENTS.md.
+3. **B3 đọc cột Ghi chú** — cần migration (thêm `note` vào NvlBalance/SpBalance).
+4. **Tầng C — chờ họp:** `period_from`/`period_to` (002/004 năm tài chính → ingest xoá 27-30%
+   dòng tờ khai), `NOT_EVALUABLE` (phân biệt "0 vì sạch" vs "0 vì thiếu dữ liệu"), trình bày
+   quy mô lớn (đã làm phân trang, còn xếp hạng theo lượng + ngưỡng severity).
 
 ## Blockers
-- Không có. Lưu ý đĩa tinsu ~97% (theo dõi khi deploy lâu dài).
+- **B2/B4/hệ số nhân C4.3 chặn bởi đề án** — không được sửa mô tả check trước khi update
+  `../audit-hq/`. Câu hỏi quy trình 3 repo, cần user chốt.
+- **Banner "dữ liệu mẫu"** đang phủ lên tên DN + MST THẬT ở local DB sau khi nạp pilot (banner
+  nói dữ liệu giả — sai). `anonymize.py` chỉ sửa DB, KHÔNG sửa nội dung file Excel (trang tài
+  liệu vẫn tải file gốc). Chưa xử lý — chặn việc đưa pilot data lên demo.
+- **Tầng C chờ họp** (chưa có lịch).
 
 ## Notes for Next AI Session
-
-### Showcase — điểm cắm
-- **Sửa nội dung/style:** chỉ sửa `TEMPLATE` (string) trong `.ai/features/2026-06-14-showcase/build_showcase.py`,
-  rồi `.venv/bin/python .ai/features/2026-06-14-showcase/build_showcase.py` → ghi đè `app/static/showcase.html`.
-  KHÔNG sửa tay file HTML đã sinh (sẽ bị ghi đè).
-- **Chụp lại ảnh:** `PYTHONPATH=. .venv/bin/python .ai/features/2026-06-14-showcase/ui_smoke.py` (cần dev :8200).
-  Seed admin `shot_show` + officer `shot_off` (gán DN_001) + cuộc chat, chụp retina 2× crop gọn ẩn banner,
-  rồi xoá. **GOTCHA đã gặp:** mỗi vai PHẢI dùng `browser.new_context()` riêng — chung context = chung cookie,
-  login sau ghi đè login trước → trang admin bị 404/từ chối.
-- **SOURCES** trong build script chỉ giữ key ĐANG dùng trong template (placeholder no-op nếu thừa, nhưng để sạch).
-  Ảnh chụp ở năm DN_003 = 2022 (điểm 148) để khoe bảng tính điểm bung ra.
-
-### CHỐNG OVERCLAIM (quan trọng — user bắt lỗi phiên này)
-- **"Chuẩn hoá tên hàng hoá" CHƯA implement** — chỉ trong đề án §5.3. Đối chiếu theo `material_code`, không theo tên.
-  Cái CÓ thật: chuẩn hoá **đơn vị tính** (`app/checks/uom.py`, canonical+alias, `/admin/units`, dùng ở C3.3).
-- Các claim "thông minh" KHÁC đều đã verify có code: AI ingest doctor `app/ai/ingest_doctor.py`;
-  magic-byte `app/routes/companies.py:227`; tự nhận loại hình DN `app/checks/company_type.py`; guardrails AI.
-- Bài học: **trước khi viết "tính năng X" lên tài liệu khách → grep code xác minh đã ship**, đừng tin đề án.
-
-### Render / verify nhanh
-- `curl -s -o /dev/null -w "%{http_code}" http://localhost:8200/showcase` (200, không redirect login).
-- Chụp render để soi: Playwright goto `/showcase` full_page. Scratch ảnh → `.tmp-*` (gitignored).
-
-### Môi trường / gotcha (carry)
-- Dev :8200 hay chạy sẵn. `curl :8200/healthz` 200 = sống. Shell zsh (dòng `compdef` là noise, bỏ qua).
-- DB local = mirror prod (DN_001..005). `convert` (ImageMagick) có sẵn — dùng để nén ảnh showcase.
-- Lint scope CI = `app tests scripts` (Makefile); `.ai/` KHÔNG lint (E501 trong build script là bình thường).
-- Backup DB trước migrate bằng `sqlite3 .backup` (WAL-safe), KHÔNG `cp` đơn lẻ.
-
-### Văn phong (giữ nguyên)
-- Tiếng Việt full accents, tone formal. "bài kiểm tra", "kịch khung", "quy mô dữ liệu".
-- Disclaimer: "chỉ số rủi ro dữ liệu BCQT… KHÔNG phải đánh giá tuân thủ theo TT 81/2019/TT-BTC".
+- **Dev server local đang chạy** ở `http://127.0.0.1:8200` (background). Local admin password
+  KHÔNG biết → đăng nhập bằng user throwaway seed qua `create_user` rồi purge (xem
+  [[ui-screenshots-convention]]). Screenshot scratch, KHÔNG commit.
+- **Harness verify** (scratchpad, session-specific, có thể mất): ingest+run_checks toàn bộ
+  whitelist vào DB tạm, dump finding đã sort, diff trước/sau. Kết quả chuẩn: **419 finding**
+  trên 12 cặp DN×năm. Chạy lại mỗi khi chạm tầng parse/check.
+- **Kỷ luật số liệu:** số của `audit-hq-pilot/notes/` đếm theo luật parser CỦA PILOT, không
+  phải sản phẩm — phải phát biểu lại theo luật đếm sản phẩm trước khi dùng làm tiêu chí. Xem
+  [[tier-a-thu-tu-a1-truoc-a2]] và [[so-lieu-phai-co-mau-so-va-nguon-doc-lap]].
+- **A1 trước A2, KHÔNG song song** — `notes/12` ghi sai, đã đính chính. A2 chạy trước A1 làm
+  hỏng nặng thêm (đo được +20 finding CRITICAL giả).
+- **Cổng đẳng thức là trọng tài** cho map cột — không tin nhãn/mô hình. Bug bắt được nhờ nó:
+  số hạng đầu công thức `(5)+(6)-...` không có dấu, 004 GC "lọt" giả vì tồn đầu toàn 0.
+- **ADR mới:** `.ai/DECISIONS.md` #15 (15 ADR tổng). Ghi rõ phần đã làm (M15) vs chưa (M15a/M16).
+- `audit-hq-pilot` là repo anh em (git local, không remote), commit `7e8e438` đã đính chính
+  `notes/12`. Prompt bàn giao gốc ở `audit-hq-pilot/.ai/STATUS.md`.
