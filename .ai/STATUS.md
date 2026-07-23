@@ -1,12 +1,15 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-07-24 — C1 kỳ báo cáo custom-date, full-stack):**
+> **Trạng thái (2026-07-24 — C1 kỳ báo cáo custom-date, full-stack — ĐÃ DEPLOY PROD):**
 > Xong C1 `period_from/to` (ADR #16). BCCT chọn theo cửa sổ kỳ `[from,to]` thay `==year`;
 > `period_year` = nhãn kỳ (tách khỏi `declaration_date`). Bảng `company_periods` + migration
-> `e4f5a6b7c8d9`. Frontend: trang tài liệu sửa được kỳ (form + banner + về mặc định). 20 test
-> mới, full suite **573 xanh**. Harness: PILOT_002 phục hồi **đúng 3.014** dòng (window tự đọc
-> 2025-04-01..2026-03-31), whitelist **1.331** finding BẤT BIẾN (code cũ cũng 1.331 — mốc "419"
-> cũ đã lỗi thời). **CHƯA commit** (working tree có thay đổi). Migration head giờ **`e4f5a6b7c8d9`**.
+> `e4f5a6b7c8d9`. Frontend: trang tài liệu sửa được kỳ (form + banner + về mặc định) + nhãn năm
+> tài chính ở company_detail/item_detail. 22 test mới, full suite xanh. Harness: PILOT_002 phục
+> hồi **đúng 3.014** dòng (window tự đọc 2025-04-01..2026-03-31), whitelist **1.331** finding BẤT
+> BIẾN (code cũ cũng 1.331 — mốc "419" cũ đã lỗi thời).
+> **ĐÃ MERGE + DEPLOY:** PR #2 → merge commit **`f5d2c0c`** → CI test+lint+deploy xanh →
+> prod `audit-hq-demo.tinsu.ai` `/healthz` 200, `build_sha=f5d2c0c` khớp. Migration
+> `e4f5a6b7c8d9` đã `alembic upgrade head` trên DB prod. Migration head giờ **`e4f5a6b7c8d9`**.
 >
 > **Trạng thái (2026-07-23 — Tier A parse layer + B1 + ADR 15 Mẫu 15):**
 > Phiên dài, xử lý bộ dữ liệu mới 3 DN (002/004/006) từ `audit-hq-pilot`. Viết lại **tầng
@@ -20,8 +23,9 @@
 ## Current State
 
 ### Git / deploy
-- **`main` = `origin/main` = prod = `c82ffa9`**, working tree sạch. Prod live
-  `audit-hq-demo.tinsu.ai` chạy `c82ffa9` (đã verify `/healthz` 200, build_sha khớp).
+- **`main` = `origin/main` = prod = `f5d2c0c`** (merge PR #2 — C1), working tree sạch. Prod live
+  `audit-hq-demo.tinsu.ai` chạy `f5d2c0c` (đã verify 2026-07-24: `/healthz` 200, `build_sha=f5d2c0c` khớp).
+- Migration head prod = **`e4f5a6b7c8d9`** (company_periods) — CI đã `alembic upgrade head`.
 - Deploy = push `main` → CI "Test & Deploy to Tinsu" (self-hosted `tinsu-prod`): test+lint →
   docker build → restart → `alembic upgrade head` → healthcheck. Watch: `gh run watch <id> --exit-status`.
   **LƯU Ý:** runner self-hosted đôi khi queue 10+ phút trước khi chạy — không phải lỗi.
@@ -66,11 +70,13 @@
 3. `56c54bd` bố cục mở rộng Mẫu 15 (ADR 15) → merge `c82ffa9`.
 
 ## Next Steps (theo ưu tiên)
-0. **C1 — `period_from`/`period_to` — ✅ XONG (2026-07-24, ADR #16, đường RẺ).** Bảng
-   `company_periods` + migration `e4f5a6b7c8d9`; BCCT lọc theo cửa sổ `[from,to]`; `period_year`
-   = nhãn kỳ; frontend sửa được kỳ. Full-stack + 20 test + full suite 573 xanh. **Còn:** commit;
-   (tuỳ chọn) cảnh báo cửa sổ sửa tay chồng lấn chéo năm — hiện là giới hạn manual-only có chủ
-   đích (xem ADR #16). Đường tự động an toàn (FY liền kề không chồng).
+0. **C1 — `period_from`/`period_to` — ✅ XONG + ĐÃ DEPLOY PROD (2026-07-24, ADR #16, đường RẺ).**
+   Bảng `company_periods` + migration `e4f5a6b7c8d9`; BCCT lọc theo cửa sổ `[from,to]`; `period_year`
+   = nhãn kỳ; frontend sửa được kỳ + nhãn năm tài chính. Full-stack + 22 test. Merge `f5d2c0c`,
+   CI + deploy xanh, prod verify OK. **Còn (tuỳ chọn, chưa làm):** cảnh báo cửa sổ sửa tay chồng
+   lấn chéo năm — giới hạn manual-only có chủ đích (ADR #16). Đường tự động an toàn (FY liền kề
+   không chồng). Ngoài ra: reload dữ liệu PILOT_002/004 lên prod để hưởng phục hồi dòng (prod
+   hiện không có file nguồn 002/004 → cần upload hoặc chạy lại từ file).
 1. **M15a mở rộng + cột M16 của 004** — việc tiếp ADR 15. Số biểu M15a KHÔNG ổn định giữa DN
    (006 trừ (7), 004 EPE cộng, 004 GC nhãn gộp), nên map `export_qty` phải theo NHÃN + cổng
    đẳng thức riêng. Mở khoá C4.3/C1.4 cho 004. Cột định mức M16 của 004 đang đọc c7 (ĐM kỹ
