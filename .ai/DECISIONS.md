@@ -202,3 +202,55 @@ regex bỏ mất → 004 GC "lọt" giả vì tồn đầu của nó toàn 0; c�
 - **Cột định mức Mẫu 16 của 004**: file có `ĐM kỹ thuật` (c7) và `ĐM thực tế` (c8); adapter
   đọc c7. Chưa sửa — Mẫu 16 không có đẳng thức cân đối để gate; và C4.3 đang tắt nên chưa
   fire số sai. Làm cùng đợt M15a.
+
+### 16. C1 — kỳ báo cáo custom-date: BCCT chọn theo cửa sổ `[from,to]`, `period_year` là nhãn kỳ (2026-07-24)
+
+**Bối cảnh:** DN năm tài chính 01/04–31/03 (PILOT_002/004). Ingest cũ (ADR #13) gán
+`DeclarationLine.period_year = declaration_date.year` và chỉ giữ dòng `== year` → cắt phần
+tờ khai rơi sang năm dương lịch khác. Đo: PILOT_002 (folder kỳ 2025 = FY 01/04/2025–31/03/2026)
+mất đúng **3.014/11.115** dòng (các dòng Jan–Mar 2026). 006 dương lịch → mất 0.
+
+**Quyết định (đường RẺ — `notes/12` khuyến nghị; đường ĐẦY ĐỦ thêm from/to vào mọi dòng
+4 bảng đã bị `notes/12` "KHÔNG làm" #4 loại):**
+- Thêm bảng `company_periods(company_id, period_year, period_from, period_to, is_manual)`,
+  unique `(company_id, period_year)` (migration `e4f5a6b7c8d9`).
+- BCCT chọn theo **cửa sổ kỳ** `period_from ≤ declaration_date ≤ period_to` (bao biên; dòng
+  thiếu ngày → quy về kỳ đang nạp), thay `declaration_date.year == year`.
+- **`period_year` = NHÃN kỳ** (`year`, tên thư mục whitelist), tách hẳn khỏi `declaration_date`.
+  Đây là phần ADR #13 mới làm nửa vời — nay hoàn tất. `period_year` VẪN là khoá join duy nhất
+  (17 check không đổi chữ ký; verify: `app/checks/` không chỗ nào suy năm từ `declaration_date`).
+- **Suy cửa sổ** (`app/pipeline/period.py:resolve_period_bounds`), ưu tiên: bản `is_manual`
+  cán bộ sửa tay > tiêu đề file (`CompanyHeader.period_from/to`, đủ cả 2 ngày) > **dương lịch**
+  `[year-01-01, year-12-31]`. Default dương lịch giữ 6 DN whitelist BẤT BIẾN (harness: finding
+  y hệt trước/sau, off_year=0 mọi cặp).
+- **Frontend:** trang tài liệu hiện cửa sổ kỳ mỗi năm + form sửa (`POST .../documents/period`,
+  lưu `is_manual=True`) + nút "về mặc định" (`is_manual=False`, ingest sau tự suy lại) + banner
+  "nạp lại để áp dụng". Re-ingest **tường minh** qua nút Nạp/Chạy sẵn có — không tự động ngầm.
+
+**Chống rò giữ nguyên:** cửa sổ năm tài chính liền kề KHÔNG chồng nhau → mỗi `declaration_date`
+rơi tối đa 1 kỳ; dòng năm khác của file gộp vẫn ngoài cửa sổ → vẫn bị loại (đếm vào
+`bcct_other_year`, không cắt âm thầm). `company_periods` KHÔNG nằm trong wipe per-(DN,năm) nên
+bản sửa tay sống sót re-ingest.
+
+**Giới hạn có chủ đích (chưa làm):**
+- **Cửa sổ SỬA TAY có thể chồng nhau giữa 2 năm** → tờ khai trong vùng chồng đếm ở cả 2 kỳ.
+  Đường tự động không bao giờ chồng (FY liền kề); chỉ xảy ra khi cán bộ nhập sai. Route validate
+  `from ≤ to` nhưng CHƯA kiểm chồng lấn chéo năm. Mitigation (log/cảnh báo khi chồng) hoãn —
+  demo dùng đường tự động, an toàn.
+- **Re-ingest cần file nguồn:** sửa kỳ chỉ phục hồi dòng khi nạp lại từ file gốc. Prod 10/14 DN
+  không có file → sửa kỳ chỉ đổi nhãn. Pilot 002/004 có file local → chạy được.
+- `dry_run` (CLI) đếm bằng cửa sổ tự động, bỏ qua override — số xem trước có thể lệch.
+
+**Không đụng catalog/đề án:** đổi *dòng BCCT nào lọt vào kỳ* + schema, KHÔNG đổi mô tả check
+nào (khác B2/B4 đổi định nghĩa hệ số nhân). → không cần update `../audit-hq/` trước.
+
+**Đã thực hiện (2026-07-24):** model + migration + `period.py` + ingest (2 điểm lọc) + route +
+template + **pass hiển thị nhất quán**. 22 test mới, full suite xanh. Harness: PILOT_002 phục hồi
+đúng 3.014 dòng (window tự đọc 2025-04-01..2026-03-31), whitelist 1.331 finding bất biến (mốc
+"419" trong STATUS cũ đã lỗi thời — code cũ cũng cho 1.331).
+
+**Hiển thị (review "Năm X" mơ hồ):** nhãn `period_year` in như năm dương lịch ở company_detail/
+item_detail gây hiểu nhầm cho DN năm tài chính (tờ khai ngày 2026 dưới nhãn "2025"). Thêm
+`load_period_windows()` (chỉ kỳ ≠ dương lịch) → hiện "năm tài chính dd/mm/yyyy–dd/mm/yyyy" ở tab
+năm (sup TC), dòng chú dưới tab, phụ đề 2 section item_detail, tooltip cột Năm. DN dương lịch không
+đổi. Số liệu vốn ĐÚNG (gom theo `period_year`) — đây chỉ là làm rõ nhãn, không đổi logic.

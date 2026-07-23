@@ -65,6 +65,38 @@
   </summary>
 
   <div class="doc-year-body">
+    <div class="doc-period">
+      <div class="doc-period-view">
+        <span class="doc-period-label">Kỳ báo cáo:</span>
+        {% if yr.period_custom %}
+        <strong class="mono">{{ yr.period_from.strftime('%d/%m/%Y') }} – {{ yr.period_to.strftime('%d/%m/%Y') }}</strong>
+        <span class="badge {% if yr.period_manual %}warning{% else %}info{% endif %}">
+          {% if yr.period_manual %}sửa tay{% else %}tự đọc từ file{% endif %}</span>
+        {% else %}
+        <strong>Năm {{ yr.year }}</strong> <span class="text-muted">(dương lịch 01/01–31/12)</span>
+        {% endif %}
+        <details class="doc-period-edit">
+          <summary class="doc-period-toggle">✏️ Sửa kỳ</summary>
+          <form method="post" action="/companies/{{ company.slug or company.code }}/documents/period" class="doc-period-form">
+            <input type="hidden" name="year" value="{{ yr.year }}">
+            <label>Từ ngày <input type="date" name="period_from" value="{{ yr.period_from.isoformat() }}" required></label>
+            <label>Đến ngày <input type="date" name="period_to" value="{{ yr.period_to.isoformat() }}" required></label>
+            <button type="submit" class="btn btn-sm btn-primary">Lưu kỳ</button>
+          </form>
+          {% if yr.period_manual %}
+          <form method="post" action="/companies/{{ company.slug or company.code }}/documents/period" class="doc-period-reset">
+            <input type="hidden" name="year" value="{{ yr.year }}">
+            <input type="hidden" name="reset" value="1">
+            <button type="submit" class="btn btn-sm btn-secondary">↺ Về mặc định</button>
+          </form>
+          {% endif %}
+        </details>
+      </div>
+      {% if yr.period_manual %}
+      <p class="doc-period-hint text-muted">⚠️ Kỳ đã sửa tay — bấm <strong>Nạp dữ liệu</strong> rồi <strong>Chạy kiểm tra</strong> để áp dụng cửa sổ kỳ mới.</p>
+      {% endif %}
+    </div>
+
     <div class="doc-year-actions">
       <form method="post" action="/companies/{{ company.slug or company.code }}/documents/ingest">
         <input type="hidden" name="year" value="{{ yr.year }}">

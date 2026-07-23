@@ -37,6 +37,7 @@ from app.items.charts import sankey_layout, sparkline_points, waterfall_layout
 from app.items.operations import classify_operation, operation_label
 from app.models import (
     Company,
+    CompanyPeriod,
     CompanyYearScore,
     DataFile,
     DeclarationLine,
@@ -48,6 +49,7 @@ from app.models import (
 from app.models.data_file import SLOT_LABEL_VI, SLOT_ORDER
 from app.pipeline.export import build_export
 from app.pipeline.ingest import ingest as run_ingest
+from app.pipeline.period import load_period_windows
 from app.pipeline.validate import diagnose_upload
 from app.scoping import allowed_company_ids, can_access_company_id, get_company_or_404
 from app.settings import settings
@@ -681,8 +683,14 @@ def company_documents(
         select(CompanyYearScore).where(CompanyYearScore.company_id == company.id)
     ).all()
     scores = {r.period_year: r for r in score_rows}
+    period_rows = {
+        r.period_year: r
+        for r in db.scalars(
+            select(CompanyPeriod).where(CompanyPeriod.company_id == company.id)
+        ).all()
+    }
 
-    years = set(matrix) | data_years | finding_years
+    years = set(matrix) | data_years | finding_years | set(period_rows)
     # "+ Thêm năm" → hiển thị năm trống (chưa có gì) để upload vào.
     added_empty = add if (add and YEAR_MIN <= add <= YEAR_MAX and add not in years) else None
     if added_empty:
@@ -700,6 +708,12 @@ def company_documents(
         status_label, status_kind = _doc_year_status(
             has_files, has_data, total_rows, loaded_types
         )
+        from datetime import date as _d
+
+        cp = period_rows.get(y)
+        pf_disp = cp.period_from if (cp and cp.period_from) else _d(y, 1, 1)
+        pt_disp = cp.period_to if (cp and cp.period_to) else _d(y, 12, 31)
+        period_custom = (pf_disp, pt_disp) != (_d(y, 1, 1), _d(y, 12, 31))
         year_rows.append({
             "year": y,
             "slots": slots,
@@ -711,6 +725,10 @@ def company_documents(
             "checks_run": y in scores or y in finding_years,
             "score": scores[y].score if y in scores else None,
             "tier": scores[y].tier if y in scores else None,
+            "period_from": pf_disp,
+            "period_to": pt_disp,
+            "period_manual": cp.is_manual if cp else False,
+            "period_custom": period_custom,
             # Mở sẵn: năm vừa thêm, hoặc năm mới nhất nếu không thêm.
             "open": (y == added_empty) if added_empty else (i == 0),
         })
@@ -976,6 +994,59 @@ def documents_ingest_year(
     )
 
 
+@router.post("/companies/{code}/documents/period", response_model=None)
+def documents_set_period(
+    code: str,
+    year: int = Form(...),
+    period_from: str = Form(default=""),
+    period_to: str = Form(default=""),
+    reset: str = Form(default=""),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Sửa kỳ báo cáo (từ ngày / đến ngày) cho 1 năm. Lưu `is_manual=True`; re-ingest
+    tôn trọng, không ghi đè. `reset=1` → về mặc định (`is_manual=False`), ingest sau tự suy."""
+    from datetime import date
+
+    company = get_company_or_404(db, code, user)
+    row = db.scalar(
+        select(CompanyPeriod).where(
+            CompanyPeriod.company_id == company.id, CompanyPeriod.period_year == year
+        )
+    )
+
+    def _redirect(**params: str) -> RedirectResponse:
+        from urllib.parse import urlencode
+
+        qs = urlencode(params)
+        return RedirectResponse(url=f"/companies/{code}/documents?{qs}", status_code=303)
+
+    if reset:
+        if row is not None:
+            row.is_manual = False
+            db.commit()
+        return _redirect(msg=f"Đã đặt kỳ năm {year} về mặc định — nạp lại dữ liệu để áp dụng")
+
+    try:
+        pf = date.fromisoformat(period_from)
+        pt = date.fromisoformat(period_to)
+    except ValueError:
+        return _redirect(error="Ngày không hợp lệ (định dạng YYYY-MM-DD)")
+    if pf > pt:
+        return _redirect(error="Từ ngày phải nhỏ hơn hoặc bằng đến ngày")
+
+    if row is None:
+        row = CompanyPeriod(company_id=company.id, period_year=year)
+        db.add(row)
+    row.period_from = pf
+    row.period_to = pt
+    row.is_manual = True
+    db.commit()
+    return _redirect(
+        msg=f"Đã lưu kỳ năm {year} — bấm Nạp dữ liệu rồi Chạy kiểm tra để áp dụng"
+    )
+
+
 @router.post("/companies/{code}/run-checks", response_model=None)
 def rerun_checks(
     code: str,
@@ -1049,6 +1120,7 @@ def company_detail(
         )
     years = sorted(finding_years | data_years, reverse=True)
     selected_year = year if year is not None else (years[0] if years else None)
+    period_windows = load_period_windows(db, company.id)
 
     # Đếm bằng SQL, KHÔNG nạp hết Finding vào bộ nhớ: một DN thật đã sinh 11.003
     # phát hiện cho một kỳ, render hết ra một trang là 18,7 MB HTML.
@@ -1137,6 +1209,7 @@ def company_detail(
             "company": company,
             "years": years,
             "selected_year": selected_year,
+            "period_windows": period_windows,
             "ordered_groups": ordered_groups,
             "combo_findings": combo_findings,
             "severity_totals": severity_totals,
@@ -1576,6 +1649,7 @@ def item_detail(
             "kind_label": _KIND_LABEL_VI.get(effective_kind, effective_kind),
             "years": years,
             "selected_year": selected_year,
+            "period_windows": load_period_windows(db, company.id),
             "yearly": yearly,
             "selected_yearly": selected_yearly,
             "bcct_lines": bcct_lines,
