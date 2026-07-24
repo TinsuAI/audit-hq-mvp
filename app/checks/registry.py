@@ -422,6 +422,21 @@ def checks_reading(slot: str, field: str) -> list[str]:
     ]
 
 
+def checks_reading_slot(slot: str) -> list[str]:
+    """Mã các check đọc BẤT KỲ cột nào của slot.
+
+    Dùng khi cột KHOÁ (mã hàng) của slot đổi map trên file đã `parsed`: evidence_refs
+    của MỌI finding trên slot lọc theo cột mã (material_code/product_code), nên đổi cột
+    mã làm khoá của mọi dòng đổi → mọi check đọc slot phải chạy lại. C2.1/C2.2 đọc mã ở
+    evidence NHƯNG không khai cột mã trong registry (chỉ khai cột số dạng tổng); chỉ
+    dựa `checks_reading(mã)` sẽ để C2.1/C2.2 lại finding treo."""
+    return sorted({
+        code
+        for code, uses in CHECK_COLUMNS.items()
+        if any(s == slot for s, _, _ in uses)
+    })
+
+
 def is_consumed(slot: str, field: str) -> bool:
     """Có check nào đọc `(slot, field)` không."""
     return bool(checks_reading(slot, field))

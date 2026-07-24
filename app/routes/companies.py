@@ -41,6 +41,7 @@ from app.models import (
     CompanyPeriod,
     CompanyYearScore,
     DataFile,
+    DataFileStatus,
     DeclarationLine,
     Finding,
     Norm,
@@ -234,6 +235,12 @@ _UPLOAD_SLOTS = {
     "m16": ("DINH_MUC", "BCDM_TT39"),
     "bcct": ("HANG_CHI_TIET", "BCCT"),
 }
+
+
+# Cột KHOÁ (mã hàng) mỗi slot — evidence_refs của mọi finding trên slot lọc theo cột
+# này. Đổi map cột khoá trên file đã `parsed` → chạy lại MỌI check đọc slot (không chỉ
+# check đọc cột khoá) để không để C2.1/C2.2 lại finding treo (ADR #18).
+_SLOT_KEY_FIELD = {"m15": "material_code", "m15a": "product_code", "m16": "material_code"}
 
 
 # Magic-byte chữ ký Excel — chặn file đổi đuôi (vd .txt → .xlsx) trước khi lưu.
@@ -1071,6 +1078,10 @@ async def documents_confirm_review(
 
     slot = row.slot
     year = row.period_year
+    # File đã `parsed` TRƯỚC lần sửa này → dòng Tầng 1 + finding đã tồn tại; sửa map
+    # phải chạy lại các check bị ảnh hưởng inline (scoped, ADR #18). File `analyzed`
+    # (lần confirm đầu) chưa có finding — không auto chạy check (bước riêng).
+    was_parsed = row.parse_status == DataFileStatus.OK
     detail = row.parse_detail_obj
     form_signature = detail.get("form_signature")
     base_map = detail.get("column_map", {})
@@ -1094,6 +1105,12 @@ async def documents_confirm_review(
             column_map[field] = int(raw) if raw not in (None, "") else int(default_idx)
         except (TypeError, ValueError):
             column_map[field] = int(default_idx)
+
+    # Cột đổi map so với map đã commit (base_map = map đang lưu ở parse_detail, đã sinh
+    # ra dòng hiện tại). Chỉ có ý nghĩa khi file đã `parsed` → scoped re-run.
+    changed_fields = {
+        f for f, idx in column_map.items() if int(base_map.get(f, idx)) != int(idx)
+    }
 
     evidence = {c["field"]: c.get("evidence") for c in columns if c.get("field")}
 
@@ -1129,6 +1146,24 @@ async def documents_confirm_review(
 
     sync_data_files(db, company)
     record_parse_result(db, company, year, stats, diagnosis)
+
+    # File đã `parsed` + có cột đổi map → chạy lại CHỈ check đọc cột đã đổi (scoped,
+    # ADR #18). Finding tham chiếu Tầng 1 qua evidence_refs (table + filter theo mã
+    # hàng), KHÔNG theo id dòng → dòng thay khi re-ingest không làm treo finding của
+    # check KHÔNG chạy lại (khoá lọc = mã hàng vẫn đúng vì cột mã không đổi). Nếu cột
+    # KHOÁ (mã) đổi thì khoá lọc đổi → mở rộng ra mọi check đọc slot (gồm C2.1/C2.2).
+    if was_parsed and changed_fields:
+        from app.checks.registry import checks_reading, checks_reading_slot
+
+        affected: set[str] = set()
+        for f in changed_fields:
+            affected.update(checks_reading(slot, f))
+        if _SLOT_KEY_FIELD.get(slot) in changed_fields:
+            affected.update(checks_reading_slot(slot))
+        if affected:
+            from app.pipeline.run_checks import run_checks
+            run_checks(company.code, year, only=affected)
+
     label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
     return _redirect(
         "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} & nạp dữ liệu")
