@@ -1363,6 +1363,56 @@ def rerun_checks(
     return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
+@router.post("/companies/{code}/overview", response_model=None)
+def generate_overview(
+    code: str,
+    year: int = Form(...),
+    check: str = Form(...),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Sinh AI tổng quan cho 1 kiểm tra (DN, năm). Endpoint `def` THUẦN — chạy trong
+    threadpool FastAPI, KHÔNG qua job worker 1-thread (gọi LLM 5s sẽ chặn hàng đợi
+    check). On-demand, đồng bộ trong request (ADR #18 Revision — WS3)."""
+    from app.ai.config import get_setting
+    from app.ai.limits import check_daily_budget, check_rate_limit
+    from app.ai.overview import generate_check_overview
+    from app.audit import ACTION_AI_OVERVIEW
+
+    company = get_company_or_404(db, code, user)
+
+    def _back(**params: str) -> RedirectResponse:
+        from urllib.parse import urlencode
+
+        qs = urlencode({"year": year, **params})
+        return RedirectResponse(
+            url=f"/companies/{company.slug or company.code}?{qs}#group-{check}",
+            status_code=303,
+        )
+
+    if not get_setting("enabled"):
+        return _back(error="AI assistant đang tắt. Bật trong /admin/ai.")
+    if not get_setting("api_key"):
+        return _back(error="Chưa cấu hình API key AI. Cấu hình ở /admin/ai.")
+    try:
+        check_rate_limit(user.name, db)
+        check_daily_budget(db)
+    except HTTPException as e:
+        return _back(error=str(e.detail))
+
+    try:
+        generate_check_overview(
+            db, company=company, period_year=year, check_code=check
+        )
+    except Exception as e:  # noqa: BLE001 — show LLM/provider errors back to user
+        db.rollback()
+        return _back(error=f"Sinh tổng quan lỗi: {type(e).__name__}: {str(e)[:200]}")
+
+    log_access(db, username=user.name, action=ACTION_AI_OVERVIEW,
+               company_code=company.code, detail=f"year={year} check={check}")
+    return _back(msg=f"Đã tạo tổng quan {check} năm {year}")
+
+
 @router.get("/companies/{code}", response_class=HTMLResponse)
 def company_detail(
     code: str,
@@ -1371,6 +1421,8 @@ def company_detail(
     ingested: int = Query(default=0),
     check: str | None = Query(default=None),
     page: int = Query(default=1),
+    msg: str | None = Query(default=None),
+    error: str | None = Query(default=None),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -1499,6 +1551,19 @@ def company_detail(
     run_groups = _group_options_by_family(run_options, all_specs)
     export_groups = _group_options_by_family(export_options, all_specs)
 
+    # WS3: AI tổng quan + staleness cho các nhóm đang render (chỉ check thật, không
+    # combo). Chỉ nạp khi AI bật — nút "Tạo tổng quan" ẩn khi tắt.
+    from app.ai.config import get_setting
+    from app.ai.overview import load_overviews_with_staleness
+
+    ai_enabled = bool(get_setting("enabled")) and bool(get_setting("api_key"))
+    overviews: dict[str, dict] = {}
+    if selected_year is not None:
+        displayed_codes = [g[0] for g in ordered_groups]
+        overviews = load_overviews_with_staleness(
+            db, company.id, selected_year, displayed_codes
+        )
+
     # Trạng thái tách upload/kiểm tra: có dữ liệu năm này chưa? đã chạy kiểm tra chưa?
     has_data = selected_year in data_years if selected_year is not None else False
     checks_run = year_score is not None or total_findings > 0 or bool(combo_findings)
@@ -1529,6 +1594,10 @@ def company_detail(
             "has_data": has_data,
             "checks_run": checks_run,
             "just_ingested": bool(ingested),
+            "overviews": overviews,
+            "ai_enabled": ai_enabled,
+            "flash_msg": msg,
+            "flash_error": error,
         },
     )
 

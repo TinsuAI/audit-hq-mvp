@@ -17,7 +17,14 @@ from sqlalchemy import delete, select
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
 from app.adapters.sheet_select import SheetNotFound
 from app.database import SessionLocal
-from app.models import Company, DeclarationLine, Norm, NvlBalance, SpBalance
+from app.models import (
+    Company,
+    CompanyPeriod,
+    DeclarationLine,
+    Norm,
+    NvlBalance,
+    SpBalance,
+)
 from app.pipeline.discover import DiscoveredFiles, discover
 from app.pipeline.period import default_bounds, in_period, resolve_period_bounds
 from app.settings import settings
@@ -117,6 +124,18 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
 
         # Cửa sổ kỳ (from,to): bản sửa tay > tiêu đề file > dương lịch; ghi company_periods.
         period_from, period_to = resolve_period_bounds(session, company.id, year, company_meta)
+
+        # WS3: bump data_version TRONG transaction ingest (ràng buộc advisor a) — version
+        # + dữ liệu commit nguyên tử. `resolve_period_bounds` đảm bảo dòng CompanyPeriod
+        # tồn tại (tạo nếu chưa, kể cả nhánh is_manual trả về dòng đã có).
+        period_row = session.scalar(
+            select(CompanyPeriod).where(
+                CompanyPeriod.company_id == company.id,
+                CompanyPeriod.period_year == year,
+            )
+        )
+        if period_row is not None:
+            period_row.data_version = (period_row.data_version or 0) + 1
         stats.bcct_rows = sum(
             1 for r in bcct_all if in_period(r.declaration_date, period_from, period_to)
         )

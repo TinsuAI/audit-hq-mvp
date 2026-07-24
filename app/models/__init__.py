@@ -3,6 +3,8 @@ from app.models.ai import AiConversation, AiMessage, AiSetting
 from app.models.app_setting import AppSetting
 from app.models.bcqt import Norm, NvlBalance, SpBalance
 from app.models.check_definition import CheckDefinition, CheckStatus
+from app.models.check_overview import CheckOverview
+from app.models.check_run import CheckRun
 from app.models.company import Company
 from app.models.company_period import CompanyPeriod
 from app.models.data_file import DataFile, DataFileStatus
@@ -22,6 +24,8 @@ __all__ = [
     "AiSetting",
     "AppSetting",
     "CheckDefinition",
+    "CheckOverview",
+    "CheckRun",
     "CheckStatus",
     "Company",
     "CompanyPeriod",

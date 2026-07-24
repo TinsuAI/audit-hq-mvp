@@ -52,6 +52,17 @@ def load_period_windows(session, company_id: int) -> dict[int, tuple[date, date]
     return out
 
 
+def current_data_version(session, company_id: int, period_year: int) -> int:
+    """`data_version` hiện tại của (DN, năm); 0 nếu chưa có dòng CompanyPeriod (WS3)."""
+    row = session.scalar(
+        select(CompanyPeriod.data_version).where(
+            CompanyPeriod.company_id == company_id,
+            CompanyPeriod.period_year == period_year,
+        )
+    )
+    return row if row is not None else 0
+
+
 def resolve_period_bounds(
     session,
     company_id: int,
