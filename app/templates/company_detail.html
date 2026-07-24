@@ -305,10 +305,10 @@
   {% endfor %}
 
   {% if selected_year and run_options %}
-  <dialog id="run-tests-modal" class="modal">
+  <dialog id="run-tests-modal" class="modal" aria-labelledby="run-tests-modal-title">
     <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks">
       <div class="modal-head">
-        <h2>Chọn kiểm tra để chạy — năm {{ selected_year }}</h2>
+        <h2 id="run-tests-modal-title">Chọn kiểm tra để chạy — năm {{ selected_year }}</h2>
         <button type="button" class="modal-close" data-close-modal aria-label="Đóng">×</button>
       </div>
       <div class="modal-body">
@@ -336,10 +336,10 @@
   {% endif %}
 
   {% if selected_year and export_options %}
-  <dialog id="export-tests-modal" class="modal">
+  <dialog id="export-tests-modal" class="modal" aria-labelledby="export-tests-modal-title">
     <form method="get" action="/companies/{{ company.slug or company.code }}/export">
       <div class="modal-head">
-        <h2>Xuất Excel kiến nghị — năm {{ selected_year }}</h2>
+        <h2 id="export-tests-modal-title">Xuất Excel kiến nghị — năm {{ selected_year }}</h2>
         <button type="button" class="modal-close" data-close-modal aria-label="Đóng">×</button>
       </div>
       <div class="modal-body">

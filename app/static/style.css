@@ -1983,22 +1983,32 @@ p { margin: 0 0 var(--space-3); }
 .modal-close {
   background: none; border: none; font-size: var(--fs-xl); line-height: 1;
   cursor: pointer; color: var(--c-text-subtle); padding: 0 var(--space-1);
+  touch-action: manipulation; border-radius: var(--radius-sm);
 }
 .modal-close:hover { color: var(--c-text); }
-.modal-body { padding: var(--space-5); max-height: 60vh; overflow-y: auto; }
+.modal-close:focus-visible { outline: 2px solid var(--c-border-focus); outline-offset: 2px; }
+.modal-body {
+  padding: var(--space-5); max-height: 60vh; overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .modal-body > p { margin: 0 0 var(--space-3); color: var(--c-text-muted); }
 .modal-tools { display: flex; gap: var(--space-3); margin-bottom: var(--space-3); }
 .modal-tools button {
   background: none; border: none; color: var(--c-brand-500); cursor: pointer;
   font-size: var(--fs-sm); padding: 0; text-decoration: underline;
+  touch-action: manipulation; border-radius: var(--radius-sm);
 }
+.modal-tools button:hover { color: var(--c-brand-600); }
+.modal-tools button:focus-visible { outline: 2px solid var(--c-border-focus); outline-offset: 2px; }
 .modal-check-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-2) var(--space-4);
 }
 .modal-check-grid label {
-  display: flex; gap: var(--space-2); align-items: baseline; font-size: var(--fs-sm);
+  display: flex; gap: var(--space-2); align-items: flex-start; font-size: var(--fs-sm);
+  cursor: pointer; touch-action: manipulation;
 }
+.modal-check-grid input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
 .modal-foot {
   display: flex; gap: var(--space-3); justify-content: flex-end;
   padding: var(--space-4) var(--space-5); border-top: 1px solid var(--c-border);
