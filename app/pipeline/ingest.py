@@ -12,7 +12,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
 from app.adapters.sheet_select import SheetNotFound
@@ -59,6 +59,24 @@ def _get_or_create_company(
         company.name = company.name or name
         company.address = company.address or address
     return company
+
+
+def _guard_single_book(session, company_id: int, year: int, company_code: str) -> None:
+    """Chặn re-ingest pháp nhân nhiều sổ (book): ingest xoá sạch Tier-1 của (company, year)
+    rồi nạp từ MỘT thư mục — sẽ huỷ mất các sổ khác. Xem ADR #19.
+    """
+    n_books = session.scalar(
+        select(func.count(func.distinct(NvlBalance.book))).where(
+            NvlBalance.company_id == company_id,
+            NvlBalance.period_year == year,
+            NvlBalance.book.is_not(None),
+        )
+    ) or 0
+    if n_books > 0:
+        raise ValueError(
+            f"Pháp nhân {company_code} ({year}) có {n_books} sổ quyết toán (book) — "
+            "không hỗ trợ re-ingest qua đường này (sẽ xoá mất sổ). Xem ADR #19."
+        )
 
 
 def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: bool = False) -> IngestStats:
@@ -140,6 +158,9 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
             1 for r in bcct_all if in_period(r.declaration_date, period_from, period_to)
         )
         stats.bcct_other_year = len(bcct_all) - stats.bcct_rows
+
+        # Guard (ADR #19): pháp nhân nhiều sổ không nạp lại qua đường này — sẽ xoá mất sổ.
+        _guard_single_book(session, company.id, year, company_code)
 
         # Wipe previous data for this company × year so re-ingest is idempotent.
         for model in (NvlBalance, SpBalance, Norm, DeclarationLine):

@@ -23,6 +23,7 @@ class Finding(Base):
     check_code: Mapped[str] = mapped_column(String(16), index=True)
     severity: Mapped[str] = mapped_column(String(16), index=True)  # critical | warning | info
     subject_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    book: Mapped[str | None] = mapped_column(String(32), nullable=True)
     subject_key: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(500))
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)

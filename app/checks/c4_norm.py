@@ -26,68 +26,70 @@ def check_c4_1(session: Session, company_id: int, year: int) -> list[Finding]:
     tờ khai nhập nên không đối chiếu nguồn nhập khẩu (góp ý nghiệp vụ 2026-05-29).
     """
     code_notes = session.execute(
-        select(Norm.material_code, Norm.note).where(
+        select(Norm.material_code, Norm.note, Norm.book).where(
             Norm.company_id == company_id,
             Norm.period_year == year,
         ).distinct()
     ).all()
-    domestic = {code for code, note in code_notes if is_domestic_origin(note)}
-    m16_codes = {code for code, _ in code_notes} - domestic
 
-    m15_rows = {
-        r.material_code: r
-        for r in session.scalars(
-            select(NvlBalance).where(
-                NvlBalance.company_id == company_id,
-                NvlBalance.period_year == year,
-            )
-        ).all()
-    }
+    m15_all = session.scalars(
+        select(NvlBalance).where(
+            NvlBalance.company_id == company_id,
+            NvlBalance.period_year == year,
+        )
+    ).all()
+
+    # Gộp theo SỔ (book): mỗi sổ quyết toán là ledger riêng — mã M16 của một sổ phải có
+    # nguồn M15 TRONG CÙNG SỔ, không được dòng M15 sổ khác che (xem ADR #19). book=None
+    # (pháp nhân một sổ) là một nhóm → hành vi cũ không đổi.
+    notes_by_book: dict[str | None, list[tuple[str, str | None]]] = defaultdict(list)
+    for code, note, book in code_notes:
+        notes_by_book[book].append((code, note))
+    m15_by_book: dict[str | None, dict[str, NvlBalance]] = defaultdict(dict)
+    for r in m15_all:
+        m15_by_book[r.book][r.material_code] = r
 
     findings: list[Finding] = []
-    for code in sorted(m16_codes):
-        m15 = m15_rows.get(code)
-        if m15 is None:
-            reason = "no_m15"
-        elif (m15.import_qty or 0.0) == 0 and (m15.opening_qty or 0.0) == 0:
-            reason = "zero_source"
-        else:
-            continue
+    for book in sorted(notes_by_book, key=lambda b: (b is None, b or "")):
+        domestic = {code for code, note in notes_by_book[book] if is_domestic_origin(note)}
+        m16_codes = {code for code, _ in notes_by_book[book]} - domestic
+        m15_rows = m15_by_book.get(book, {})
+        for code in sorted(m16_codes):
+            m15 = m15_rows.get(code)
+            if m15 is None:
+                reason = "no_m15"
+            elif (m15.import_qty or 0.0) == 0 and (m15.opening_qty or 0.0) == 0:
+                reason = "zero_source"
+            else:
+                continue
 
-        findings.append(Finding(
-            company_id=company_id,
-            period_year=year,
-            check_code="C4.1",
-            severity=Severity.CRITICAL.value,
-            subject_type="material_code",
-            subject_key=code,
-            title=(
-                f"NVL {code} trong M16 không có nguồn"
-                + (" (không có dòng M15)" if reason == "no_m15" else " (M15.nhập=0 và tồn_đầu=0)")
-            ),
-            details={
-                "reason": reason,
-                "m15_import": m15.import_qty if m15 else None,
-                "m15_opening": m15.opening_qty if m15 else None,
-            },
-            evidence_refs=[
-                {
-                    "table": "norms",
-                    "filter": {
-                        "company_id": company_id,
-                        "period_year": year,
-                        "material_code": code,
-                    },
+            norm_filter = {"company_id": company_id, "period_year": year, "material_code": code}
+            nvl_filter = {"company_id": company_id, "period_year": year, "material_code": code}
+            if book is not None:
+                norm_filter["book"] = book
+                nvl_filter["book"] = book
+
+            findings.append(Finding(
+                company_id=company_id,
+                period_year=year,
+                check_code="C4.1",
+                severity=Severity.CRITICAL.value,
+                subject_type="material_code",
+                subject_key=code,
+                book=book,
+                title=(
+                    f"NVL {code} trong M16 không có nguồn"
+                    + (" (không có dòng M15)" if reason == "no_m15" else " (M15.nhập=0 và tồn_đầu=0)")
+                ),
+                details={
+                    "reason": reason,
+                    "m15_import": m15.import_qty if m15 else None,
+                    "m15_opening": m15.opening_qty if m15 else None,
                 },
-            ] + ([{
-                "table": "nvl_balances",
-                "filter": {
-                    "company_id": company_id,
-                    "period_year": year,
-                    "material_code": code,
-                },
-            }] if m15 else []),
-        ))
+                evidence_refs=[
+                    {"table": "norms", "filter": norm_filter},
+                ] + ([{"table": "nvl_balances", "filter": nvl_filter}] if m15 else []),
+            ))
     return findings
 
 
@@ -98,115 +100,117 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
     Tiêu hao thực tế = production_out_qty trong M15 cùng mã NVL.
     Ngưỡng: vượt >5% Cảnh báo · >20% Nghiêm trọng (đề án §4.1).
     """
-    # Map product_code → export_qty (M15a)
-    sp_export = dict(session.execute(
-        select(SpBalance.product_code, SpBalance.export_qty).where(
-            SpBalance.company_id == company_id,
-            SpBalance.period_year == year,
-        )
-    ).all())
-
-    # Map material_code → theoretical consumption
-    theoretical: dict[str, float] = defaultdict(float)
     norms = session.scalars(
         select(Norm).where(
             Norm.company_id == company_id,
             Norm.period_year == year,
         )
     ).all()
-    # Mẫu 16 của một số DN lặp lại NGUYÊN KHỐI định mức cho mỗi đợt sản xuất: cùng
-    # (mã SP, mã NVL) xuất hiện tới 26 lần, thường cùng một giá trị. Catalog định
-    # nghĩa tiêu hao = Σ(định_mức × xuất_khẩu) theo mã NVL — mỗi cặp tính MỘT lần.
-    # Cộng dồn qua từng DÒNG là nhân số lần lặp vào tiêu hao lý thuyết.
-    #
-    # LƯU Ý cho bố cục Mẫu 16 mở rộng (có cột sản lượng theo khối): ở đó các khối
-    # lặp là những ĐỢT SẢN XUẤT khác nhau và phải tính Σ(định_mức_khối × sản_lượng
-    # _khối), gộp lại sẽ nuốt mất sản lượng. `Norm` chưa có cột sản lượng nên đường
-    # đó chưa dựng được — khi thêm, rẽ nhánh tại đây.
-    bom: dict[tuple[str, str], float] = {}
-    divergent: dict[str, set[str]] = defaultdict(set)
+    sp_rows = session.execute(
+        select(SpBalance.product_code, SpBalance.export_qty, SpBalance.book).where(
+            SpBalance.company_id == company_id,
+            SpBalance.period_year == year,
+        )
+    ).all()
+    nvl_rows = session.scalars(
+        select(NvlBalance).where(
+            NvlBalance.company_id == company_id,
+            NvlBalance.period_year == year,
+        )
+    ).all()
+
+    # Gộp theo SỔ (book): mỗi sổ quyết toán là ledger riêng — định mức, xuất khẩu và
+    # xuất SX của một sổ chỉ đối chiếu TRONG sổ đó, không cộng chéo (xem ADR #19).
+    # book=None (pháp nhân một sổ) là một nhóm → hành vi cũ không đổi.
+    norms_by_book: dict[str | None, list[Norm]] = defaultdict(list)
     for n in norms:
-        key = (n.product_code, n.material_code)
-        qty = n.norm_qty or 0.0
-        prev = bom.get(key)
-        if prev is None:
-            bom[key] = qty
-        elif abs(prev - qty) > 1e-9:
-            # Khối lặp lệch định mức — lấy MAX, nhưng ghi lại để hiện ra trong
-            # phát hiện thay vì chọn thầm.
-            bom[key] = max(prev, qty)
-            divergent[n.material_code].add(n.product_code)
-
-    for (product_code, material_code), norm_qty in bom.items():
-        sp_qty = sp_export.get(product_code) or 0.0
-        if sp_qty <= 0:
-            continue
-        theoretical[material_code] += norm_qty * sp_qty
-
-    # Compare against M15.production_out_qty
-    m15_rows = {
-        r.material_code: r
-        for r in session.scalars(
-            select(NvlBalance).where(
-                NvlBalance.company_id == company_id,
-                NvlBalance.period_year == year,
-            )
-        ).all()
-    }
+        norms_by_book[n.book].append(n)
+    sp_by_book: dict[str | None, dict[str, float]] = defaultdict(dict)
+    for product_code, export_qty, book in sp_rows:
+        sp_by_book[book][product_code] = export_qty
+    m15_by_book: dict[str | None, dict[str, NvlBalance]] = defaultdict(dict)
+    for r in nvl_rows:
+        m15_by_book[r.book][r.material_code] = r
 
     findings: list[Finding] = []
-    for code, theor in theoretical.items():
-        if theor <= 0:
-            continue
-        m15 = m15_rows.get(code)
-        actual = (m15.production_out_qty or 0.0) if m15 else 0.0
-        if actual <= 0:
-            # Có tiêu hao lý thuyết nhưng M15 không có xuất SX → mâu thuẫn (nặng).
-            pct = 100.0
-        else:
-            pct = (theor - actual) / actual * 100.0
-        if pct <= 5.0:
-            continue
-        sev = severity_for("C4.3", pct)
-        if sev is None:
-            continue
-        findings.append(Finding(
-            company_id=company_id,
-            period_year=year,
-            check_code="C4.3",
-            severity=sev.value,
-            subject_type="material_code",
-            subject_key=code,
-            title=(
-                f"NVL {code}: tiêu hao lý thuyết M16 ({theor:.2f}) vượt "
-                f"xuất SX M15 ({actual:.2f}) — chênh +{pct:.1f}%"
-            ),
-            details={
-                "theoretical_consumption": theor,
-                "actual_m15_production_out": actual,
-                "diff_pct": pct,
-                # Mã SP mà các khối định mức lặp lại KHÔNG khớp nhau — đã lấy MAX.
-                "divergent_norm_products": sorted(divergent.get(code, ())),
-            },
-            evidence_refs=[
-                {
-                    "table": "norms",
-                    "filter": {
-                        "company_id": company_id,
-                        "period_year": year,
-                        "material_code": code,
-                    },
+    for book in sorted(norms_by_book, key=lambda b: (b is None, b or "")):
+        sp_export = sp_by_book.get(book, {})
+
+        # Mẫu 16 của một số DN lặp lại NGUYÊN KHỐI định mức cho mỗi đợt sản xuất: cùng
+        # (mã SP, mã NVL) xuất hiện tới 26 lần, thường cùng một giá trị. Catalog định
+        # nghĩa tiêu hao = Σ(định_mức × xuất_khẩu) theo mã NVL — mỗi cặp tính MỘT lần.
+        # Cộng dồn qua từng DÒNG là nhân số lần lặp vào tiêu hao lý thuyết.
+        #
+        # LƯU Ý cho bố cục Mẫu 16 mở rộng (có cột sản lượng theo khối): ở đó các khối
+        # lặp là những ĐỢT SẢN XUẤT khác nhau và phải tính Σ(định_mức_khối × sản_lượng
+        # _khối), gộp lại sẽ nuốt mất sản lượng. `Norm` chưa có cột sản lượng nên đường
+        # đó chưa dựng được — khi thêm, rẽ nhánh tại đây.
+        bom: dict[tuple[str, str], float] = {}
+        divergent: dict[str, set[str]] = defaultdict(set)
+        for n in norms_by_book[book]:
+            key = (n.product_code, n.material_code)
+            qty = n.norm_qty or 0.0
+            prev = bom.get(key)
+            if prev is None:
+                bom[key] = qty
+            elif abs(prev - qty) > 1e-9:
+                # Khối lặp lệch định mức — lấy MAX, nhưng ghi lại để hiện ra trong
+                # phát hiện thay vì chọn thầm.
+                bom[key] = max(prev, qty)
+                divergent[n.material_code].add(n.product_code)
+
+        theoretical: dict[str, float] = defaultdict(float)
+        for (product_code, material_code), norm_qty in bom.items():
+            sp_qty = sp_export.get(product_code) or 0.0
+            if sp_qty <= 0:
+                continue
+            theoretical[material_code] += norm_qty * sp_qty
+
+        m15_rows = m15_by_book.get(book, {})
+        for code, theor in theoretical.items():
+            if theor <= 0:
+                continue
+            m15 = m15_rows.get(code)
+            actual = (m15.production_out_qty or 0.0) if m15 else 0.0
+            if actual <= 0:
+                # Có tiêu hao lý thuyết nhưng M15 không có xuất SX → mâu thuẫn (nặng).
+                pct = 100.0
+            else:
+                pct = (theor - actual) / actual * 100.0
+            if pct <= 5.0:
+                continue
+            sev = severity_for("C4.3", pct)
+            if sev is None:
+                continue
+            norm_filter = {"company_id": company_id, "period_year": year, "material_code": code}
+            nvl_filter = {"company_id": company_id, "period_year": year, "material_code": code}
+            if book is not None:
+                norm_filter["book"] = book
+                nvl_filter["book"] = book
+            findings.append(Finding(
+                company_id=company_id,
+                period_year=year,
+                check_code="C4.3",
+                severity=sev.value,
+                subject_type="material_code",
+                subject_key=code,
+                book=book,
+                title=(
+                    f"NVL {code}: tiêu hao lý thuyết M16 ({theor:.2f}) vượt "
+                    f"xuất SX M15 ({actual:.2f}) — chênh +{pct:.1f}%"
+                ),
+                details={
+                    "theoretical_consumption": theor,
+                    "actual_m15_production_out": actual,
+                    "diff_pct": pct,
+                    # Mã SP mà các khối định mức lặp lại KHÔNG khớp nhau — đã lấy MAX.
+                    "divergent_norm_products": sorted(divergent.get(code, ())),
                 },
-                {
-                    "table": "nvl_balances",
-                    "filter": {
-                        "company_id": company_id,
-                        "period_year": year,
-                        "material_code": code,
-                    },
-                },
-            ],
-        ))
+                evidence_refs=[
+                    {"table": "norms", "filter": norm_filter},
+                    {"table": "nvl_balances", "filter": nvl_filter},
+                ],
+            ))
     return findings
 
 

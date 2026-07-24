@@ -15,18 +15,18 @@ from app.models import Finding, NvlBalance, SpBalance
 _TOLERANCE = 0.01
 
 
-def _nvl_evidence(material_code: str, year: int, company_id: int) -> list[dict]:
-    return [{
-        "table": "nvl_balances",
-        "filter": {"company_id": company_id, "period_year": year, "material_code": material_code},
-    }]
+def _nvl_evidence(material_code: str, year: int, company_id: int, book: str | None = None) -> list[dict]:
+    f = {"company_id": company_id, "period_year": year, "material_code": material_code}
+    if book is not None:
+        f["book"] = book
+    return [{"table": "nvl_balances", "filter": f}]
 
 
-def _sp_evidence(product_code: str, year: int, company_id: int) -> list[dict]:
-    return [{
-        "table": "sp_balances",
-        "filter": {"company_id": company_id, "period_year": year, "product_code": product_code},
-    }]
+def _sp_evidence(product_code: str, year: int, company_id: int, book: str | None = None) -> list[dict]:
+    f = {"company_id": company_id, "period_year": year, "product_code": product_code}
+    if book is not None:
+        f["book"] = book
+    return [{"table": "sp_balances", "filter": f}]
 
 
 def check_c2_1(session: Session, company_id: int, year: int) -> list[Finding]:
@@ -85,12 +85,13 @@ def check_c2_1(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=Severity.CRITICAL.value,
             subject_type="material_code",
             subject_key=r.material_code,
+            book=r.book,
             title=(
                 f"M15 không cân: NVL {r.material_code} tồn_cuối={r.closing_qty:.2f} vs "
                 f"kỳ vọng {expected_closing:.2f} (chênh {diff:+.2f}){ghost_marker}"
             ),
             details=details,
-            evidence_refs=_nvl_evidence(r.material_code, year, company_id),
+            evidence_refs=_nvl_evidence(r.material_code, year, company_id, r.book),
         ))
     return findings
 
@@ -126,6 +127,7 @@ def check_c2_2(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=Severity.CRITICAL.value,
             subject_type="product_code",
             subject_key=r.product_code,
+            book=r.book,
             title=(
                 f"M15a không cân: TP {r.product_code} tồn_cuối={r.closing_qty:.2f} vs "
                 f"kỳ vọng {expected_closing:.2f} (chênh {diff:+.2f})"
@@ -140,7 +142,7 @@ def check_c2_2(session: Session, company_id: int, year: int) -> list[Finding]:
                 "closing_expected": expected_closing,
                 "diff": diff,
             },
-            evidence_refs=_sp_evidence(r.product_code, year, company_id),
+            evidence_refs=_sp_evidence(r.product_code, year, company_id, r.book),
         ))
     return findings
 
@@ -163,6 +165,7 @@ def check_c2_3(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=Severity.CRITICAL.value,
             subject_type="material_code",
             subject_key=r.material_code,
+            book=r.book,
             title=(
                 f"NVL {r.material_code} có tồn cuối âm: {r.closing_qty:.2f} {r.unit or ''}"
             ),
@@ -170,7 +173,7 @@ def check_c2_3(session: Session, company_id: int, year: int) -> list[Finding]:
                 "closing_qty": r.closing_qty,
                 "unit": r.unit,
             },
-            evidence_refs=_nvl_evidence(r.material_code, year, company_id),
+            evidence_refs=_nvl_evidence(r.material_code, year, company_id, r.book),
         )
         for r in rows
     ]
@@ -194,6 +197,7 @@ def check_c2_4(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=Severity.CRITICAL.value,
             subject_type="product_code",
             subject_key=r.product_code,
+            book=r.book,
             title=(
                 f"TP {r.product_code} có tồn cuối âm: {r.closing_qty:.2f} {r.unit or ''}"
             ),
@@ -201,7 +205,7 @@ def check_c2_4(session: Session, company_id: int, year: int) -> list[Finding]:
                 "closing_qty": r.closing_qty,
                 "unit": r.unit,
             },
-            evidence_refs=_sp_evidence(r.product_code, year, company_id),
+            evidence_refs=_sp_evidence(r.product_code, year, company_id, r.book),
         )
         for r in rows
     ]

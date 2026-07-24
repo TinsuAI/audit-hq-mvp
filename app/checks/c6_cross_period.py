@@ -29,7 +29,10 @@ def check_c6_1(session: Session, company_id: int, year: int) -> list[Finding]:
     ).all()
     if not prev_rows:
         return []
-    prev_closing = {r.material_code: (r.closing_qty or 0.0) for r in prev_rows}
+    # Khoá theo (SỔ, mã): mỗi sổ quyết toán là ledger tồn kho riêng — tồn cuối kỳ N-1
+    # của một sổ chỉ so với tồn đầu kỳ N CÙNG SỔ (xem ADR #19). book=None (một sổ) là
+    # một nhóm → hành vi cũ không đổi.
+    prev_closing = {(r.book, r.material_code): (r.closing_qty or 0.0) for r in prev_rows}
 
     curr_rows = session.scalars(
         select(NvlBalance).where(
@@ -38,10 +41,17 @@ def check_c6_1(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
+    def _nvl_filter(period: int, code: str, book: str | None) -> dict:
+        f = {"company_id": company_id, "period_year": period, "material_code": code}
+        if book is not None:
+            f["book"] = book
+        return f
+
     findings: list[Finding] = []
     for r in curr_rows:
         curr_opening = r.opening_qty or 0.0
-        if r.material_code not in prev_closing:
+        key = (r.book, r.material_code)
+        if key not in prev_closing:
             # NVL mới xuất hiện kỳ N: nếu opening > 0 nhưng kỳ N-1 không có →
             # lệch (kỳ trước phải có tồn cuối tương ứng).
             if abs(curr_opening) > _TOLERANCE:
@@ -52,6 +62,7 @@ def check_c6_1(session: Session, company_id: int, year: int) -> list[Finding]:
                     severity=Severity.CRITICAL.value,
                     subject_type="material_code",
                     subject_key=r.material_code,
+                    book=r.book,
                     title=(
                         f"NVL {r.material_code} có tồn đầu kỳ {year} = {curr_opening:.2f} "
                         f"nhưng kỳ {prev_year} không có dòng tương ứng"
@@ -62,16 +73,12 @@ def check_c6_1(session: Session, company_id: int, year: int) -> list[Finding]:
                     },
                     evidence_refs=[{
                         "table": "nvl_balances",
-                        "filter": {
-                            "company_id": company_id,
-                            "period_year": year,
-                            "material_code": r.material_code,
-                        },
+                        "filter": _nvl_filter(year, r.material_code, r.book),
                     }],
                 ))
             continue
 
-        prev = prev_closing[r.material_code]
+        prev = prev_closing[key]
         diff = curr_opening - prev
         if abs(diff) <= _TOLERANCE:
             continue
@@ -82,6 +89,7 @@ def check_c6_1(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=Severity.CRITICAL.value,
             subject_type="material_code",
             subject_key=r.material_code,
+            book=r.book,
             title=(
                 f"NVL {r.material_code} tồn đầu {year}={curr_opening:.2f} "
                 f"khác tồn cuối {prev_year}={prev:.2f} (chênh {diff:+.2f})"
@@ -92,22 +100,8 @@ def check_c6_1(session: Session, company_id: int, year: int) -> list[Finding]:
                 "diff": diff,
             },
             evidence_refs=[
-                {
-                    "table": "nvl_balances",
-                    "filter": {
-                        "company_id": company_id,
-                        "period_year": year,
-                        "material_code": r.material_code,
-                    },
-                },
-                {
-                    "table": "nvl_balances",
-                    "filter": {
-                        "company_id": company_id,
-                        "period_year": prev_year,
-                        "material_code": r.material_code,
-                    },
-                },
+                {"table": "nvl_balances", "filter": _nvl_filter(year, r.material_code, r.book)},
+                {"table": "nvl_balances", "filter": _nvl_filter(prev_year, r.material_code, r.book)},
             ],
         ))
     return findings

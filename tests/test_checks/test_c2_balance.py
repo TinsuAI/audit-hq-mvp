@@ -130,3 +130,12 @@ def test_c2_4_fires_when_closing_negative(session, company):
     assert all(f.check_code == "C2.4" for f in findings)
     assert all(f.subject_type == "product_code" for f in findings)
     assert all(f.severity == "critical" for f in findings)
+
+
+def test_c2_1_tags_finding_with_book(session, company):
+    # Finding từ một dòng sổ mang nhãn book để truy nguồn per-sổ (mã chung → 2 finding phân biệt).
+    add_nvl(session, company.id, material_code="X", opening=0, imported=100, closing=50, book="GC")
+    session.commit()  # kỳ vọng tồn cuối 100, khai 50 → lệch → fire
+    findings = check_c2_1(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].book == "GC"

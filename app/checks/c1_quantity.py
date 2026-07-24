@@ -18,11 +18,11 @@ from app.checks.registry import Severity, severity_for
 from app.models import DeclarationLine, Finding, NvlBalance, SpBalance
 
 
-def _evidence_nvl(material_code: str, year: int, company_id: int) -> list[dict]:
-    return [{
-        "table": "nvl_balances",
-        "filter": {"company_id": company_id, "period_year": year, "material_code": material_code},
-    }]
+def _evidence_nvl(material_code: str, year: int, company_id: int, book: str | None = None) -> list[dict]:
+    f = {"company_id": company_id, "period_year": year, "material_code": material_code}
+    if book is not None:
+        f["book"] = book
+    return [{"table": "nvl_balances", "filter": f}]
 
 
 def _evidence_sp(product_code: str, year: int, company_id: int) -> list[dict]:
@@ -80,7 +80,6 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
         return []
 
     bcct_sums = _sum_bcct_by_item(session, company_id, year, import_codes)
-    findings: list[Finding] = []
     rows = session.scalars(
         select(NvlBalance).where(
             NvlBalance.company_id == company_id,
@@ -88,11 +87,20 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
+    # Gộp import_qty theo (mã, đơn vị): một mã có thể có NHIỀU dòng M15 khi pháp nhân
+    # giữ nhiều sổ (đa loại hình) hoặc khai cùng mã ở hai đơn vị. Cộng across sổ,
+    # KHÔNG cộng across đơn vị. Khớp đơn vị phía tờ khai là việc riêng (xem ADR #19).
+    agg: dict[tuple[str, str], float] = {}
     for r in rows:
-        if r.import_qty <= 0:
+        key = (r.material_code, r.unit)
+        agg[key] = agg.get(key, 0.0) + r.import_qty
+
+    findings: list[Finding] = []
+    for (code, unit), imported in sorted(agg.items()):
+        if imported <= 0:
             continue  # C1.1 chỉ áp với NVL có khai nhập trong M15
-        bcct_qty = bcct_sums.get(r.material_code, 0.0)
-        diff_pct = _pct_diff(bcct_qty, r.import_qty)
+        bcct_qty = bcct_sums.get(code, 0.0)
+        diff_pct = _pct_diff(bcct_qty, imported)
         if abs(diff_pct) < 0.5:
             continue  # floor 0.5% — coi như khớp (lọc nhiễu làm tròn).
         sev = severity_for("C1.1", abs(diff_pct))
@@ -104,20 +112,21 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
             check_code="C1.1",
             severity=sev.value,
             subject_type="material_code",
-            subject_key=r.material_code,
+            subject_key=code,
             title=(
-                f"Lệch nhập NVL {r.material_code}: "
-                f"M15={r.import_qty:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
+                f"Lệch nhập NVL {code}: "
+                f"M15={imported:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
             ),
             details={
                 "company_type": company_type.value,
                 "import_codes": sorted(import_codes),
-                "m15_import": r.import_qty,
+                "unit": unit,
+                "m15_import": imported,
                 "bcct_sum": bcct_qty,
                 "diff_pct": diff_pct,
             },
-            evidence_refs=_evidence_nvl(r.material_code, year, company_id)
-            + _evidence_decl(r.material_code, year, company_id, import_codes),
+            evidence_refs=_evidence_nvl(code, year, company_id)
+            + _evidence_decl(code, year, company_id, import_codes),
         ))
     return findings
 
@@ -217,6 +226,7 @@ def check_c1_3(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=Severity.CRITICAL.value,
             subject_type="material_code",
             subject_key=r.material_code,
+            book=r.book,
             title=(
                 f"M15 khai nhập NVL {r.material_code} "
                 f"({r.import_qty:.2f} {r.unit or ''}) nhưng không có tờ khai"
@@ -226,7 +236,7 @@ def check_c1_3(session: Session, company_id: int, year: int) -> list[Finding]:
                 "import_codes": sorted(import_codes),
                 "m15_import": r.import_qty,
             },
-            evidence_refs=_evidence_nvl(r.material_code, year, company_id),
+            evidence_refs=_evidence_nvl(r.material_code, year, company_id, r.book),
         ))
     return findings
 
@@ -239,7 +249,6 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
         return []
 
     bcct_sums = _sum_bcct_by_item(session, company_id, year, export_codes)
-    findings: list[Finding] = []
     rows = session.scalars(
         select(SpBalance).where(
             SpBalance.company_id == company_id,
@@ -247,11 +256,18 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
+    # Gộp export_qty theo (mã, đơn vị) — như C1.1: cộng across sổ, không across đơn vị.
+    agg: dict[tuple[str, str], float] = {}
     for r in rows:
-        if r.export_qty <= 0:
+        key = (r.product_code, r.unit)
+        agg[key] = agg.get(key, 0.0) + r.export_qty
+
+    findings: list[Finding] = []
+    for (code, unit), exported in sorted(agg.items()):
+        if exported <= 0:
             continue
-        bcct_qty = bcct_sums.get(r.product_code, 0.0)
-        diff_pct = _pct_diff(bcct_qty, r.export_qty)
+        bcct_qty = bcct_sums.get(code, 0.0)
+        diff_pct = _pct_diff(bcct_qty, exported)
         if abs(diff_pct) < 0.1:
             continue  # floor 0.1% — coi như khớp (lọc nhiễu làm tròn).
         sev = severity_for("C1.4", abs(diff_pct))
@@ -263,20 +279,21 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
             check_code="C1.4",
             severity=sev.value,
             subject_type="product_code",
-            subject_key=r.product_code,
+            subject_key=code,
             title=(
-                f"Lệch xuất TP {r.product_code}: "
-                f"M15a={r.export_qty:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
+                f"Lệch xuất TP {code}: "
+                f"M15a={exported:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
             ),
             details={
                 "company_type": company_type.value,
                 "export_codes": sorted(export_codes),
-                "m15a_export": r.export_qty,
+                "unit": unit,
+                "m15a_export": exported,
                 "bcct_sum": bcct_qty,
                 "diff_pct": diff_pct,
             },
-            evidence_refs=_evidence_sp(r.product_code, year, company_id)
-            + _evidence_decl(r.product_code, year, company_id, export_codes),
+            evidence_refs=_evidence_sp(code, year, company_id)
+            + _evidence_decl(code, year, company_id, export_codes),
         ))
     return findings
 
@@ -314,6 +331,7 @@ def check_c1_6(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=Severity.CRITICAL.value,
             subject_type="material_code",
             subject_key=r.material_code,
+            book=r.book,
             title=(
                 f"NVL {r.material_code} chuyển MĐSD {r.repurpose_qty:.2f} {r.unit or ''} "
                 f"nhưng không có tờ khai A42"
@@ -321,7 +339,7 @@ def check_c1_6(session: Session, company_id: int, year: int) -> list[Finding]:
             details={
                 "m15_repurpose": r.repurpose_qty,
             },
-            evidence_refs=_evidence_nvl(r.material_code, year, company_id),
+            evidence_refs=_evidence_nvl(r.material_code, year, company_id, r.book),
         ))
     return findings
 
@@ -351,6 +369,7 @@ def check_c1_7(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=sev.value,
             subject_type="material_code",
             subject_key=r.material_code,
+            book=r.book,
             title=(
                 f"NVL {r.material_code} chuyển MĐSD chiếm {pct:.1f}% "
                 f"(tồn đầu + nhập trong kỳ)"
@@ -361,7 +380,7 @@ def check_c1_7(session: Session, company_id: int, year: int) -> list[Finding]:
                 "import": r.import_qty,
                 "ratio_pct": pct,
             },
-            evidence_refs=_evidence_nvl(r.material_code, year, company_id),
+            evidence_refs=_evidence_nvl(r.material_code, year, company_id, r.book),
         ))
     return findings
 

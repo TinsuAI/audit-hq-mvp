@@ -176,13 +176,16 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
     - Cùng family (convertible, vd KG↔GAM, M↔CM) → 🔵 Thông tin.
     - Khác family hoặc unknown → 🔴 Nghiêm trọng (sai đơn vị ×1000 nguy hiểm).
     """
-    m15_units = dict(session.execute(
-        select(NvlBalance.material_code, NvlBalance.unit).where(
+    m15_rows = session.execute(
+        select(NvlBalance.book, NvlBalance.material_code, NvlBalance.unit).where(
             NvlBalance.company_id == company_id,
             NvlBalance.period_year == year,
             NvlBalance.unit.is_not(None),
         )
-    ).all())
+    ).all()
+    # Đơn vị M15 theo (SỔ, mã): đối chiếu đơn vị của TỪNG sổ với tờ khai (tờ khai dùng
+    # chung cả pháp nhân), không để đơn vị sổ này che sổ kia (xem ADR #19).
+    m15_units = {(book, code): unit for book, code, unit in m15_rows}
 
     bcct_units: dict[str, set[str]] = defaultdict(set)
     bcct_rows = session.execute(
@@ -199,7 +202,9 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
         bcct_units[code].add(unit)
 
     findings: list[Finding] = []
-    for code, m15_unit in sorted(m15_units.items()):
+    for (book, code), m15_unit in sorted(
+        m15_units.items(), key=lambda kv: (kv[0][1], kv[0][0] is None, kv[0][0] or "")
+    ):
         bcct_set = bcct_units.get(code, set())
         if not bcct_set:
             continue
@@ -237,6 +242,7 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=severity.value,
             subject_type="material_code",
             subject_key=code,
+            book=book,
             title=title,
             details={
                 "m15_unit": m15_unit,
@@ -246,11 +252,10 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
             evidence_refs=[
                 {
                     "table": "nvl_balances",
-                    "filter": {
-                        "company_id": company_id,
-                        "period_year": year,
-                        "material_code": code,
-                    },
+                    "filter": (
+                        {"company_id": company_id, "period_year": year, "material_code": code}
+                        | ({"book": book} if book is not None else {})
+                    ),
                 },
                 {
                     "table": "declaration_lines",

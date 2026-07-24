@@ -48,3 +48,18 @@ def test_c6_1_no_fire_when_new_code_zero_opening(session, company):
     add_nvl(session, company.id, material_code="NEW", opening=0, imported=100, year=2024)
     session.commit()
     assert check_c6_1(session, company.id, 2024) == []
+
+
+def test_c6_1_compares_within_each_book(session, company):
+    # Mã X ở hai sổ: tồn cuối kỳ trước phải so TRONG cùng sổ, không lẫn sổ.
+    # Sổ EPE: cuối 2023 = 100, đầu 2024 = 100 → khớp.
+    add_nvl(session, company.id, material_code="X", closing=100, book="EPE", year=2023)
+    add_nvl(session, company.id, material_code="X", opening=100, book="EPE", year=2024)
+    # Sổ GC: cuối 2023 = 50, đầu 2024 = 100 → lệch +50.
+    add_nvl(session, company.id, material_code="X", closing=50, book="GC", year=2023)
+    add_nvl(session, company.id, material_code="X", opening=100, book="GC", year=2024)
+    session.commit()
+    findings = check_c6_1(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].book == "GC"
+    assert findings[0].details["previous_closing"] == 50

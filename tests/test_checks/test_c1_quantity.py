@@ -234,3 +234,37 @@ def test_c1_7_uses_opening_plus_import(session, company):
     assert len(findings) == 1
     assert findings[0].severity == "warning"
     assert abs(findings[0].details["ratio_pct"] - 20.0) < 0.01
+
+
+# --- C1.1 / C1.4: gộp union theo (mã, đơn vị) khi một mã có nhiều dòng M15 (đa sổ) ---
+
+
+def test_c1_1_sums_rows_of_same_code_and_unit(session, company):
+    # Mã C xuất hiện ở hai sổ (sau collapse: hai dòng M15 cùng mã + cùng đơn vị dưới
+    # một company). import_qty phải CỘNG trước khi so tờ khai, KHÔNG so per-row.
+    add_nvl(session, company.id, material_code="C", unit="PCE", imported=500)
+    add_nvl(session, company.id, material_code="C", unit="PCE", imported=500)
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="C", quantity=1000)
+    session.commit()
+    # 500 + 500 == 1000 khai → khớp → không finding. (per-row hiện tại: 2 finding critical)
+    assert check_c1_1(session, company.id, 2024) == []
+
+
+def test_c1_4_sums_rows_of_same_code_and_unit(session, company):
+    # Mã TP P ở hai sổ: export_qty phải CỘNG theo (mã, đơn vị) trước khi so tờ khai xuất.
+    add_sp(session, company.id, product_code="P", unit="PCE", export_qty=500)
+    add_sp(session, company.id, product_code="P", unit="PCE", export_qty=500)
+    add_decl(session, company.id, declaration_no="1", customs_code="E42", item_code="P", quantity=1000)
+    session.commit()
+    assert check_c1_4(session, company.id, 2024) == []
+
+
+def test_c1_3_tags_finding_with_book(session, company):
+    # M15 khai nhập nhưng không có tờ khai → fire, mang nhãn sổ để truy nguồn.
+    add_nvl(session, company.id, material_code="X", imported=100, book="GC")
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="Y", quantity=5)
+    session.commit()
+    findings = check_c1_3(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].subject_key == "X"
+    assert findings[0].book == "GC"
