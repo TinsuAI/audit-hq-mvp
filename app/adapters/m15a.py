@@ -10,6 +10,7 @@ import pandas as pd
 from app.adapters._common import (
     CompanyHeader,
     ParseIssues,
+    ParseProvenance,
     count_external_workbooks,
     ensure_excel,
     normalize_code,
@@ -20,8 +21,14 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.evidence import (
+    evidence_m15a_extended,
+    evidence_m15a_standard,
+)
+from app.adapters.extended_layout import M15aResolution, select_extended_m15a
+from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
-from app.adapters.sheet_select import select_sheet
+from app.adapters.sheet_select import SheetNotFound, select_sheet
 
 
 @dataclass
@@ -45,6 +52,7 @@ class M15aFile:
     source_file: str
     issues: ParseIssues = field(default_factory=ParseIssues)
     sheet: str | None = None
+    provenance: ParseProvenance = field(default_factory=ParseProvenance)
 
 
 # HONG_AN 2024 `TT39_BaoCaoQuyetToan_SP 2024.xlsx`, sheet `BCQT_SP`:
@@ -71,15 +79,59 @@ _SHEET_NAMES = ("BCQT_SP", "BCQT_SXXK", "Sheet1")
 def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = None) -> M15aFile:
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
+    resolution: M15aResolution | None = None
+    cand_colmap: dict[str, int] | None = None
     if sheet is None:
-        sheet = select_sheet(p, "m15a", year).name
+        try:
+            cand = select_sheet(p, "m15a", year)
+            sheet, cand_colmap = cand.name, cand.colmap
+        except SheetNotFound:
+            # Đường cột cố định trượt — thử bố cục MỞ RỘNG: suy map từ dòng đánh số,
+            # chứng minh bằng đẳng thức + xác định export_qty theo nhãn (ADR #15).
+            # Không xác thực được thì ném lại SheetNotFound gốc (không nạp bừa).
+            picked = select_extended_m15a(p, year)
+            if picked is None:
+                raise
+            sheet, resolution = picked
+
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
+    if resolution is not None:
+        rows = _rows_from_resolution(cells, resolution)
+        scan_cols = [c for cols in resolution.cols.values() for c in cols]
+        evidence = evidence_m15a_extended(
+            [f for f in _EVIDENCE_FIELDS if resolution.cols.get(f)]
+        )
+        return M15aFile(
+            header=header, rows=rows, source_file=str(p), sheet=sheet,
+            issues=ParseIssues(
+                error_cells=scan_error_cells(p, sheet, resolution.data_start, scan_cols),
+                external_workbooks=count_external_workbooks(p),
+                scanned=True,
+            ),
+            provenance=ParseProvenance(
+                layout="extended",
+                detail={
+                    "formula": resolution.formula,
+                    "matched": resolution.matched,
+                    "checked": resolution.checked,
+                    "match_rate": round(resolution.match_rate, 4),
+                    "export_col": resolution.cols["export_qty"][0],
+                    "export_label": resolution.export_label,
+                    "form_signature": compute_form_signature(cells, "m15a", resolution.data_start),
+                    "column_map": {
+                        f: resolution.cols[f][0] for f in evidence if resolution.cols.get(f)
+                    },
+                },
+                evidence=evidence,
+            ),
+        )
+
     data_start = find_data_start(cells, "m15a")
 
-    rows: list[M15aRow] = []
+    rows = []
     for raw in cells[data_start:]:
         product_code = normalize_code(to_str(safe_get(raw, _COL["product_code"])))
         if not product_code:
@@ -105,6 +157,7 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
             )
         )
 
+    evidence = evidence_m15a_standard(cells, data_start, cand_colmap)
     return M15aFile(
         header=header, rows=rows, source_file=str(p), sheet=sheet,
         issues=ParseIssues(
@@ -112,4 +165,44 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
             external_workbooks=count_external_workbooks(p),
             scanned=True,
         ),
+        provenance=ParseProvenance(
+            detail={
+                "form_signature": compute_form_signature(cells, "m15a", data_start),
+                "column_map": {f: _COL[f] for f in evidence if f in _COL},
+            },
+            evidence=evidence,
+        ),
     )
+
+
+# Cột giá trị + mã mang nguồn bằng chứng ở badge truy nguồn.
+_EVIDENCE_FIELDS = (
+    "product_code", "opening_qty", "intake_qty", "repurpose_qty", "export_qty",
+    "other_out_qty", "closing_qty",
+)
+
+
+def _rows_from_resolution(cells: list, res: M15aResolution) -> list[M15aRow]:
+    """Dựng dòng M15a từ map cột đã xác thực (bố cục mở rộng)."""
+    code_cols = res.cols["product_code"]
+    name_cols = res.cols.get("product_name", [])
+    unit_cols = res.cols.get("unit", [])
+    rows: list[M15aRow] = []
+    for raw in cells[res.data_start:]:
+        code = next((normalize_code(to_str(safe_get(raw, c))) for c in code_cols
+                     if normalize_code(to_str(safe_get(raw, c)))), None)
+        if not code:
+            continue
+        rows.append(M15aRow(
+            row_no=None,
+            product_code=code,
+            product_name=normalize_name(to_str(safe_get(raw, name_cols[0]))) if name_cols else None,
+            unit=normalize_code(to_str(safe_get(raw, unit_cols[0]))) if unit_cols else None,
+            opening_qty=res.value(raw, "opening_qty"),
+            intake_qty=res.value(raw, "intake_qty"),
+            repurpose_qty=res.value(raw, "repurpose_qty"),
+            export_qty=res.value(raw, "export_qty"),
+            other_out_qty=res.value(raw, "other_out_qty"),
+            closing_qty=res.value(raw, "closing_qty"),
+        ))
+    return rows

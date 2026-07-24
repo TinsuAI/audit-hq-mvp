@@ -31,16 +31,22 @@ def find_years_with_data(session: Session, company_id: int) -> list[int]:
 
 
 def run_checks_handler(payload: dict, session: Session) -> dict:
-    """Chạy `run_checks` cho (company_code, year). Single year (legacy)."""
+    """Chạy `run_checks` cho (company_code, year).
+
+    `only` (tuỳ chọn, list[str]) → chạy tập con check; không có → full năm.
+    """
     company_code = payload.get("company_code")
     year = payload.get("year")
     if not company_code or year is None:
         raise ValueError(f"Payload thiếu company_code/year: {payload!r}")
-    stats = run_checks_pipeline(company_code, int(year), session=session)
+    only_raw = payload.get("only")
+    only = {str(c) for c in only_raw} if only_raw else None
+    stats = run_checks_pipeline(company_code, int(year), only=only, session=session)
     return {
         "company_code": stats.company_code,
         "period_year": stats.period_year,
         "company_type": stats.company_type.value,
+        "only": sorted(only) if only else None,
         "total_findings": stats.total,
         "findings_per_check": stats.findings_per_check,
         "combos_fired": stats.combos_fired,

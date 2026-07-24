@@ -1,7 +1,9 @@
 """Helper đọc/ghi `app_settings` — cấu hình runtime của admin.
 
-Cache 30s để tránh hit DB mỗi request. Gọi `invalidate_cache()` sau khi
-ghi để các process khác nhận giá trị mới ở lần read kế tiếp.
+Cache 30s (process-local) để tránh hit DB mỗi request. Ghi gọi `invalidate_cache()`
+để lần read kế TRONG CÙNG process đọc lại DB ngay. Deploy pilot chạy 1 process +
+worker cùng process → cache dùng chung, flip toggle áp ngay. Multi-process (uvicorn
+--workers >1 / gunicorn): process khác chỉ nhận giá trị mới sau tối đa 30s TTL.
 """
 
 from __future__ import annotations
@@ -37,6 +39,14 @@ RISK_TIER_CSS: tuple[str, ...] = (
 )
 
 KEY_RISK_TIER_UPPERS = "risk_tier_uppers"
+
+# --- Combo (D4) toàn cục ---
+
+# Bật/tắt phát hiện kết hợp (§2.7) trên toàn hệ thống. Mặc định TẮT vì 2/4 combo
+# neo trên C4.3 đang đổi định nghĩa (số nhân = sản lượng) — bật lại sau khi C4.3
+# chốt + revalidate. Xem ADR #18 Revision — WS2.
+KEY_COMBOS_ENABLED = "combos_enabled"
+DEFAULT_COMBOS_ENABLED = False
 
 _CACHE_TTL_SECONDS = 30.0
 _cache: dict[str, tuple[float, object]] = {}
@@ -144,3 +154,45 @@ def get_tiers(db: Session | None = None) -> tuple[tuple[int, str, str], ...]:
         (u, RISK_TIER_LABELS[i], RISK_TIER_CSS[i])
         for i, u in enumerate(uppers)
     )
+
+
+def get_combos_enabled(db: Session | None = None) -> bool:
+    """Đọc cờ combos_enabled. Fallback DEFAULT_COMBOS_ENABLED nếu chưa cấu hình."""
+    cached = _get_cached(KEY_COMBOS_ENABLED)
+    if cached is not None:
+        return bool(cached)
+
+    own_session = db is None
+    if own_session:
+        from app.database import SessionLocal
+        s = SessionLocal()
+    else:
+        s = db
+    try:
+        row = s.get(AppSetting, KEY_COMBOS_ENABLED)
+        if row and row.value:
+            try:
+                value = bool(json.loads(row.value))
+                _put_cached(KEY_COMBOS_ENABLED, value)
+                return value
+            except (ValueError, TypeError):
+                pass
+    finally:
+        if own_session:
+            s.close()
+
+    _put_cached(KEY_COMBOS_ENABLED, DEFAULT_COMBOS_ENABLED)
+    return DEFAULT_COMBOS_ENABLED
+
+
+def set_combos_enabled(enabled: bool, updated_by: str, db: Session) -> None:
+    """Ghi cờ combos_enabled + bust cache."""
+    row = db.get(AppSetting, KEY_COMBOS_ENABLED)
+    payload = json.dumps(bool(enabled))
+    if row is None:
+        db.add(AppSetting(key=KEY_COMBOS_ENABLED, value=payload, updated_by=updated_by))
+    else:
+        row.value = payload
+        row.updated_by = updated_by
+    db.commit()
+    invalidate_cache()

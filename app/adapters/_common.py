@@ -43,6 +43,25 @@ class ParseIssues:
         return bool(self.error_cells) or self.external_workbooks > 0
 
 
+@dataclass
+class ParseProvenance:
+    """Cách một file được đọc — để hiển thị + lưu, không phải hộp đen (ADR #15).
+
+    ``layout``: ``standard`` (cột cố định) · ``extended`` (suy map từ dòng đánh số,
+    chứng minh bằng đẳng thức) · ``labeled`` (chọn cột theo nhãn, vd ĐM thực tế).
+    ``detail``: bằng chứng (đẳng thức, tỉ lệ khớp, nhãn cột đã chọn).
+    ``evidence``: field → nguồn bằng chứng mỗi cột đã đọc (WS1, ADR #18) — header-matched
+    / balance-checked / position-only. Trạng thái review suy từ đây + registry check→cột.
+    """
+
+    layout: str = "standard"
+    detail: dict[str, Any] = field(default_factory=dict)
+    evidence: dict[str, str] = field(default_factory=dict)
+
+    def __bool__(self) -> bool:
+        return self.layout != "standard" or bool(self.evidence)
+
+
 def count_external_workbooks(path: Path) -> int:
     """Số workbook NGOÀI mà file này lấy giá trị sang.
 

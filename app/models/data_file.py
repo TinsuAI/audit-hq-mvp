@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from enum import StrEnum
 
@@ -10,12 +11,17 @@ from app.database import Base
 
 
 class DataFileStatus(StrEnum):
-    """Trạng thái parse của 1 file đã tải lên (bền vững, hiển thị ở trang tài liệu)."""
+    """Vòng đời 1 file đã tải lên (bền vững, hiển thị ở trang tài liệu; ADR #18).
 
-    PENDING = "pending"   # đã tải lên, chưa nạp dữ liệu
-    OK = "ok"             # nạp thành công
-    WARNING = "warning"   # nạp được nhưng có cảnh báo (lệch cột nhẹ…)
-    ERROR = "error"       # đọc/nạp lỗi — chưa dùng được
+    Trục lifecycle ĐỘC LẬP với trục review (`parse_detail.review` = verified/
+    needs_review). Cờ cảnh báo cột KHÔNG còn là status — nó nằm ở trục review, nên
+    file có thể vừa `parsed` vừa `needs_review`.
+    """
+
+    PENDING = "pending"     # uploaded — đã lưu + đăng ký, chưa đọc
+    ANALYZED = "analyzed"   # dry-run parse xong (chưa ghi DB) — cổng review ở đây
+    OK = "ok"               # parsed — đã commit dòng vào DB
+    ERROR = "error"         # đọc/nạp lỗi — chưa dùng được
 
 
 # slot → (subdir filesystem, nhãn tiếng Việt). Dùng chung cho registry + UI.
@@ -68,10 +74,25 @@ class DataFile(Base):
     )
     parse_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Bằng chứng cách đọc (ADR #15): layout = standard|extended|labeled; detail =
+    # JSON (đẳng thức, tỉ lệ khớp, nhãn cột export/ĐM). Chỉ ≠ standard khi file lệch
+    # bố cục chuẩn — badge truy nguồn hiển thị để không "hộp đen".
+    parse_layout: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    parse_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_data_files_company_year", "company_id", "period_year"),
     )
+
+    @property
+    def parse_detail_obj(self) -> dict:
+        """`parse_detail` (JSON) → dict cho template badge; {} nếu trống/hỏng."""
+        if not self.parse_detail:
+            return {}
+        try:
+            return json.loads(self.parse_detail)
+        except (ValueError, TypeError):
+            return {}
 
     def __repr__(self) -> str:
         return f"<DataFile {self.company_id}/{self.period_year}/{self.slot} {self.original_filename}>"

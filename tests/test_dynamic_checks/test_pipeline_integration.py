@@ -69,6 +69,24 @@ def test_sql_check_findings_wiped_on_rerun(session, company):
     assert c1 == c2 == 1  # không nhân đôi
 
 
+def test_scoped_rerun_of_dynamic_check_does_not_duplicate(session, company):
+    """Chạy lẻ 1 check mở rộng (nút "Chạy lại X.1", WS2-2) phải xoá finding cũ trước
+    khi dựng lại — pre-delete phải gồm cả mã dynamic, không chỉ built-in."""
+    session.add(_sql_check("X.1", CheckStatus.PUBLISHED))
+    add_nvl(session, company.id, material_code="NVL_BAD", closing=-5)
+    session.commit()
+
+    def _count():
+        return session.scalar(
+            select(func.count()).select_from(Finding).where(Finding.check_code == "X.1")
+        )
+
+    run_checks(company.code, 2024, session=session)  # full
+    assert _count() == 1
+    run_checks(company.code, 2024, only={"X.1"}, session=session)  # scoped
+    assert _count() == 1  # không nhân đôi
+
+
 def test_bad_sql_check_does_not_crash_run(session, company):
     """Check published có SQL lỗi → bỏ qua, không làm hỏng cả run."""
     session.add(_sql_check("X.1", CheckStatus.PUBLISHED, sql="SELECT broken FROM nope"))

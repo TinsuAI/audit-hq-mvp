@@ -10,6 +10,7 @@ import pandas as pd
 from app.adapters._common import (
     CompanyHeader,
     ParseIssues,
+    ParseProvenance,
     count_external_workbooks,
     ensure_excel,
     normalize_code,
@@ -20,7 +21,12 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.evidence import (
+    evidence_m15_extended,
+    evidence_m15_standard,
+)
 from app.adapters.extended_layout import ColMap, select_extended_m15
+from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
 from app.adapters.sheet_select import SheetNotFound, select_sheet
 
@@ -47,6 +53,7 @@ class M15File:
     source_file: str
     issues: ParseIssues = field(default_factory=ParseIssues)
     sheet: str | None = None
+    provenance: ParseProvenance = field(default_factory=ParseProvenance)
 
 
 # Column index within the data sheet (0-indexed). Schema observed on
@@ -77,9 +84,13 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
     colmap: ColMap | None = None
+    # colmap select_sheet đã tính (nhãn tiêu đề khớp đúng vị trí) — giữ để tính nguồn
+    # bằng chứng, không vứt như trước.
+    cand_colmap: dict[str, int] | None = None
     if sheet is None:
         try:
-            sheet = select_sheet(p, "m15", year).name
+            cand = select_sheet(p, "m15", year)
+            sheet, cand_colmap = cand.name, cand.colmap
         except SheetNotFound:
             # Đường cột cố định trượt — thử bố cục MỞ RỘNG: suy map từ dòng đánh số,
             # chứng minh bằng đẳng thức của biểu (ADR #15). Không xác thực được thì
@@ -96,12 +107,27 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
     if colmap is not None:
         rows = _rows_from_colmap(cells, colmap)
         scan_cols = [c for cols in colmap.cols.values() for c in cols]
+        evidence = evidence_m15_extended([f for f in _EVIDENCE_FIELDS if colmap.has(f)])
         return M15File(
             header=header, rows=rows, source_file=str(p), sheet=sheet,
             issues=ParseIssues(
                 error_cells=scan_error_cells(p, sheet, colmap.data_start, scan_cols),
                 external_workbooks=count_external_workbooks(p),
                 scanned=True,
+            ),
+            provenance=ParseProvenance(
+                layout="extended",
+                detail={
+                    "formula": colmap.formula,
+                    "matched": colmap.matched,
+                    "checked": colmap.checked,
+                    "match_rate": round(colmap.match_rate, 4),
+                    "form_signature": compute_form_signature(cells, "m15", colmap.data_start),
+                    "column_map": {
+                        f: colmap.cols[f][0] for f in evidence if colmap.cols.get(f)
+                    },
+                },
+                evidence=evidence,
             ),
         )
 
@@ -133,6 +159,7 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
             )
         )
 
+    evidence = evidence_m15_standard(cells, data_start, cand_colmap)
     return M15File(
         header=header, rows=rows, source_file=str(p), sheet=sheet,
         issues=ParseIssues(
@@ -140,7 +167,21 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
             external_workbooks=count_external_workbooks(p),
             scanned=True,
         ),
+        provenance=ParseProvenance(
+            detail={
+                "form_signature": compute_form_signature(cells, "m15", data_start),
+                "column_map": {f: _COL[f] for f in evidence if f in _COL},
+            },
+            evidence=evidence,
+        ),
     )
+
+
+# Cột giá trị + mã mang nguồn bằng chứng ở badge truy nguồn.
+_EVIDENCE_FIELDS = (
+    "material_code", "opening_qty", "import_qty", "reexport_qty", "repurpose_qty",
+    "production_out_qty", "other_out_qty", "closing_qty",
+)
 
 
 def _rows_from_colmap(cells: list, colmap: ColMap) -> list[M15Row]:

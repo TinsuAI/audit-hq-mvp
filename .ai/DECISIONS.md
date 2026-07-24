@@ -254,3 +254,288 @@ item_detail gây hiểu nhầm cho DN năm tài chính (tờ khai ngày 2026 dư
 `load_period_windows()` (chỉ kỳ ≠ dương lịch) → hiện "năm tài chính dd/mm/yyyy–dd/mm/yyyy" ở tab
 năm (sup TC), dòng chú dưới tab, phụ đề 2 section item_detail, tooltip cột Năm. DN dương lịch không
 đổi. Số liệu vốn ĐÚNG (gom theo `period_year`) — đây chỉ là làm rõ nhãn, không đổi logic.
+
+### 17. Mẫu 15a mở rộng (export theo NHÃN) + Mẫu 16 định mức thực tế + badge truy nguồn (2026-07-24)
+
+**Bối cảnh:** hoàn thành phần "CHƯA thực hiện — Mẫu 15a" của ADR #15 cho 004. Đo trên file thật:
+`select_sheet` (cột cố định) TRƯỢT cho M15a của 004 EPE/GC (mã ở c2, tách cột con), và
+`content_slots` chỉ dò bằng `select_sheet` → 004 **không nạp M15a** → C4.3/C1.4 không chạy.
+
+**Quyết định:**
+- **`resolve_m15a` (`extended_layout.py`):** cổng đẳng thức cân đối như M15, NHƯNG số biểu M15a
+  không ổn định giữa DN nên **KHÔNG map field theo số biểu**. Cột `export_qty` (thứ duy nhất
+  C4.3/C1.4 dùng) xác định theo **NHÃN** cột (`xuất khẩu`/`export`, loại `năm trước`/`chưa đăng
+  ký`/`xuất bán`/`nghiên cứu`/`trả lại`/`khác`), và bắt buộc là **số hạng TRỪ trong đẳng thức**
+  (cổng đẳng thức riêng), và phải **DUY NHẤT**. Không đủ 3 điều kiện → trả None → không nạp
+  (thà thiếu hơn nạp sai — đúng kiểu hỏng ADR #15 chống). Khai triển **nhãn gộp** `(8ab)`=8a+8b
+  (KHÔNG gồm 8c) cho sổ GC (`parse_formula_terms` giữ nhóm chữ).
+- **Discovery:** `content_slots` thử thêm đường mở rộng cho slot m15a (`_extended_m15a_ok`). Chỉ
+  m15a — m15 luôn nhận theo tên file ("NVL"/"NPL"); whitelist buckets đầy theo tên nên không đụng.
+- **Mẫu 16:** chọn cột ĐM theo nhãn "thực tế/Actual" khi có CẢ cột "kỹ thuật/Technical"
+  (`_detect_actual_norm_col`). DN một cột ĐM → giữ cột mặc định (c7) → 6 DN whitelist bất biến.
+- **Bằng chứng CÓ LƯU (không hộp đen):** `ParseProvenance` (layout `standard`/`extended`/`labeled`
+  + detail) trên M15File/M15aFile/M16File → `IngestStats.provenance` → `record_parse_result` ghi
+  `DataFile.parse_layout`/`parse_detail` (migration **`f5a6b7c8d9e0`**, 2 cột). Badge ở trang Tài
+  liệu + note ở trang Dữ liệu gốc: bố cục, đẳng thức khớp N/N, nhãn cột export/ĐM đã chọn.
+
+**Đo (dữ liệu thật):** 004 EPE M15a 43 dòng (43/43, export "Export this year" cột 10), M16 664
+dòng (thực tế c8) → C4.3 fire 8, phát hiện 111→98. 004 GC M15a 2 dòng (2/2), M16 216 → C1.4 fire 2
+(sau khi sửa kỳ tay, xem dưới). 006 vẫn đường CHUẨN (mã c1, export c7) — không đụng.
+
+**Regression:** harness nạp mới toàn whitelist vào DB rỗng (seed_uom + ingest + run_checks) =
+**419 finding, y hệt từng DN trước/sau** (DO_THANH 9 · GROWATT 175 · HONG_AN 126 · KIM_LONG 109).
+Trung tính. **LƯU Ý số liệu:** 419 KHÁC "1.331" ghi ở ADR #16/STATUS — 1.331 đo bằng nguồn khác
+(nhiều khả năng DB local có finding inject / gồm pilot), KHÔNG phải fresh-ingest whitelist. Cần
+chốt MỘT harness chuẩn cho lần sau (xem [[harness-baseline-methodology]]).
+
+**Kèm — sửa kỳ GC (dùng tính năng ADR #16):** header M15/M15a của GC ghi SAI kỳ (2024-04..2025-03)
+trong khi M16 + BCCT là FY2025 (2025-04..2026-03). `ingest` lấy header đầu (M15) → cửa sổ rỗng →
+`bcct=0` → 0 phát hiện. Đã đặt `company_periods` **manual** GC 2025 = 2025-04-01..2026-03-31 →
+bcct=547, C1.4 fire. Đây là đúng ca dùng manual-override của ADR #16 (cán bộ sửa header sai).
+
+**Alternatives loại:** *map M15a theo số biểu* (rejected — không ổn định giữa DN, đã đo); *sửa
+`default_bounds` chọn header khớp năm folder* cho ca GC (hoãn — đụng logic C1 đã deploy, rủi ro
+6 DN whitelist; manual-override an toàn hơn).
+
+### 18. WS1 — Tin cậy parse theo NHÃN BẰNG CHỨNG mỗi cột + cổng review mỗi file (2026-07-24; WS1 đã cài #4–#7; SỬA + mở rộng WS2 2026-07-24 — xem **Revision — WS2** cuối ADR)
+
+> Kết quả grill WS1 (`.ai/features/2026-07-24-parse-review-per-test-ux/brief.md`). Xương sống +
+> mọi nhánh chịu lực đã chốt; còn lại là việc cơ học + nền WS3 (xem cuối).
+
+**Bối cảnh:** luồng parse hiện tin cột theo VỊ TRÍ mà không có tín hiệu tin cậy. Đường `standard`
+(`select_sheet` đạt `_MIN_SCORE=5` → áp `_COL` cố định) không kiểm số học; chỉ đường `extended`
+kiểm bằng đẳng thức. Ý ban đầu — chạy lại match-rate đẳng thức mức FILE trên mọi path — bị bác:
+C2.1/C2.2 (`c2_balance.py`) ĐÃ tự tính lại đúng đẳng thức đó thành finding, nên làm vậy chỉ dời
+một check vào parser. Quan trọng hơn, **đẳng thức cân đối KHÔNG đủ để xác thực map cột**:
+- Bất biến dưới **hoán vị hai cột cùng dấu**: đổi `production_out`↔`other_out` (đều trừ) → C2 vẫn
+  xanh, nhưng C4.3 đọc riêng `production_out` → đọc nhầm cột, IM LẶNG.
+- Các cột **ngoài đẳng thức** (cột con "xuất khẩu" M15a cho C1.4; cột ĐM "thực tế" M16 cho C4.3)
+  không đẳng thức nào kiểm — đúng lý do ADR #17 phải thêm logic theo NHÃN riêng.
+- `BALANCE_EXPECT` (`layout.py:22`) chỉ có từ khoá cho 4/6 cột cân đối m15; `reexport`(6)/
+  `repurpose`(7)/`other_out`(9) KHÔNG có từ khoá → hôm nay không label-check được.
+
+**Quyết định:**
+- **Mỗi cột đọc mang MỘT nguồn bằng chứng** (định danh tiếng Anh, KHÔNG dịch), mạnh→yếu:
+  `officer-confirmed` (cán bộ duyệt / map đã lưu cho form này) > `header-matched` (tiêu đề khớp) ·
+  `balance-checked` (đẳng thức cân đối khớp — số vouch) > `position-only` (chỉ vị trí, không kiểm).
+- Badge cho cán bộ gộp về **HAI trạng thái**: `verified` (xanh) vs `needs_review` (vàng); nguồn
+  hiện ở dòng phụ khi mở. Định danh nội bộ tiếng Anh; UI render tiếng Việt ("Đã kiểm"/"Cần xác nhận")
+  theo quy ước ngôn ngữ UI.
+- `balance-checked` chỉ ĐỦ cho cột dùng dạng TỔNG (C2 tự tính lại); cột **dùng riêng lẻ** cần
+  `header-matched`/`officer-confirmed` (đẳng thức không phân biệt hai cột cùng dấu): `production_out`
+  →C4.3/C5, `repurpose`→C1.x, cột con export M15a→C1.4, cột ĐM thực tế M16→C4.3.
+- **Trạng thái = `needs_review`** khi cột được một check tiêu thụ có nguồn tốt nhất là `position-only`,
+  HOẶC cột dùng riêng lẻ mà nguồn tốt nhất chỉ `balance-checked`; còn lại `verified`. Cột dùng riêng
+  lẻ hay dạng tổng do registry D2 (`consumed_as: individual|sum`) khai.
+- **Cổng review MỖI FILE** (không mỗi check): kích khi có cột `needs_review` chưa có map lưu. Banner
+  nêu cột + các check bị ảnh hưởng.
+- **CẢNH BÁO, KHÔNG CHẶN:** check vẫn chạy, finding vẫn hiện, kèm cờ "dựa trên cột chưa xác nhận".
+  Chặn chỉ cân nhắc nếu sau này DN tự upload hàng loạt không có cán bộ trung gian.
+- **Xác nhận scope theo DN (option 2); lưu map theo `(DN, vân tay form)`.** SỬA ADR #15: xác nhận
+  KHÔNG tái dùng chéo DN — DN-A duyệt không cấp `officer-confirmed` cho DN-B (lý do user chốt: một
+  DN duyệt sai không được lan sang DN khác). Vân tay form vẫn CẤU TRÚC (không mã DN) nên trong CÙNG
+  DN tái dùng chéo NĂM: 004 2024+2025 cùng shape → duyệt 1 lần/DN, không mỗi năm; shape đổi giữa
+  năm thì vân tay bắt và hỏi lại. 6 DN whitelist mỗi DN seed `officer-confirmed` cho shape của mình.
+- **Vân tay form = hash chuẩn hoá vùng tiêu đề mỗi slot:** danh sách nhãn tiêu đề cột theo thứ tự
+  (dòng header đã dò) + số cột, gập hoa/dấu/khoảng trắng + bỏ chữ số năm; kèm dòng đánh số `(1)(2)…`
+  khi form có (004 có, 002 không). KHÔNG chứa mã DN. Tính được ở bước profile từ vùng header
+  `select_sheet` đã đọc. Rủi ro va chạm (hai bố cục cùng rỗng/thưa ở cột nhập nhằng) triệt tiêu nhờ
+  số cột + dòng đánh số ở quy mô MVP.
+- **6 DN whitelist seed sẵn `confirmed`** (regression 419 đã kiểm, ADR #17) → đường demo không đổi.
+- **Registry test→cột (D2) = dict TĨNH trong code** (`app/checks/registry.py`), KHÔNG bảng DB.
+- **Vòng đời file (state machine, HIỆN TRÊN UI):** `uploaded` (đã lưu + đăng ký, chưa đọc) →
+  `analyzed` (dry-run parse: chọn sheet + map cột + tính evidence source/review state; **CHƯA ghi
+  DB** — cổng review ở đây) → `parsed` (đã commit dòng vào DB); `error` nếu đọc/nạp hỏng (terminal
+  tới khi tải lại). Tận dụng `ingest(dry_run=True)` sẵn có (tính stats không commit). `analyzed→parsed`
+  **TỰ ĐỘNG khi `verified`**, DỪNG chờ cán bộ bấm khi `needs_review` (đường whitelist chảy suốt,
+  không thêm click). Badge tin cậy (`verified`/`needs_review`) là TRỤC RIÊNG — file có thể `parsed`
+  + `needs_review` (warn-not-block). Ánh xạ enum cũ (`DataFileStatus`): PENDING→`uploaded`, THÊM
+  `analyzed`, OK→`parsed`, WARNING→cờ `needs_review` (không còn là status), ERROR→`error`.
+- **Map lưu chứa:** map cột (`slot → field → chỉ số cột`) + evidence source mỗi cột + ai/khi nào
+  xác nhận; khoá `(DN, vân tay form)`. Lưu TOÀN map (không chỉ cột lệch) để tái dựng đủ.
+- **AI = bước SỬA (ADR #15), chỉ khi heuristic + đẳng thức đều trượt:** đề xuất map, BẮT BUỘC
+  re-validate bằng đẳng thức, cán bộ xác nhận. WS1 chỉ lộ đề xuất trong cổng review khi cột
+  `needs_review` và chưa có map lưu. KHÔNG gọi LLM trong rule logic (chỉ parse-time).
+- **Staleness khi sửa map file đã `parsed`:** re-analyze → re-parse → **re-run CHỈ các check registry
+  báo đọc cột đã đổi** (scoped qua D2) — **SỬA WS2: re-run này chạy qua JOB async, không còn đồng
+  bộ; xem Revision cuối ADR**. WS1 KHÔNG cần cờ stale. Mô hình stale tổng quát
+  (`check_runs` + `data_version`, overview `stale = based_on_run_at < ran_at`) là của **WS3** — chỉ
+  cần khi re-run không tức thì + cho AI overview. Hệ quả: WS1 core build được CHỈ với registry; nền
+  `check_runs`/`data_version` chỉ bắt buộc khi WS3 (overview) tới.
+
+**Việc (đo từ code hiện có):** đường `standard` đã tính vị trí khớp nhãn trong `SheetCandidate.colmap`
+rồi **vứt đi** (`parse_m15` chỉ dùng `.name`). Cần: giữ `colmap`; thêm từ khoá cho cột 6/7/9; ghi
+nhãn bằng chứng vào `ParseProvenance.detail`; thêm registry; một màn review.
+
+**Alternatives loại:** *Option A — match-rate đẳng thức mức FILE trên mọi path* (trùng C2.1/C2.2;
+mù với hoán vị cùng dấu + cột ngoài đẳng thức); *cổng mỗi check* (bắt cán bộ xác nhận cùng một cột
+N lần, không hơn gì việc liệt kê check bị ảnh hưởng trên một banner file).
+
+**Còn lại (KHÔNG chặn thiết kế WS1):** nội dung `consumed_as` của registry là việc CƠ HỌC (đọc từ
+code check — bảng trong brief); nền staleness tổng quát (`check_runs`/`data_version`) thuộc WS3;
+phân quyền confirm trong CÙNG DN = cán bộ có quyền DN đó (ranh giới ADR #14). Xem
+[[parse-confidence-evidence-model]].
+
+---
+
+**Revision — WS2 (chạy test lẻ + export chọn) + đổi mô hình chạy check sang ASYNC (2026-07-24, grill `/grill-with-docs WS2`)**
+
+> Grill WS2 chốt ba nhánh dưới và SỬA quyết định "re-run inline" của WS1 ở trên. Gộp vào ADR #18
+> (không tách ADR #19) theo yêu cầu owner. WS2 build được CHỈ với hạ tầng job sẵn có + registry WS1;
+> **KHÔNG cần nền `check_runs`/`data_version` của WS3** — combo recompute-mỗi-lần thay cho stale-flag.
+
+*(1) Chạy check — TẤT CẢ qua JOB QUEUE (SỬA staleness inline của WS1):*
+- Không còn `run_checks(...)` đồng bộ trong request handler. Mọi lần chạy check enqueue job; worker
+  là **1 thread chạy tuần tự** → serialize mọi ghi, triệt tranh chấp single-writer SQLite (đây là lý
+  do chính owner chốt async). Trang `/jobs/{id}` đã auto-refresh 2s + link "→ Xem kết quả" về DN.
+- `RUN_CHECKS` payload thêm `only: list[str]` (tuỳ chọn): có → chạy tập con; không → full năm.
+  `BATCH_RUN` giữ nguyên (full mọi năm). `INGEST_AND_RUN` (enum) vẫn để trống, KHÔNG dùng.
+- **Chạy test lẻ:** nút mỗi nhóm check ở `company_detail` → enqueue `RUN_CHECKS {only:[mã]}` theo
+  **NĂM đang xem** → redirect `/jobs/{id}`. (All-years-một-check: KHÔNG làm — đã có "Tất cả năm".)
+- **Cổng confirm map (SỬA `documents_confirm_review`, option A — tách confirm/run):** `save_column_map`
+  + re-ingest + `record_parse_result` GIỮ đồng bộ (file lên `parsed`, map áp NGAY vì áp map = ý nghĩa
+  của "confirm"); phần re-run scoped đổi thành enqueue `RUN_CHECKS {only: affected}`. Confirm LẦN ĐẦU
+  (file `analyzed`, chưa finding) KHÔNG enqueue → ở lại `/documents` như cũ; re-confirm (file đã
+  `parsed` + cột đổi) enqueue job → `/jobs/{id}`.
+- *Loại — option B* (chỉ save map đồng bộ, re-ingest + re-run đều vào `INGEST_AND_RUN` job): đẩy cả
+  việc áp map ra sau hàng đợi → file kẹt `analyzed` tới khi worker chạy; owner chọn A.
+
+*(2) Combo (D4) — recompute MỖI lần chạy + toggle tắt toàn cục:*
+- `run_checks` recompute combo trên MỌI lần chạy (lẻ hay full), đọc **TOÀN finding-set** của (DN, năm),
+  không chỉ finding vừa chạy. Sửa lỗi hiện tại: chạy `only=` xoá sạch `COMBO_*` (delete vô điều kiện,
+  dòng ~77-83) rồi KHÔNG dựng lại (recompute chỉ khi `only is None`) → combo biến mất tới lần full kế.
+  Delete `COMBO_*` giữ vô điều kiện; chỉ RECOMPUTE mới gate theo toggle.
+- **Toggle `combos_enabled`** (app_settings, `get_setting("combos_enabled", default=False)`) — **mặc
+  định OFF**, một công tắc admin toàn cục (không per-combo). OFF → `run_checks` skip `detect_combos`;
+  `company_detail` ẩn mục combo (gate theo setting SỐNG → flip giữa chừng ẩn ngay). **Lazy**: flip áp
+  theo mỗi (DN, năm) ở lần chạy kế; demo re-run hết nên không lệch. KHÔNG eager-purge toàn bộ.
+- Scoring KHÔNG đổi: `compute_company_year_score` cộng `COMBO_BONUS=20` khi `has_combo`. OFF → không
+  `COMBO_*` trong DB (sau lần chạy) → `has_combo=False` → không +20. Tự nhất quán UI↔điểm.
+- Lý do OFF mặc định (present-tense "hiện không make sense"): 2/4 combo neo trên **C4.3** đang đổi định
+  nghĩa (số nhân = sản lượng, đề án sửa, `c4_norm.py` chưa) → combo dựng trên metric đang biến động;
+  bật lại sau khi C4.3 chốt + revalidate. Combo vẫn ở catalog §2.7, chỉ tắt runtime (đảo được).
+
+*(3) Export chọn test — EPHEMERAL, không profile:*
+- `build_export(..., only: set[str] | None)`: lọc finding theo `check_code.in_(only)`; sheet chứng cứ
+  M15/M15a/M16/BCCT tự thu hẹp theo subject của finding còn lại (đã key sẵn). `/export` nhận param
+  `check` LẶP LẠI (`?year=&check=C1.1&check=C4.3`); **KHÔNG chọn = xuất TẤT CẢ** (nút cũ nguyên vẹn).
+- UI: checkbox mỗi nhóm check + nút "Xuất các test đã chọn"; thêm "Xuất test này" ở màn drill-down.
+- Combo là mã như mọi check (gồm khi chọn mã `COMBO_*`); KHÔNG logic combo riêng. Sheet Tổng quan
+  **liệt kê mã đã chọn** → export lọc không nhầm thành export đủ (kỷ luật không-hộp-đen). Audit log mã.
+- *Loại:* export profile lưu tên (bảng + CRUD cho nhu cầu chưa ai nêu, demo gần) — YAGNI, thêm sau nếu
+  có workflow xuất lặp thật.
+
+Xem [[parse-confidence-evidence-model]] · [[check-execution-async-via-jobs]].
+
+---
+
+**Revision — WS3 (AI tổng quan mỗi test + staleness) (2026-07-24, grill `/grill-with-docs WS3`, advisor fable review)**
+
+> Grill WS3 chốt mô hình theo-dõi-lần-chạy + tổng quan AI. GREENFIELD hoàn toàn: KHÔNG có
+> `check_runs`, `data_version`, hay overview lưu trữ nào hôm nay — mọi narrative AI hiện sinh LIVE
+> mỗi lượt chat, chỉ `ai_conversations`/`ai_messages` persist. Gộp vào ADR #18 (không tách #19)
+> theo owner. Advisor (fable) review chốt Q1–Q7, LẬT Q8 sang forward-only (sửa một sự thật sai).
+
+*(1) Tổng quan AI — grain, trigger, cơ chế chạy:*
+- **Grain = một overview mỗi `(company_id, period_year, check_code)`** (D6): tóm tắt tiếng Việt CÓ
+  TRUY NGUỒN của riêng check đó cho DN-năm, render ở khối `group-actions` (`company_detail.html:240`).
+  KHÔNG phải một narrative gộp mỗi DN-năm — bản gộp đã có LIVE trong chat (`_generate_report`,
+  `app/ai/tools.py:674`). Grain per-check là điều kiện để staleness có nghĩa (re-run C4.3 chỉ stale
+  overview C4.3).
+- **On-demand, KHÔNG eager:** cán bộ bấm "Tạo tổng quan" → sinh + lưu một overview. Eager (auto sau
+  mỗi `run_checks`) = hàng trăm gọi LLM mỗi BATCH_RUN, hầu hết không ai đọc. Overview là công cụ ĐỌC,
+  không phải một phần kết quả kiểm toán.
+- **Sinh ĐỒNG BỘ trong request, KHÔNG qua job worker.** Worker 1 thread (WS2) serialize check; một
+  gọi LLM 5s ở đó sẽ CHẶN hàng đợi check. Overview chỉ ghi MỘT dòng `check_overviews` (không đụng
+  finding-set) nên gần như không tranh chấp ghi → chạy trong request đúng chỗ.
+  **Endpoint khai `def` THUẦN, KHÔNG `async def`:** `async def chat` (`ai.py:181`) gọi OpenAI client
+  đồng bộ → CHẶN cả event loop; `def` thuần chạy trong threadpool FastAPI, chỉ tốn 1 thread. Tái dùng
+  `check_rate_limit`/`check_daily_budget`, đặt timeout client tường minh, GHI DB SAU khi LLM trả (không
+  để transaction ghi bắc qua lời gọi LLM).
+
+*(2) `check_runs` — upsert, cột, status, dọn orphan:*
+- **Latest-upsert**, một dòng mỗi `(company_id, period_year, check_code)`, unique bộ ba. KHÔNG
+  append-history: consumer duy nhất là staleness (chỉ cần `ran_at` mới nhất); lịch sử LẦN CHẠY đã có
+  ở bảng `jobs` (`payload.only`, `started_at`/`finished_at`) + `findings.created_at` (de-facto last-run
+  cho check khác 0 nhờ wipe-and-recreate). Tiền lệ: `CompanyYearScore` cũng upsert.
+- **Cột:** `company_id`, `period_year`, `check_code`, `ran_at`, `finding_count`, `status`, `data_version`.
+- **Upsert PHẢI nằm TRONG `run_checks()`** (vòng lặp `~run_checks.py:97-115`), KHÔNG ở job handler —
+  nếu không, entry CLI (`run_checks.py:190`) + fallback inline (`companies.py:1187`) không dời `ran_at`
+  → false-stale. Ghi cho MỌI check đã chạy, kể cả 0 finding (đó là lý do D5: không suy từ
+  `findings.created_at` — check ra 0 finding thì không có dòng finding).
+- **Full run cũng DELETE `check_runs` của mã `X.*` orphan** (soi `run_checks.py:81-88` xoá finding orphan).
+- **`status` = `ok`/`error` bây giờ, `not_evaluable` DÀNH SẴN (chưa build).** `error` chỉ với check
+  ĐỘNG (`CheckRunError` bắt ở `run_checks.py:107-114`); check built-in raise → rollback CẢ transaction
+  trước `s.commit()` → không có dòng `check_runs` nào của lần đó (nhất quán, đừng mong dòng error
+  per-check cho built-in). `not_evaluable` (phân biệt "0 vì sạch" vs "0 vì thiếu dữ liệu") là việc
+  **Tầng C — chờ họp**, KHÔNG front-run ở WS3; cột sẵn, phái sinh để sau.
+
+*(3) `data_version` — GIỮ (crux), trên `CompanyPeriod`:*
+- **Vì sao giữ:** đường re-ingest trần (`documents_ingest_year`, `companies.py:1196`) đổi dữ liệu mà
+  KHÔNG chạy check (ingest ≠ run là hai bước cố ý; flow sửa kỳ muốn đặt kỳ giữa hai bước). Sau nó
+  finding + overview stale nhưng `ran_at` KHÔNG dời → `based_on_run_at < ran_at` sai → không ai phát
+  hiện. Đường confirm-review khi `changed_fields` rỗng/không map check nào cũng là ingest-không-run.
+  → chỉ `ran_at` có ĐIỂM MÙ thật.
+- **Số nguyên trên `CompanyPeriod`** (đã 1 dòng/DN-năm, `resolve_period_bounds` upsert MỌI lần ingest
+  không dry-run → dòng chắc chắn tồn tại). Số nguyên > timestamp: `_now()` Python và
+  `func.current_timestamp()` SQL là HAI đồng hồ; so bằng không cần thứ tự.
+- **Ba ràng buộc cài đặt (advisor):** (a) bump version TRONG transaction của ingest → version + data
+  commit nguyên tử; (b) `run_checks` đọc data_version ở ĐẦU lần chạy và ghi giá trị đó — re-ingest ở
+  route-thread có thể commit GIỮA lúc worker chạy check; ghi version lúc-commit sẽ che mất; (c) upsert
+  `check_runs` trong `run_checks()` (đã nêu ở 2).
+- **Overview stale ⇔ `check_runs.ran_at` dời (check chạy lại) HOẶC `CompanyPeriod.data_version` dời
+  (dữ liệu nạp lại từ khi sinh).**
+- **Đường chưa phủ:** sửa alias/canonical UOM (`admin.py`) đổi chuẩn hoá check mà không ingest, không
+  run → không tín hiệu staleness. Hiếm, chỉ admin — GHI CHÚ, không kỹ-nghệ-hoá.
+- *Loại:* auto-run check khi ingest rồi bỏ data_version (chọi flow ingest→đặt-kỳ→run cố ý; re-ingest
+  14 DN fan-out 14 run); chỉ `ran_at` (mù đường re-ingest — chính là hộp đen dự án bác).
+
+*(4) Staleness UX + persistence:*
+- **Flag-only:** overview stale hiện text XÁM + badge "Tổng quan đã cũ — dựa trên lần chạy trước" +
+  mốc `based_on` + nút "Tạo lại"; KHÔNG auto-regenerate lúc load (company_detail là trang chính → sẽ
+  gọi LLM mỗi lần xem). Đánh dấu-không-ẩn = kỷ luật không-hộp-đen.
+- **Overwrite (upsert một dòng mỗi check), KHÔNG version history** — consumer duy nhất là "overview
+  hiện tại + có stale không". Dòng `check_overviews` TỰ mang telemetry (`model`, `tokens_in`,
+  `tokens_out`, `cost_usd`, `latency_ms`, gương `AiMessage` `models/ai.py:78-82`) → mỗi overview tự
+  truy nguồn được chi phí (đây là gọi LLM tính tiền) mà không cần bảng history hay `ai_conversation`
+  giả. Double-click đồng thời = hai gọi LLM last-write-wins (chấp nhận; guard in-flight theo bộ ba là
+  tuỳ chọn tỉa).
+- **Cột `check_overviews`:** `company_id`, `period_year`, `check_code`, `content`, `generated_at`,
+  `based_on_run_at`, `based_on_data_version`, `model`, `tokens_in`, `tokens_out`, `cost_usd`,
+  `latency_ms`; unique `(company_id, period_year, check_code)`.
+
+*(5) Kỷ luật prompt (không-hộp-đen áp cho cả narrative):*
+- **Nạp prompt: đếm theo severity + top-N `subject_key`, KHÔNG nạp dòng** (code tự ghi 11.003 finding
+  cho một DN-năm, `companies.py:1369`). LƯU snapshot tổng hợp đó lên dòng overview.
+- **Đọc `ran_at` + `data_version` + tổng hợp finding trong MỘT session/transaction** khi sinh — một
+  lần chạy commit giữa chừng sẽ ghép snapshot từ hai trạng thái.
+- Prompt được lệnh KHÔNG khẳng định "sạch/không bất thường" từ mỗi con số 0 (honesty tạm ở prompt tới
+  khi Tầng C thêm `not_evaluable`). Cân nhắc: status triage finding (confirmed/false-positive) RESET
+  về `new` mỗi lần re-run → quyết định có đưa status vào overview không.
+
+*(6) Phạm vi — combo LOẠI, forward-only KHÔNG backfill:*
+- **Combo (`COMBO_*`) KHÔNG vào `check_runs` lẫn overview:** recompute mỗi lần chạy (WS2), default OFF,
+  UI `group-actions` đã guard `not code.startswith('COMBO_')` — không nút chạy lẻ, không panel per-test.
+  `check_runs` chỉ theo mã check thật; overview chỉ cho check thật.
+- **Forward-only, KHÔNG backfill** (LẬT so với đề xuất grill ban đầu). **Sự thật sửa:**
+  `CompanyYearScore.computed_at` là mốc lần chạy ĐẦU TIÊN, KHÔNG phải mới nhất — upsert
+  `run_checks.py:159-173` chỉ đổi `score`/`tier`/`breakdown`, cột `score.py:28-30` có `server_default`
+  KHÔNG `onupdate` → không bao giờ dời sau insert đầu. Seed `ran_at` từ nó = đóng dấu mốc cũ hàng tuần
+  (sai "lần chạy gần nhất" tệ hơn không có). Thêm nữa seed `finding_count=0` vô consumer: group dựng từ
+  findings `GROUP BY` (`companies.py:1371`) → check ra-sạch không render group, không mặt overview.
+  → dòng `check_runs` VẮNG = "chưa rõ" (KHÔNG stale); lần chạy thật đầu tiên tạo dòng.
+- **KHÔNG "batch re-run để seed":** `run_checks` xoá finding mọi mã nó đụng và KHÔNG có carry-over
+  status triage nào → populate-run RESET mọi `status` finding về `new`. Nếu SAU này cần "lần chạy" mỗi
+  check cho toàn DN lịch sử ngày-một → seed từ `MAX(findings.created_at)` per (DN, năm, mã) (mốc
+  latest thật cho check khác 0), KHÔNG từ `computed_at`, và để check ra-sạch không seed.
+
+*(7) Ranh giới Q1/Q5 (làm rõ, không phát hiện ở template):* overview chỉ mặt trên GROUP đã render
+(check ≥1 finding) → lệnh prompt "không khẳng định sạch từ 0" tạm CHƯA có consumer sống (check 0
+finding không hiện nút overview). Ổn cho demo; ghi rõ scoping ở đây.
+
+**WS3 build được trên:** `check_runs` + `data_version` (mới) + registry WS1 + hạ tầng LLM
+`call_with_fallback` sẵn có. Thứ tự: nền `check_runs`/`data_version` (ghi trong `run_checks` +
+bump trong `ingest`) TRƯỚC → overview on-demand chồng lên. Alembic head hiện `b7d2e1f4a3c6` →
+migration WS3 `down_revision = "b7d2e1f4a3c6"`.
+
+Xem [[parse-confidence-evidence-model]] · [[check-execution-async-via-jobs]] · [[ws3-overview-staleness-model]].

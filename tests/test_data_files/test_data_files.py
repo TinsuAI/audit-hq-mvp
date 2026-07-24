@@ -90,13 +90,14 @@ class TestRecordParseResult:
         assert by_slot["m15"].row_count == 99
         assert by_slot["m16"].row_count == 476
 
-    def test_record_zero_rows_is_warning(self, session, company, tmp_path):
+    def test_record_zero_rows_is_error(self, session, company, tmp_path):
+        # WARNING không còn là status lifecycle (ADR #18): 0 dòng = chưa dùng được → error.
         _touch(tmp_path, company.code, 2024, "BCQT", "Mau15_NVL.xlsx")
         sync_data_files(session, company, raw_root=tmp_path)
         record_parse_result(session, company, 2024,
                             IngestStats(company_code=company.code, period_year=2024, m15_rows=0))
         row = session.query(DataFile).filter_by(company_id=company.id, slot="m15").first()
-        assert row.parse_status == DataFileStatus.WARNING
+        assert row.parse_status == DataFileStatus.ERROR
 
 
 def test_files_by_year_slot_groups(session, company, tmp_path):

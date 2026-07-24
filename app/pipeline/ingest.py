@@ -34,6 +34,8 @@ class IngestStats:
     bcct_other_year: int = 0  # dòng BCCT bị loại vì ngày tờ khai ngoài cửa sổ kỳ
     bcct_skipped: list[str] | None = None  # file trong HANG_CHI_TIET không phải BCCT
     files: dict[str, str | None] | None = None
+    # slot → ParseProvenance (cách đọc file: standard/extended/labeled + bằng chứng).
+    provenance: dict | None = None
 
 
 def _get_or_create_company(
@@ -87,6 +89,11 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
     stats.m15_rows = len(m15.rows) if m15 else 0
     stats.m15a_rows = len(m15a.rows) if m15a else 0
     stats.m16_rows = len(m16.rows) if m16 else 0
+    stats.provenance = {
+        "m15": m15.provenance if m15 else None,
+        "m15a": m15a.provenance if m15a else None,
+        "m16": m16.provenance if m16 else None,
+    }
     # BCCT: giữ dòng có ngày tờ khai trong cửa sổ kỳ [period_from, period_to]
     # (năm tài chính ≠ dương lịch). Dòng ngoài cửa sổ đếm vào bcct_other_year.
     bcct_all = [r for b in bcct_files for r in b.rows]

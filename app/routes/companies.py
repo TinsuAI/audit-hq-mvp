@@ -6,6 +6,7 @@ import json as _json
 import re
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -13,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.app_settings import get_combos_enabled
 from app.audit import (
     ACTION_DOWNLOAD,
     ACTION_EXPORT,
@@ -40,6 +42,7 @@ from app.models import (
     CompanyPeriod,
     CompanyYearScore,
     DataFile,
+    DataFileStatus,
     DeclarationLine,
     Finding,
     Norm,
@@ -90,14 +93,19 @@ templates.env.globals["app_version_string"] = version_string()
 # Nhãn cho trang quản lý tài liệu (ma trận năm × loại file BCQT).
 templates.env.globals["SLOT_LABEL_VI"] = SLOT_LABEL_VI
 templates.env.globals["SLOT_ORDER"] = list(SLOT_ORDER)
+# Trục lifecycle (ADR #18): uploaded → analyzed → parsed (+ error). Cờ review
+# (verified/needs_review) là trục RIÊNG, render bằng badge khác. "warning" giữ lại
+# làm nhãn dự phòng cho dòng registry cũ (không code path nào ghi mới).
 DATA_FILE_STATUS_LABEL = {
-    "pending": "Chưa nạp",
+    "pending": "Đã tải lên",
+    "analyzed": "Đã phân tích",
     "ok": "Đã nạp",
     "warning": "Cảnh báo",
     "error": "Lỗi",
 }
 DATA_FILE_STATUS_BADGE = {
     "pending": "muted",
+    "analyzed": "info",
     "ok": "info",
     "warning": "warning",
     "error": "critical",
@@ -228,6 +236,39 @@ _UPLOAD_SLOTS = {
     "m16": ("DINH_MUC", "BCDM_TT39"),
     "bcct": ("HANG_CHI_TIET", "BCCT"),
 }
+
+
+# Cột KHOÁ (mã hàng) mỗi slot — evidence_refs của mọi finding trên slot lọc theo cột
+# này. Đổi map cột khoá trên file đã `parsed` → chạy lại MỌI check đọc slot (không chỉ
+# check đọc cột khoá) để không để C2.1/C2.2 lại finding treo (ADR #18).
+_SLOT_KEY_FIELD = {"m15": "material_code", "m15a": "product_code", "m16": "material_code"}
+
+
+def _group_options_by_family(options: list[dict], specs: dict) -> list[dict]:
+    """Gom option chọn-test theo họ (C1/C2/…) + tiêu đề nhóm §4 đề án.
+
+    COMBO_* và X.* (mở rộng) gom về nhóm riêng, xếp cuối. Trả list
+    `{"title", "options"}` đã sắp theo số nhóm rồi mã họ.
+    """
+    from app.catalog_full import GROUP_NAMES
+
+    buckets: dict[str, dict] = {}
+    for opt in options:
+        code = opt["code"]
+        if code.startswith("COMBO_"):
+            key, title, order = "COMBO", "Phát hiện kết hợp", (100, "")
+        elif code.startswith("X."):
+            key, title, order = "X", "Kiểm tra mở rộng", (99, "")
+        else:
+            spec = specs.get(code)
+            group = spec.group if spec else 0
+            fam = code.split(".")[0]
+            name = GROUP_NAMES.get(group, "Khác")
+            key, title, order = fam, f"{fam} · {name}", (group, fam)
+        bucket = buckets.setdefault(key, {"title": title, "order": order, "options": []})
+        bucket["options"].append(opt)
+    ordered = sorted(buckets.values(), key=lambda b: b["order"])
+    return [{"title": b["title"], "options": b["options"]} for b in ordered]
 
 
 # Magic-byte chữ ký Excel — chặn file đổi đuôi (vd .txt → .xlsx) trước khi lưu.
@@ -483,7 +524,12 @@ def upload_data(
         )
 
     # Cập nhật registry file ngay sau khi lưu (kể cả khi sắp báo lỗi chẩn đoán).
-    from app.pipeline.data_files import record_parse_result, sync_data_files
+    from app.pipeline.data_files import (
+        record_parse_result,
+        should_stop_for_review,
+        sync_data_files,
+        year_review_gate,
+    )
     sync_data_files(db, company)
 
     # CHẨN ĐOÁN trước khi nạp — chống misparse thầm lặng (file HQ sai mẫu/lệch cột).
@@ -509,11 +555,33 @@ def upload_data(
             status_code=422,
         )
 
-    # Không lỗi nặng → NẠP dữ liệu (ingest). KHÔNG tự chạy kiểm tra (bước riêng).
+    # Cổng review (ADR #18): dry-run parse trước để tính bằng chứng + review mỗi cột,
+    # CHƯA ghi dòng. Mọi cột `verified` → tự advance sang parsed (đường whitelist chảy
+    # suốt); có cột `needs_review` → DỪNG ở `analyzed`, cán bộ bấm "Nạp dữ liệu" để
+    # tiếp (cảnh báo, không chặn — check vẫn chạy sau khi parsed).
+    raw_path = Path(settings.raw_data_path)
     try:
-        stats = run_ingest(company.code, year, raw_root=Path(settings.raw_data_path))
+        analyze_stats = run_ingest(company.code, year, raw_root=raw_path, dry_run=True)
     except FileNotFoundError as e:
         raise HTTPException(status_code=400, detail=f"Discover lỗi: {e}") from e
+    except Exception as e:  # noqa: BLE001 — show parser errors back to user
+        raise HTTPException(status_code=500, detail=f"Phân tích file lỗi: {type(e).__name__}: {e}") from e
+    record_parse_result(db, company, year, analyze_stats, diagnosis, committed=False)
+
+    gate = year_review_gate(db, company, year)
+    if should_stop_for_review(gate):
+        return RedirectResponse(
+            url=(
+                f"/companies/{code}/documents?msg=%C4%90%C3%A3+t%E1%BA%A3i+l%C3%AAn+%26"
+                f"+ph%C3%A2n+t%C3%ADch+n%C4%83m+{year}+%E2%80%94+c%E1%BA%A7n+x%C3%A1c"
+                f"+nh%E1%BA%ADn+c%E1%BB%99t+tr%C6%B0%E1%BB%9Bc+khi+n%E1%BA%A1p"
+            ),
+            status_code=303,
+        )
+
+    # Tự advance: NẠP dữ liệu (commit). KHÔNG tự chạy kiểm tra (bước riêng).
+    try:
+        stats = run_ingest(company.code, year, raw_root=raw_path)
     except Exception as e:  # noqa: BLE001 — show parser errors back to user
         raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
 
@@ -667,7 +735,11 @@ def company_documents(
 ) -> HTMLResponse:
     company = get_company_or_404(db, code, user)
 
-    from app.pipeline.data_files import files_by_year_slot, sync_data_files
+    from app.pipeline.data_files import (
+        files_by_year_slot,
+        review_gate_for_files,
+        sync_data_files,
+    )
 
     # Reconcile registry với filesystem (bắt file demo có sẵn / xoá ngoài app).
     sync_data_files(db, company)
@@ -701,6 +773,11 @@ def company_documents(
     for i, y in enumerate(years):
         slots = {slot: matrix.get(y, {}).get(slot, []) for slot in SLOT_ORDER}
         has_files = any(slots.values())
+        # Cổng review (ADR #18): cột `needs_review` + check bị ảnh hưởng — banner cảnh
+        # báo, KHÔNG chặn (trục review độc lập lifecycle; file có thể parsed + cần xác nhận).
+        review_gate = review_gate_for_files(
+            f for slot_files in slots.values() for f in slot_files
+        )
         has_data = y in data_years
         slot_counts = _slot_row_counts(db, company.id, y) if has_data else {}
         total_rows = sum(slot_counts.values())
@@ -718,6 +795,7 @@ def company_documents(
             "year": y,
             "slots": slots,
             "has_files": has_files,
+            "review_gate": review_gate,
             "has_data": has_data,
             "total_rows": total_rows,
             "status_label": status_label,
@@ -957,6 +1035,190 @@ def documents_preview_file(
     )
 
 
+@router.get("/companies/{code}/documents/file/{file_id}/review", response_class=HTMLResponse)
+def documents_review_file(
+    code: str,
+    request: Request,
+    file_id: int,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Màn review map cột (WS1-3b, ADR #18): xem map đề xuất + badge evidence mỗi cột,
+    sửa chỉ số cột của field `needs_review`, xác nhận (POST) → advance `analyzed→parsed`.
+    """
+    company = get_company_or_404(db, code, user)
+    row = db.get(DataFile, file_id)
+    if row is None or row.company_id != company.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file")
+
+    detail = row.parse_detail_obj
+    columns = detail.get("columns", [])
+    column_map = detail.get("column_map", {})
+    form_signature = detail.get("form_signature")
+
+    from app.checks.registry import checks_reading
+
+    # Đính check bị ảnh hưởng cho mỗi cột (banner ở màn này) — cùng nguồn với cổng review.
+    view_cols = []
+    for c in columns:
+        field = c.get("field", "")
+        view_cols.append({
+            **c,
+            "col_index": column_map.get(field),
+            "checks": checks_reading(row.slot, field),
+        })
+
+    return templates.TemplateResponse(
+        request,
+        "document_review.html",
+        {
+            "user": user,
+            "company": company,
+            "file": row,
+            "slot_label": SLOT_LABEL_VI.get(row.slot, row.slot),
+            "columns": view_cols,
+            "form_signature": form_signature,
+            "can_confirm": bool(form_signature and column_map),
+            "human_size": _human_size,
+        },
+    )
+
+
+@router.post("/companies/{code}/documents/file/{file_id}/review", response_model=None)
+async def documents_confirm_review(
+    code: str,
+    request: Request,
+    file_id: int,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Xác nhận map cột: ghi saved-map (#6) rồi re-ingest (commit) → file advance
+    `analyzed→parsed`, cột trong map resolve `officer-confirmed` → `verified`.
+
+    Chuỗi advance: ``save_column_map`` (+ commit) → ``run_ingest`` → ``record_parse_result``
+    (committed=True). ``record_parse_result`` gọi ``resolve_officer_confirmed`` nên các cột
+    vừa lưu map lên `officer-confirmed`, cổng review clear.
+    """
+    company = get_company_or_404(db, code, user)
+    row = db.get(DataFile, file_id)
+    if row is None or row.company_id != company.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file")
+
+    slot = row.slot
+    year = row.period_year
+    # File đã `parsed` TRƯỚC lần sửa này → dòng Tầng 1 + finding đã tồn tại; sửa map
+    # phải chạy lại các check bị ảnh hưởng inline (scoped, ADR #18). File `analyzed`
+    # (lần confirm đầu) chưa có finding — không auto chạy check (bước riêng).
+    was_parsed = row.parse_status == DataFileStatus.OK
+    detail = row.parse_detail_obj
+    form_signature = detail.get("form_signature")
+    base_map = detail.get("column_map", {})
+    columns = detail.get("columns", [])
+
+    def _redirect(params: str) -> RedirectResponse:
+        return RedirectResponse(url=f"/companies/{code}/documents?{params}", status_code=303)
+
+    if not form_signature or not base_map:
+        return _redirect(
+            "error=" + quote_plus("File này không có thông tin map cột để xác nhận.")
+        )
+
+    # Map đầy đủ = cột officer sửa (field `needs_review`) chồng lên map đề xuất. Ô thiếu /
+    # không hợp lệ giữ giá trị đề xuất để map không khuyết cột.
+    form = await request.form()
+    column_map: dict[str, int] = {}
+    for field, default_idx in base_map.items():
+        raw = form.get(f"col_{field}")
+        try:
+            column_map[field] = int(raw) if raw not in (None, "") else int(default_idx)
+        except (TypeError, ValueError):
+            column_map[field] = int(default_idx)
+
+    # Cột đổi map so với map đã commit (base_map = map đang lưu ở parse_detail, đã sinh
+    # ra dòng hiện tại). Chỉ có ý nghĩa khi file đã `parsed` → scoped re-run.
+    changed_fields = {
+        f for f, idx in column_map.items() if int(base_map.get(f, idx)) != int(idx)
+    }
+
+    evidence = {c["field"]: c.get("evidence") for c in columns if c.get("field")}
+
+    from app.auth_users import get_user_by_username
+    from app.pipeline.data_files import record_parse_result, sync_data_files
+    from app.pipeline.saved_map import save_column_map
+
+    ur = get_user_by_username(db, user.name)
+    save_column_map(
+        db, company.id, slot, form_signature, column_map,
+        evidence=evidence, confirmed_by=ur.id if ur else None,
+    )
+    db.commit()
+
+    # Re-ingest thật (commit dòng) — record_parse_result đọc saved-map vừa ghi để nâng
+    # các cột lên officer-confirmed → verified → cổng review clear, file thành parsed.
+    raw_root = Path(settings.raw_data_path)
+    diagnosis = diagnose_upload(company.code, year, raw_root)
+    if diagnosis.has_errors:
+        from app.pipeline.ingest import IngestStats
+        sync_data_files(db, company)
+        record_parse_result(
+            db, company, year,
+            IngestStats(company_code=company.code, period_year=year), diagnosis,
+        )
+        return _redirect(
+            "error=" + quote_plus("Đã lưu map nhưng nạp lỗi — xem chi tiết ở trang tải lên.")
+        )
+    try:
+        stats = run_ingest(company.code, year, raw_root=raw_root)
+    except Exception as e:  # noqa: BLE001 — show parser errors back to user
+        raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
+
+    sync_data_files(db, company)
+    record_parse_result(db, company, year, stats, diagnosis)
+
+    # File đã `parsed` + có cột đổi map → chạy lại CHỈ check đọc cột đã đổi (scoped,
+    # ADR #18). Finding tham chiếu Tầng 1 qua evidence_refs (table + filter theo mã
+    # hàng), KHÔNG theo id dòng → dòng thay khi re-ingest không làm treo finding của
+    # check KHÔNG chạy lại (khoá lọc = mã hàng vẫn đúng vì cột mã không đổi). Nếu cột
+    # KHOÁ (mã) đổi thì khoá lọc đổi → mở rộng ra mọi check đọc slot (gồm C2.1/C2.2).
+    label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
+    if was_parsed and changed_fields:
+        from app.checks.registry import checks_reading, checks_reading_slot
+
+        affected: set[str] = set()
+        for f in changed_fields:
+            affected.update(checks_reading(slot, f))
+        if _SLOT_KEY_FIELD.get(slot) in changed_fields:
+            affected.update(checks_reading_slot(slot))
+        if affected:
+            # Re-run scoped chạy ASYNC qua job queue (ADR #18 Revision — WS2, option A):
+            # confirm + re-ingest (áp map, file→`parsed`) GIỮ đồng bộ ở trên; chỉ phần
+            # re-run enqueue → worker 1-thread serialize ghi, triệt tranh chấp SQLite.
+            if ur is not None:
+                from app.jobs import enqueue_job
+                from app.models.job import JobKind
+                job = enqueue_job(
+                    db, kind=JobKind.RUN_CHECKS,
+                    payload={
+                        "company_code": company.code, "year": year,
+                        "only": sorted(affected),
+                    },
+                    created_by=ur.id, company_id=company.id, period_year=year,
+                )
+                log_access(
+                    db, username=user.name, action=ACTION_RUN_CHECKS,
+                    company_code=company.code,
+                    detail=f"year={year} only={','.join(sorted(affected))} (confirm-review)",
+                )
+                return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+            # Fallback hiếm (session user không map được row): chạy inline để không bỏ sót.
+            from app.pipeline.run_checks import run_checks
+            run_checks(company.code, year, only=affected)
+
+    return _redirect(
+        "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} & nạp dữ liệu")
+    )
+
+
 @router.post("/companies/{code}/documents/ingest", response_model=None)
 def documents_ingest_year(
     code: str,
@@ -1051,13 +1313,16 @@ def documents_set_period(
 def rerun_checks(
     code: str,
     year: int | None = Form(default=None),
+    check: list[str] = Form(default=[]),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     """Enqueue job chạy checks.
 
-    Nếu có `year` → RUN_CHECKS đơn lẻ (CLI/dev). Mặc định không gửi year →
-    BATCH_RUN chạy tất cả năm có dữ liệu (UI default per design 2026-05-26).
+    - Không gửi `year` → BATCH_RUN mọi năm có dữ liệu (UI default 2026-05-26).
+    - Có `year`, không `check` → RUN_CHECKS full năm đó.
+    - Có `year` + `check` (lặp được) → RUN_CHECKS `only=` tập con (chạy test lẻ,
+      ADR #18 Revision — WS2). `check` bị bỏ qua khi chạy batch (mọi năm).
     """
     from app.auth_users import get_user_by_username
     from app.jobs import enqueue_job
@@ -1069,6 +1334,7 @@ def rerun_checks(
     if user_row is None:
         raise HTTPException(status_code=403, detail="Session user không tồn tại")
 
+    only = [c for c in check if c]
     if year is None:
         job = enqueue_job(
             db,
@@ -1078,17 +1344,22 @@ def rerun_checks(
             company_id=company.id,
             period_year=None,
         )
+        detail = "batch"
     else:
+        payload: dict = {"company_code": company.code, "year": year}
+        if only:
+            payload["only"] = only
         job = enqueue_job(
             db,
             kind=JobKind.RUN_CHECKS,
-            payload={"company_code": company.code, "year": year},
+            payload=payload,
             created_by=user_row.id,
             company_id=company.id,
             period_year=year,
         )
+        detail = f"year={year}" + (f" only={','.join(only)}" if only else "")
     log_access(db, username=user.name, action=ACTION_RUN_CHECKS, company_code=company.code,
-               detail=("batch" if year is None else f"year={year}"))
+               detail=detail)
     return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
@@ -1127,6 +1398,9 @@ def company_detail(
     counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     severity_totals = {"critical": 0, "warning": 0, "info": 0}
     combo_findings: list[Finding] = []
+    # Gate combo theo setting SỐNG (ADR #18 Revision — WS2): OFF → ẩn cả render, kể cả
+    # khi còn COMBO_* cũ trong DB (lazy). Flip giữa chừng ẩn/hiện ngay.
+    combos_on = get_combos_enabled(db)
     if selected_year is not None:
         for ccode, sev, n in db.execute(
             select(Finding.check_code, Finding.severity, func.count())
@@ -1138,15 +1412,16 @@ def company_detail(
             counts[ccode][sev] += n
             if sev in severity_totals:
                 severity_totals[sev] += n
-        combo_findings = db.scalars(
-            select(Finding)
-            .where(
-                Finding.company_id == company.id,
-                Finding.period_year == selected_year,
-                Finding.check_code.startswith("COMBO_"),
-            )
-            .order_by(Finding.subject_key)
-        ).all()
+        if combos_on:
+            combo_findings = db.scalars(
+                select(Finding)
+                .where(
+                    Finding.company_id == company.id,
+                    Finding.period_year == selected_year,
+                    Finding.check_code.startswith("COMBO_"),
+                )
+                .order_by(Finding.subject_key)
+            ).all()
 
     total_findings = sum(sum(s.values()) for s in counts.values())
 
@@ -1197,6 +1472,33 @@ def company_detail(
 
     all_specs = get_all_specs(db)
 
+    # Danh sách mã có finding — cho panel "Xuất các test đã chọn" (WS2-3). Gồm mọi
+    # mã regular (không phụ thuộc focus) + combo (mã như mọi check khi export).
+    export_options: list[dict] = []
+    for ccode in codes:
+        spec = all_specs.get(ccode) or SPECS.get(ccode)
+        export_options.append({
+            "code": ccode, "title": spec.title if spec else ccode,
+            "total": sum(counts[ccode].values()),
+        })
+    combo_counts: dict[str, int] = defaultdict(int)
+    for f in combo_findings:
+        combo_counts[f.check_code] += 1
+    for ccode in sorted(combo_counts):
+        spec = COMBO_SPECS.get(ccode)
+        export_options.append({
+            "code": ccode, "title": spec.title if spec else ccode,
+            "total": combo_counts[ccode],
+        })
+
+    # Toàn danh mục check (built-in + dynamic đã công bố) — cho modal "Chọn test chạy".
+    # Khác export_options (chỉ mã ĐÃ có finding): chạy thì chọn từ danh mục đầy đủ.
+    run_options = [{"code": c, "title": s.title} for c, s in sorted(all_specs.items())]
+
+    # Gom theo họ C1/C2/… (tiêu đề nhóm §4) cho cả hai modal.
+    run_groups = _group_options_by_family(run_options, all_specs)
+    export_groups = _group_options_by_family(export_options, all_specs)
+
     # Trạng thái tách upload/kiểm tra: có dữ liệu năm này chưa? đã chạy kiểm tra chưa?
     has_data = selected_year in data_years if selected_year is not None else False
     checks_run = year_score is not None or total_findings > 0 or bool(combo_findings)
@@ -1211,6 +1513,10 @@ def company_detail(
             "selected_year": selected_year,
             "period_windows": period_windows,
             "ordered_groups": ordered_groups,
+            "export_options": export_options,
+            "run_options": run_options,
+            "run_groups": run_groups,
+            "export_groups": export_groups,
             "combo_findings": combo_findings,
             "severity_totals": severity_totals,
             "total_findings": total_findings,
@@ -1269,14 +1575,20 @@ def _resolve_evidence(db: Session, ref: dict) -> tuple[list[tuple[str, str, str]
 def export_recommendations(
     code: str,
     year: int = Query(...),
+    check: list[str] = Query(default=[]),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Xuất Excel kiến nghị. `check` (lặp được) → chỉ xuất các test đã chọn; không
+    chọn = xuất toàn bộ (ADR #18 Revision — WS2)."""
     company = get_company_or_404(db, code, user)
-    payload = build_export(db, company, year)
+    only = {c for c in check if c} or None
+    payload = build_export(db, company, year, only=only)
     log_access(db, username=user.name, action=ACTION_EXPORT,
-               company_code=company.code, detail=f"year={year}")
-    filename = f"audit-hq_{company.slug or company.code}_{year}_kien-nghi-kiem-tra.xlsx"
+               company_code=company.code,
+               detail=f"year={year}" + (f" only={','.join(sorted(only))}" if only else ""))
+    scope = "" if not only else "_" + "-".join(sorted(only)).replace(".", "").replace("*", "")
+    filename = f"audit-hq_{company.slug or company.code}_{year}{scope}_kien-nghi-kiem-tra.xlsx"
     return Response(
         content=payload,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1449,6 +1761,16 @@ def company_data(
 
     view_cols, rows_view = _format_model_rows(model, rows, full=bool(full))
 
+    # Bằng chứng cách đọc file (ADR #15) — hiện phía trên bảng để không "hộp đen".
+    prov_file = db.scalar(
+        select(DataFile).where(
+            DataFile.company_id == company.id,
+            DataFile.period_year == year,
+            DataFile.slot == table,
+            DataFile.parse_layout.isnot(None),
+        )
+    )
+
     return templates.TemplateResponse(
         request,
         "company_data.html",
@@ -1468,6 +1790,8 @@ def company_data(
             "per_page": per_page,
             "q": q,
             "full": full,
+            "parse_layout": prov_file.parse_layout if prov_file else None,
+            "parse_detail": prov_file.parse_detail_obj if prov_file else {},
         },
     )
 

@@ -36,10 +36,25 @@ def content_slots(path: Path, year: int | None = None) -> tuple[str, ...]:
         try:
             select_sheet(path, slot, year)
         except _UNUSABLE:
+            # Bố cục mở rộng: 004 ghi Mẫu 15a với số biểu lệch chuẩn (mã ở c2, tách
+            # cột con) nên đường cột cố định trượt. Đọc được qua đẳng thức + nhãn
+            # export (ADR #15) thì vẫn phục vụ slot m15a. Chỉ thử cho m15a — m15 luôn
+            # nhận diện được theo tên file ("NVL"/"NPL").
+            if slot == "m15a" and _extended_m15a_ok(path, year):
+                found.append(slot)
             continue
         found.append(slot)
     _SLOT_CACHE[key] = tuple(found)
     return _SLOT_CACHE[key]
+
+
+def _extended_m15a_ok(path: Path, year: int | None) -> bool:
+    from app.adapters.extended_layout import select_extended_m15a
+
+    try:
+        return select_extended_m15a(path, year) is not None
+    except _UNUSABLE:
+        return False
 
 
 @dataclass

@@ -112,6 +112,24 @@
       {% if yr.checks_run %}<a href="/companies/{{ company.slug or company.code }}?year={{ yr.year }}" class="btn btn-sm btn-secondary">🔎 Phát hiện</a>{% endif %}
     </div>
 
+    {% if yr.review_gate %}
+    <div class="alert alert-warning doc-review-gate" role="status">
+      <p class="doc-review-gate-lead">⚠️ <strong>Cần xác nhận cột trước khi nạp</strong> — có cột đọc theo vị trí hoặc đẳng thức chưa đủ để phân biệt. Cảnh báo, KHÔNG chặn: bấm <strong>⤵️ Nạp dữ liệu</strong> để tiếp tục; kiểm tra vẫn chạy và phát hiện sẽ kèm cờ "dựa trên cột chưa xác nhận".</p>
+      <ul class="doc-review-gate-cols">
+        {% for c in yr.review_gate.columns %}
+        <li><span class="doc-review-gate-slot">{{ SLOT_LABEL_VI[c.slot].split(' — ')[0] }}</span> · <strong>{{ c.label }}</strong>{% if c.checks %} — ảnh hưởng: {{ c.checks|join(', ') }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+      <div class="doc-review-gate-actions">
+        {% set ns = namespace(seen=[]) %}
+        {% for c in yr.review_gate.columns if c.file_id and c.file_id not in ns.seen %}
+        {% set ns.seen = ns.seen + [c.file_id] %}
+        <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ c.file_id }}/review" class="btn btn-sm btn-primary">🔎 Xem &amp; xác nhận cột ({{ SLOT_LABEL_VI[c.slot].split(' — ')[0] }})</a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     <ul class="doc-files">
       {% for slot in SLOT_ORDER %}
       {% set files = yr.slots[slot] %}
@@ -124,10 +142,23 @@
             <span class="doc-file-item">
               <span class="badge {{ DATA_FILE_STATUS_BADGE[f.parse_status] }} doc-file-badge">{{ DATA_FILE_STATUS_LABEL[f.parse_status] }}</span>
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/preview" class="doc-file-name" title="Xem nội dung file">{{ f.original_filename }}</a>
+              {% if f.parse_layout %}{% set pd = f.parse_detail_obj %}
+                {% if pd.review %}
+                <span class="badge {{ 'info' if pd.review == 'verified' else 'warning' }} doc-file-badge" title="{% if pd.review == 'verified' %}Mọi cột đọc đều tin được (khớp tiêu đề/đẳng thức đủ).{% else %}Có cột dựa trên vị trí hoặc đẳng thức chưa đủ — cần cán bộ xác nhận cột.{% endif %}">{{ 'Đã kiểm' if pd.review == 'verified' else 'Cần xác nhận' }}</span>
+                {% endif %}
+                {% if f.parse_layout == 'extended' %}
+                <span class="badge info doc-file-badge" title="Đọc theo bố cục mở rộng: suy map cột từ dòng đánh số, chứng minh bằng đẳng thức {{ pd.formula }} (khớp {{ pd.matched }}/{{ pd.checked }} dòng).{% if pd.export_label %} Cột xuất khẩu chọn theo nhãn: “{{ pd.export_label|replace('\n',' ')|trim }}”.{% endif %}">🧭 bố cục mở rộng · đẳng thức {{ pd.matched }}/{{ pd.checked }}{% if pd.export_col is defined %} · XK cột {{ pd.export_col }}{% endif %}</span>
+                {% elif f.parse_layout == 'labeled' %}
+                <span class="badge info doc-file-badge" title="Chọn cột định mức theo nhãn: “{{ pd.norm_label|replace('\n',' ')|trim }}” (cột {{ pd.norm_col }}), thay cho cột định mức kỹ thuật (cột {{ pd.technical_col }}).">🧭 ĐM thực tế · cột {{ pd.norm_col }}</span>
+                {% endif %}
+              {% endif %}
               <span class="doc-file-meta">{{ human_size(f.size_bytes) }}{% if f.row_count is not none %} · {{ '{:,}'.format(f.row_count) }} dòng{% endif %}</span>
               {% if f.parse_message %}<span class="doc-file-msg" title="{{ f.parse_message }}">⚠️</span>{% endif %}
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/preview" class="doc-mini-btn" title="Xem nội dung">👁</a>
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/download" class="doc-mini-btn" title="Tải xuống">↓</a>
+              {% if f.parse_status == 'ok' and f.parse_detail_obj.get('column_map') %}
+              <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/review" class="doc-mini-btn" title="Sửa map cột — chạy lại các kiểm tra đọc cột đã đổi">✏️ Sửa cột</a>
+              {% endif %}
               <form method="post" action="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/delete"
                     class="doc-mini-form" onsubmit="return confirm('Xoá file {{ f.original_filename }}?');">
                 <button type="submit" class="doc-mini-btn" title="Xoá">🗑</button>

@@ -351,3 +351,117 @@ def _dynamic_to_spec(row) -> CheckSpec:
         default_severity=Severity(row.default_severity),
         enabled=True,
     )
+
+
+# --- Check → column registry (WS1, ADR #18) --------------------------------
+# Dict TĨNH khai mỗi check đọc `(slot, field)` nào và tiêu thụ ra sao:
+#   - ``individual`` — đọc TRỰC TIẾP một cột (không qua tổng cân đối), nên nguồn
+#     ``balance-checked`` KHÔNG đủ (đẳng thức không phân biệt hai cột cùng dấu) —
+#     cần ``header-matched`` / ``officer-confirmed``.
+#   - ``sum`` — chỉ dùng cột như một SỐ HẠNG trong đẳng thức cân đối C2 tự tính lại
+#     (bất biến dưới hoán vị cột cùng dấu) → ``balance-checked`` là đủ.
+# Cột dùng riêng lẻ (đọc từ code check): production_out (C4.3/C5.1), repurpose M15
+# (C1.6/C1.7), export M15a (C1.4/C4.3), định mức thực tế M16 (C4.3). Xem GLOSSARY.
+from app.adapters.evidence import (  # noqa: E402 — tránh cycle: evidence không import checks
+    BALANCE_CHECKED,
+    NEEDS_REVIEW,
+    POSITION_ONLY,
+    VERIFIED,
+)
+
+INDIVIDUAL = "individual"
+SUM = "sum"
+
+# (slot, field, consumed_as). Chỉ khai cột GIÁ TRỊ số + cột mã (khoá). name/unit
+# (C3.3) và cột BCCT/HS (C3.1/C3.2/C6.1) chưa mô hình hoá ở WS1.
+CHECK_COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
+    "C1.1": (("m15", "material_code", INDIVIDUAL), ("m15", "import_qty", SUM)),
+    "C1.2": (("m15", "material_code", INDIVIDUAL),),
+    "C1.3": (("m15", "material_code", INDIVIDUAL), ("m15", "import_qty", SUM)),
+    "C1.4": (("m15a", "product_code", INDIVIDUAL), ("m15a", "export_qty", INDIVIDUAL)),
+    "C1.6": (("m15", "material_code", INDIVIDUAL), ("m15", "repurpose_qty", INDIVIDUAL)),
+    "C1.7": (
+        ("m15", "material_code", INDIVIDUAL), ("m15", "repurpose_qty", INDIVIDUAL),
+        ("m15", "opening_qty", SUM), ("m15", "import_qty", SUM),
+    ),
+    "C2.1": (
+        ("m15", "opening_qty", SUM), ("m15", "import_qty", SUM),
+        ("m15", "reexport_qty", SUM), ("m15", "repurpose_qty", SUM),
+        ("m15", "production_out_qty", SUM), ("m15", "other_out_qty", SUM),
+        ("m15", "closing_qty", SUM),
+    ),
+    "C2.2": (
+        ("m15a", "opening_qty", SUM), ("m15a", "intake_qty", SUM),
+        ("m15a", "repurpose_qty", SUM), ("m15a", "export_qty", SUM),
+        ("m15a", "other_out_qty", SUM), ("m15a", "closing_qty", SUM),
+    ),
+    "C2.3": (("m15", "material_code", INDIVIDUAL), ("m15", "closing_qty", SUM)),
+    "C2.4": (("m15a", "product_code", INDIVIDUAL), ("m15a", "closing_qty", SUM)),
+    "C4.1": (
+        ("m16", "material_code", INDIVIDUAL), ("m15", "material_code", INDIVIDUAL),
+        ("m15", "import_qty", SUM), ("m15", "opening_qty", SUM),
+    ),
+    "C4.3": (
+        ("m16", "material_code", INDIVIDUAL), ("m16", "norm_qty", INDIVIDUAL),
+        ("m15a", "product_code", INDIVIDUAL), ("m15a", "export_qty", INDIVIDUAL),
+        ("m15", "material_code", INDIVIDUAL), ("m15", "production_out_qty", INDIVIDUAL),
+    ),
+    "C5.1": (
+        ("m15", "material_code", INDIVIDUAL), ("m15", "production_out_qty", INDIVIDUAL),
+        ("m15", "import_qty", SUM), ("m15", "opening_qty", SUM),
+    ),
+}
+
+
+def checks_reading(slot: str, field: str) -> list[str]:
+    """Mã các check đọc `(slot, field)` — cho banner cổng review nêu check bị ảnh hưởng."""
+    return [
+        code
+        for code, uses in CHECK_COLUMNS.items()
+        if any(s == slot and f == field for s, f, _ in uses)
+    ]
+
+
+def checks_reading_slot(slot: str) -> list[str]:
+    """Mã các check đọc BẤT KỲ cột nào của slot.
+
+    Dùng khi cột KHOÁ (mã hàng) của slot đổi map trên file đã `parsed`: evidence_refs
+    của MỌI finding trên slot lọc theo cột mã (material_code/product_code), nên đổi cột
+    mã làm khoá của mọi dòng đổi → mọi check đọc slot phải chạy lại. C2.1/C2.2 đọc mã ở
+    evidence NHƯNG không khai cột mã trong registry (chỉ khai cột số dạng tổng); chỉ
+    dựa `checks_reading(mã)` sẽ để C2.1/C2.2 lại finding treo."""
+    return sorted({
+        code
+        for code, uses in CHECK_COLUMNS.items()
+        if any(s == slot for s, _, _ in uses)
+    })
+
+
+def is_consumed(slot: str, field: str) -> bool:
+    """Có check nào đọc `(slot, field)` không."""
+    return bool(checks_reading(slot, field))
+
+
+def is_individually_consumed(slot: str, field: str) -> bool:
+    """Có check nào đọc `(slot, field)` TRỰC TIẾP (consumed_as = individual) không."""
+    return any(
+        s == slot and f == field and how == INDIVIDUAL
+        for uses in CHECK_COLUMNS.values()
+        for s, f, how in uses
+    )
+
+
+def review_state(slot: str, field: str, evidence: str) -> str:
+    """Suy `verified` / `needs_review` cho một cột từ nguồn bằng chứng + registry.
+
+    `needs_review` khi: (a) cột được một check tiêu thụ mà nguồn tốt nhất là
+    `position-only`, HOẶC (b) cột dùng RIÊNG LẺ mà nguồn tốt nhất chỉ `balance-checked`.
+    Còn lại `verified`.
+    """
+    if not is_consumed(slot, field):
+        return VERIFIED
+    if evidence == POSITION_ONLY:
+        return NEEDS_REVIEW
+    if evidence == BALANCE_CHECKED and is_individually_consumed(slot, field):
+        return NEEDS_REVIEW
+    return VERIFIED

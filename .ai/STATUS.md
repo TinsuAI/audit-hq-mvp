@@ -1,5 +1,124 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — grill WS3 xong, design CHỐT, CHƯA code):**
+> Chạy `/grill-with-docs WS3` (AI tổng quan mỗi test + staleness). GREENFIELD (không
+> `check_runs`/`data_version`/overview lưu trữ nào). Chốt 8 nhánh + gộp **ADR #18 Revision — WS3**
+> (không tách #19). Advisor (fable) endorse Q1–Q7, LẬT Q8. Cốt lõi: (1) `check_runs` latest-upsert
+> 1 dòng mỗi `(DN,năm,mã)` ghi TRONG `run_checks()` cho mọi check kể cả 0 finding (không suy từ
+> `findings.created_at`); (2) `data_version` số nguyên trên `CompanyPeriod` bump mỗi ingest —
+> **stale ⇔ `ran_at` dời HOẶC `data_version` dời** (vì `documents_ingest_year` re-ingest mà KHÔNG
+> chạy check → điểm mù nếu chỉ `ran_at`); (3) `check_overviews` overwrite-upsert + telemetry riêng,
+> sinh ON-DEMAND ĐỒNG BỘ trong request bằng endpoint `def` THUẦN (không `async def` — sync client
+> chặn event loop; không qua job worker 1-thread); (4) flag-only stale (nút "Tạo lại", không
+> auto-regenerate); (5) combo LOẠI + **forward-only KHÔNG backfill**. **GOTCHA:**
+> `CompanyYearScore.computed_at` là mốc FIRST-run KHÔNG phải latest (`server_default` không `onupdate`)
+> → không backfill từ nó. Prompt nạp ĐẾM+top-N subject_key không nạp dòng (11.003 finding/DN-năm).
+> 3 ràng buộc cài đặt: bump version trong transaction ingest · đọc version ở ĐẦU run · upsert trong
+> `run_checks()` không ở job handler. **KHÔNG đụng code.** Docs: ADR #18 Rev WS3 + GLOSSARY (WS3) +
+> memory `ws3-overview-staleness-model` — CHƯA commit. `not_evaluable` là Tầng C chờ họp (cột dành sẵn).
+> **Next:** `/to-tickets` (nền check_runs+data_version → overview model+endpoint → UI panel/badge),
+> mỗi ticket session fresh tham chiếu ADR #18 Rev WS3. WS3 nền check_runs ĐỘC LẬP WS2.
+> Session log: `.ai/sessions/2026-07-24-grill-ws3.md`.
+
+> **Trạng thái (2026-07-24 — WS2 IMPLEMENT XONG (4 slice) + review + modal UX — CHƯA push/merge):**
+> Cài trọn WS2 + làm lại UX chọn test trên branch `feat/ws1-parse-review` (tiếp WS1). 6 commit của tôi:
+> `5c22a5a` nền · `ecb16c4` UI/async · `4b45bf2` STATUS · `054e9cd`+`e9055e3`+`5ad7f71`+`ad4fcc0` modal UX
+> (694fb3b ở giữa là grill WS3 của phiên khác). (1) **Nền:** `RUN_CHECKS` payload `only:list[str]`;
+> `run_checks(only=)` chạy tập con; combo **recompute MỌI lần chạy** đọc TOÀN finding-set, gate
+> `combos_enabled` (app_settings, **default OFF**); delete `COMBO_*` giữ vô điều kiện. (2) **Chạy test
+> lẻ:** nút "Chạy lại {mã}" mỗi nhóm → `RUN_CHECKS {only:[mã], năm}` → `/jobs/{id}`. (3) **Export chọn:**
+> `build_export(only=)` lọc `check_code.in_()`; `/export?check=` lặp; Tổng quan liệt kê mã chọn.
+> (4) **`documents_confirm_review` async** (option A: save-map+re-ingest sync, re-run scoped **enqueue**
+> → `/jobs/{id}` khi re-confirm); ẩn combo ở company_detail khi OFF; toggle admin combo ở card đầu trang
+> `/admin/checks`. **Modal UX (theo /frontend-design Anthropic):** panel `<details>` xấu → thay bằng 2
+> `<dialog>` native ("Chọn test chạy" = toàn danh mục · "Xuất Excel" = mã có finding), hàng bấm-cả-hàng
+> checkbox 18px accent navy, **gom theo họ C1/C2/… tiêu đề nhóm §4 sticky** (`_group_options_by_family`),
+> footer đếm sống + nút tự mô tả ("Chạy 3 test"/"Chạy tất cả"), a11y qua WIG (focus-visible/overscroll/
+> aria-labelledby). **650 test pass, ruff sạch, KHÔNG migration** (`combos_enabled`=1 row `app_settings`).
+> Review (critic) bắt **Defect 1 đã sửa:** pre-delete của `run_checks(only=)` phải gồm cả mã dynamic `X.*`
+> (không chỉ built-in) → nếu không "Chạy lại X.1" nhân đôi finding (regression test thêm). Defect 2 (max_raw
+> giữ +20 combo khi OFF) **không sửa** — ADR chốt "Scoring KHÔNG đổi", có sẵn từ trước WS2.
+> **Lưu ý harness:** combo default OFF → full-run bỏ meta-finding COMBO_* so với mốc 417 (delta CÓ CHỦ Ý,
+> không phải regression). **Next:** push/merge WS1+WS2; implement WS3 (`/to-tickets` ADR #18 Rev WS3).
+> Memory `check-execution-async-via-jobs` đã đánh dấu ĐÃ CÀI. Session log: `.ai/sessions/2026-07-24-ws2-implement-modal-ux.md`.
+
+> **Trạng thái (2026-07-24 — WS1 IMPLEMENT XONG (5 ticket) + demo build + fix dev server):**
+> WS1 cài trọn trên branch `feat/ws1-parse-review`: #4 evidence source+review state+registry
+> (`7df7e22`) · #5 vòng đời file+cổng review (`0653f1d`) · #6 vân tay form+saved-map store
+> (migration `b7d2e1f4a3c6`, `fca9bbb`) · #7 màn review (`573a273`) · #8 re-run scoped (`f00db6f`).
+> **634 test pass, ruff sạch, harness giữ 417** (WS1 provenance/UX, KHÔNG đổi finding). Issue GH
+> #4–#8 (ready-for-agent) đã cài nhưng **CHƯA push/merge/PR**. `uv.lock` để untracked.
+> **2 giới hạn WS1:** (1) parser CHƯA đọc vị trí cột từ saved-map — sửa cột chỉ đánh `officer-confirmed`,
+> chưa rewire parse; (2) `run_checks(only=)` xoá COMBO năm đó tới lần chạy full.
+> **Nợ do WS2 revise ADR #18:** #7/#8 gọi `run_checks` ĐỒNG BỘ trong `documents_confirm_review` →
+> phải chuyển sang job queue (WS2 chốt check chạy async).
+> **Demo build** `db-data/audit_hq_demo.sqlite` (gitignored, CHƯA deploy): chỉ 002/004/006, đổi tên;
+> 004 = gộp EPE+GC (option 2) = **219 finding** (méo 187→219, PHẢI phân tích lại — memory
+> `pilot-004-epe-gc-merge`). MST thật CÒN ở `tax_id`; file Excel gốc còn tên thật.
+> **Dev server:** process cũ `84da630` (không `--reload`) 500 trang company vì DB đã tiến xa → đã
+> kill PID 8340 + relaunch detached `--reload` trên code hiện tại, mọi trang 200.
+> **Next:** grill WS3 (session fresh, worktree/branch riêng) song song WS2-impl; push/merge WS1;
+> deploy demo (+ kiểm `user_companies`/login); 004 phân tích lại; async-hoá `run_checks` #7/#8.
+> Session log: `.ai/sessions/2026-07-24-ws1-implement-demo-build.md`.
+
+> **Trạng thái (2026-07-24 — grill WS2 xong, design CHỐT, CHƯA code):**
+> Chạy `/grill-with-docs WS2` (chạy test lẻ + export chọn). WS1 đã cài (branch `feat/ws1-parse-review`,
+> #4–#7). Chốt + gộp vào **ADR #18 Revision — WS2** (không tách #19, theo owner):
+> (1) **Chạy check TẤT CẢ async qua job queue** — SỬA "re-run inline" của WS1; `RUN_CHECKS` payload
+> thêm `only: list[str]`; worker 1-thread serialize ghi → hết tranh chấp SQLite writer. Per-test run =
+> nút mỗi nhóm check → `RUN_CHECKS {only:[mã], năm đang xem}` → `/jobs/{id}`. `documents_confirm_review`
+> tách confirm/run (option A): save-map + re-ingest GIỮ đồng bộ (file→`parsed`), re-run scoped →
+> enqueue job. (2) **Combo:** recompute MỖI lần chạy đọc TOÀN finding-set (sửa lỗi chạy lẻ xoá combo
+> không dựng lại) + toggle `combos_enabled` (app_settings, **default OFF**, lazy per-run, ẩn cả render
+> lẫn recompute) — OFF vì 2/4 combo neo C4.3 đang đổi định nghĩa. (3) **Export chọn test EPHEMERAL:**
+> `build_export(only=)` + param `check` lặp, không chọn = xuất đủ, không "profile". WS2 build được CHỈ
+> với hạ tầng job + registry WS1, **KHÔNG cần `check_runs`/`data_version` (WS3)**. **KHÔNG đụng code.**
+> Docs: ADR #18 Revision + GLOSSARY (mục WS2) + memory `check-execution-async-via-jobs` — CHƯA commit.
+> **Next:** `/to-tickets` cắt slice (đề xuất: nền `only` trong `RUN_CHECKS` handler + `combos_enabled`
+> read → per-test run UI → selective export → sửa `confirm_review` sang async), mỗi ticket session fresh
+> tham chiếu ADR #18 Revision — WS2.
+
+> **Trạng thái (2026-07-24 khuya — grill WS1 xong, design CHỐT, CHƯA code):**
+> Chạy `/grill-with-docs` cho **WS1** (parse review + map cột) của brief UI redesign. Chốt toàn bộ
+> nhánh chịu lực → **ADR #18** (`.ai/DECISIONS.md`) + **`.ai/GLOSSARY.md`** (mới) + memory
+> `parse-confidence-evidence-model`. Cốt lõi: tin cậy = **evidence source mỗi cột** (`officer-confirmed`
+> > `header-matched`·`balance-checked` > `position-only`; `balance-checked` chỉ đủ cho cột dạng TỔNG
+> vì đẳng thức bất biến dưới hoán vị cột cùng dấu — advisor xác nhận, C2.1/C2.2 đã own đẳng thức).
+> Badge **2 trạng thái** `verified`/`needs_review`; cổng review **per-file, warn-not-block**; registry
+> `check→cột` dict tĩnh (`consumed_as: individual|sum`); map lưu theo **(DN, vân tay form)** — **per-DN
+> confirm (option 2, SỬA ADR #15 cross-DN)**; vòng đời file **`uploaded→analyzed→parsed`** (auto-advance
+> khi verified) hiện trên UI; AI = bước sửa (ADR #15); staleness = re-run check bị ảnh hưởng inline,
+> stale-flag để WS3. **KHÔNG đụng code.** Working-tree: ADR #18 + GLOSSARY.md **CHƯA commit**.
+> **Next:** `/to-tickets` cắt 4 slice → `/implement` ticket 1 (nền: registry + evidence tagging trên
+> đường standard — giữ `SheetCandidate.colmap` đang bị `parse_m15` vứt, thêm keyword cột 6/7/9,
+> ghi evidence vào `ParseProvenance`), **mỗi ticket một session fresh** tham chiếu ADR #18.
+> Session log: `.ai/sessions/2026-07-24-grill-ws1.md`.
+
+> **Trạng thái (2026-07-24 tối — C4.3 đổi số nhân + tầm nhìn UI redesign):**
+> Hai việc phiên này. (1) **C4.3 / P-07:** đã sửa đề án §4.1 (số nhân định mức = **sản lượng sản
+> xuất**, không phải xuất khẩu) + ADR ở `audit-hq/.ai/DECISIONS.md` — **CHƯA COMMIT**, cross-repo.
+> Code `app/checks/c4_norm.py` **chưa sửa** (việc `/implement` kế tiếp): đổi `sp_export`→sản lượng,
+> tách (6)/(7) ở `resolve_m15a`, skip mã không-nguồn nhường C4.1, thêm bậc mâu thuẫn vật lý. Đo
+> trên dữ liệu thật: 2.371→2.063 finding (−13%). Chi tiết `audit-hq-pilot/notes/13` P-07.
+> (2) **UI redesign:** brief 3 workstream (phát hiện+map cột / chạy test lẻ+export chọn / AI overview+stale)
+> ở `.ai/features/2026-07-24-parse-review-per-test-ux/brief.md` — input cho `/grill-with-docs`.
+> Owner muốn **mở session mới chạy flow Matt**, nghiêng grill WS1 trước.
+> (3) **002 (PILOT_002) đã sửa cấu hình kỳ** trên DB localhost: re-ingest với cửa sổ tài chính
+> → 279→48 finding, risk 65→7. Backup `audit_hq.sqlite.bak-pre-002-reingest-20260724`.
+> Session log: `.ai/sessions/2026-07-24-c43-basis-and-ui-redesign.md`.
+
+> **Trạng thái (2026-07-24 — M15a mở rộng + M16 ĐM thực tế cho 004 + badge truy nguồn — CHƯA COMMIT):**
+> Hoàn thành phần "CHƯA thực hiện — Mẫu 15a" của ADR #15 (nay là **ADR #17**). `resolve_m15a`
+> (`extended_layout.py`): cổng đẳng thức + `export_qty` theo NHÃN (duy nhất, phải là số hạng trừ)
+> + khai triển nhãn gộp `(8ab)`. `content_slots` dò thêm đường mở rộng cho m15a. M16 chọn cột ĐM
+> "thực tế" khi có cặp kỹ thuật/thực tế (004). **Badge CÓ LƯU** (`DataFile.parse_layout`/`parse_detail`,
+> migration **`f5a6b7c8d9e0`**): trang Tài liệu + trang Dữ liệu gốc hiện bố cục + đẳng thức N/N +
+> nhãn cột. Đo thật: 004 EPE M15a 43 (43/43) + M16 664 (c8 thực tế) → **C4.3 fire 8**; 004 GC M15a 2
+> + **C1.4 fire 2** (sau khi đặt kỳ GC manual = FY2025 vì header GC ghi sai). 006/whitelist đường
+> CHUẨN không đụng. **Harness: 419→419 y hệt** (trung tính; 419 ≠ "1.331" cũ — xem ADR #17 + memory).
+> Full suite **583 pass**, ruff clean. **CHƯA commit, CHƯA deploy** (local DB đã đổi + migration đã áp local).
+> Screenshot: `.ai/features/2026-07-24-m15a-m16-004/screenshots/`.
+>
 > **Trạng thái (2026-07-24 — C1 kỳ báo cáo custom-date, full-stack — ĐÃ DEPLOY PROD):**
 > Xong C1 `period_from/to` (ADR #16). BCCT chọn theo cửa sổ kỳ `[from,to]` thay `==year`;
 > `period_year` = nhãn kỳ (tách khỏi `declaration_date`). Bảng `company_periods` + migration
@@ -77,10 +196,11 @@
    lấn chéo năm — giới hạn manual-only có chủ đích (ADR #16). Đường tự động an toàn (FY liền kề
    không chồng). Ngoài ra: reload dữ liệu PILOT_002/004 lên prod để hưởng phục hồi dòng (prod
    hiện không có file nguồn 002/004 → cần upload hoặc chạy lại từ file).
-1. **M15a mở rộng + cột M16 của 004** — việc tiếp ADR 15. Số biểu M15a KHÔNG ổn định giữa DN
-   (006 trừ (7), 004 EPE cộng, 004 GC nhãn gộp), nên map `export_qty` phải theo NHÃN + cổng
-   đẳng thức riêng. Mở khoá C4.3/C1.4 cho 004. Cột định mức M16 của 004 đang đọc c7 (ĐM kỹ
-   thuật) thay c8 (ĐM thực tế) — sửa cùng đợt.
+1. **M15a mở rộng + cột M16 của 004 — ✅ XONG (2026-07-24, ADR #17, CHƯA COMMIT).** `resolve_m15a`
+   (đẳng thức + export theo nhãn + nhãn gộp), discovery dò mở rộng, M16 ĐM thực tế, badge có lưu.
+   Đo thật: EPE C4.3=8, GC C1.4=2. Harness whitelist 419→419 trung tính. 583 test pass.
+   **Còn (tuỳ chọn):** commit + deploy (prod chưa có file 002/004 → chỉ code lên, data cần upload);
+   reload 004 lên prod. C4.3 nhánh sản lượng M16 (hệ số nhân) vẫn CHẶN bởi đề án — xem #2.
 2. **Sửa đề án `../audit-hq/de-an-audit-hq.md:228` TRƯỚC** rồi mới làm B2 (đổi hệ số nhân C4.3
    sang lượng nhập kho SX), B4 (báo độ phủ C4.3), và hệ số nhân theo sản lượng Mẫu 16. Cả ba
    mâu thuẫn định nghĩa `Σ(định_mức × xuất_khẩu_M15a)` hiện tại — là "sửa catalog" theo AGENTS.md.

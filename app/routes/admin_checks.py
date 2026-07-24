@@ -83,11 +83,30 @@ def checks_list(
     user: SessionUser = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    from app.app_settings import get_combos_enabled
+
     rows = db.scalars(select(CheckDefinition).order_by(CheckDefinition.id)).all()
     return templates.TemplateResponse(
         request, "admin_checks.html",
-        {"user": user, "checks": rows, "kind_labels": _KIND_LABELS, "CheckStatus": CheckStatus},
+        {
+            "user": user, "checks": rows, "kind_labels": _KIND_LABELS,
+            "CheckStatus": CheckStatus, "combos_enabled": get_combos_enabled(db),
+        },
     )
+
+
+@router.post("/combos-toggle", response_model=None)
+def toggle_combos(
+    enabled: str = Form(default=""),
+    user: SessionUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Bật/tắt phát hiện kết hợp (combo) toàn cục (ADR #18 Revision — WS2). Lazy:
+    áp theo mỗi (DN, năm) ở lần chạy check kế; render ẩn/hiện theo setting sống."""
+    from app.app_settings import set_combos_enabled
+
+    set_combos_enabled(bool(enabled), updated_by=user.name, db=db)
+    return RedirectResponse(url="/admin/checks", status_code=303)
 
 
 @router.get("/new", response_class=HTMLResponse)

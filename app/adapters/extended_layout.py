@@ -44,12 +44,19 @@ class ColMap:
     cols: dict[str, list[int]] = field(default_factory=dict)
     header_row: int = 0
     data_start: int = 0
+    formula: str = ""
+    checked: int = 0
+    matched: int = 0
 
     def value(self, row: list[Any], fieldname: str) -> float:
         return sum(to_float(row[c]) for c in self.cols.get(fieldname, ()) if c < len(row))
 
     def has(self, fieldname: str) -> bool:
         return fieldname in self.cols
+
+    @property
+    def match_rate(self) -> float:
+        return (self.matched / self.checked) if self.checked else 0.0
 
 
 _NUM_RE = re.compile(r"\(?(\d{1,2})([a-z]*)\)?")
@@ -123,6 +130,14 @@ def _identity_match_rate(
     cells: list[list[Any]], data_start: int,
     target_cols: list[int], terms: list[tuple[int, list[int]]], code_cols: list[int],
 ) -> float:
+    checked, ok = _identity_counts(cells, data_start, target_cols, terms, code_cols)
+    return (ok / checked) if checked else 0.0
+
+
+def _identity_counts(
+    cells: list[list[Any]], data_start: int,
+    target_cols: list[int], terms: list[tuple[int, list[int]]], code_cols: list[int],
+) -> tuple[int, int]:
     checked = ok = 0
     for row in cells[data_start:]:
         if not any(to_str(row[c]) for c in code_cols if c < len(row)):
@@ -134,7 +149,7 @@ def _identity_match_rate(
         tgt = sum(to_float(row[c]) for c in target_cols if c < len(row))
         if abs(acc - tgt) < max(0.01, abs(tgt) * 1e-6):
             ok += 1
-    return (ok / checked) if checked else 0.0
+    return checked, ok
 
 
 def resolve_m15(cells: list[list[Any]]) -> ColMap | None:
@@ -164,9 +179,12 @@ def resolve_m15(cells: list[list[Any]]) -> ColMap | None:
     if tgt_cols is None:
         return None
 
-    rate = _identity_match_rate(cells, cmap.data_start, tgt_cols, terms, code_cols)
-    if rate < _MATCH_RATE:
+    checked, matched = _identity_counts(cells, cmap.data_start, tgt_cols, terms, code_cols)
+    if checked == 0 or (matched / checked) < _MATCH_RATE:
         return None
+    cmap.formula = formula.strip()
+    cmap.checked = checked
+    cmap.matched = matched
     return cmap
 
 
@@ -206,10 +224,213 @@ def select_extended_m15(path, year: int | None = None) -> tuple[str, ColMap] | N
     return name, cmap
 
 
+# ---------------------------------------------------------------------------
+# Mẫu 15a — bố cục mở rộng. KHÁC Mẫu 15: số biểu KHÔNG ổn định giữa DN, nên
+# KHÔNG map field theo số biểu. `export_qty` (cột duy nhất C4.3/C1.4 dùng) phải
+# xác định theo NHÃN cột, và phải là một số hạng TRỪ trong đẳng thức cân đối
+# (cổng đẳng thức riêng — ADR #15). Không xác định được → trả None → không nạp.
+#   006      : "Lượng sản phẩm xuất khẩu"                       biểu (8)  [thực ra là bố cục CHUẨN]
+#   004 EPE  : "…đăng ký tờ khai và xuất kho năm nay / Export this year"  biểu (9)
+#   004 GC   : cùng nhãn "Export this year"                     biểu (8b), đẳng thức nhãn gộp
+
+_M15A_EXPORT_INCLUDE = ("xuất khẩu", "export")
+_M15A_EXPORT_EXCLUDE = (
+    "năm trước", "last year", "chưa đăng ký", "chưa đăng kí", "next year",
+    "trả lại", "return", "xuất bán", "dncx", "without customs",
+    "nghiên cứu", "research", "hư hỏng", "damage", "mất mát", "loss",
+    "thiên tai", "hỏa hoạn", "fire", "xuất kho khác", "other",
+)
+
+
+@dataclass
+class M15aResolution:
+    """Map cột Mẫu 15a mở rộng đã xác thực + bằng chứng để hiển thị/lưu."""
+
+    cols: dict[str, list[int]]
+    header_row: int
+    data_start: int
+    formula: str
+    checked: int
+    matched: int
+    export_label: str | None = None
+
+    def value(self, row: list[Any], fieldname: str) -> float:
+        return sum(to_float(row[c]) for c in self.cols.get(fieldname, ()) if c < len(row))
+
+    @property
+    def match_rate(self) -> float:
+        return (self.matched / self.checked) if self.checked else 0.0
+
+
+def parse_formula_terms(formula: str) -> tuple[str | None, list[tuple[int, str, str]]]:
+    """`(10)=(5)+(6ab)-(7)-(8ab)-(9abc)` → ('10', [(+1,'5',''),(+1,'6','ab'),...]).
+
+    Giữ NHÓM CHỮ của từng số hạng để khai triển đúng cột con (`(8ab)`=8a+8b, KHÔNG
+    gồm 8c). Số hạng đầu không dấu = cộng. Cắt tại `=` đầu để bỏ nhãn cột kế (`-12`).
+    """
+    if "=" not in formula:
+        return None, []
+    lhs, rhs = formula.split("=", 1)
+    lm = re.search(r"(\d{1,2})", lhs)
+    target = lm.group(1) if lm else None
+    terms: list[tuple[int, str, str]] = []
+    for m in re.finditer(r"([+-]?)\s*\(?(\d{1,2})([a-z]*)\)?", rhs):
+        terms.append((-1 if m.group(1) == "-" else 1, m.group(2), m.group(3)))
+    return target, terms
+
+
+def _numbering_letter_cols(cells: list[list[Any]], ri: int) -> dict[str, dict[str, int]]:
+    """base → {chữ: cột} cho các cột con đánh số `(8a)(8b)(8c)` trên dòng đánh số."""
+    out: dict[str, dict[str, int]] = {}
+    for ci, v in enumerate(cells[ri]):
+        m = re.match(r"^[(\-]\s*(\d{1,2})([a-z]+)\)?", to_str(v) or "")
+        if m:
+            out.setdefault(m.group(1), {})[m.group(2)] = ci
+    return out
+
+
+def _term_cols(
+    base: str, letters: str,
+    direct: dict[str, int], parts: dict[str, list[int]], letter_cols: dict[str, dict[str, int]],
+) -> list[int] | None:
+    """Cột(s) cho một số hạng. `(8ab)` → cột 8a,8b CỤ THỂ; `(6)` → cột tổng nếu có, nếu
+    không thì mọi cột con của 6."""
+    if letters:
+        lc = letter_cols.get(base, {})
+        cols = [lc[ch] for ch in letters if ch in lc]
+        return cols if len(cols) == len(letters) else None
+    if base in direct:
+        return [direct[base]]
+    if base in parts:
+        return list(parts[base])
+    return None
+
+
+def _column_labels(cells: list[list[Any]], ri: int) -> dict[int, str]:
+    """cột → nhãn (gộp 3 dòng ngay trên dòng đánh số, đã lowercase)."""
+    labels: dict[int, str] = {}
+    for r in range(max(0, ri - 3), ri):
+        if r >= len(cells):
+            continue
+        for ci, v in enumerate(cells[r]):
+            s = to_str(v)
+            if s:
+                labels[ci] = (labels.get(ci, "") + " " + s).strip().lower()
+    return labels
+
+
+def _resolve_export_col(
+    cells: list[list[Any]], ri: int, minus_cols: list[int]
+) -> tuple[int | None, str | None]:
+    """Cột xuất khẩu = cột TRỪ có nhãn khớp 'xuất khẩu/export' và không khớp nhãn loại
+    trừ. Phải DUY NHẤT; 0 hoặc >1 → không xác định (trả None → không nạp M15a)."""
+    labels = _column_labels(cells, ri)
+    cands = [
+        c for c in minus_cols
+        if any(k in labels.get(c, "") for k in _M15A_EXPORT_INCLUDE)
+        and not any(k in labels.get(c, "") for k in _M15A_EXPORT_EXCLUDE)
+    ]
+    if len(cands) == 1:
+        return cands[0], labels.get(cands[0])
+    return None, None
+
+
+def resolve_m15a(cells: list[list[Any]]) -> M15aResolution | None:
+    """Map cột Mẫu 15a mở rộng: đẳng thức cân đối làm cổng + export_qty theo nhãn.
+
+    None nếu (a) không có dòng đánh số/công thức, (b) đẳng thức < ngưỡng, hoặc
+    (c) không xác định được DUY NHẤT cột xuất khẩu. Thà không nạp còn hơn nạp sai.
+    """
+    ri, direct, parts, formula = parse_numbering_row(cells)
+    if ri is None or not formula:
+        return None
+    letter_cols = _numbering_letter_cols(cells, ri)
+    target, raw_terms = parse_formula_terms(formula)
+    if not target or not raw_terms:
+        return None
+
+    resolved: list[tuple[int, list[int]]] = []
+    for sign, base, letters in raw_terms:
+        cols = _term_cols(base, letters, direct, parts, letter_cols)
+        if cols is None:
+            return None
+        resolved.append((sign, cols))
+    tgt_cols = _term_cols(target, "", direct, parts, letter_cols)
+    code_cols = _col_for("2", direct, parts)
+    if tgt_cols is None or not code_cols:
+        return None
+
+    checked, matched = _identity_counts(cells, ri + 1, tgt_cols, resolved, code_cols)
+    if checked == 0 or (matched / checked) < _MATCH_RATE:
+        return None
+
+    minus_cols = [c for sign, cols in resolved if sign < 0 for c in cols]
+    export_col, export_label = _resolve_export_col(cells, ri, minus_cols)
+    if export_col is None:
+        return None
+
+    plus_cols = [c for sign, cols in resolved if sign > 0 for c in cols]
+    opening = _term_cols("5", "", direct, parts, letter_cols) or []
+    cols = {
+        "product_code": code_cols,
+        "product_name": _col_for("3", direct, parts) or [],
+        "unit": _col_for("4", direct, parts) or [],
+        "opening_qty": opening,
+        "closing_qty": tgt_cols,
+        "export_qty": [export_col],
+        "intake_qty": [c for c in plus_cols if c not in opening],
+        "other_out_qty": [c for c in minus_cols if c != export_col],
+    }
+    return M15aResolution(
+        cols=cols, header_row=ri, data_start=ri + 1, formula=formula.strip(),
+        checked=checked, matched=matched, export_label=export_label,
+    )
+
+
+def select_extended_m15a(path, year: int | None = None) -> tuple[str, M15aResolution] | None:
+    """Sheet + map cột Mẫu 15a bố cục mở rộng. None nếu không sheet nào xác thực.
+
+    Chỉ gọi khi đường cột cố định (`select_sheet`) trượt. Chọn theo kỳ khớp `year`
+    trước, rồi số dòng — như `select_extended_m15`.
+    """
+    import pandas as pd
+
+    from app.adapters._common import normalize_code, parse_company_header
+
+    xls = pd.ExcelFile(path)
+    candidates: list[tuple[int, int, str, M15aResolution]] = []
+    for name in xls.sheet_names:
+        cells = pd.read_excel(xls, sheet_name=name, header=None).values.tolist()
+        res = resolve_m15a(cells)
+        if res is None:
+            continue
+        h = parse_company_header(cells, scan_rows=14)
+        rank = 0
+        if h.period_from is not None:
+            if h.period_from.year == year:
+                rank = 2
+            elif h.period_to is not None and h.period_from.year <= (year or -1) <= h.period_to.year:
+                rank = 1
+        n = sum(
+            1 for r in cells[res.data_start:]
+            if any(c < len(r) and normalize_code(to_str(r[c])) for c in res.cols["product_code"])
+        )
+        candidates.append((rank, n, name, res))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda t: (-t[0], -t[1]))
+    _, _, name, res = candidates[0]
+    return name, res
+
+
 __all__ = [
     "ColMap",
+    "M15aResolution",
     "parse_formula",
+    "parse_formula_terms",
     "parse_numbering_row",
     "resolve_m15",
+    "resolve_m15a",
     "select_extended_m15",
+    "select_extended_m15a",
 ]
