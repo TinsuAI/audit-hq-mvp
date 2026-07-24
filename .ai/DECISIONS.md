@@ -297,7 +297,7 @@ bcct=547, C1.4 fire. Đây là đúng ca dùng manual-override của ADR #16 (c�
 `default_bounds` chọn header khớp năm folder* cho ca GC (hoãn — đụng logic C1 đã deploy, rủi ro
 6 DN whitelist; manual-override an toàn hơn).
 
-### 18. WS1 — Tin cậy parse theo NHÃN BẰNG CHỨNG mỗi cột + cổng review mỗi file (2026-07-24, DRAFT — đang grill)
+### 18. WS1 — Tin cậy parse theo NHÃN BẰNG CHỨNG mỗi cột + cổng review mỗi file (2026-07-24; WS1 đã cài #4–#7; SỬA + mở rộng WS2 2026-07-24 — xem **Revision — WS2** cuối ADR)
 
 > Kết quả grill WS1 (`.ai/features/2026-07-24-parse-review-per-test-ux/brief.md`). Xương sống +
 > mọi nhánh chịu lực đã chốt; còn lại là việc cơ học + nền WS3 (xem cuối).
@@ -357,7 +357,8 @@ một check vào parser. Quan trọng hơn, **đẳng thức cân đối KHÔNG 
   re-validate bằng đẳng thức, cán bộ xác nhận. WS1 chỉ lộ đề xuất trong cổng review khi cột
   `needs_review` và chưa có map lưu. KHÔNG gọi LLM trong rule logic (chỉ parse-time).
 - **Staleness khi sửa map file đã `parsed`:** re-analyze → re-parse → **re-run CHỈ các check registry
-  báo đọc cột đã đổi** (scoped qua D2), đồng bộ. WS1 KHÔNG cần cờ stale. Mô hình stale tổng quát
+  báo đọc cột đã đổi** (scoped qua D2) — **SỬA WS2: re-run này chạy qua JOB async, không còn đồng
+  bộ; xem Revision cuối ADR**. WS1 KHÔNG cần cờ stale. Mô hình stale tổng quát
   (`check_runs` + `data_version`, overview `stale = based_on_run_at < ran_at`) là của **WS3** — chỉ
   cần khi re-run không tức thì + cho AI overview. Hệ quả: WS1 core build được CHỈ với registry; nền
   `check_runs`/`data_version` chỉ bắt buộc khi WS3 (overview) tới.
@@ -374,3 +375,54 @@ N lần, không hơn gì việc liệt kê check bị ảnh hưởng trên một
 code check — bảng trong brief); nền staleness tổng quát (`check_runs`/`data_version`) thuộc WS3;
 phân quyền confirm trong CÙNG DN = cán bộ có quyền DN đó (ranh giới ADR #14). Xem
 [[parse-confidence-evidence-model]].
+
+---
+
+**Revision — WS2 (chạy test lẻ + export chọn) + đổi mô hình chạy check sang ASYNC (2026-07-24, grill `/grill-with-docs WS2`)**
+
+> Grill WS2 chốt ba nhánh dưới và SỬA quyết định "re-run inline" của WS1 ở trên. Gộp vào ADR #18
+> (không tách ADR #19) theo yêu cầu owner. WS2 build được CHỈ với hạ tầng job sẵn có + registry WS1;
+> **KHÔNG cần nền `check_runs`/`data_version` của WS3** — combo recompute-mỗi-lần thay cho stale-flag.
+
+*(1) Chạy check — TẤT CẢ qua JOB QUEUE (SỬA staleness inline của WS1):*
+- Không còn `run_checks(...)` đồng bộ trong request handler. Mọi lần chạy check enqueue job; worker
+  là **1 thread chạy tuần tự** → serialize mọi ghi, triệt tranh chấp single-writer SQLite (đây là lý
+  do chính owner chốt async). Trang `/jobs/{id}` đã auto-refresh 2s + link "→ Xem kết quả" về DN.
+- `RUN_CHECKS` payload thêm `only: list[str]` (tuỳ chọn): có → chạy tập con; không → full năm.
+  `BATCH_RUN` giữ nguyên (full mọi năm). `INGEST_AND_RUN` (enum) vẫn để trống, KHÔNG dùng.
+- **Chạy test lẻ:** nút mỗi nhóm check ở `company_detail` → enqueue `RUN_CHECKS {only:[mã]}` theo
+  **NĂM đang xem** → redirect `/jobs/{id}`. (All-years-một-check: KHÔNG làm — đã có "Tất cả năm".)
+- **Cổng confirm map (SỬA `documents_confirm_review`, option A — tách confirm/run):** `save_column_map`
+  + re-ingest + `record_parse_result` GIỮ đồng bộ (file lên `parsed`, map áp NGAY vì áp map = ý nghĩa
+  của "confirm"); phần re-run scoped đổi thành enqueue `RUN_CHECKS {only: affected}`. Confirm LẦN ĐẦU
+  (file `analyzed`, chưa finding) KHÔNG enqueue → ở lại `/documents` như cũ; re-confirm (file đã
+  `parsed` + cột đổi) enqueue job → `/jobs/{id}`.
+- *Loại — option B* (chỉ save map đồng bộ, re-ingest + re-run đều vào `INGEST_AND_RUN` job): đẩy cả
+  việc áp map ra sau hàng đợi → file kẹt `analyzed` tới khi worker chạy; owner chọn A.
+
+*(2) Combo (D4) — recompute MỖI lần chạy + toggle tắt toàn cục:*
+- `run_checks` recompute combo trên MỌI lần chạy (lẻ hay full), đọc **TOÀN finding-set** của (DN, năm),
+  không chỉ finding vừa chạy. Sửa lỗi hiện tại: chạy `only=` xoá sạch `COMBO_*` (delete vô điều kiện,
+  dòng ~77-83) rồi KHÔNG dựng lại (recompute chỉ khi `only is None`) → combo biến mất tới lần full kế.
+  Delete `COMBO_*` giữ vô điều kiện; chỉ RECOMPUTE mới gate theo toggle.
+- **Toggle `combos_enabled`** (app_settings, `get_setting("combos_enabled", default=False)`) — **mặc
+  định OFF**, một công tắc admin toàn cục (không per-combo). OFF → `run_checks` skip `detect_combos`;
+  `company_detail` ẩn mục combo (gate theo setting SỐNG → flip giữa chừng ẩn ngay). **Lazy**: flip áp
+  theo mỗi (DN, năm) ở lần chạy kế; demo re-run hết nên không lệch. KHÔNG eager-purge toàn bộ.
+- Scoring KHÔNG đổi: `compute_company_year_score` cộng `COMBO_BONUS=20` khi `has_combo`. OFF → không
+  `COMBO_*` trong DB (sau lần chạy) → `has_combo=False` → không +20. Tự nhất quán UI↔điểm.
+- Lý do OFF mặc định (present-tense "hiện không make sense"): 2/4 combo neo trên **C4.3** đang đổi định
+  nghĩa (số nhân = sản lượng, đề án sửa, `c4_norm.py` chưa) → combo dựng trên metric đang biến động;
+  bật lại sau khi C4.3 chốt + revalidate. Combo vẫn ở catalog §2.7, chỉ tắt runtime (đảo được).
+
+*(3) Export chọn test — EPHEMERAL, không profile:*
+- `build_export(..., only: set[str] | None)`: lọc finding theo `check_code.in_(only)`; sheet chứng cứ
+  M15/M15a/M16/BCCT tự thu hẹp theo subject của finding còn lại (đã key sẵn). `/export` nhận param
+  `check` LẶP LẠI (`?year=&check=C1.1&check=C4.3`); **KHÔNG chọn = xuất TẤT CẢ** (nút cũ nguyên vẹn).
+- UI: checkbox mỗi nhóm check + nút "Xuất các test đã chọn"; thêm "Xuất test này" ở màn drill-down.
+- Combo là mã như mọi check (gồm khi chọn mã `COMBO_*`); KHÔNG logic combo riêng. Sheet Tổng quan
+  **liệt kê mã đã chọn** → export lọc không nhầm thành export đủ (kỷ luật không-hộp-đen). Audit log mã.
+- *Loại:* export profile lưu tên (bảng + CRUD cho nhu cầu chưa ai nêu, demo gần) — YAGNI, thêm sau nếu
+  có workflow xuất lặp thật.
+
+Xem [[parse-confidence-evidence-model]] · [[check-execution-async-via-jobs]].

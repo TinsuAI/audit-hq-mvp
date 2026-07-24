@@ -1,5 +1,22 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — grill WS2 xong, design CHỐT, CHƯA code):**
+> Chạy `/grill-with-docs WS2` (chạy test lẻ + export chọn). WS1 đã cài (branch `feat/ws1-parse-review`,
+> #4–#7). Chốt + gộp vào **ADR #18 Revision — WS2** (không tách #19, theo owner):
+> (1) **Chạy check TẤT CẢ async qua job queue** — SỬA "re-run inline" của WS1; `RUN_CHECKS` payload
+> thêm `only: list[str]`; worker 1-thread serialize ghi → hết tranh chấp SQLite writer. Per-test run =
+> nút mỗi nhóm check → `RUN_CHECKS {only:[mã], năm đang xem}` → `/jobs/{id}`. `documents_confirm_review`
+> tách confirm/run (option A): save-map + re-ingest GIỮ đồng bộ (file→`parsed`), re-run scoped →
+> enqueue job. (2) **Combo:** recompute MỖI lần chạy đọc TOÀN finding-set (sửa lỗi chạy lẻ xoá combo
+> không dựng lại) + toggle `combos_enabled` (app_settings, **default OFF**, lazy per-run, ẩn cả render
+> lẫn recompute) — OFF vì 2/4 combo neo C4.3 đang đổi định nghĩa. (3) **Export chọn test EPHEMERAL:**
+> `build_export(only=)` + param `check` lặp, không chọn = xuất đủ, không "profile". WS2 build được CHỈ
+> với hạ tầng job + registry WS1, **KHÔNG cần `check_runs`/`data_version` (WS3)**. **KHÔNG đụng code.**
+> Docs: ADR #18 Revision + GLOSSARY (mục WS2) + memory `check-execution-async-via-jobs` — CHƯA commit.
+> **Next:** `/to-tickets` cắt slice (đề xuất: nền `only` trong `RUN_CHECKS` handler + `combos_enabled`
+> read → per-test run UI → selective export → sửa `confirm_review` sang async), mỗi ticket session fresh
+> tham chiếu ADR #18 Revision — WS2.
+
 > **Trạng thái (2026-07-24 khuya — grill WS1 xong, design CHỐT, CHƯA code):**
 > Chạy `/grill-with-docs` cho **WS1** (parse review + map cột) của brief UI redesign. Chốt toàn bộ
 > nhánh chịu lực → **ADR #18** (`.ai/DECISIONS.md`) + **`.ai/GLOSSARY.md`** (mới) + memory
