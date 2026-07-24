@@ -20,8 +20,14 @@
 > mỗi ticket session fresh tham chiếu ADR #18 Rev WS3. WS3 nền check_runs ĐỘC LẬP WS2.
 > Session log: `.ai/sessions/2026-07-24-grill-ws3.md`.
 
-> **Trạng thái (2026-07-24 — WS2 IMPLEMENT XONG (4 slice) + review + modal UX — CHƯA push/merge):**
-> Cài trọn WS2 + làm lại UX chọn test trên branch `feat/ws1-parse-review` (tiếp WS1). 6 commit của tôi:
+> **Trạng thái (2026-07-24 — WS1+WS2 ĐÃ MERGE + DEPLOY PROD (PR #16) — main=`6f052d3`):**
+> PR #16 (`feat/ws1-parse-review`→`main`) merge commit **`6f052d3`**; CI test+lint+deploy XANH; prod
+> `audit-hq-demo.tinsu.ai` `/healthz` 200, `build_sha=6f052d3` khớp. Áp 2 migration prod: `b7d2e1f4a3c6`
+> (saved-map WS1) + `f5a6b7c8d9e0` (badge ADR#17). PR gộp cả ADR#17 (M15a/M16 004) + docs grill WS3.
+> Combo mặc định TẮT trên prod (bật ở `/admin/checks`). **Next thực:** implement WS3 (`/to-tickets`
+> ADR#18 Rev WS3); reload data 002/004 lên prod nếu cần; chạy lại harness khi chạm parse/check.
+>
+> **Chi tiết cài WS2 (đã merge ở trên):** Cài trọn WS2 + làm lại UX chọn test. 6 commit code:
 > `5c22a5a` nền · `ecb16c4` UI/async · `4b45bf2` STATUS · `054e9cd`+`e9055e3`+`5ad7f71`+`ad4fcc0` modal UX
 > (694fb3b ở giữa là grill WS3 của phiên khác). (1) **Nền:** `RUN_CHECKS` payload `only:list[str]`;
 > `run_checks(only=)` chạy tập con; combo **recompute MỌI lần chạy** đọc TOÀN finding-set, gate
