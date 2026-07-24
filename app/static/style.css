@@ -1179,6 +1179,23 @@ p { margin: 0 0 var(--space-3); }
   border-color: var(--c-warning-border);
 }
 
+.parse-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  border-radius: 8px;
+  border: 1px solid var(--c-info-border);
+  background: var(--c-info-bg);
+  color: var(--c-info-fg);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.parse-note code { font-size: 0.8rem; padding: 1px 5px; border-radius: 4px; background: rgba(0,0,0,0.06); }
+.doc-file-badge { font-size: 0.68rem; }
+
 .badge-success { background: var(--c-success-bg); color: var(--c-success-fg); padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; }
 .badge-warning { background: var(--c-warning-bg); color: var(--c-warning-fg); padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; }
 .badge-op-import { background: #dbeafe; color: #1e40af; padding: 1px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }

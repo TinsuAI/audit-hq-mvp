@@ -124,6 +124,13 @@
             <span class="doc-file-item">
               <span class="badge {{ DATA_FILE_STATUS_BADGE[f.parse_status] }} doc-file-badge">{{ DATA_FILE_STATUS_LABEL[f.parse_status] }}</span>
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/preview" class="doc-file-name" title="Xem nội dung file">{{ f.original_filename }}</a>
+              {% if f.parse_layout %}{% set pd = f.parse_detail_obj %}
+                {% if f.parse_layout == 'extended' %}
+                <span class="badge info doc-file-badge" title="Đọc theo bố cục mở rộng: suy map cột từ dòng đánh số, chứng minh bằng đẳng thức {{ pd.formula }} (khớp {{ pd.matched }}/{{ pd.checked }} dòng).{% if pd.export_label %} Cột xuất khẩu chọn theo nhãn: “{{ pd.export_label|replace('\n',' ')|trim }}”.{% endif %}">🧭 bố cục mở rộng · đẳng thức {{ pd.matched }}/{{ pd.checked }}{% if pd.export_col is defined %} · XK cột {{ pd.export_col }}{% endif %}</span>
+                {% elif f.parse_layout == 'labeled' %}
+                <span class="badge info doc-file-badge" title="Chọn cột định mức theo nhãn: “{{ pd.norm_label|replace('\n',' ')|trim }}” (cột {{ pd.norm_col }}), thay cho cột định mức kỹ thuật (cột {{ pd.technical_col }}).">🧭 ĐM thực tế · cột {{ pd.norm_col }}</span>
+                {% endif %}
+              {% endif %}
               <span class="doc-file-meta">{{ human_size(f.size_bytes) }}{% if f.row_count is not none %} · {{ '{:,}'.format(f.row_count) }} dòng{% endif %}</span>
               {% if f.parse_message %}<span class="doc-file-msg" title="{{ f.parse_message }}">⚠️</span>{% endif %}
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/preview" class="doc-mini-btn" title="Xem nội dung">👁</a>

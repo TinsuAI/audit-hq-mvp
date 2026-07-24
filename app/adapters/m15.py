@@ -10,6 +10,7 @@ import pandas as pd
 from app.adapters._common import (
     CompanyHeader,
     ParseIssues,
+    ParseProvenance,
     count_external_workbooks,
     ensure_excel,
     normalize_code,
@@ -47,6 +48,7 @@ class M15File:
     source_file: str
     issues: ParseIssues = field(default_factory=ParseIssues)
     sheet: str | None = None
+    provenance: ParseProvenance = field(default_factory=ParseProvenance)
 
 
 # Column index within the data sheet (0-indexed). Schema observed on
@@ -102,6 +104,15 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
                 error_cells=scan_error_cells(p, sheet, colmap.data_start, scan_cols),
                 external_workbooks=count_external_workbooks(p),
                 scanned=True,
+            ),
+            provenance=ParseProvenance(
+                layout="extended",
+                detail={
+                    "formula": colmap.formula,
+                    "matched": colmap.matched,
+                    "checked": colmap.checked,
+                    "match_rate": round(colmap.match_rate, 4),
+                },
             ),
         )
 

@@ -10,6 +10,7 @@ import pandas as pd
 from app.adapters._common import (
     CompanyHeader,
     ParseIssues,
+    ParseProvenance,
     count_external_workbooks,
     ensure_excel,
     normalize_code,
@@ -50,6 +51,37 @@ class M16File:
     source_file: str
     issues: ParseIssues = field(default_factory=ParseIssues)
     sheet: str | None = None
+    provenance: ParseProvenance = field(default_factory=ParseProvenance)
+
+
+# 004 tách định mức thành 2 cột: "Định mức kỹ thuật / Technical BOM" và "Lượng NL,
+# VT thực tế sử dụng… / Actual BOM". Kiểm tra hải quan dùng ĐM THỰC TẾ. Cột cố định
+# đọc cột kỹ thuật (c7) → phải chọn lại theo nhãn. DN chỉ một cột ĐM → giữ nguyên.
+_M16_ACTUAL = ("thực tế", "actual")
+_M16_TECHNICAL = ("kỹ thuật", "technical")
+
+
+def _detect_actual_norm_col(
+    cells: list[list], data_start: int, default_col: int
+) -> tuple[int, str | None, int | None]:
+    """Nếu có CẢ cột ĐM kỹ thuật lẫn ĐM thực tế → trả (cột thực tế, nhãn, cột kỹ thuật).
+
+    Chỉ chọn lại khi hai cột phân biệt được: DN một cột ĐM (6 DN whitelist) không có
+    nhãn "thực tế" cạnh "kỹ thuật" nên giữ nguyên cột mặc định → kết quả bất biến.
+    """
+    labels: dict[int, str] = {}
+    for r in range(max(0, data_start - 4), data_start):
+        if r >= len(cells):
+            continue
+        for ci, v in enumerate(cells[r]):
+            s = to_str(v)
+            if s:
+                labels[ci] = (labels.get(ci, "") + " " + s).strip().lower()
+    actual = [c for c, t in labels.items() if any(k in t for k in _M16_ACTUAL)]
+    technical = [c for c, t in labels.items() if any(k in t for k in _M16_TECHNICAL)]
+    if actual and technical and actual[0] != technical[0]:
+        return actual[0], labels.get(actual[0]), technical[0]
+    return default_col, None, None
 
 
 # Mẫu 16 TT39 chuẩn (BCDM_TT39_*.xls, sheet `BCTT39`):
@@ -117,6 +149,22 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
+    # ĐM thực tế thắng ĐM kỹ thuật khi có cả hai (004). Copy trước khi sửa — `cols` là
+    # dict module-level dùng chung.
+    provenance = ParseProvenance()
+    norm_col, norm_label, tech_col = _detect_actual_norm_col(cells, data_start, cols["norm_qty"])
+    if norm_col != cols["norm_qty"]:
+        cols = dict(cols)
+        cols["norm_qty"] = norm_col
+        provenance = ParseProvenance(
+            layout="labeled",
+            detail={
+                "norm_col": norm_col,
+                "norm_label": norm_label,
+                "technical_col": tech_col,
+            },
+        )
+
     current_product_code: str | None = None
     current_product_name: str | None = None
     current_product_unit: str | None = None
@@ -162,4 +210,5 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
             external_workbooks=count_external_workbooks(p),
             scanned=True,
         ),
+        provenance=provenance,
     )

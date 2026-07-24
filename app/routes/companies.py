@@ -1449,6 +1449,16 @@ def company_data(
 
     view_cols, rows_view = _format_model_rows(model, rows, full=bool(full))
 
+    # Bằng chứng cách đọc file (ADR #15) — hiện phía trên bảng để không "hộp đen".
+    prov_file = db.scalar(
+        select(DataFile).where(
+            DataFile.company_id == company.id,
+            DataFile.period_year == year,
+            DataFile.slot == table,
+            DataFile.parse_layout.isnot(None),
+        )
+    )
+
     return templates.TemplateResponse(
         request,
         "company_data.html",
@@ -1468,6 +1478,8 @@ def company_data(
             "per_page": per_page,
             "q": q,
             "full": full,
+            "parse_layout": prov_file.parse_layout if prov_file else None,
+            "parse_detail": prov_file.parse_detail_obj if prov_file else {},
         },
     )
 

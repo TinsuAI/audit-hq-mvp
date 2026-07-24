@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from enum import StrEnum
 
@@ -68,10 +69,25 @@ class DataFile(Base):
     )
     parse_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Bằng chứng cách đọc (ADR #15): layout = standard|extended|labeled; detail =
+    # JSON (đẳng thức, tỉ lệ khớp, nhãn cột export/ĐM). Chỉ ≠ standard khi file lệch
+    # bố cục chuẩn — badge truy nguồn hiển thị để không "hộp đen".
+    parse_layout: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    parse_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_data_files_company_year", "company_id", "period_year"),
     )
+
+    @property
+    def parse_detail_obj(self) -> dict:
+        """`parse_detail` (JSON) → dict cho template badge; {} nếu trống/hỏng."""
+        if not self.parse_detail:
+            return {}
+        try:
+            return json.loads(self.parse_detail)
+        except (ValueError, TypeError):
+            return {}
 
     def __repr__(self) -> str:
         return f"<DataFile {self.company_id}/{self.period_year}/{self.slot} {self.original_filename}>"

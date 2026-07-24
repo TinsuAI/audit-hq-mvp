@@ -12,6 +12,7 @@ suy từ dòng đã ingest. Hai việc chính:
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from pathlib import Path
 
@@ -174,6 +175,7 @@ def record_parse_result(
         "m16": getattr(stats, "m16_rows", 0),
         "bcct": getattr(stats, "bcct_rows", 0),
     }
+    provenance = getattr(stats, "provenance", None) or {}
     diag_errors = diagnosis.errors if diagnosis else []
     diag_warnings = diagnosis.warnings if diagnosis else []
     # File nằm trong HANG_CHI_TIET nhưng không phải báo cáo chi tiết tờ khai đã bị bỏ
@@ -200,6 +202,13 @@ def record_parse_result(
         row.parse_status = status
         row.parse_message = message
         row.row_count = rc
+        prov = provenance.get(row.slot)
+        if prov is not None and getattr(prov, "layout", "standard") != "standard":
+            row.parse_layout = prov.layout
+            row.parse_detail = json.dumps(prov.detail, ensure_ascii=False)
+        else:
+            row.parse_layout = None
+            row.parse_detail = None
     session.commit()
 
 

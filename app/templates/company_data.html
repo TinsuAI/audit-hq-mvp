@@ -26,6 +26,20 @@
   {% endfor %}
 </div>
 
+{% if parse_layout %}
+<div class="parse-note">
+  <span class="badge info">🧭 {% if parse_layout == 'extended' %}Bố cục mở rộng{% else %}Chọn cột theo nhãn{% endif %}</span>
+  {% if parse_layout == 'extended' %}
+    <span>File này lệch bố cục chuẩn — cột được suy từ dòng đánh số và <strong>chứng minh bằng đẳng thức cân đối</strong>
+    <code>{{ parse_detail.formula }}</code> (khớp {{ parse_detail.matched }}/{{ parse_detail.checked }} dòng).
+    {% if parse_detail.export_label %}Cột <strong>xuất khẩu</strong> chọn theo nhãn “{{ parse_detail.export_label|replace('\n',' ')|trim }}” (cột {{ parse_detail.export_col }}).{% endif %}</span>
+  {% elif parse_layout == 'labeled' %}
+    <span>Định mức đọc từ cột <strong>“{{ parse_detail.norm_label|replace('\n',' ')|trim }}”</strong> (cột {{ parse_detail.norm_col }}),
+    thay cho cột định mức kỹ thuật (cột {{ parse_detail.technical_col }}) — kiểm tra hải quan dùng định mức thực tế.</span>
+  {% endif %}
+</div>
+{% endif %}
+
 <form method="get" class="form-row mb-3">
   <input type="hidden" name="year" value="{{ year }}">
   <input type="hidden" name="table" value="{{ table_key }}">
