@@ -296,3 +296,81 @@ bcct=547, C1.4 fire. Đây là đúng ca dùng manual-override của ADR #16 (c�
 **Alternatives loại:** *map M15a theo số biểu* (rejected — không ổn định giữa DN, đã đo); *sửa
 `default_bounds` chọn header khớp năm folder* cho ca GC (hoãn — đụng logic C1 đã deploy, rủi ro
 6 DN whitelist; manual-override an toàn hơn).
+
+### 18. WS1 — Tin cậy parse theo NHÃN BẰNG CHỨNG mỗi cột + cổng review mỗi file (2026-07-24, DRAFT — đang grill)
+
+> Kết quả grill WS1 (`.ai/features/2026-07-24-parse-review-per-test-ux/brief.md`). Xương sống +
+> mọi nhánh chịu lực đã chốt; còn lại là việc cơ học + nền WS3 (xem cuối).
+
+**Bối cảnh:** luồng parse hiện tin cột theo VỊ TRÍ mà không có tín hiệu tin cậy. Đường `standard`
+(`select_sheet` đạt `_MIN_SCORE=5` → áp `_COL` cố định) không kiểm số học; chỉ đường `extended`
+kiểm bằng đẳng thức. Ý ban đầu — chạy lại match-rate đẳng thức mức FILE trên mọi path — bị bác:
+C2.1/C2.2 (`c2_balance.py`) ĐÃ tự tính lại đúng đẳng thức đó thành finding, nên làm vậy chỉ dời
+một check vào parser. Quan trọng hơn, **đẳng thức cân đối KHÔNG đủ để xác thực map cột**:
+- Bất biến dưới **hoán vị hai cột cùng dấu**: đổi `production_out`↔`other_out` (đều trừ) → C2 vẫn
+  xanh, nhưng C4.3 đọc riêng `production_out` → đọc nhầm cột, IM LẶNG.
+- Các cột **ngoài đẳng thức** (cột con "xuất khẩu" M15a cho C1.4; cột ĐM "thực tế" M16 cho C4.3)
+  không đẳng thức nào kiểm — đúng lý do ADR #17 phải thêm logic theo NHÃN riêng.
+- `BALANCE_EXPECT` (`layout.py:22`) chỉ có từ khoá cho 4/6 cột cân đối m15; `reexport`(6)/
+  `repurpose`(7)/`other_out`(9) KHÔNG có từ khoá → hôm nay không label-check được.
+
+**Quyết định:**
+- **Mỗi cột đọc mang MỘT nguồn bằng chứng** (định danh tiếng Anh, KHÔNG dịch), mạnh→yếu:
+  `officer-confirmed` (cán bộ duyệt / map đã lưu cho form này) > `header-matched` (tiêu đề khớp) ·
+  `balance-checked` (đẳng thức cân đối khớp — số vouch) > `position-only` (chỉ vị trí, không kiểm).
+- Badge cho cán bộ gộp về **HAI trạng thái**: `verified` (xanh) vs `needs_review` (vàng); nguồn
+  hiện ở dòng phụ khi mở. Định danh nội bộ tiếng Anh; UI render tiếng Việt ("Đã kiểm"/"Cần xác nhận")
+  theo quy ước ngôn ngữ UI.
+- `balance-checked` chỉ ĐỦ cho cột dùng dạng TỔNG (C2 tự tính lại); cột **dùng riêng lẻ** cần
+  `header-matched`/`officer-confirmed` (đẳng thức không phân biệt hai cột cùng dấu): `production_out`
+  →C4.3/C5, `repurpose`→C1.x, cột con export M15a→C1.4, cột ĐM thực tế M16→C4.3.
+- **Trạng thái = `needs_review`** khi cột được một check tiêu thụ có nguồn tốt nhất là `position-only`,
+  HOẶC cột dùng riêng lẻ mà nguồn tốt nhất chỉ `balance-checked`; còn lại `verified`. Cột dùng riêng
+  lẻ hay dạng tổng do registry D2 (`consumed_as: individual|sum`) khai.
+- **Cổng review MỖI FILE** (không mỗi check): kích khi có cột `needs_review` chưa có map lưu. Banner
+  nêu cột + các check bị ảnh hưởng.
+- **CẢNH BÁO, KHÔNG CHẶN:** check vẫn chạy, finding vẫn hiện, kèm cờ "dựa trên cột chưa xác nhận".
+  Chặn chỉ cân nhắc nếu sau này DN tự upload hàng loạt không có cán bộ trung gian.
+- **Xác nhận scope theo DN (option 2); lưu map theo `(DN, vân tay form)`.** SỬA ADR #15: xác nhận
+  KHÔNG tái dùng chéo DN — DN-A duyệt không cấp `officer-confirmed` cho DN-B (lý do user chốt: một
+  DN duyệt sai không được lan sang DN khác). Vân tay form vẫn CẤU TRÚC (không mã DN) nên trong CÙNG
+  DN tái dùng chéo NĂM: 004 2024+2025 cùng shape → duyệt 1 lần/DN, không mỗi năm; shape đổi giữa
+  năm thì vân tay bắt và hỏi lại. 6 DN whitelist mỗi DN seed `officer-confirmed` cho shape của mình.
+- **Vân tay form = hash chuẩn hoá vùng tiêu đề mỗi slot:** danh sách nhãn tiêu đề cột theo thứ tự
+  (dòng header đã dò) + số cột, gập hoa/dấu/khoảng trắng + bỏ chữ số năm; kèm dòng đánh số `(1)(2)…`
+  khi form có (004 có, 002 không). KHÔNG chứa mã DN. Tính được ở bước profile từ vùng header
+  `select_sheet` đã đọc. Rủi ro va chạm (hai bố cục cùng rỗng/thưa ở cột nhập nhằng) triệt tiêu nhờ
+  số cột + dòng đánh số ở quy mô MVP.
+- **6 DN whitelist seed sẵn `confirmed`** (regression 419 đã kiểm, ADR #17) → đường demo không đổi.
+- **Registry test→cột (D2) = dict TĨNH trong code** (`app/checks/registry.py`), KHÔNG bảng DB.
+- **Vòng đời file (state machine, HIỆN TRÊN UI):** `uploaded` (đã lưu + đăng ký, chưa đọc) →
+  `analyzed` (dry-run parse: chọn sheet + map cột + tính evidence source/review state; **CHƯA ghi
+  DB** — cổng review ở đây) → `parsed` (đã commit dòng vào DB); `error` nếu đọc/nạp hỏng (terminal
+  tới khi tải lại). Tận dụng `ingest(dry_run=True)` sẵn có (tính stats không commit). `analyzed→parsed`
+  **TỰ ĐỘNG khi `verified`**, DỪNG chờ cán bộ bấm khi `needs_review` (đường whitelist chảy suốt,
+  không thêm click). Badge tin cậy (`verified`/`needs_review`) là TRỤC RIÊNG — file có thể `parsed`
+  + `needs_review` (warn-not-block). Ánh xạ enum cũ (`DataFileStatus`): PENDING→`uploaded`, THÊM
+  `analyzed`, OK→`parsed`, WARNING→cờ `needs_review` (không còn là status), ERROR→`error`.
+- **Map lưu chứa:** map cột (`slot → field → chỉ số cột`) + evidence source mỗi cột + ai/khi nào
+  xác nhận; khoá `(DN, vân tay form)`. Lưu TOÀN map (không chỉ cột lệch) để tái dựng đủ.
+- **AI = bước SỬA (ADR #15), chỉ khi heuristic + đẳng thức đều trượt:** đề xuất map, BẮT BUỘC
+  re-validate bằng đẳng thức, cán bộ xác nhận. WS1 chỉ lộ đề xuất trong cổng review khi cột
+  `needs_review` và chưa có map lưu. KHÔNG gọi LLM trong rule logic (chỉ parse-time).
+- **Staleness khi sửa map file đã `parsed`:** re-analyze → re-parse → **re-run CHỈ các check registry
+  báo đọc cột đã đổi** (scoped qua D2), đồng bộ. WS1 KHÔNG cần cờ stale. Mô hình stale tổng quát
+  (`check_runs` + `data_version`, overview `stale = based_on_run_at < ran_at`) là của **WS3** — chỉ
+  cần khi re-run không tức thì + cho AI overview. Hệ quả: WS1 core build được CHỈ với registry; nền
+  `check_runs`/`data_version` chỉ bắt buộc khi WS3 (overview) tới.
+
+**Việc (đo từ code hiện có):** đường `standard` đã tính vị trí khớp nhãn trong `SheetCandidate.colmap`
+rồi **vứt đi** (`parse_m15` chỉ dùng `.name`). Cần: giữ `colmap`; thêm từ khoá cho cột 6/7/9; ghi
+nhãn bằng chứng vào `ParseProvenance.detail`; thêm registry; một màn review.
+
+**Alternatives loại:** *Option A — match-rate đẳng thức mức FILE trên mọi path* (trùng C2.1/C2.2;
+mù với hoán vị cùng dấu + cột ngoài đẳng thức); *cổng mỗi check* (bắt cán bộ xác nhận cùng một cột
+N lần, không hơn gì việc liệt kê check bị ảnh hưởng trên một banner file).
+
+**Còn lại (KHÔNG chặn thiết kế WS1):** nội dung `consumed_as` của registry là việc CƠ HỌC (đọc từ
+code check — bảng trong brief); nền staleness tổng quát (`check_runs`/`data_version`) thuộc WS3;
+phân quyền confirm trong CÙNG DN = cán bộ có quyền DN đó (ranh giới ADR #14). Xem
+[[parse-confidence-evidence-model]].

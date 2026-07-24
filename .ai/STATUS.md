@@ -1,5 +1,21 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 khuya — grill WS1 xong, design CHỐT, CHƯA code):**
+> Chạy `/grill-with-docs` cho **WS1** (parse review + map cột) của brief UI redesign. Chốt toàn bộ
+> nhánh chịu lực → **ADR #18** (`.ai/DECISIONS.md`) + **`.ai/GLOSSARY.md`** (mới) + memory
+> `parse-confidence-evidence-model`. Cốt lõi: tin cậy = **evidence source mỗi cột** (`officer-confirmed`
+> > `header-matched`·`balance-checked` > `position-only`; `balance-checked` chỉ đủ cho cột dạng TỔNG
+> vì đẳng thức bất biến dưới hoán vị cột cùng dấu — advisor xác nhận, C2.1/C2.2 đã own đẳng thức).
+> Badge **2 trạng thái** `verified`/`needs_review`; cổng review **per-file, warn-not-block**; registry
+> `check→cột` dict tĩnh (`consumed_as: individual|sum`); map lưu theo **(DN, vân tay form)** — **per-DN
+> confirm (option 2, SỬA ADR #15 cross-DN)**; vòng đời file **`uploaded→analyzed→parsed`** (auto-advance
+> khi verified) hiện trên UI; AI = bước sửa (ADR #15); staleness = re-run check bị ảnh hưởng inline,
+> stale-flag để WS3. **KHÔNG đụng code.** Working-tree: ADR #18 + GLOSSARY.md **CHƯA commit**.
+> **Next:** `/to-tickets` cắt 4 slice → `/implement` ticket 1 (nền: registry + evidence tagging trên
+> đường standard — giữ `SheetCandidate.colmap` đang bị `parse_m15` vứt, thêm keyword cột 6/7/9,
+> ghi evidence vào `ParseProvenance`), **mỗi ticket một session fresh** tham chiếu ADR #18.
+> Session log: `.ai/sessions/2026-07-24-grill-ws1.md`.
+
 > **Trạng thái (2026-07-24 tối — C4.3 đổi số nhân + tầm nhìn UI redesign):**
 > Hai việc phiên này. (1) **C4.3 / P-07:** đã sửa đề án §4.1 (số nhân định mức = **sản lượng sản
 > xuất**, không phải xuất khẩu) + ADR ở `audit-hq/.ai/DECISIONS.md` — **CHƯA COMMIT**, cross-repo.
