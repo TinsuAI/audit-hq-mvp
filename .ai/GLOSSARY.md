@@ -58,3 +58,30 @@ của (DN, năm). `COMBO_*` bị delete vô điều kiện mỗi lần chạy; r
 finding theo `check_code.in_(only)`; sheet chứng cứ thu hẹp theo subject còn lại. EPHEMERAL: chọn qua
 param `check` lặp lại, KHÔNG lưu "profile". KHÔNG chọn = xuất tất cả (mặc định cũ). Sheet Tổng quan
 liệt kê mã đã chọn để không nhầm với export đủ.
+
+## AI tổng quan + staleness (WS3)
+
+**Check run** — mốc lần chạy mới nhất của MỘT check cho (DN, năm). Bảng `check_runs`, latest-upsert
+một dòng mỗi `(company_id, period_year, check_code)`: `ran_at`, `finding_count`, `status`,
+`data_version`. Ghi TRONG `run_checks()` cho MỌI check đã chạy, kể cả 0 finding — nên KHÔNG suy được
+từ `findings.created_at` (check ra 0 thì không có dòng finding). `status = ok|error` (`not_evaluable`
+dành sẵn, chưa build — Tầng C). Dòng VẮNG = "chưa rõ", KHÔNG stale. Lịch sử lần chạy KHÔNG ở đây — ở
+bảng `jobs`. Xem [[ws3-overview-staleness-model]].
+
+**Data version** — số nguyên trên `CompanyPeriod`, bump MỖI lần `ingest()` (trong transaction ingest
+→ nguyên tử với data). Đánh dấu "dữ liệu (DN, năm) đã đổi". Số nguyên chứ không timestamp: đồng hồ
+Python (`_now()`) ≠ đồng hồ SQL (`current_timestamp()`), so bằng không cần thứ tự. `run_checks` đọc ở
+ĐẦU lần chạy + ghi vào `check_runs`. Cần vì đường re-ingest trần (`documents_ingest_year`) đổi dữ liệu
+mà KHÔNG chạy check → `ran_at` không dời → điểm mù nếu chỉ dựa `ran_at`.
+
+**Check overview** — tổng quan AI tiếng Việt CÓ TRUY NGUỒN của một check cho (DN, năm). Bảng
+`check_overviews`, overwrite-upsert một dòng mỗi `(company_id, period_year, check_code)`; mang telemetry
+riêng (`model`/`tokens_in`/`tokens_out`/`cost_usd`/`latency_ms`) → tự truy nguồn chi phí, không cần
+history hay `ai_conversation` giả. Sinh ON-DEMAND (cán bộ bấm), ĐỒNG BỘ trong request (endpoint `def`
+thuần → threadpool, KHÔNG qua job worker 1-thread). Prompt nạp ĐẾM severity + top-N `subject_key`,
+KHÔNG nạp dòng. Chỉ mặt trên GROUP đã render (check ≥1 finding).
+
+**Staleness (overview)** — overview cũ khi trạng thái nền đã tiến. **Stale ⇔ `check_runs.ran_at` dời
+(check chạy lại) HOẶC `CompanyPeriod.data_version` dời (dữ liệu nạp lại)** so với `based_on_run_at` /
+`based_on_data_version` snapshot trên dòng overview. Xử lý FLAG-ONLY: hiện text xám + badge "đã cũ" +
+nút "Tạo lại", KHÔNG auto-regenerate lúc load. Combo (`COMBO_*`) KHÔNG có check-run lẫn overview.

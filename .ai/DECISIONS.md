@@ -426,3 +426,116 @@ phân quyền confirm trong CÙNG DN = cán bộ có quyền DN đó (ranh giớ
   có workflow xuất lặp thật.
 
 Xem [[parse-confidence-evidence-model]] · [[check-execution-async-via-jobs]].
+
+---
+
+**Revision — WS3 (AI tổng quan mỗi test + staleness) (2026-07-24, grill `/grill-with-docs WS3`, advisor fable review)**
+
+> Grill WS3 chốt mô hình theo-dõi-lần-chạy + tổng quan AI. GREENFIELD hoàn toàn: KHÔNG có
+> `check_runs`, `data_version`, hay overview lưu trữ nào hôm nay — mọi narrative AI hiện sinh LIVE
+> mỗi lượt chat, chỉ `ai_conversations`/`ai_messages` persist. Gộp vào ADR #18 (không tách #19)
+> theo owner. Advisor (fable) review chốt Q1–Q7, LẬT Q8 sang forward-only (sửa một sự thật sai).
+
+*(1) Tổng quan AI — grain, trigger, cơ chế chạy:*
+- **Grain = một overview mỗi `(company_id, period_year, check_code)`** (D6): tóm tắt tiếng Việt CÓ
+  TRUY NGUỒN của riêng check đó cho DN-năm, render ở khối `group-actions` (`company_detail.html:240`).
+  KHÔNG phải một narrative gộp mỗi DN-năm — bản gộp đã có LIVE trong chat (`_generate_report`,
+  `app/ai/tools.py:674`). Grain per-check là điều kiện để staleness có nghĩa (re-run C4.3 chỉ stale
+  overview C4.3).
+- **On-demand, KHÔNG eager:** cán bộ bấm "Tạo tổng quan" → sinh + lưu một overview. Eager (auto sau
+  mỗi `run_checks`) = hàng trăm gọi LLM mỗi BATCH_RUN, hầu hết không ai đọc. Overview là công cụ ĐỌC,
+  không phải một phần kết quả kiểm toán.
+- **Sinh ĐỒNG BỘ trong request, KHÔNG qua job worker.** Worker 1 thread (WS2) serialize check; một
+  gọi LLM 5s ở đó sẽ CHẶN hàng đợi check. Overview chỉ ghi MỘT dòng `check_overviews` (không đụng
+  finding-set) nên gần như không tranh chấp ghi → chạy trong request đúng chỗ.
+  **Endpoint khai `def` THUẦN, KHÔNG `async def`:** `async def chat` (`ai.py:181`) gọi OpenAI client
+  đồng bộ → CHẶN cả event loop; `def` thuần chạy trong threadpool FastAPI, chỉ tốn 1 thread. Tái dùng
+  `check_rate_limit`/`check_daily_budget`, đặt timeout client tường minh, GHI DB SAU khi LLM trả (không
+  để transaction ghi bắc qua lời gọi LLM).
+
+*(2) `check_runs` — upsert, cột, status, dọn orphan:*
+- **Latest-upsert**, một dòng mỗi `(company_id, period_year, check_code)`, unique bộ ba. KHÔNG
+  append-history: consumer duy nhất là staleness (chỉ cần `ran_at` mới nhất); lịch sử LẦN CHẠY đã có
+  ở bảng `jobs` (`payload.only`, `started_at`/`finished_at`) + `findings.created_at` (de-facto last-run
+  cho check khác 0 nhờ wipe-and-recreate). Tiền lệ: `CompanyYearScore` cũng upsert.
+- **Cột:** `company_id`, `period_year`, `check_code`, `ran_at`, `finding_count`, `status`, `data_version`.
+- **Upsert PHẢI nằm TRONG `run_checks()`** (vòng lặp `~run_checks.py:97-115`), KHÔNG ở job handler —
+  nếu không, entry CLI (`run_checks.py:190`) + fallback inline (`companies.py:1187`) không dời `ran_at`
+  → false-stale. Ghi cho MỌI check đã chạy, kể cả 0 finding (đó là lý do D5: không suy từ
+  `findings.created_at` — check ra 0 finding thì không có dòng finding).
+- **Full run cũng DELETE `check_runs` của mã `X.*` orphan** (soi `run_checks.py:81-88` xoá finding orphan).
+- **`status` = `ok`/`error` bây giờ, `not_evaluable` DÀNH SẴN (chưa build).** `error` chỉ với check
+  ĐỘNG (`CheckRunError` bắt ở `run_checks.py:107-114`); check built-in raise → rollback CẢ transaction
+  trước `s.commit()` → không có dòng `check_runs` nào của lần đó (nhất quán, đừng mong dòng error
+  per-check cho built-in). `not_evaluable` (phân biệt "0 vì sạch" vs "0 vì thiếu dữ liệu") là việc
+  **Tầng C — chờ họp**, KHÔNG front-run ở WS3; cột sẵn, phái sinh để sau.
+
+*(3) `data_version` — GIỮ (crux), trên `CompanyPeriod`:*
+- **Vì sao giữ:** đường re-ingest trần (`documents_ingest_year`, `companies.py:1196`) đổi dữ liệu mà
+  KHÔNG chạy check (ingest ≠ run là hai bước cố ý; flow sửa kỳ muốn đặt kỳ giữa hai bước). Sau nó
+  finding + overview stale nhưng `ran_at` KHÔNG dời → `based_on_run_at < ran_at` sai → không ai phát
+  hiện. Đường confirm-review khi `changed_fields` rỗng/không map check nào cũng là ingest-không-run.
+  → chỉ `ran_at` có ĐIỂM MÙ thật.
+- **Số nguyên trên `CompanyPeriod`** (đã 1 dòng/DN-năm, `resolve_period_bounds` upsert MỌI lần ingest
+  không dry-run → dòng chắc chắn tồn tại). Số nguyên > timestamp: `_now()` Python và
+  `func.current_timestamp()` SQL là HAI đồng hồ; so bằng không cần thứ tự.
+- **Ba ràng buộc cài đặt (advisor):** (a) bump version TRONG transaction của ingest → version + data
+  commit nguyên tử; (b) `run_checks` đọc data_version ở ĐẦU lần chạy và ghi giá trị đó — re-ingest ở
+  route-thread có thể commit GIỮA lúc worker chạy check; ghi version lúc-commit sẽ che mất; (c) upsert
+  `check_runs` trong `run_checks()` (đã nêu ở 2).
+- **Overview stale ⇔ `check_runs.ran_at` dời (check chạy lại) HOẶC `CompanyPeriod.data_version` dời
+  (dữ liệu nạp lại từ khi sinh).**
+- **Đường chưa phủ:** sửa alias/canonical UOM (`admin.py`) đổi chuẩn hoá check mà không ingest, không
+  run → không tín hiệu staleness. Hiếm, chỉ admin — GHI CHÚ, không kỹ-nghệ-hoá.
+- *Loại:* auto-run check khi ingest rồi bỏ data_version (chọi flow ingest→đặt-kỳ→run cố ý; re-ingest
+  14 DN fan-out 14 run); chỉ `ran_at` (mù đường re-ingest — chính là hộp đen dự án bác).
+
+*(4) Staleness UX + persistence:*
+- **Flag-only:** overview stale hiện text XÁM + badge "Tổng quan đã cũ — dựa trên lần chạy trước" +
+  mốc `based_on` + nút "Tạo lại"; KHÔNG auto-regenerate lúc load (company_detail là trang chính → sẽ
+  gọi LLM mỗi lần xem). Đánh dấu-không-ẩn = kỷ luật không-hộp-đen.
+- **Overwrite (upsert một dòng mỗi check), KHÔNG version history** — consumer duy nhất là "overview
+  hiện tại + có stale không". Dòng `check_overviews` TỰ mang telemetry (`model`, `tokens_in`,
+  `tokens_out`, `cost_usd`, `latency_ms`, gương `AiMessage` `models/ai.py:78-82`) → mỗi overview tự
+  truy nguồn được chi phí (đây là gọi LLM tính tiền) mà không cần bảng history hay `ai_conversation`
+  giả. Double-click đồng thời = hai gọi LLM last-write-wins (chấp nhận; guard in-flight theo bộ ba là
+  tuỳ chọn tỉa).
+- **Cột `check_overviews`:** `company_id`, `period_year`, `check_code`, `content`, `generated_at`,
+  `based_on_run_at`, `based_on_data_version`, `model`, `tokens_in`, `tokens_out`, `cost_usd`,
+  `latency_ms`; unique `(company_id, period_year, check_code)`.
+
+*(5) Kỷ luật prompt (không-hộp-đen áp cho cả narrative):*
+- **Nạp prompt: đếm theo severity + top-N `subject_key`, KHÔNG nạp dòng** (code tự ghi 11.003 finding
+  cho một DN-năm, `companies.py:1369`). LƯU snapshot tổng hợp đó lên dòng overview.
+- **Đọc `ran_at` + `data_version` + tổng hợp finding trong MỘT session/transaction** khi sinh — một
+  lần chạy commit giữa chừng sẽ ghép snapshot từ hai trạng thái.
+- Prompt được lệnh KHÔNG khẳng định "sạch/không bất thường" từ mỗi con số 0 (honesty tạm ở prompt tới
+  khi Tầng C thêm `not_evaluable`). Cân nhắc: status triage finding (confirmed/false-positive) RESET
+  về `new` mỗi lần re-run → quyết định có đưa status vào overview không.
+
+*(6) Phạm vi — combo LOẠI, forward-only KHÔNG backfill:*
+- **Combo (`COMBO_*`) KHÔNG vào `check_runs` lẫn overview:** recompute mỗi lần chạy (WS2), default OFF,
+  UI `group-actions` đã guard `not code.startswith('COMBO_')` — không nút chạy lẻ, không panel per-test.
+  `check_runs` chỉ theo mã check thật; overview chỉ cho check thật.
+- **Forward-only, KHÔNG backfill** (LẬT so với đề xuất grill ban đầu). **Sự thật sửa:**
+  `CompanyYearScore.computed_at` là mốc lần chạy ĐẦU TIÊN, KHÔNG phải mới nhất — upsert
+  `run_checks.py:159-173` chỉ đổi `score`/`tier`/`breakdown`, cột `score.py:28-30` có `server_default`
+  KHÔNG `onupdate` → không bao giờ dời sau insert đầu. Seed `ran_at` từ nó = đóng dấu mốc cũ hàng tuần
+  (sai "lần chạy gần nhất" tệ hơn không có). Thêm nữa seed `finding_count=0` vô consumer: group dựng từ
+  findings `GROUP BY` (`companies.py:1371`) → check ra-sạch không render group, không mặt overview.
+  → dòng `check_runs` VẮNG = "chưa rõ" (KHÔNG stale); lần chạy thật đầu tiên tạo dòng.
+- **KHÔNG "batch re-run để seed":** `run_checks` xoá finding mọi mã nó đụng và KHÔNG có carry-over
+  status triage nào → populate-run RESET mọi `status` finding về `new`. Nếu SAU này cần "lần chạy" mỗi
+  check cho toàn DN lịch sử ngày-một → seed từ `MAX(findings.created_at)` per (DN, năm, mã) (mốc
+  latest thật cho check khác 0), KHÔNG từ `computed_at`, và để check ra-sạch không seed.
+
+*(7) Ranh giới Q1/Q5 (làm rõ, không phát hiện ở template):* overview chỉ mặt trên GROUP đã render
+(check ≥1 finding) → lệnh prompt "không khẳng định sạch từ 0" tạm CHƯA có consumer sống (check 0
+finding không hiện nút overview). Ổn cho demo; ghi rõ scoping ở đây.
+
+**WS3 build được trên:** `check_runs` + `data_version` (mới) + registry WS1 + hạ tầng LLM
+`call_with_fallback` sẵn có. Thứ tự: nền `check_runs`/`data_version` (ghi trong `run_checks` +
+bump trong `ingest`) TRƯỚC → overview on-demand chồng lên. Alembic head hiện `b7d2e1f4a3c6` →
+migration WS3 `down_revision = "b7d2e1f4a3c6"`.
+
+Xem [[parse-confidence-evidence-model]] · [[check-execution-async-via-jobs]] · [[ws3-overview-staleness-model]].

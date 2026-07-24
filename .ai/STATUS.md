@@ -1,5 +1,25 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — grill WS3 xong, design CHỐT, CHƯA code):**
+> Chạy `/grill-with-docs WS3` (AI tổng quan mỗi test + staleness). GREENFIELD (không
+> `check_runs`/`data_version`/overview lưu trữ nào). Chốt 8 nhánh + gộp **ADR #18 Revision — WS3**
+> (không tách #19). Advisor (fable) endorse Q1–Q7, LẬT Q8. Cốt lõi: (1) `check_runs` latest-upsert
+> 1 dòng mỗi `(DN,năm,mã)` ghi TRONG `run_checks()` cho mọi check kể cả 0 finding (không suy từ
+> `findings.created_at`); (2) `data_version` số nguyên trên `CompanyPeriod` bump mỗi ingest —
+> **stale ⇔ `ran_at` dời HOẶC `data_version` dời** (vì `documents_ingest_year` re-ingest mà KHÔNG
+> chạy check → điểm mù nếu chỉ `ran_at`); (3) `check_overviews` overwrite-upsert + telemetry riêng,
+> sinh ON-DEMAND ĐỒNG BỘ trong request bằng endpoint `def` THUẦN (không `async def` — sync client
+> chặn event loop; không qua job worker 1-thread); (4) flag-only stale (nút "Tạo lại", không
+> auto-regenerate); (5) combo LOẠI + **forward-only KHÔNG backfill**. **GOTCHA:**
+> `CompanyYearScore.computed_at` là mốc FIRST-run KHÔNG phải latest (`server_default` không `onupdate`)
+> → không backfill từ nó. Prompt nạp ĐẾM+top-N subject_key không nạp dòng (11.003 finding/DN-năm).
+> 3 ràng buộc cài đặt: bump version trong transaction ingest · đọc version ở ĐẦU run · upsert trong
+> `run_checks()` không ở job handler. **KHÔNG đụng code.** Docs: ADR #18 Rev WS3 + GLOSSARY (WS3) +
+> memory `ws3-overview-staleness-model` — CHƯA commit. `not_evaluable` là Tầng C chờ họp (cột dành sẵn).
+> **Next:** `/to-tickets` (nền check_runs+data_version → overview model+endpoint → UI panel/badge),
+> mỗi ticket session fresh tham chiếu ADR #18 Rev WS3. WS3 nền check_runs ĐỘC LẬP WS2.
+> Session log: `.ai/sessions/2026-07-24-grill-ws3.md`.
+
 > **Trạng thái (2026-07-24 — WS2 IMPLEMENT XONG (4 slice) + review + fix Defect 1 — CHƯA push/merge):**
 > Cài trọn WS2 trên branch `feat/ws1-parse-review` (tiếp WS1). 2 commit code:
 > `5c22a5a` nền + `ecb16c4` UI/async. (1) **Nền:** `RUN_CHECKS` payload `only:list[str]`;
