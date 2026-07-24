@@ -97,7 +97,8 @@ def test_company_detail_renders_run_modal():
         assert r.status_code == 200
         assert 'data-open-modal="run-tests-modal"' in r.text
         assert 'id="run-tests-modal"' in r.text
-        assert "modal-check-grid" in r.text
+        assert "test-pick-list" in r.text
+        assert "test-pick-code" in r.text
     finally:
         _teardown(new_engine)
 

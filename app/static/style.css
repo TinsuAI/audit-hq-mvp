@@ -2000,17 +2000,38 @@ p { margin: 0 0 var(--space-3); }
 }
 .modal-tools button:hover { color: var(--c-brand-600); }
 .modal-tools button:focus-visible { outline: 2px solid var(--c-border-focus); outline-offset: 2px; }
-.modal-check-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-2) var(--space-4);
+/* Danh sách chọn test — 1 cột, mỗi test là hàng bấm-cả-hàng (khớp nhóm phát hiện). */
+.test-pick-list { display: flex; flex-direction: column; gap: 2px; }
+.test-pick {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent; border-left: 3px solid transparent;
+  border-radius: var(--radius-sm); cursor: pointer;
+  touch-action: manipulation; transition: background 0.12s ease;
 }
-.modal-check-grid label {
-  display: flex; gap: var(--space-2); align-items: flex-start; font-size: var(--fs-sm);
-  cursor: pointer; touch-action: manipulation;
+.test-pick:hover { background: var(--c-surface-alt); }
+.test-pick:has(input:checked) {
+  background: var(--c-brand-50); border-left-color: var(--c-brand-500);
 }
-.modal-check-grid input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+.test-pick:focus-within { outline: 2px solid var(--c-border-focus); outline-offset: 1px; }
+.test-pick input[type="checkbox"] {
+  width: 18px; height: 18px; accent-color: var(--c-brand-500); flex-shrink: 0; margin: 0;
+}
+.test-pick-code {
+  font-size: var(--fs-xs); font-weight: 600; color: var(--c-text-muted);
+  background: var(--c-overlay); padding: 2px 7px; border-radius: var(--radius-sm);
+  flex-shrink: 0; min-width: 46px; text-align: center;
+}
+.test-pick-title { flex: 1; font-size: var(--fs-sm); color: var(--c-text); line-height: 1.35; }
+.test-pick-count {
+  flex-shrink: 0; font-size: var(--fs-xs); color: var(--c-text-subtle);
+  background: var(--c-surface); border: 1px solid var(--c-border);
+  padding: 1px 9px; border-radius: 999px; min-width: 30px; text-align: center;
+}
+@media (prefers-reduced-motion: reduce) { .test-pick { transition: none; } }
 .modal-foot {
-  display: flex; gap: var(--space-3); justify-content: flex-end;
+  display: flex; gap: var(--space-3); align-items: center; justify-content: flex-end;
   padding: var(--space-4) var(--space-5); border-top: 1px solid var(--c-border);
   background: var(--c-surface-alt);
 }
+.modal-count { margin-right: auto; font-size: var(--fs-sm); color: var(--c-text-muted); }

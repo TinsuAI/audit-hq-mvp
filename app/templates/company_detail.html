@@ -313,23 +313,25 @@
       </div>
       <div class="modal-body">
         <input type="hidden" name="year" value="{{ selected_year }}">
-        <p>Không chọn = chạy toàn bộ. Chọn một hoặc nhiều để chỉ chạy lại các test đó.</p>
+        <p>Bỏ trống = chạy toàn bộ. Tick các test cần chạy lại — cả hàng đều bấm được.</p>
         <div class="modal-tools">
           <button type="button" data-check-all="run-tests-modal">Chọn tất cả</button>
           <button type="button" data-check-none="run-tests-modal">Bỏ chọn</button>
         </div>
-        <div class="modal-check-grid">
+        <div class="test-pick-list">
           {% for opt in run_options %}
-          <label>
+          <label class="test-pick">
             <input type="checkbox" name="check" value="{{ opt.code }}">
-            <span><span class="text-mono">{{ opt.code }}</span> — {{ opt.title }}</span>
+            <span class="test-pick-code">{{ opt.code }}</span>
+            <span class="test-pick-title">{{ opt.title }}</span>
           </label>
           {% endfor %}
         </div>
       </div>
       <div class="modal-foot">
+        <span class="modal-count" data-count>Chưa chọn — sẽ chạy tất cả</span>
         <button type="button" class="btn btn-secondary" data-close-modal>Huỷ</button>
-        <button type="submit" class="btn btn-primary">▶️ Chạy các test đã chọn</button>
+        <button type="submit" class="btn btn-primary" data-submit data-mode="run">▶️ Chạy tất cả</button>
       </div>
     </form>
   </dialog>
@@ -344,23 +346,26 @@
       </div>
       <div class="modal-body">
         <input type="hidden" name="year" value="{{ selected_year }}">
-        <p>Không chọn = xuất toàn bộ phát hiện. Chọn một hoặc nhiều để chỉ xuất các test đó.</p>
+        <p>Bỏ trống = xuất toàn bộ phát hiện. Tick các test cần xuất — số bên phải là số phát hiện.</p>
         <div class="modal-tools">
           <button type="button" data-check-all="export-tests-modal">Chọn tất cả</button>
           <button type="button" data-check-none="export-tests-modal">Bỏ chọn</button>
         </div>
-        <div class="modal-check-grid">
+        <div class="test-pick-list">
           {% for opt in export_options %}
-          <label>
+          <label class="test-pick">
             <input type="checkbox" name="check" value="{{ opt.code }}">
-            <span><span class="text-mono">{{ opt.code }}</span> — {{ opt.title }} <span class="text-muted">({{ opt.total }})</span></span>
+            <span class="test-pick-code">{{ opt.code }}</span>
+            <span class="test-pick-title">{{ opt.title }}</span>
+            <span class="test-pick-count">{{ opt.total }}</span>
           </label>
           {% endfor %}
         </div>
       </div>
       <div class="modal-foot">
+        <span class="modal-count" data-count>Chưa chọn — sẽ xuất tất cả</span>
         <button type="button" class="btn btn-secondary" data-close-modal>Huỷ</button>
-        <button type="submit" class="btn btn-primary">📊 Xuất Excel</button>
+        <button type="submit" class="btn btn-primary" data-submit data-mode="export">📊 Xuất tất cả</button>
       </div>
     </form>
   </dialog>
@@ -369,13 +374,29 @@
   <script>
   (function () {
     function bind(sel, fn) {
-      document.querySelectorAll(sel).forEach(function (el) {
-        el.addEventListener("click", fn);
-      });
+      document.querySelectorAll(sel).forEach(function (el) { el.addEventListener("click", fn); });
+    }
+    function refresh(dialog) {
+      var boxes = dialog.querySelectorAll('input[name="check"]');
+      var submit = dialog.querySelector("[data-submit]");
+      var countEl = dialog.querySelector("[data-count]");
+      var n = 0;
+      boxes.forEach(function (c) { if (c.checked) n++; });
+      var mode = submit ? submit.getAttribute("data-mode") : "run";
+      var verb = mode === "export" ? "Xuất" : "Chạy";
+      var emoji = mode === "export" ? "📊" : "▶️";
+      if (countEl) {
+        countEl.textContent = n
+          ? (n + "/" + boxes.length + " test đã chọn")
+          : ("Chưa chọn — sẽ " + verb.toLowerCase() + " tất cả");
+      }
+      if (submit) {
+        submit.textContent = n ? (emoji + " " + verb + " " + n + " test") : (emoji + " " + verb + " tất cả");
+      }
     }
     bind("[data-open-modal]", function () {
       var d = document.getElementById(this.getAttribute("data-open-modal"));
-      if (d && typeof d.showModal === "function") d.showModal();
+      if (d && typeof d.showModal === "function") { refresh(d); d.showModal(); }
     });
     bind("[data-close-modal]", function () {
       var d = this.closest("dialog");
@@ -385,14 +406,16 @@
       var d = document.getElementById(id);
       if (!d) return;
       d.querySelectorAll('input[name="check"]').forEach(function (c) { c.checked = val; });
+      refresh(d);
     }
     bind("[data-check-all]", function () { setAll(this.getAttribute("data-check-all"), true); });
     bind("[data-check-none]", function () { setAll(this.getAttribute("data-check-none"), false); });
-    // Bấm ra nền (backdrop) để đóng.
     document.querySelectorAll("dialog.modal").forEach(function (d) {
-      d.addEventListener("click", function (ev) {
-        if (ev.target === d) d.close();
+      d.addEventListener("change", function (ev) {
+        if (ev.target && ev.target.name === "check") refresh(d);
       });
+      // Bấm ra nền (backdrop) để đóng.
+      d.addEventListener("click", function (ev) { if (ev.target === d) d.close(); });
     });
   })();
   </script>
