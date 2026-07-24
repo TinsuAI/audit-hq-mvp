@@ -952,6 +952,8 @@ def documents_download_file(
 
 PREVIEW_ROWS = 100
 PREVIEW_COLS = 40
+# Grid preview nhúng trong màn xác nhận cột (WS1) — ít dòng để đối chiếu chỉ số cột.
+REVIEW_PREVIEW_ROWS = 15
 
 
 def _excel_col_letters(n: int) -> list[str]:
@@ -965,6 +967,41 @@ def _excel_col_letters(n: int) -> list[str]:
             if x < 0:
                 break
         out.append(s)
+    return out
+
+
+def _extract_sheet_preview(
+    abs_path: Path, sheet: int = 0,
+    max_rows: int = PREVIEW_ROWS, max_cols: int = PREVIEW_COLS,
+) -> dict:
+    """Đọc thô (không qua adapter) `max_rows × max_cols` ô đầu của một sheet Excel.
+
+    Trả dict cho template: sheet_names, selected_sheet, columns (nhãn A/B/…), rows,
+    truncated_rows/cols, error. Dùng chung cho trang xem file + grid nhúng màn review.
+    """
+    import pandas as pd
+
+    out: dict = {
+        "sheet_names": [], "selected_sheet": 0, "columns": [], "rows": [],
+        "truncated_rows": False, "truncated_cols": False, "error": None,
+    }
+    try:
+        xls = pd.ExcelFile(abs_path)
+        out["sheet_names"] = list(xls.sheet_names)
+        sel = sheet if 0 <= sheet < len(out["sheet_names"]) else 0
+        out["selected_sheet"] = sel
+        df = pd.read_excel(xls, sheet_name=sel, header=None, nrows=max_rows + 1, dtype=object)
+        out["truncated_rows"] = len(df) > max_rows
+        df = df.iloc[:max_rows]
+        out["truncated_cols"] = df.shape[1] > max_cols
+        df = df.iloc[:, :max_cols]
+        out["columns"] = _excel_col_letters(df.shape[1])
+        out["rows"] = [
+            ["" if pd.isna(v) else str(v) for v in r]
+            for r in df.itertuples(index=False, name=None)
+        ]
+    except Exception as e:  # noqa: BLE001 — file hỏng/sai định dạng → báo nhẹ, không 500
+        out["error"] = f"{type(e).__name__}: {e}"
     return out
 
 
@@ -988,30 +1025,7 @@ def documents_preview_file(
     if not abs_path.is_file():
         raise HTTPException(status_code=404, detail="File không còn trên đĩa")
 
-    import pandas as pd
-
-    error = None
-    sheet_names: list[str] = []
-    columns: list[str] = []
-    rows_view: list[list[str]] = []
-    truncated_rows = truncated_cols = False
-    sel = 0
-    try:
-        xls = pd.ExcelFile(abs_path)
-        sheet_names = list(xls.sheet_names)
-        sel = sheet if 0 <= sheet < len(sheet_names) else 0
-        df = pd.read_excel(xls, sheet_name=sel, header=None, nrows=PREVIEW_ROWS + 1, dtype=object)
-        truncated_rows = len(df) > PREVIEW_ROWS
-        df = df.iloc[:PREVIEW_ROWS]
-        truncated_cols = df.shape[1] > PREVIEW_COLS
-        df = df.iloc[:, :PREVIEW_COLS]
-        columns = _excel_col_letters(df.shape[1])
-        rows_view = [
-            ["" if pd.isna(v) else str(v) for v in r]
-            for r in df.itertuples(index=False, name=None)
-        ]
-    except Exception as e:  # noqa: BLE001 — file hỏng/sai định dạng → báo nhẹ, không 500
-        error = f"{type(e).__name__}: {e}"
+    pv = _extract_sheet_preview(abs_path, sheet)
 
     return templates.TemplateResponse(
         request,
@@ -1021,16 +1035,16 @@ def documents_preview_file(
             "company": company,
             "file": row,
             "slot_label": SLOT_LABEL_VI.get(row.slot, row.slot),
-            "sheet_names": sheet_names,
-            "selected_sheet": sel,
-            "columns": columns,
-            "rows": rows_view,
-            "truncated_rows": truncated_rows,
-            "truncated_cols": truncated_cols,
+            "sheet_names": pv["sheet_names"],
+            "selected_sheet": pv["selected_sheet"],
+            "columns": pv["columns"],
+            "rows": pv["rows"],
+            "truncated_rows": pv["truncated_rows"],
+            "truncated_cols": pv["truncated_cols"],
             "preview_rows": PREVIEW_ROWS,
             "preview_cols": PREVIEW_COLS,
             "human_size": _human_size,
-            "error": error,
+            "error": pv["error"],
         },
     )
 
@@ -1068,6 +1082,22 @@ def documents_review_file(
             "checks": checks_reading(row.slot, field),
         })
 
+    # Grid preview nhúng: nội dung THẬT của file (dòng/cột đầu) để đối chiếu chỉ số cột —
+    # bảng chỉ-số-không thì cán bộ không biết cột 8 là gì. Annotate mỗi cột grid bằng
+    # field đã map (tô màu) + cột needs_review (vàng). Số cột grid phủ đủ chỉ số đã map.
+    mapped_idx = [i for i in column_map.values() if isinstance(i, int)]
+    grid_cols = min(max((max(mapped_idx) + 2 if mapped_idx else 0), 8), PREVIEW_COLS)
+    abs_path = _resolve_within_root(row.stored_path)
+    preview = (
+        _extract_sheet_preview(abs_path, 0, REVIEW_PREVIEW_ROWS, grid_cols)
+        if abs_path.is_file() else None
+    )
+    col_annot = {
+        c["col_index"]: {"label": c["label"], "needs": c.get("review") == "needs_review"}
+        for c in view_cols
+        if isinstance(c.get("col_index"), int)
+    }
+
     return templates.TemplateResponse(
         request,
         "document_review.html",
@@ -1080,6 +1110,8 @@ def documents_review_file(
             "form_signature": form_signature,
             "can_confirm": bool(form_signature and column_map),
             "human_size": _human_size,
+            "preview": preview,
+            "col_annot": col_annot,
         },
     )
 
