@@ -319,12 +319,17 @@
           <button type="button" data-check-none="run-tests-modal">Bỏ chọn</button>
         </div>
         <div class="test-pick-list">
-          {% for opt in run_options %}
-          <label class="test-pick">
-            <input type="checkbox" name="check" value="{{ opt.code }}">
-            <span class="test-pick-code">{{ opt.code }}</span>
-            <span class="test-pick-title">{{ opt.title }}</span>
-          </label>
+          {% for grp in run_groups %}
+          <div class="test-pick-group">
+            <p class="test-pick-group-title">{{ grp.title }}</p>
+            {% for opt in grp.options %}
+            <label class="test-pick">
+              <input type="checkbox" name="check" value="{{ opt.code }}">
+              <span class="test-pick-code">{{ opt.code }}</span>
+              <span class="test-pick-title">{{ opt.title }}</span>
+            </label>
+            {% endfor %}
+          </div>
           {% endfor %}
         </div>
       </div>
@@ -352,13 +357,18 @@
           <button type="button" data-check-none="export-tests-modal">Bỏ chọn</button>
         </div>
         <div class="test-pick-list">
-          {% for opt in export_options %}
-          <label class="test-pick">
-            <input type="checkbox" name="check" value="{{ opt.code }}">
-            <span class="test-pick-code">{{ opt.code }}</span>
-            <span class="test-pick-title">{{ opt.title }}</span>
-            <span class="test-pick-count">{{ opt.total }}</span>
-          </label>
+          {% for grp in export_groups %}
+          <div class="test-pick-group">
+            <p class="test-pick-group-title">{{ grp.title }}</p>
+            {% for opt in grp.options %}
+            <label class="test-pick">
+              <input type="checkbox" name="check" value="{{ opt.code }}">
+              <span class="test-pick-code">{{ opt.code }}</span>
+              <span class="test-pick-title">{{ opt.title }}</span>
+              <span class="test-pick-count">{{ opt.total }}</span>
+            </label>
+            {% endfor %}
+          </div>
           {% endfor %}
         </div>
       </div>

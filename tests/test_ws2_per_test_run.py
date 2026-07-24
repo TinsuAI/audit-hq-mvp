@@ -99,6 +99,9 @@ def test_company_detail_renders_run_modal():
         assert 'id="run-tests-modal"' in r.text
         assert "test-pick-list" in r.text
         assert "test-pick-code" in r.text
+        # Gom theo họ: tiêu đề nhóm §4 hiện trong modal.
+        assert "test-pick-group-title" in r.text
+        assert "C1 · Số lượng nhập / xuất" in r.text
     finally:
         _teardown(new_engine)
 

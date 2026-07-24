@@ -244,6 +244,33 @@ _UPLOAD_SLOTS = {
 _SLOT_KEY_FIELD = {"m15": "material_code", "m15a": "product_code", "m16": "material_code"}
 
 
+def _group_options_by_family(options: list[dict], specs: dict) -> list[dict]:
+    """Gom option chọn-test theo họ (C1/C2/…) + tiêu đề nhóm §4 đề án.
+
+    COMBO_* và X.* (mở rộng) gom về nhóm riêng, xếp cuối. Trả list
+    `{"title", "options"}` đã sắp theo số nhóm rồi mã họ.
+    """
+    from app.catalog_full import GROUP_NAMES
+
+    buckets: dict[str, dict] = {}
+    for opt in options:
+        code = opt["code"]
+        if code.startswith("COMBO_"):
+            key, title, order = "COMBO", "Phát hiện kết hợp", (100, "")
+        elif code.startswith("X."):
+            key, title, order = "X", "Kiểm tra mở rộng", (99, "")
+        else:
+            spec = specs.get(code)
+            group = spec.group if spec else 0
+            fam = code.split(".")[0]
+            name = GROUP_NAMES.get(group, "Khác")
+            key, title, order = fam, f"{fam} · {name}", (group, fam)
+        bucket = buckets.setdefault(key, {"title": title, "order": order, "options": []})
+        bucket["options"].append(opt)
+    ordered = sorted(buckets.values(), key=lambda b: b["order"])
+    return [{"title": b["title"], "options": b["options"]} for b in ordered]
+
+
 # Magic-byte chữ ký Excel — chặn file đổi đuôi (vd .txt → .xlsx) trước khi lưu.
 _XLSX_MAGIC = b"PK\x03\x04"        # OOXML = zip container
 _XLS_MAGIC = b"\xd0\xcf\x11\xe0"   # BIFF/OLE2 compound document
@@ -1468,6 +1495,10 @@ def company_detail(
     # Khác export_options (chỉ mã ĐÃ có finding): chạy thì chọn từ danh mục đầy đủ.
     run_options = [{"code": c, "title": s.title} for c, s in sorted(all_specs.items())]
 
+    # Gom theo họ C1/C2/… (tiêu đề nhóm §4) cho cả hai modal.
+    run_groups = _group_options_by_family(run_options, all_specs)
+    export_groups = _group_options_by_family(export_options, all_specs)
+
     # Trạng thái tách upload/kiểm tra: có dữ liệu năm này chưa? đã chạy kiểm tra chưa?
     has_data = selected_year in data_years if selected_year is not None else False
     checks_run = year_score is not None or total_findings > 0 or bool(combo_findings)
@@ -1484,6 +1515,8 @@ def company_detail(
             "ordered_groups": ordered_groups,
             "export_options": export_options,
             "run_options": run_options,
+            "run_groups": run_groups,
+            "export_groups": export_groups,
             "combo_findings": combo_findings,
             "severity_totals": severity_totals,
             "total_findings": total_findings,
