@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Xác nhận cột — {{ file.original_filename }} — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a><span class="sep">›</span>
+  <a href="/companies/{{ company.slug or company.code }}">{{ company.name or company.code }}</a><span class="sep">›</span>
+  <a href="/companies/{{ company.slug or company.code }}/documents">Tài liệu</a><span class="sep">›</span>
+  Xác nhận cột
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1 style="word-break:break-all">Xác nhận map cột</h1>
+    <p class="page-subtitle">
+      {{ slot_label }} · Năm {{ file.period_year }} · {{ file.original_filename }}
+    </p>
+  </div>
+  <div class="btn-group">
+    <a href="/companies/{{ company.slug or company.code }}/documents" class="btn btn-secondary">← Về tài liệu</a>
+    <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/preview" class="btn btn-secondary">👁 Xem nội dung file</a>
+  </div>
+</div>
+
+<div class="alert alert-warning" role="status" style="margin-bottom:var(--space-4)">
+  <p style="margin:0">⚠️ Một số cột đọc theo <strong>vị trí</strong> hoặc chỉ khớp <strong>đẳng thức cân đối</strong> — chưa đủ để chắc đúng cột (đẳng thức không phân biệt hai cột cùng dấu). Kiểm tra chỉ số cột bên dưới, sửa nếu sai, rồi bấm <strong>Xác nhận &amp; nạp dữ liệu</strong>. Chỉ số cột tính từ <strong>0</strong> (cột A = 0, B = 1…); mở “Xem nội dung file” để đối chiếu.</p>
+</div>
+
+{% if not can_confirm %}
+<div class="card"><p class="text-muted">File này chưa có map cột để xác nhận (chưa phân tích, hoặc không phát hiện cột nào cần xác nhận).</p></div>
+{% else %}
+<form method="post" action="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/review">
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Cột dữ liệu</th>
+          <th>Nguồn bằng chứng</th>
+          <th>Trạng thái</th>
+          <th>Kiểm tra đọc cột</th>
+          <th>Chỉ số cột (0-index)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in columns %}
+        {% set needs = c.review == 'needs_review' %}
+        <tr>
+          <td><strong>{{ c.label }}</strong></td>
+          <td><span class="badge muted doc-file-badge">{{ c.evidence_label }}</span></td>
+          <td>
+            <span class="badge {{ 'warning' if needs else 'info' }} doc-file-badge">{{ 'Cần xác nhận' if needs else 'Đã kiểm' }}</span>
+          </td>
+          <td class="text-muted">{% if c.checks %}{{ c.checks|join(', ') }}{% else %}—{% endif %}</td>
+          <td>
+            {% if needs %}
+            <input type="number" class="form-input mono-input" name="col_{{ c.field }}"
+                   value="{{ c.col_index if c.col_index is not none else '' }}" min="0" step="1"
+                   style="max-width:96px">
+            {% else %}
+            <span class="text-mono">{{ c.col_index if c.col_index is not none else '—' }}</span>
+            <input type="hidden" name="col_{{ c.field }}" value="{{ c.col_index if c.col_index is not none else '' }}">
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="btn-group" style="margin-top:var(--space-4)">
+    <button type="submit" class="btn btn-primary">✅ Xác nhận &amp; nạp dữ liệu</button>
+    <a href="/companies/{{ company.slug or company.code }}/documents" class="btn btn-secondary">Huỷ</a>
+  </div>
+  <p class="form-hint" style="margin-top:var(--space-3)">
+    Xác nhận lưu map cho doanh nghiệp này theo cấu trúc biểu — lần sau gặp cùng bố cục (kể cả năm khác) sẽ không phải xác nhận lại.
+  </p>
+</form>
+{% endif %}
+
+{% endblock %}

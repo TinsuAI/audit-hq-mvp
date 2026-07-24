@@ -287,6 +287,7 @@ class ReviewGateColumn:
     field: str
     label: str
     checks: tuple[str, ...]
+    file_id: int = 0  # DataFile.id — link banner tới màn review của file này
 
 
 @dataclass(frozen=True)
@@ -324,6 +325,7 @@ def review_gate_for_files(files: Iterable[DataFile]) -> ReviewGate | None:
                 field=field_name,
                 label=c.get("label", field_name),
                 checks=tuple(checks_reading(f.slot, field_name)),
+                file_id=f.id,
             ))
     if not columns:
         return None

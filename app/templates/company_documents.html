@@ -120,6 +120,13 @@
         <li><span class="doc-review-gate-slot">{{ SLOT_LABEL_VI[c.slot].split(' — ')[0] }}</span> · <strong>{{ c.label }}</strong>{% if c.checks %} — ảnh hưởng: {{ c.checks|join(', ') }}{% endif %}</li>
         {% endfor %}
       </ul>
+      <div class="doc-review-gate-actions">
+        {% set ns = namespace(seen=[]) %}
+        {% for c in yr.review_gate.columns if c.file_id and c.file_id not in ns.seen %}
+        {% set ns.seen = ns.seen + [c.file_id] %}
+        <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ c.file_id }}/review" class="btn btn-sm btn-primary">🔎 Xem &amp; xác nhận cột ({{ SLOT_LABEL_VI[c.slot].split(' — ')[0] }})</a>
+        {% endfor %}
+      </div>
     </div>
     {% endif %}
 

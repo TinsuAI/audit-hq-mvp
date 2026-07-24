@@ -6,6 +6,7 @@ import json as _json
 import re
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -996,6 +997,141 @@ def documents_preview_file(
             "human_size": _human_size,
             "error": error,
         },
+    )
+
+
+@router.get("/companies/{code}/documents/file/{file_id}/review", response_class=HTMLResponse)
+def documents_review_file(
+    code: str,
+    request: Request,
+    file_id: int,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Màn review map cột (WS1-3b, ADR #18): xem map đề xuất + badge evidence mỗi cột,
+    sửa chỉ số cột của field `needs_review`, xác nhận (POST) → advance `analyzed→parsed`.
+    """
+    company = get_company_or_404(db, code, user)
+    row = db.get(DataFile, file_id)
+    if row is None or row.company_id != company.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file")
+
+    detail = row.parse_detail_obj
+    columns = detail.get("columns", [])
+    column_map = detail.get("column_map", {})
+    form_signature = detail.get("form_signature")
+
+    from app.checks.registry import checks_reading
+
+    # Đính check bị ảnh hưởng cho mỗi cột (banner ở màn này) — cùng nguồn với cổng review.
+    view_cols = []
+    for c in columns:
+        field = c.get("field", "")
+        view_cols.append({
+            **c,
+            "col_index": column_map.get(field),
+            "checks": checks_reading(row.slot, field),
+        })
+
+    return templates.TemplateResponse(
+        request,
+        "document_review.html",
+        {
+            "user": user,
+            "company": company,
+            "file": row,
+            "slot_label": SLOT_LABEL_VI.get(row.slot, row.slot),
+            "columns": view_cols,
+            "form_signature": form_signature,
+            "can_confirm": bool(form_signature and column_map),
+            "human_size": _human_size,
+        },
+    )
+
+
+@router.post("/companies/{code}/documents/file/{file_id}/review", response_model=None)
+async def documents_confirm_review(
+    code: str,
+    request: Request,
+    file_id: int,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Xác nhận map cột: ghi saved-map (#6) rồi re-ingest (commit) → file advance
+    `analyzed→parsed`, cột trong map resolve `officer-confirmed` → `verified`.
+
+    Chuỗi advance: ``save_column_map`` (+ commit) → ``run_ingest`` → ``record_parse_result``
+    (committed=True). ``record_parse_result`` gọi ``resolve_officer_confirmed`` nên các cột
+    vừa lưu map lên `officer-confirmed`, cổng review clear.
+    """
+    company = get_company_or_404(db, code, user)
+    row = db.get(DataFile, file_id)
+    if row is None or row.company_id != company.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file")
+
+    slot = row.slot
+    year = row.period_year
+    detail = row.parse_detail_obj
+    form_signature = detail.get("form_signature")
+    base_map = detail.get("column_map", {})
+    columns = detail.get("columns", [])
+
+    def _redirect(params: str) -> RedirectResponse:
+        return RedirectResponse(url=f"/companies/{code}/documents?{params}", status_code=303)
+
+    if not form_signature or not base_map:
+        return _redirect(
+            "error=" + quote_plus("File này không có thông tin map cột để xác nhận.")
+        )
+
+    # Map đầy đủ = cột officer sửa (field `needs_review`) chồng lên map đề xuất. Ô thiếu /
+    # không hợp lệ giữ giá trị đề xuất để map không khuyết cột.
+    form = await request.form()
+    column_map: dict[str, int] = {}
+    for field, default_idx in base_map.items():
+        raw = form.get(f"col_{field}")
+        try:
+            column_map[field] = int(raw) if raw not in (None, "") else int(default_idx)
+        except (TypeError, ValueError):
+            column_map[field] = int(default_idx)
+
+    evidence = {c["field"]: c.get("evidence") for c in columns if c.get("field")}
+
+    from app.auth_users import get_user_by_username
+    from app.pipeline.data_files import record_parse_result, sync_data_files
+    from app.pipeline.saved_map import save_column_map
+
+    ur = get_user_by_username(db, user.name)
+    save_column_map(
+        db, company.id, slot, form_signature, column_map,
+        evidence=evidence, confirmed_by=ur.id if ur else None,
+    )
+    db.commit()
+
+    # Re-ingest thật (commit dòng) — record_parse_result đọc saved-map vừa ghi để nâng
+    # các cột lên officer-confirmed → verified → cổng review clear, file thành parsed.
+    raw_root = Path(settings.raw_data_path)
+    diagnosis = diagnose_upload(company.code, year, raw_root)
+    if diagnosis.has_errors:
+        from app.pipeline.ingest import IngestStats
+        sync_data_files(db, company)
+        record_parse_result(
+            db, company, year,
+            IngestStats(company_code=company.code, period_year=year), diagnosis,
+        )
+        return _redirect(
+            "error=" + quote_plus("Đã lưu map nhưng nạp lỗi — xem chi tiết ở trang tải lên.")
+        )
+    try:
+        stats = run_ingest(company.code, year, raw_root=raw_root)
+    except Exception as e:  # noqa: BLE001 — show parser errors back to user
+        raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
+
+    sync_data_files(db, company)
+    record_parse_result(db, company, year, stats, diagnosis)
+    label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
+    return _redirect(
+        "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} & nạp dữ liệu")
     )
 
 
