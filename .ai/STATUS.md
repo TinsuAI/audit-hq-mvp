@@ -1,5 +1,22 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — WS2 IMPLEMENT XONG (4 slice) + review + fix Defect 1 — CHƯA push/merge):**
+> Cài trọn WS2 trên branch `feat/ws1-parse-review` (tiếp WS1). 2 commit code:
+> `5c22a5a` nền + `ecb16c4` UI/async. (1) **Nền:** `RUN_CHECKS` payload `only:list[str]`;
+> `run_checks(only=)` chạy tập con; combo **recompute MỌI lần chạy** đọc TOÀN finding-set, gate
+> `combos_enabled` (app_settings, **default OFF**); delete `COMBO_*` giữ vô điều kiện. (2) **Chạy test
+> lẻ:** nút "Chạy lại {mã}" mỗi nhóm → `RUN_CHECKS {only:[mã], năm}` → `/jobs/{id}`. (3) **Export chọn:**
+> `build_export(only=)` lọc `check_code.in_()`; `/export?check=` lặp; panel checkbox + "Xuất test này";
+> Tổng quan liệt kê mã chọn. (4) **`documents_confirm_review` async** (option A: save-map+re-ingest sync,
+> re-run scoped **enqueue** → `/jobs/{id}` khi re-confirm); ẩn combo ở company_detail khi OFF; toggle admin
+> `/admin/checks/combos-toggle`. **649 test pass, ruff sạch, KHÔNG migration** (`combos_enabled`=1 row
+> `app_settings`). Review (critic) bắt **Defect 1 đã sửa:** pre-delete của `run_checks(only=)` phải gồm cả
+> mã dynamic `X.*` (không chỉ built-in) → nếu không, "Chạy lại X.1" nhân đôi finding (regression test thêm).
+> Defect 2 (max_raw giữ +20 combo khi OFF) **không sửa** — ADR chốt "Scoring KHÔNG đổi", có sẵn từ trước WS2.
+> **Lưu ý harness:** combo default OFF → full-run bỏ meta-finding COMBO_* so với mốc 417 (delta CÓ CHỦ Ý,
+> không phải regression). **Next:** push/merge WS1+WS2; grill WS3 (check_runs/data_version + AI overview stale).
+> Memory `check-execution-async-via-jobs` đã đánh dấu ĐÃ CÀI.
+
 > **Trạng thái (2026-07-24 — WS1 IMPLEMENT XONG (5 ticket) + demo build + fix dev server):**
 > WS1 cài trọn trên branch `feat/ws1-parse-review`: #4 evidence source+review state+registry
 > (`7df7e22`) · #5 vòng đời file+cổng review (`0653f1d`) · #6 vân tay form+saved-map store
