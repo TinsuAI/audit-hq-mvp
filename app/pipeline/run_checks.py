@@ -53,18 +53,31 @@ def run_checks(
         company_type = detect_company_type(s, company.id, year)
         stats = RunStats(company_code=company_code, period_year=year, company_type=company_type)
 
-        # Wipe previous findings cho (company, year) — bao gồm cả meta-finding
-        # combo, vì combo phụ thuộc kết quả check vừa chạy lại.
-        codes_to_run = set(ALL_CHECKS) if only is None else only & set(ALL_CHECKS)
+        # Load dynamic checks (published) từ DB — kind 'sql' | 'python'.
+        from sqlalchemy import select as _select
+        dynamic_rows = s.scalars(
+            _select(CheckDefinition).where(CheckDefinition.status == CheckStatus.PUBLISHED)
+        ).all()
+        dynamic_defs = {row.code: row for row in dynamic_rows}
+
+        # Tập mã sẽ chạy = (built-in ∪ dynamic đã công bố) lọc theo `only`. Phải gồm
+        # cả dynamic để wipe tương ứng — nếu chỉ wipe built-in thì chạy lẻ 1 check X.*
+        # (nút "Chạy lại X.1") add finding mới mà KHÔNG xoá cũ → nhân đôi.
+        codes_to_run = set(ALL_CHECKS) | set(dynamic_defs)
+        if only is not None:
+            codes_to_run = codes_to_run & only
+
+        # Wipe finding cũ đúng các mã sắp chạy lại (built-in + dynamic).
         if codes_to_run:
             s.execute(
                 delete(Finding).where(
                     Finding.company_id == company.id,
                     Finding.period_year == year,
-                    Finding.check_code.in_(codes_to_run | {"COMBO_*"}),
+                    Finding.check_code.in_(codes_to_run),
                 )
             )
-        # Wipe dynamic check findings (X.*) khi chạy full (không filter --check).
+        # Chạy full: dọn thêm finding dynamic (X.*) mồ côi — def đã gỡ công bố nên
+        # không nằm trong codes_to_run, sẽ không được dựng lại.
         if only is None:
             s.execute(
                 delete(Finding).where(
@@ -73,7 +86,8 @@ def run_checks(
                     Finding.check_code.like("X.%"),
                 )
             )
-        # Wipe combos riêng vì check_code COMBO_* không match in_().
+        # Wipe combos riêng (vô điều kiện) — combo phụ thuộc finding vừa chạy lại; chỉ
+        # RECOMPUTE mới gate theo combos_enabled (bên dưới). COMBO_% không match in_().
         s.execute(
             delete(Finding).where(
                 Finding.company_id == company.id,
@@ -82,19 +96,8 @@ def run_checks(
             )
         )
 
-        # Load dynamic checks (published) từ DB — kind 'sql' | 'python'.
-        from sqlalchemy import select as _select
-        dynamic_rows = s.scalars(
-            _select(CheckDefinition).where(CheckDefinition.status == CheckStatus.PUBLISHED)
-        ).all()
-        dynamic_defs = {row.code: row for row in dynamic_rows}
+        all_codes = codes_to_run
 
-        # Merge: built-in + dynamic. Built-in codes có priority nếu conflict.
-        all_codes = set(codes_to_run) | set(dynamic_defs)
-        if only is not None:
-            all_codes = all_codes & only
-
-        run_findings: list[Finding] = []
         for code in sorted(all_codes):
             if code in ALL_CHECKS:
                 fn = ALL_CHECKS[code]
@@ -113,17 +116,25 @@ def run_checks(
                 continue
             for f in findings:
                 s.add(f)
-            run_findings.extend(findings)
             stats.findings_per_check[code] = len(findings)
 
-        # Combo chỉ chạy khi không filter --check (cần đủ findings để match).
-        if only is None:
-            s.flush()  # gán id cho findings để evidence_refs trỏ về
-            combos = detect_combos(s, company.id, year, run_findings)
+        # Combo recompute — MỌI lần chạy (lẻ hay full), gate theo combos_enabled
+        # (default OFF). Đọc TOÀN finding-set (DN, năm), không chỉ finding vừa chạy —
+        # combo bắc cầu giữa check re-run và check không đụng. Delete COMBO_* đã vô
+        # điều kiện ở trên; chỉ recompute mới gate theo toggle (ADR #18 Revision — WS2).
+        from app.app_settings import get_combos_enabled
+        s.flush()  # gán id cho findings vừa chạy để evidence_refs trỏ về
+        if get_combos_enabled(db=s):
+            year_findings = s.scalars(
+                select(Finding).where(
+                    Finding.company_id == company.id,
+                    Finding.period_year == year,
+                )
+            ).all()
+            combos = detect_combos(s, company.id, year, year_findings)
             for f in combos:
                 s.add(f)
             stats.combos_fired = sorted({c.check_code for c in combos})
-            run_findings.extend(combos)
 
         # Tính điểm rate-based + lưu CompanyYearScore + cập nhật company.risk_score.
         s.flush()
