@@ -21,6 +21,7 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.evidence import evidence_m16
 from app.adapters.sheet_select import SheetNotFound, select_sheet
 
 
@@ -151,11 +152,15 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
 
     # ĐM thực tế thắng ĐM kỹ thuật khi có cả hai (004). Copy trước khi sửa — `cols` là
     # dict module-level dùng chung.
-    provenance = ParseProvenance()
     norm_col, norm_label, tech_col = _detect_actual_norm_col(cells, data_start, cols["norm_qty"])
-    if norm_col != cols["norm_qty"]:
+    norm_labeled = norm_col != cols["norm_qty"]
+    if norm_labeled:
         cols = dict(cols)
         cols["norm_qty"] = norm_col
+    evidence = evidence_m16(
+        cells, data_start, cols["material_code"], cols["norm_qty"], norm_labeled=norm_labeled,
+    )
+    if norm_labeled:
         provenance = ParseProvenance(
             layout="labeled",
             detail={
@@ -163,7 +168,10 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
                 "norm_label": norm_label,
                 "technical_col": tech_col,
             },
+            evidence=evidence,
         )
+    else:
+        provenance = ParseProvenance(evidence=evidence)
 
     current_product_code: str | None = None
     current_product_name: str | None = None

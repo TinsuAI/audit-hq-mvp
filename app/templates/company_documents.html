@@ -125,6 +125,9 @@
               <span class="badge {{ DATA_FILE_STATUS_BADGE[f.parse_status] }} doc-file-badge">{{ DATA_FILE_STATUS_LABEL[f.parse_status] }}</span>
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/preview" class="doc-file-name" title="Xem nội dung file">{{ f.original_filename }}</a>
               {% if f.parse_layout %}{% set pd = f.parse_detail_obj %}
+                {% if pd.review %}
+                <span class="badge {{ 'info' if pd.review == 'verified' else 'warning' }} doc-file-badge" title="{% if pd.review == 'verified' %}Mọi cột đọc đều tin được (khớp tiêu đề/đẳng thức đủ).{% else %}Có cột dựa trên vị trí hoặc đẳng thức chưa đủ — cần cán bộ xác nhận cột.{% endif %}">{{ 'Đã kiểm' if pd.review == 'verified' else 'Cần xác nhận' }}</span>
+                {% endif %}
                 {% if f.parse_layout == 'extended' %}
                 <span class="badge info doc-file-badge" title="Đọc theo bố cục mở rộng: suy map cột từ dòng đánh số, chứng minh bằng đẳng thức {{ pd.formula }} (khớp {{ pd.matched }}/{{ pd.checked }} dòng).{% if pd.export_label %} Cột xuất khẩu chọn theo nhãn: “{{ pd.export_label|replace('\n',' ')|trim }}”.{% endif %}">🧭 bố cục mở rộng · đẳng thức {{ pd.matched }}/{{ pd.checked }}{% if pd.export_col is defined %} · XK cột {{ pd.export_col }}{% endif %}</span>
                 {% elif f.parse_layout == 'labeled' %}

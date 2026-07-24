@@ -21,6 +21,10 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.evidence import (
+    evidence_m15_extended,
+    evidence_m15_standard,
+)
 from app.adapters.extended_layout import ColMap, select_extended_m15
 from app.adapters.layout import find_data_start
 from app.adapters.sheet_select import SheetNotFound, select_sheet
@@ -79,9 +83,13 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
     colmap: ColMap | None = None
+    # colmap select_sheet đã tính (nhãn tiêu đề khớp đúng vị trí) — giữ để tính nguồn
+    # bằng chứng, không vứt như trước.
+    cand_colmap: dict[str, int] | None = None
     if sheet is None:
         try:
-            sheet = select_sheet(p, "m15", year).name
+            cand = select_sheet(p, "m15", year)
+            sheet, cand_colmap = cand.name, cand.colmap
         except SheetNotFound:
             # Đường cột cố định trượt — thử bố cục MỞ RỘNG: suy map từ dòng đánh số,
             # chứng minh bằng đẳng thức của biểu (ADR #15). Không xác thực được thì
@@ -113,6 +121,9 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
                     "checked": colmap.checked,
                     "match_rate": round(colmap.match_rate, 4),
                 },
+                evidence=evidence_m15_extended(
+                    [f for f in _EVIDENCE_FIELDS if colmap.has(f)]
+                ),
             ),
         )
 
@@ -151,7 +162,17 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
             external_workbooks=count_external_workbooks(p),
             scanned=True,
         ),
+        provenance=ParseProvenance(
+            evidence=evidence_m15_standard(cells, data_start, cand_colmap),
+        ),
     )
+
+
+# Cột giá trị + mã mang nguồn bằng chứng ở badge truy nguồn.
+_EVIDENCE_FIELDS = (
+    "material_code", "opening_qty", "import_qty", "reexport_qty", "repurpose_qty",
+    "production_out_qty", "other_out_qty", "closing_qty",
+)
 
 
 def _rows_from_colmap(cells: list, colmap: ColMap) -> list[M15Row]:

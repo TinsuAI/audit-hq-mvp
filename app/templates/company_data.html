@@ -28,7 +28,15 @@
 
 {% if parse_layout %}
 <div class="parse-note">
-  <span class="badge info">🧭 {% if parse_layout == 'extended' %}Bố cục mở rộng{% else %}Chọn cột theo nhãn{% endif %}</span>
+  <div class="parse-note-head">
+    {% if parse_detail.review %}
+      <span class="badge {{ 'info' if parse_detail.review == 'verified' else 'warning' }}"
+            title="{% if parse_detail.review == 'verified' %}Mọi cột đọc đều tin được (khớp tiêu đề hoặc đẳng thức đủ){% else %}Có cột dựa trên vị trí/đẳng thức chưa đủ — cần cán bộ xác nhận cột{% endif %}">
+        {{ 'Đã kiểm' if parse_detail.review == 'verified' else 'Cần xác nhận' }}</span>
+    {% endif %}
+    {% if parse_layout == 'extended' %}<span class="badge info">🧭 Bố cục mở rộng</span>
+    {% elif parse_layout == 'labeled' %}<span class="badge info">🧭 Chọn cột theo nhãn</span>{% endif %}
+  </div>
   {% if parse_layout == 'extended' %}
     <span>File này lệch bố cục chuẩn — cột được suy từ dòng đánh số và <strong>chứng minh bằng đẳng thức cân đối</strong>
     <code>{{ parse_detail.formula }}</code> (khớp {{ parse_detail.matched }}/{{ parse_detail.checked }} dòng).
@@ -36,6 +44,16 @@
   {% elif parse_layout == 'labeled' %}
     <span>Định mức đọc từ cột <strong>“{{ parse_detail.norm_label|replace('\n',' ')|trim }}”</strong> (cột {{ parse_detail.norm_col }}),
     thay cho cột định mức kỹ thuật (cột {{ parse_detail.technical_col }}) — kiểm tra hải quan dùng định mức thực tế.</span>
+  {% endif %}
+  {% if parse_detail.columns %}
+    <div class="evidence-cols">
+      {% for c in parse_detail.columns %}
+        <span class="evidence-col" title="{{ c.label }}: nguồn {{ c.evidence_label }}">
+          <span class="evidence-col-name">{{ c.label }}</span>
+          <span class="badge {{ 'info' if c.review == 'verified' else 'warning' }}">{{ c.evidence_label }}</span>
+        </span>
+      {% endfor %}
+    </div>
   {% endif %}
 </div>
 {% endif %}

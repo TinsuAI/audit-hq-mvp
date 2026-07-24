@@ -21,6 +21,10 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.evidence import (
+    evidence_m15a_extended,
+    evidence_m15a_standard,
+)
 from app.adapters.extended_layout import M15aResolution, select_extended_m15a
 from app.adapters.layout import find_data_start
 from app.adapters.sheet_select import SheetNotFound, select_sheet
@@ -75,9 +79,11 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
     resolution: M15aResolution | None = None
+    cand_colmap: dict[str, int] | None = None
     if sheet is None:
         try:
-            sheet = select_sheet(p, "m15a", year).name
+            cand = select_sheet(p, "m15a", year)
+            sheet, cand_colmap = cand.name, cand.colmap
         except SheetNotFound:
             # Đường cột cố định trượt — thử bố cục MỞ RỘNG: suy map từ dòng đánh số,
             # chứng minh bằng đẳng thức + xác định export_qty theo nhãn (ADR #15).
@@ -111,6 +117,9 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
                     "export_col": resolution.cols["export_qty"][0],
                     "export_label": resolution.export_label,
                 },
+                evidence=evidence_m15a_extended(
+                    [f for f in _EVIDENCE_FIELDS if resolution.cols.get(f)]
+                ),
             ),
         )
 
@@ -149,7 +158,17 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
             external_workbooks=count_external_workbooks(p),
             scanned=True,
         ),
+        provenance=ParseProvenance(
+            evidence=evidence_m15a_standard(cells, data_start, cand_colmap),
+        ),
     )
+
+
+# Cột giá trị + mã mang nguồn bằng chứng ở badge truy nguồn.
+_EVIDENCE_FIELDS = (
+    "product_code", "opening_qty", "intake_qty", "repurpose_qty", "export_qty",
+    "other_out_qty", "closing_qty",
+)
 
 
 def _rows_from_resolution(cells: list, res: M15aResolution) -> list[M15aRow]:

@@ -19,12 +19,41 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.adapters.evidence import FIELD_LABEL_VI, NEEDS_REVIEW, SOURCE_LABEL_VI
+from app.checks.registry import review_state
 from app.models import Company, DataFile, DataFileStatus
 from app.models.data_file import SLOT_SUBDIR
 from app.pipeline.discover import content_slots
 from app.settings import settings
 
 _EXCEL_EXT = {".xls", ".xlsx"}
+
+# Thứ tự hiển thị cột ở badge truy nguồn mỗi slot.
+_EVIDENCE_ORDER: dict[str, tuple[str, ...]] = {
+    "m15": ("material_code", "opening_qty", "import_qty", "reexport_qty", "repurpose_qty",
+            "production_out_qty", "other_out_qty", "closing_qty"),
+    "m15a": ("product_code", "opening_qty", "intake_qty", "repurpose_qty", "export_qty",
+             "other_out_qty", "closing_qty"),
+    "m16": ("material_code", "norm_qty"),
+}
+
+
+def _evidence_columns(slot: str, evidence: dict[str, str]) -> list[dict]:
+    """Dựng danh sách cột {field, nhãn, nguồn, trạng thái review} cho badge + lưu."""
+    order = _EVIDENCE_ORDER.get(slot) or tuple(evidence)
+    cols: list[dict] = []
+    for field in order:
+        src = evidence.get(field)
+        if src is None:
+            continue
+        cols.append({
+            "field": field,
+            "label": FIELD_LABEL_VI.get(field, field),
+            "evidence": src,
+            "evidence_label": SOURCE_LABEL_VI.get(src, src),
+            "review": review_state(slot, field, src),
+        })
+    return cols
 
 
 def _classify_slot(subdir: str, filename: str) -> str | None:
@@ -203,9 +232,21 @@ def record_parse_result(
         row.parse_message = message
         row.row_count = rc
         prov = provenance.get(row.slot)
-        if prov is not None and getattr(prov, "layout", "standard") != "standard":
-            row.parse_layout = prov.layout
-            row.parse_detail = json.dumps(prov.detail, ensure_ascii=False)
+        prov_evidence = getattr(prov, "evidence", None) if prov is not None else None
+        prov_layout = getattr(prov, "layout", "standard") if prov is not None else "standard"
+        # Ghi provenance cho MỌI file có bằng chứng cột (kể cả bố cục chuẩn) — badge
+        # truy nguồn hiện nguồn + trạng thái review từng cột (WS1, ADR #18).
+        if prov is not None and (prov_layout != "standard" or prov_evidence):
+            detail = dict(prov.detail)
+            if prov_evidence:
+                columns = _evidence_columns(row.slot, prov_evidence)
+                detail["columns"] = columns
+                detail["review"] = (
+                    NEEDS_REVIEW if any(c["review"] == NEEDS_REVIEW for c in columns)
+                    else "verified"
+                )
+            row.parse_layout = prov_layout
+            row.parse_detail = json.dumps(detail, ensure_ascii=False)
         else:
             row.parse_layout = None
             row.parse_detail = None
