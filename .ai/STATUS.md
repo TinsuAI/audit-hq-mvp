@@ -1,5 +1,13 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — WS3 MERGE + DEPLOY PROD (PR #17) — main=`fe6efb9`):**
+> PR #17 (`feat/ws3-overview-staleness`→`main`) merge commit **`fe6efb9`**; CI run `30100248644` test+deploy XANH;
+> prod `audit-hq-demo.tinsu.ai` `/healthz` 200, `build_sha=fe6efb9` khớp (build_time 14:18:49Z). Deploy áp 2 migration
+> WS3 lên prod qua `alembic upgrade head`: `a7b8c9d0e1f2` (check_runs + data_version) + `b8c9d0e1f2a3` (check_overviews).
+> **Migration head prod giờ `b8c9d0e1f2a3`.** **Lưu ý:** prod KHÔNG có pilot 002/004 hay DN synthetic → UI overview/
+> staleness WS3 chưa có finding để thao tác tới khi nạp data lên prod. Chi tiết cài đặt: block ngay dưới + session log
+> `.ai/sessions/2026-07-24-ws3-implement-e2e.md`. **Next:** nạp/reload data lên prod nếu muốn demo WS3 sống. `uv.lock` untracked.
+
 > **Trạng thái (2026-07-24 — WS3 CÀI TRỌN + e2e proof + WS1 review-preview — branch `feat/ws3-overview-staleness`, CHƯA push):**
 > Cài trọn **ADR #18 Rev WS3** (3 ticket) + 2 việc phát sinh. 3 commit: `89d62c9` WS3 · `1e85056` e2e proof ·
 > `51521f9` WS1 review-preview. **670 test pass** (650→670, +20 WS3 TDD), ruff sạch, 2 migration up/down sạch.
@@ -170,9 +178,9 @@
 ## Current State
 
 ### Git / deploy
-- **`main` = `origin/main` = prod = `f5d2c0c`** (merge PR #2 — C1), working tree sạch. Prod live
-  `audit-hq-demo.tinsu.ai` chạy `f5d2c0c` (đã verify 2026-07-24: `/healthz` 200, `build_sha=f5d2c0c` khớp).
-- Migration head prod = **`e4f5a6b7c8d9`** (company_periods) — CI đã `alembic upgrade head`.
+- **`main` = `origin/main` = prod = `fe6efb9`** (merge PR #17 — WS3), working tree sạch (trừ `uv.lock` untracked).
+  Prod live `audit-hq-demo.tinsu.ai` chạy `fe6efb9` (verify 2026-07-24: `/healthz` 200, `build_sha=fe6efb9` khớp).
+- Migration head prod = **`b8c9d0e1f2a3`** (check_overviews; qua `a7b8c9d0e1f2` check_runs+data_version) — CI đã `alembic upgrade head`.
 - Deploy = push `main` → CI "Test & Deploy to Tinsu" (self-hosted `tinsu-prod`): test+lint →
   docker build → restart → `alembic upgrade head` → healthcheck. Watch: `gh run watch <id> --exit-status`.
   **LƯU Ý:** runner self-hosted đôi khi queue 10+ phút trước khi chạy — không phải lỗi.
