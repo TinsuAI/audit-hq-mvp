@@ -539,3 +539,60 @@ bump trong `ingest`) TRƯỚC → overview on-demand chồng lên. Alembic head 
 migration WS3 `down_revision = "b7d2e1f4a3c6"`.
 
 Xem [[parse-confidence-evidence-model]] · [[check-execution-async-via-jobs]] · [[ws3-overview-staleness-model]].
+
+### 19. 004 hai loại hình — một pháp nhân = tờ khai dùng chung + N sổ quyết toán per loại hình (2026-07-25)
+
+**Bối cảnh:** 004 (MST `0901051747`) là 1 DNCX vừa sản xuất tự sở hữu vừa gia công. DB có 2 company
+row (id 9 EPE, id 10 GC). Kiểm dữ liệu 2026-07-25: `declaration_lines` của 2 row **byte-identical**
+(229 tờ, 547 dòng), 100% mã DNCX (E11/E15/E42), 0 mã gia công (không E21/E23/E52/E54) → tờ khai là
+MỘT list dùng chung nhân đôi. Phân biệt EPE/GC chỉ ở BCQT + định mức (M15 98 vs 37 mã, M15a 43 vs 2,
+định mức 60 vs 34). Mã quy về sổ gần 1:1: 107 mã NVL nhập = 66 EPE-only + 25 GC-only + 12 chung + 4
+không sổ nào; 41 mã SP xuất = 39 EPE + 2 chung.
+
+**Vấn đề:** cả hai cách hiện có đều SAI, ngược chiều. Bản gộp Tầng-1 (219): M15 sổ này che thiếu sót
+sổ kia (C1.2 sập 99→4 GIẢ). Bản 2 row tách (187): mỗi sổ đối chiếu list tờ khai TOÀN pháp nhân nhưng
+chỉ M15 sổ mình → báo "thiếu M15" cho mã thuộc sổ kia. Verified: **C1.2 = 99 finding, 91 GIẢ** (GC 70
+= 66 mã có trong sổ EPE + 4 thật; EPE 29 = 25 mã có trong sổ GC + 4 thật).
+
+**Quyết định:** mô hình **"1 pháp nhân = 1 sổ tờ khai HQ dùng chung + N sổ quyết toán, mỗi sổ một loại
+hình"**. Từ đúng cho trục là **"loại hình"** (enum `CompanyType`), KHÔNG phải "chế độ". Cài đặt:
+- Gộp id 9 + id 10 → 1 row `PILOT_004` (MST giữ nguyên); nạp tờ khai MỘT lần (dedup — 2 bản y hệt,
+  và `SUM` tờ khai của C1.1/C1.4 cần dedup nếu không nhân đôi).
+- Thêm cột nullable `book` trên `nvl_balances`/`sp_balances`/`norms`, gán theo `source_file`
+  (`(EPE)`→`EPE`, `(GC)`→`GC`). **Null = pháp nhân một sổ → hành vi cũ, 002/006 KHÔNG đổi.**
+- Thêm `book` vào `findings` (truy nguồn per-sổ — kỷ luật không-hộp-đen).
+- Check cross-layer đối chiếu tờ khai với UNION các sổ; check nội-sổ `GROUP BY book`.
+
+**Phân loại 17 check đã cài (registry ghi "16"):**
+- *Cross-layer set-only* (collapse TỰ sửa, KHÔNG đổi code): **C1.2** (91/99 finding giả biến mất),
+  C1.3, C1.6.
+- *Cross-layer quantity* (SUM per mã across sổ — sai cho 12 mã NVL + 2 mã SP chung): **C1.1, C1.4**.
+- *Nội-sổ* (`GROUP BY book` — dict keyed-by-mã đang ghi đè mất một sổ; C4.3 còn lấy MAX 2 sổ):
+  **C4.1, C4.3, C6.1**; **C3.3** (đơn vị, rủi ro thấp — chỉ sai nếu 2 sổ khai đơn vị khác nhau cho mã
+  chung).
+- *Neutral* (row-wise, KHÔNG đổi; mã chung ra 2 finding/2 sổ là ĐÚNG, chỉ thiếu nhãn book): C1.7,
+  C2.1–C2.4, C5.1, C3.1, C3.2.
+
+**Kết quả 004 sau fix:** C1.2 99→4 thật; C1.1/C1.4 hết double-report mã chung; định mức/tồn kho hết
+trộn sổ.
+
+**Alternatives loại:**
+- Gộp Tầng-1 không tách sổ (219): khớp chéo giả, mất phát hiện thật.
+- Giữ 2 row + union lúc check theo `tax_id`: không migration nhưng tờ khai vẫn nhân đôi (check SUM tờ
+  khai double), client thấy 2 công ty cho 1 pháp nhân, entity concept ẩn/mong manh.
+- Từ "chế độ" cho trục loại hình: loại — lệch enum `CompanyType`, từ đúng là "loại hình" (owner chốt).
+
+**Chưa làm (scope sau):** UI breakdown EPE/GC đầy đủ (pass này chỉ correctness + `book` trên finding);
+cơ chế upload gán book cho pháp nhân nhiều sổ tương lai (004 gán theo `source_file` có sẵn). Migration
+nối từ head hiện tại (`b8c9d0e1f2a3` theo STATUS — xác nhận lúc cài). Xem [[pilot-004-epe-gc-merge]].
+
+**Rà soát advisor (Fable) 2026-07-25 — sửa cách cài + rủi ro (đã verify DB/code):**
+- **Gán book theo `company_id` nguồn (9→EPE, 10→GC), KHÔNG parse `source_file`.** Tên file GC thực tế là `(GC.)` / `(GC)` / `-GC`; match literal `"(GC)"` chỉ trúng 1/3 file → book=NULL → single-book semantics → trộn sổ ÂM THẦM. (Sửa mệnh đề "gán theo source_file" ở phần Cài đặt trên.) Parse filename chỉ liên quan đường upload hoãn lại.
+- **Guard re-ingest (rủi ro #1, chưa flag):** `ingest()` xoá SẠCH NvlBalance/SpBalance/Norm/DeclarationLine của `(company_id, year)` rồi nạp từ MỘT thư mục company-code (`discover`). Sau collapse không có thư mục `PILOT_004` → `documents_ingest_year` lỗi, HOẶC nếu ai rename dir → xoá cả 2 sổ nạp lại 1. → thêm 1 dòng guard `raise` khi company nhiều sổ + test. (Nếu owner chốt 004 không re-ingest trước demo, hạ xuống "giới hạn ghi chú" nhưng vẫn thêm guard.)
+- **C1.1/C1.4 KHÔNG phải "SUM theo mã" — theo `(mã, ĐƠN VỊ)`.** 6 mã EPE có 2 dòng M15 = cùng mã, HAI đơn vị (MTR + ROLL); vd `NO 153-BLACK` 908.259 MTR + 18.165 ROLL. Cộng across đơn vị là vô nghĩa → khoá gộp union = `(material_code, unit)`, guard `HAVING SUM>0`, nhãn `unit`/tên lấy từ dòng chọn xác định (min id) để output không nhảy. **Hệ quả:** C1.1 per-row hiện tại có thể đã ra finding GIẢ trên mã 2-đơn-vị (so dòng ROLL với tổng tờ khai mù đơn vị). Khớp đơn vị PHÍA TỜ KHAI là vấn đề PRE-EXISTING, đơn-sổ — FLAG, KHÔNG giải trong pass này.
+- **`book` vào `findings` — Option X + thêm key `book` vào evidence_refs filter.** Cột không đủ: sau collapse filter `{company_id, year, material_code}` khớp dòng CẢ 2 sổ cho mã chung → panel chứng cứ dưới finding per-sổ hiện dòng sổ kia. `_resolve_evidence` (companies.py:1646-1671) map key generic qua `getattr` → thêm `"book":"EPE"` chạy không sửa resolver. Set `finding.book=row.book` + key `book` ở evidence cho MỌI check emit từ 1 dòng sổ (C4.1/C4.3/C6.1 + C1.3/C1.6 + neutral C2.x/C1.7/C5.1); union findings (C1.1/C1.4/C1.2) để book=NULL.
+- **Collapse ngoài Tier-1:** `company_year_scores` (xoá + recompute), `company_periods` (id-10 `is_manual=1` — GIỮ cờ; `data_version`=max+bump), `data_files` (dedupe cặp bcct `DS NK/XK 2025.xls` đăng ký cả 2 sổ). `check_runs`/`check_overviews`/`saved_column_maps`/`user_companies`/`jobs`: 0 dòng cho 9/10.
+- **Gate tích hợp mạnh hơn** (thay "chỉ C1.2→4"): assert FULL vector finding/check của 004 + assert 0 dòng `company_id=10` trên 14 bảng FK.
+- **S2 sửa:** bỏ assert "identical to current" cho C1.1/C1.4; pin ngữ nghĩa mới `(mã,đơn vị)`-SUM bằng fixture single-book 2 dòng-cùng-mã.
+- Non-risk đã verify: không index unique nào vỡ khi 2 dòng/mã dưới 1 company; `detect_company_type` vẫn DNCX sau collapse (multiset mã tờ khai giữ nguyên); C6.1 TRƠ trên 004 thật (chỉ có 2025) → thay đổi group-by-book ở đó là fixture-only.
+- **Giả định cần verify sau:** sổ EPE/GC là ledger TÁCH biệt hợp lệ về nghiệp vụ (lấy theo ADR — nếu định mức GC được phép tiêu thụ NVL sổ EPE thì C4.1 per-sổ ra finding gây tranh cãi; KHÔNG phải regression vì bản 2-row cũng đã per-sổ); prod mirror local cho 004.

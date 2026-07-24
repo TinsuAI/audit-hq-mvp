@@ -85,3 +85,27 @@ KHÔNG nạp dòng. Chỉ mặt trên GROUP đã render (check ≥1 finding).
 (check chạy lại) HOẶC `CompanyPeriod.data_version` dời (dữ liệu nạp lại)** so với `based_on_run_at` /
 `based_on_data_version` snapshot trên dòng overview. Xử lý FLAG-ONLY: hiện text xám + badge "đã cũ" +
 nút "Tạo lại", KHÔNG auto-regenerate lúc load. Combo (`COMBO_*`) KHÔNG có check-run lẫn overview.
+
+## Pháp nhân · loại hình · sổ quyết toán (004 hai loại hình)
+
+**Pháp nhân (legal entity)** — thực thể pháp lý, định danh bằng MST (`tax_id`). Một pháp nhân có thể
+giữ NHIỀU sổ quyết toán khác loại hình. CHƯA có đại diện first-class: mỗi row `companies` hiện là
+(pháp nhân × loại hình); `tax_id` free-text, KHÔNG unique — hai row cùng MST là hai company khác
+`code`. 004 = 1 pháp nhân MST `0901051747`, hai row id 9 (`PILOT_004_EPE`) / id 10 (`PILOT_004_GC`).
+
+**Loại hình** — kiểu hoạt động hải quan của MỘT sổ quyết toán. Enum `CompanyType`
+(`app/checks/company_type.py`): `DNCX` (chế xuất), `GIA_CONG` (gia công — NVL của bên đặt sở hữu),
+`SXXK`, `UNKNOWN`. Là thuộc tính PER-SỔ, KHÔNG per-pháp-nhân: một DNCX vừa sản xuất tự sở hữu (sổ
+EPE) vừa gia công (sổ GC) → một pháp nhân, hai loại hình. **KHÔNG dùng từ "chế độ"** cho trục này —
+không nhất quán với `CompanyType`.
+
+**Hai tầng loại hình (lệch nhau ở 004)** — tầng TỜ KHAI: mã loại hình trên tờ khai (E11/E15/E42 =
+DNCX); `detect_company_type` suy MỘT loại hình/row từ đa số mã → DNCX. Tầng QUYẾT TOÁN (BCQT): pháp
+nhân tách sổ theo loại hình thực (DNCX-own vs gia công). Mã DNCX ở tờ khai CHE phần gia công → phần
+đó chỉ hiện ở BCQT. Vì thế loại hình detect-từ-tờ-khai THÔ hơn sự thật per-sổ.
+
+**Sổ quyết toán (book)** — sổ con trong BCQT của một pháp nhân; mỗi sổ một loại hình + bộ
+M15/M15a/định mức riêng, tồn kho độc lập. Cột `book` trên `nvl_balances`/`sp_balances`/`norms` (null
+= pháp nhân một sổ, KHÔNG đổi hành vi — 002/006). 004: sổ `EPE` (98 mã NVL) + sổ `GC` (37 mã). Tờ
+khai KHÔNG thuộc sổ nào — MỘT list dùng chung cả pháp nhân. Check cross-layer (tờ khai↔quyết toán)
+đối chiếu UNION các sổ; check nội-sổ GROUP BY book. Xem [[pilot-004-epe-gc-merge]].

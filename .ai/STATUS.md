@@ -1,5 +1,29 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-25 — 004 HAI LOẠI HÌNH: fix 6 check + cột `book` + collapse + trim DB LOCAL còn 3 pilot — CHƯA commit, PROD chưa đụng):**
+> **ADR #19:** 004 (MST `0901051747`) là **1 DNCX có 2 SỔ QUYẾT TOÁN** khác loại hình (sổ tự sở hữu "EPE"
+> + gia công "GC"), KHÔNG phải 2 chế độ. Tờ khai 1 list DNCX (E11/E15/E42) **dùng chung, nhân đôi** 2 row.
+> Cũ: **C1.2=99, 91 GIẢ** (mã thuộc sổ kia bị báo "thiếu M15"). Từ đúng = "loại hình" (khớp enum
+> `CompanyType`) KHÔNG "chế độ".
+> **Code (test-first, 680 pass):** cột nullable `book` trên nvl/sp/norms/findings — migration
+> `c9d0e1f2a3b4` (down `b8c9d0e1f2a3`). **C1.1/C1.4 gộp `(mã,đơn vị)`** (không cộng MTR+ROLL); **C4.1/C4.3/
+> C6.1 `GROUP BY book`**; **C3.3** đơn vị per-`(book,mã)`; 8 check row-wise gắn `book`+evidence filter. Guard
+> `_guard_single_book` chặn re-ingest pháp nhân nhiều sổ. **book=NULL = pháp nhân 1 sổ → 002/006 KHÔNG đổi**
+> (re-run identical, verified).
+> **DB LOCAL đã đổi (KHÔNG phải prod):** collapse 004 (id9 EPE + id10 GC → 1 row `PILOT_004`/`DEMO_004`,
+> dedup tờ khai) → **C1.2 99→4, tổng 187→74, risk 30**. Trim còn **3 pilot**: PILOT_002 (48), PILOT_006
+> (14876), PILOT_004 (74); xoá DN_001–005/ZZ_DEMO/DN_GATE + FK. Backup: `bak-pre-004-collapse-20260725-020819`
+> + `bak-pre-trim-3pilots-20260725-023941` (+`-wal`/`-shm`; restore = cp đè).
+> **Sửa DRIFT DB local:** local ở alembic `f5a6b7c8d9e0`, THIẾU `company_periods.data_version` (model bắt
+> buộc) + `book` → `run_checks` CHẾT + server :8200 (`--reload` nạp model mới) 500 trên trang settlement/
+> findings. Sửa bằng **ALTER trực tiếp** (`alembic upgrade` FAIL vì `check_runs` đã tồn tại). Server OK lại.
+> Memory `local-db-schema-drift`.
+> **Next:** (1) **commit** 004 work (16 M + feature dir + migration + guard + tests + ADR#19/GLOSSARY;
+> `uv.lock` untracked); (2) prod ở `b8c9d0e1f2a3` = down_rev của migration mới → `alembic upgrade head` prod
+> áp `c9d0e1f2a3b4` SẠCH (prod không drift); prod hiện chỉ 002/006, muốn có 004 thì collapse trên prod;
+> (3) **UI 2 sổ: GRILL session sau** (badge `book` + đếm EPE/GC header — hiện `book` chỉ ở tầng dữ liệu).
+> E2E proof/brief: `.ai/features/2026-07-25-004-two-loai-hinh/`. Session log `.ai/sessions/2026-07-25-004-two-loai-hinh.md`.
+
 > **Trạng thái (2026-07-24 — LOAD PILOT 002/006 LÊN PROD (thay toàn bộ DN cũ) — main=`fe6efb9`, chỉ thao tác DỮ LIỆU):**
 > Nạp pilot 002+006 (ẩn danh) lên prod, XOÁ 14 DN cũ. **DB-ONLY, KHÔNG đổi code** (build_sha vẫn `fe6efb9`).
 > Prod DB giờ: **chỉ PILOT_002 (48 finding, điểm 7/2025) + PILOT_006 (14.883 finding, điểm 129/2024)** = 14.931 finding.
