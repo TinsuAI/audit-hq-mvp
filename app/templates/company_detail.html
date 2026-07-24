@@ -30,13 +30,20 @@
       <input type="hidden" name="year" value="{{ selected_year }}">
       <button type="submit" class="btn {% if has_data and not checks_run %}btn-primary{% else %}btn-secondary{% endif %}" title="Chạy kiểm tra cho năm {{ selected_year }}">▶️ Chạy kiểm tra {{ selected_year }}</button>
     </form>
+    {% if run_options %}
+    <button type="button" class="btn btn-secondary" data-open-modal="run-tests-modal" title="Chọn một số kiểm tra để chạy cho năm {{ selected_year }}">☑️ Chọn test chạy</button>
+    {% endif %}
     {% endif %}
     <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks" style="display:inline;margin:0">
       <button type="submit" class="btn btn-secondary" title="Chạy kiểm tra cho tất cả năm có dữ liệu">🔄 Tất cả năm</button>
     </form>
     {% if selected_year %}
       <a href="/companies/{{ company.slug or company.code }}/data?year={{ selected_year }}&table=m15" class="btn btn-secondary">📋 Dữ liệu gốc</a>
+      {% if export_options %}
+      <button type="button" class="btn btn-primary" data-open-modal="export-tests-modal">📊 Xuất Excel kiến nghị</button>
+      {% else %}
       <a href="/companies/{{ company.slug or company.code }}/export?year={{ selected_year }}" class="btn btn-primary">📊 Xuất Excel kiến nghị</a>
+      {% endif %}
     {% endif %}
   </div>
 </div>
@@ -203,24 +210,6 @@
     <p style="margin:0 0 12px"><a href="?year={{ selected_year }}">← Về tất cả kiểm tra</a></p>
   {% endif %}
 
-  {% if selected_year and export_options %}
-  <details class="card export-select" style="margin-bottom:16px">
-    <summary style="cursor:pointer;font-weight:600">📊 Xuất Excel theo test đã chọn</summary>
-    <form method="get" action="/companies/{{ company.slug or company.code }}/export" style="margin-top:10px">
-      <input type="hidden" name="year" value="{{ selected_year }}">
-      <p class="text-muted" style="margin:0 0 8px">Không chọn test nào = xuất toàn bộ. Chọn một hoặc nhiều để chỉ xuất các test đó.</p>
-      <div class="export-select-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px 16px;margin-bottom:12px">
-        {% for opt in export_options %}
-        <label style="display:flex;gap:6px;align-items:baseline">
-          <input type="checkbox" name="check" value="{{ opt.code }}">
-          <span><span class="text-mono">{{ opt.code }}</span> — {{ opt.title }} <span class="text-muted">({{ opt.total }})</span></span>
-        </label>
-        {% endfor %}
-      </div>
-      <button type="submit" class="btn btn-primary">📊 Xuất các test đã chọn</button>
-    </form>
-  </details>
-  {% endif %}
 
   {% for code, findings, group_total, group_sev in ordered_groups %}
     {% set spec = all_specs.get(code) or SPECS.get(code) %}
@@ -314,6 +303,99 @@
       {% endif %}
     </details>
   {% endfor %}
+
+  {% if selected_year and run_options %}
+  <dialog id="run-tests-modal" class="modal">
+    <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks">
+      <div class="modal-head">
+        <h2>Chọn kiểm tra để chạy — năm {{ selected_year }}</h2>
+        <button type="button" class="modal-close" data-close-modal aria-label="Đóng">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="year" value="{{ selected_year }}">
+        <p>Không chọn = chạy toàn bộ. Chọn một hoặc nhiều để chỉ chạy lại các test đó.</p>
+        <div class="modal-tools">
+          <button type="button" data-check-all="run-tests-modal">Chọn tất cả</button>
+          <button type="button" data-check-none="run-tests-modal">Bỏ chọn</button>
+        </div>
+        <div class="modal-check-grid">
+          {% for opt in run_options %}
+          <label>
+            <input type="checkbox" name="check" value="{{ opt.code }}">
+            <span><span class="text-mono">{{ opt.code }}</span> — {{ opt.title }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close-modal>Huỷ</button>
+        <button type="submit" class="btn btn-primary">▶️ Chạy các test đã chọn</button>
+      </div>
+    </form>
+  </dialog>
+  {% endif %}
+
+  {% if selected_year and export_options %}
+  <dialog id="export-tests-modal" class="modal">
+    <form method="get" action="/companies/{{ company.slug or company.code }}/export">
+      <div class="modal-head">
+        <h2>Xuất Excel kiến nghị — năm {{ selected_year }}</h2>
+        <button type="button" class="modal-close" data-close-modal aria-label="Đóng">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="year" value="{{ selected_year }}">
+        <p>Không chọn = xuất toàn bộ phát hiện. Chọn một hoặc nhiều để chỉ xuất các test đó.</p>
+        <div class="modal-tools">
+          <button type="button" data-check-all="export-tests-modal">Chọn tất cả</button>
+          <button type="button" data-check-none="export-tests-modal">Bỏ chọn</button>
+        </div>
+        <div class="modal-check-grid">
+          {% for opt in export_options %}
+          <label>
+            <input type="checkbox" name="check" value="{{ opt.code }}">
+            <span><span class="text-mono">{{ opt.code }}</span> — {{ opt.title }} <span class="text-muted">({{ opt.total }})</span></span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close-modal>Huỷ</button>
+        <button type="submit" class="btn btn-primary">📊 Xuất Excel</button>
+      </div>
+    </form>
+  </dialog>
+  {% endif %}
+
+  <script>
+  (function () {
+    function bind(sel, fn) {
+      document.querySelectorAll(sel).forEach(function (el) {
+        el.addEventListener("click", fn);
+      });
+    }
+    bind("[data-open-modal]", function () {
+      var d = document.getElementById(this.getAttribute("data-open-modal"));
+      if (d && typeof d.showModal === "function") d.showModal();
+    });
+    bind("[data-close-modal]", function () {
+      var d = this.closest("dialog");
+      if (d) d.close();
+    });
+    function setAll(id, val) {
+      var d = document.getElementById(id);
+      if (!d) return;
+      d.querySelectorAll('input[name="check"]').forEach(function (c) { c.checked = val; });
+    }
+    bind("[data-check-all]", function () { setAll(this.getAttribute("data-check-all"), true); });
+    bind("[data-check-none]", function () { setAll(this.getAttribute("data-check-none"), false); });
+    // Bấm ra nền (backdrop) để đóng.
+    document.querySelectorAll("dialog.modal").forEach(function (d) {
+      d.addEventListener("click", function (ev) {
+        if (ev.target === d) d.close();
+      });
+    });
+  })();
+  </script>
 
 {% endif %}
 

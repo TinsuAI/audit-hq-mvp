@@ -87,6 +87,21 @@ def test_year_without_check_runs_full_year():
         _teardown(new_engine)
 
 
+def test_company_detail_renders_run_modal():
+    """Modal "Chọn test chạy" (native <dialog>) render kèm wiring data-open-modal."""
+    new_engine, _ = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/companies/DN_WS2?year=2024")
+        assert r.status_code == 200
+        assert 'data-open-modal="run-tests-modal"' in r.text
+        assert 'id="run-tests-modal"' in r.text
+        assert "modal-check-grid" in r.text
+    finally:
+        _teardown(new_engine)
+
+
 def test_no_year_still_batch():
     new_engine, new_session = _setup_db()
     try:

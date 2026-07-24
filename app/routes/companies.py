@@ -1464,6 +1464,10 @@ def company_detail(
             "total": combo_counts[ccode],
         })
 
+    # Toàn danh mục check (built-in + dynamic đã công bố) — cho modal "Chọn test chạy".
+    # Khác export_options (chỉ mã ĐÃ có finding): chạy thì chọn từ danh mục đầy đủ.
+    run_options = [{"code": c, "title": s.title} for c, s in sorted(all_specs.items())]
+
     # Trạng thái tách upload/kiểm tra: có dữ liệu năm này chưa? đã chạy kiểm tra chưa?
     has_data = selected_year in data_years if selected_year is not None else False
     checks_run = year_score is not None or total_findings > 0 or bool(combo_findings)
@@ -1479,6 +1483,7 @@ def company_detail(
             "period_windows": period_windows,
             "ordered_groups": ordered_groups,
             "export_options": export_options,
+            "run_options": run_options,
             "combo_findings": combo_findings,
             "severity_totals": severity_totals,
             "total_findings": total_findings,
