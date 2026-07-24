@@ -1,5 +1,18 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 tối — C4.3 đổi số nhân + tầm nhìn UI redesign):**
+> Hai việc phiên này. (1) **C4.3 / P-07:** đã sửa đề án §4.1 (số nhân định mức = **sản lượng sản
+> xuất**, không phải xuất khẩu) + ADR ở `audit-hq/.ai/DECISIONS.md` — **CHƯA COMMIT**, cross-repo.
+> Code `app/checks/c4_norm.py` **chưa sửa** (việc `/implement` kế tiếp): đổi `sp_export`→sản lượng,
+> tách (6)/(7) ở `resolve_m15a`, skip mã không-nguồn nhường C4.1, thêm bậc mâu thuẫn vật lý. Đo
+> trên dữ liệu thật: 2.371→2.063 finding (−13%). Chi tiết `audit-hq-pilot/notes/13` P-07.
+> (2) **UI redesign:** brief 3 workstream (phát hiện+map cột / chạy test lẻ+export chọn / AI overview+stale)
+> ở `.ai/features/2026-07-24-parse-review-per-test-ux/brief.md` — input cho `/grill-with-docs`.
+> Owner muốn **mở session mới chạy flow Matt**, nghiêng grill WS1 trước.
+> (3) **002 (PILOT_002) đã sửa cấu hình kỳ** trên DB localhost: re-ingest với cửa sổ tài chính
+> → 279→48 finding, risk 65→7. Backup `audit_hq.sqlite.bak-pre-002-reingest-20260724`.
+> Session log: `.ai/sessions/2026-07-24-c43-basis-and-ui-redesign.md`.
+
 > **Trạng thái (2026-07-24 — M15a mở rộng + M16 ĐM thực tế cho 004 + badge truy nguồn — CHƯA COMMIT):**
 > Hoàn thành phần "CHƯA thực hiện — Mẫu 15a" của ADR #15 (nay là **ADR #17**). `resolve_m15a`
 > (`extended_layout.py`): cổng đẳng thức + `export_qty` theo NHÃN (duy nhất, phải là số hạng trừ)
