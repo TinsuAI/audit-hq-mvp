@@ -1,5 +1,24 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — WS1 IMPLEMENT XONG (5 ticket) + demo build + fix dev server):**
+> WS1 cài trọn trên branch `feat/ws1-parse-review`: #4 evidence source+review state+registry
+> (`7df7e22`) · #5 vòng đời file+cổng review (`0653f1d`) · #6 vân tay form+saved-map store
+> (migration `b7d2e1f4a3c6`, `fca9bbb`) · #7 màn review (`573a273`) · #8 re-run scoped (`f00db6f`).
+> **634 test pass, ruff sạch, harness giữ 417** (WS1 provenance/UX, KHÔNG đổi finding). Issue GH
+> #4–#8 (ready-for-agent) đã cài nhưng **CHƯA push/merge/PR**. `uv.lock` để untracked.
+> **2 giới hạn WS1:** (1) parser CHƯA đọc vị trí cột từ saved-map — sửa cột chỉ đánh `officer-confirmed`,
+> chưa rewire parse; (2) `run_checks(only=)` xoá COMBO năm đó tới lần chạy full.
+> **Nợ do WS2 revise ADR #18:** #7/#8 gọi `run_checks` ĐỒNG BỘ trong `documents_confirm_review` →
+> phải chuyển sang job queue (WS2 chốt check chạy async).
+> **Demo build** `db-data/audit_hq_demo.sqlite` (gitignored, CHƯA deploy): chỉ 002/004/006, đổi tên;
+> 004 = gộp EPE+GC (option 2) = **219 finding** (méo 187→219, PHẢI phân tích lại — memory
+> `pilot-004-epe-gc-merge`). MST thật CÒN ở `tax_id`; file Excel gốc còn tên thật.
+> **Dev server:** process cũ `84da630` (không `--reload`) 500 trang company vì DB đã tiến xa → đã
+> kill PID 8340 + relaunch detached `--reload` trên code hiện tại, mọi trang 200.
+> **Next:** grill WS3 (session fresh, worktree/branch riêng) song song WS2-impl; push/merge WS1;
+> deploy demo (+ kiểm `user_companies`/login); 004 phân tích lại; async-hoá `run_checks` #7/#8.
+> Session log: `.ai/sessions/2026-07-24-ws1-implement-demo-build.md`.
+
 > **Trạng thái (2026-07-24 — grill WS2 xong, design CHỐT, CHƯA code):**
 > Chạy `/grill-with-docs WS2` (chạy test lẻ + export chọn). WS1 đã cài (branch `feat/ws1-parse-review`,
 > #4–#7). Chốt + gộp vào **ADR #18 Revision — WS2** (không tách #19, theo owner):
