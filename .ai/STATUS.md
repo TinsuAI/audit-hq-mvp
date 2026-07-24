@@ -20,22 +20,27 @@
 > mỗi ticket session fresh tham chiếu ADR #18 Rev WS3. WS3 nền check_runs ĐỘC LẬP WS2.
 > Session log: `.ai/sessions/2026-07-24-grill-ws3.md`.
 
-> **Trạng thái (2026-07-24 — WS2 IMPLEMENT XONG (4 slice) + review + fix Defect 1 — CHƯA push/merge):**
-> Cài trọn WS2 trên branch `feat/ws1-parse-review` (tiếp WS1). 2 commit code:
-> `5c22a5a` nền + `ecb16c4` UI/async. (1) **Nền:** `RUN_CHECKS` payload `only:list[str]`;
+> **Trạng thái (2026-07-24 — WS2 IMPLEMENT XONG (4 slice) + review + modal UX — CHƯA push/merge):**
+> Cài trọn WS2 + làm lại UX chọn test trên branch `feat/ws1-parse-review` (tiếp WS1). 6 commit của tôi:
+> `5c22a5a` nền · `ecb16c4` UI/async · `4b45bf2` STATUS · `054e9cd`+`e9055e3`+`5ad7f71`+`ad4fcc0` modal UX
+> (694fb3b ở giữa là grill WS3 của phiên khác). (1) **Nền:** `RUN_CHECKS` payload `only:list[str]`;
 > `run_checks(only=)` chạy tập con; combo **recompute MỌI lần chạy** đọc TOÀN finding-set, gate
 > `combos_enabled` (app_settings, **default OFF**); delete `COMBO_*` giữ vô điều kiện. (2) **Chạy test
 > lẻ:** nút "Chạy lại {mã}" mỗi nhóm → `RUN_CHECKS {only:[mã], năm}` → `/jobs/{id}`. (3) **Export chọn:**
-> `build_export(only=)` lọc `check_code.in_()`; `/export?check=` lặp; panel checkbox + "Xuất test này";
-> Tổng quan liệt kê mã chọn. (4) **`documents_confirm_review` async** (option A: save-map+re-ingest sync,
-> re-run scoped **enqueue** → `/jobs/{id}` khi re-confirm); ẩn combo ở company_detail khi OFF; toggle admin
-> `/admin/checks/combos-toggle`. **649 test pass, ruff sạch, KHÔNG migration** (`combos_enabled`=1 row
-> `app_settings`). Review (critic) bắt **Defect 1 đã sửa:** pre-delete của `run_checks(only=)` phải gồm cả
-> mã dynamic `X.*` (không chỉ built-in) → nếu không, "Chạy lại X.1" nhân đôi finding (regression test thêm).
-> Defect 2 (max_raw giữ +20 combo khi OFF) **không sửa** — ADR chốt "Scoring KHÔNG đổi", có sẵn từ trước WS2.
+> `build_export(only=)` lọc `check_code.in_()`; `/export?check=` lặp; Tổng quan liệt kê mã chọn.
+> (4) **`documents_confirm_review` async** (option A: save-map+re-ingest sync, re-run scoped **enqueue**
+> → `/jobs/{id}` khi re-confirm); ẩn combo ở company_detail khi OFF; toggle admin combo ở card đầu trang
+> `/admin/checks`. **Modal UX (theo /frontend-design Anthropic):** panel `<details>` xấu → thay bằng 2
+> `<dialog>` native ("Chọn test chạy" = toàn danh mục · "Xuất Excel" = mã có finding), hàng bấm-cả-hàng
+> checkbox 18px accent navy, **gom theo họ C1/C2/… tiêu đề nhóm §4 sticky** (`_group_options_by_family`),
+> footer đếm sống + nút tự mô tả ("Chạy 3 test"/"Chạy tất cả"), a11y qua WIG (focus-visible/overscroll/
+> aria-labelledby). **650 test pass, ruff sạch, KHÔNG migration** (`combos_enabled`=1 row `app_settings`).
+> Review (critic) bắt **Defect 1 đã sửa:** pre-delete của `run_checks(only=)` phải gồm cả mã dynamic `X.*`
+> (không chỉ built-in) → nếu không "Chạy lại X.1" nhân đôi finding (regression test thêm). Defect 2 (max_raw
+> giữ +20 combo khi OFF) **không sửa** — ADR chốt "Scoring KHÔNG đổi", có sẵn từ trước WS2.
 > **Lưu ý harness:** combo default OFF → full-run bỏ meta-finding COMBO_* so với mốc 417 (delta CÓ CHỦ Ý,
-> không phải regression). **Next:** push/merge WS1+WS2; grill WS3 (check_runs/data_version + AI overview stale).
-> Memory `check-execution-async-via-jobs` đã đánh dấu ĐÃ CÀI.
+> không phải regression). **Next:** push/merge WS1+WS2; implement WS3 (`/to-tickets` ADR #18 Rev WS3).
+> Memory `check-execution-async-via-jobs` đã đánh dấu ĐÃ CÀI. Session log: `.ai/sessions/2026-07-24-ws2-implement-modal-ux.md`.
 
 > **Trạng thái (2026-07-24 — WS1 IMPLEMENT XONG (5 ticket) + demo build + fix dev server):**
 > WS1 cài trọn trên branch `feat/ws1-parse-review`: #4 evidence source+review state+registry
