@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -19,8 +20,9 @@ from app.checks.combos import detect_combos
 from app.checks.company_type import CompanyType, detect_company_type
 from app.checks.sql_runner import CheckRunError, run_check
 from app.database import SessionLocal
-from app.models import Company, Finding
+from app.models import CheckRun, Company, Finding
 from app.models.check_definition import CheckDefinition, CheckStatus
+from app.pipeline.period import current_data_version
 
 
 @dataclass
@@ -52,6 +54,11 @@ def run_checks(
 
         company_type = detect_company_type(s, company.id, year)
         stats = RunStats(company_code=company_code, period_year=year, company_type=company_type)
+
+        # data_version đọc ở ĐẦU lần chạy (ràng buộc advisor b): re-ingest ở route-thread
+        # có thể commit GIỮA lúc worker chạy check; ghi giá trị đọc-đầu vào check_runs
+        # (không phải lúc-commit) để snapshot đúng dữ liệu check đã đọc.
+        data_version = current_data_version(s, company.id, year)
 
         # Load dynamic checks (published) từ DB — kind 'sql' | 'python'.
         from sqlalchemy import select as _select
@@ -98,20 +105,25 @@ def run_checks(
 
         all_codes = codes_to_run
 
+        # Trạng thái mỗi check để ghi check_runs: 'ok' | 'error' (check ĐỘNG raise).
+        run_status: dict[str, str] = {}
         for code in sorted(all_codes):
             if code in ALL_CHECKS:
                 fn = ALL_CHECKS[code]
                 findings = fn(s, company.id, year)
+                run_status[code] = "ok"
             elif code in dynamic_defs:
                 # Check tự do (SQL/Python) — lỗi 1 check không được làm hỏng cả run.
                 try:
                     findings = run_check(dynamic_defs[code], s, company.id, year)
+                    run_status[code] = "ok"
                 except CheckRunError as exc:
                     import logging
                     logging.getLogger(__name__).warning(
                         "Check mở rộng %s lỗi khi chạy, bỏ qua: %s", code, exc
                     )
                     findings = []
+                    run_status[code] = "error"
             else:
                 continue
             for f in findings:
@@ -179,6 +191,49 @@ def run_checks(
         all_scores_with_current = list(all_year_scores) + [year_score]
         company.risk_score = max(all_scores_with_current) if all_scores_with_current else 0
         stats.risk_score = company.risk_score
+
+        # WS3: upsert check_runs — 1 dòng mỗi (DN, năm, mã), MỌI check đã chạy kể cả
+        # 0 finding. Ghi TRONG run_checks() (không job handler) → CLI + fallback inline
+        # cũng dời `ran_at` (nếu không → false-stale). Combo LOẠI (chỉ check thật).
+        ran_at = datetime.now(UTC).replace(tzinfo=None)
+        if all_codes:
+            existing_runs = {
+                r.check_code: r
+                for r in s.scalars(
+                    select(CheckRun).where(
+                        CheckRun.company_id == company.id,
+                        CheckRun.period_year == year,
+                        CheckRun.check_code.in_(all_codes),
+                    )
+                ).all()
+            }
+            for code in all_codes:
+                fc = stats.findings_per_check.get(code, 0)
+                st = run_status.get(code, "ok")
+                row = existing_runs.get(code)
+                if row is None:
+                    s.add(CheckRun(
+                        company_id=company.id, period_year=year, check_code=code,
+                        ran_at=ran_at, finding_count=fc, status=st,
+                        data_version=data_version,
+                    ))
+                else:
+                    row.ran_at = ran_at
+                    row.finding_count = fc
+                    row.status = st
+                    row.data_version = data_version
+
+        # Full run dọn check_runs orphan của mã X.* đã gỡ công bố (soi orphan finding
+        # ở trên). Không đụng khi chạy lẻ (`only=`).
+        if only is None:
+            s.execute(
+                delete(CheckRun).where(
+                    CheckRun.company_id == company.id,
+                    CheckRun.period_year == year,
+                    CheckRun.check_code.like("X.%"),
+                    CheckRun.check_code.not_in(list(all_codes)),
+                )
+            )
 
         s.commit()
         return stats

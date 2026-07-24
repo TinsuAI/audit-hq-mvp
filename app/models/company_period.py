@@ -24,6 +24,10 @@ class CompanyPeriod(Base):
     period_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_to: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Số nguyên bump mỗi `ingest()` (trong transaction ingest) — nền staleness (WS3).
+    # Số nguyên > timestamp: đường re-ingest trần (`documents_ingest_year`) đổi dữ liệu
+    # mà KHÔNG chạy check → `check_runs.ran_at` không dời; chỉ data_version bắt được.
+    data_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     __table_args__ = (
         UniqueConstraint("company_id", "period_year", name="uq_company_period"),

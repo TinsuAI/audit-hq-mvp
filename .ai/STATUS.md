@@ -1,5 +1,27 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — WS3 CÀI TRỌN + e2e proof + WS1 review-preview — branch `feat/ws3-overview-staleness`, CHƯA push):**
+> Cài trọn **ADR #18 Rev WS3** (3 ticket) + 2 việc phát sinh. 3 commit: `89d62c9` WS3 · `1e85056` e2e proof ·
+> `51521f9` WS1 review-preview. **670 test pass** (650→670, +20 WS3 TDD), ruff sạch, 2 migration up/down sạch.
+> (1) **WS3:** `check_runs` latest-upsert 1 dòng/(DN,năm,mã) ghi TRONG `run_checks()` cho mọi check kể cả 0 finding +
+> dọn orphan `X.*`; `data_version` số nguyên trên `CompanyPeriod` bump mỗi `ingest()` trong transaction (helper
+> `current_data_version` ở `period.py`, đọc ở đầu run). `check_overviews` overwrite-upsert + telemetry
+> (model/tokens/cost/latency), sinh on-demand qua endpoint **`def generate_overview`** (KHÔNG `async`, KHÔNG job
+> worker — đọc snapshot → LLM → ghi SAU); UI panel ở group-actions + badge stale + mốc `based_on` + nút Tạo lại;
+> flag-only KHÔNG auto-regen. Stale ⇔ `check_runs.ran_at` dời HOẶC `CompanyPeriod.data_version` dời. Migration head
+> giờ **`b8c9d0e1f2a3`** (`a7b8c9d0e1f2` foundation → `b8c9d0e1f2a3` overview, down từ `b7d2e1f4a3c6`). Prompt nạp
+> THÊM `top_titles` (aggregate, KHÔNG nạp dòng) ngoài `subject_key` — lệch spec CÓ CHỦ Ý (để tóm tắt nói CÁI GÌ sai).
+> Review 2 trục (Standards+Spec) → sửa: thêm mốc `based_on` ở panel stale (ADR §4), xoá call chết
+> `cache_supports_anthropic`, tách helper `current_data_version` (3 nơi), dọn test dead-code.
+> (2) **E2E proof:** server throwaway (DN giả `DN_E2E`, KHÔNG đụng DB thật/:8200) chạy luồng HTTP THẬT
+> upload→parse(verified+gate)→run(C2.1×3,C2.3×1,17 check_runs)→overview(LLM thật deepseek/OpenRouter)→re-run/stale;
+> 6 screenshot + `ui_smoke.py` ở `.ai/features/2026-07-24-parse-review-per-test-ux/`.
+> (3) **WS1 review-preview:** nhúng grid nội dung file vào màn xác nhận cột, tag field mỗi cột (khớp tiêu đề=xanh,
+> needs_review=vàng) + live-highlight cột khi sửa chỉ số; refactor `_extract_sheet_preview` dùng chung preview+review.
+> **Next:** push branch → PR → merge → deploy (CI test+lint+deploy self-hosted); reload data 002/004 lên prod nếu cần.
+> `uv.lock` để untracked. Session log: `.ai/sessions/2026-07-24-ws3-implement-e2e.md`. Memory
+> `ws3-overview-staleness-model` đã đánh dấu ĐÃ CÀI.
+
 > **Trạng thái (2026-07-24 — grill WS3 xong, design CHỐT, CHƯA code):**
 > Chạy `/grill-with-docs WS3` (AI tổng quan mỗi test + staleness). GREENFIELD (không
 > `check_runs`/`data_version`/overview lưu trữ nào). Chốt 8 nhánh + gộp **ADR #18 Revision — WS3**

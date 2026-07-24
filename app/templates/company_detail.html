@@ -48,6 +48,9 @@
   </div>
 </div>
 
+{% if flash_msg %}<div class="form-alert form-alert-success" role="status"><span class="form-alert-icon">✅</span><div>{{ flash_msg }}</div></div>{% endif %}
+{% if flash_error %}<div class="form-alert form-alert-error" role="alert"><span class="form-alert-icon">⚠️</span><div>{{ flash_error }}</div></div>{% endif %}
+
 <div class="stat-grid">
   <div class="stat tier-stat {% if checks_run %}{{ ys_css }}{% endif %}">
     <span class="stat-label">
@@ -234,7 +237,36 @@
           <button type="submit" class="btn btn-sm btn-secondary" title="Chạy lại chỉ kiểm tra {{ code }} cho năm {{ selected_year }}">▶️ Chạy lại {{ code }}</button>
         </form>
         <a href="/companies/{{ company.slug or company.code }}/export?year={{ selected_year }}&check={{ code }}" class="btn btn-sm btn-secondary" title="Xuất Excel chỉ kiểm tra {{ code }}">📊 Xuất test này</a>
+        {% if ai_enabled and code not in overviews %}
+        <form method="post" action="/companies/{{ company.slug or company.code }}/overview" style="margin:0">
+          <input type="hidden" name="year" value="{{ selected_year }}">
+          <input type="hidden" name="check" value="{{ code }}">
+          <button type="submit" class="btn btn-sm btn-secondary" title="Sinh AI tổng quan cho kiểm tra {{ code }} (gọi LLM, chờ vài giây)">✨ Tạo tổng quan</button>
+        </form>
+        {% endif %}
       </div>
+      {% set ov_entry = overviews.get(code) %}
+      {% if ov_entry %}
+      {% set ov = ov_entry.overview %}
+      <div class="check-overview {% if ov_entry.stale %}check-overview-stale{% endif %}" style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2, #f8fafc)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <strong style="font-size:var(--fs-sm)">✨ Tổng quan AI</strong>
+          <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            {% if ov_entry.stale %}<span class="badge warning" style="font-size:var(--fs-xs)" title="Đã chạy lại kiểm tra hoặc nạp lại dữ liệu kể từ khi sinh tổng quan này">⚠️ Tổng quan đã cũ — dựa trên lần chạy trước</span>{% endif %}
+            {% if ov_entry.stale and ov.based_on_run_at %}<span class="text-subtle" style="font-size:var(--fs-xs)">dựa trên lần chạy {{ ov.based_on_run_at.strftime('%d/%m/%Y %H:%M') }}</span>{% endif %}
+            {% if ov.generated_at %}<span class="text-subtle" style="font-size:var(--fs-xs)">Sinh lúc {{ ov.generated_at.strftime('%d/%m/%Y %H:%M') }}</span>{% endif %}
+            {% if ai_enabled %}
+            <form method="post" action="/companies/{{ company.slug or company.code }}/overview" style="margin:0">
+              <input type="hidden" name="year" value="{{ selected_year }}">
+              <input type="hidden" name="check" value="{{ code }}">
+              <button type="submit" class="btn btn-sm btn-secondary" title="Sinh lại tổng quan theo lần chạy mới nhất">🔄 Tạo lại</button>
+            </form>
+            {% endif %}
+          </span>
+        </div>
+        <p class="{% if ov_entry.stale %}text-muted{% endif %}" style="margin:0;white-space:pre-wrap;font-size:var(--fs-sm)">{{ ov.content }}</p>
+      </div>
+      {% endif %}
       {% endif %}
       <div class="data-table-wrapper">
         <table class="data-table compact">

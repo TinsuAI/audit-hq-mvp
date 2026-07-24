@@ -1,6 +1,33 @@
 {% extends "base.html" %}
 {% block title %}Xác nhận cột — {{ file.original_filename }} — Audit-HQ{% endblock %}
 {% block content %}
+<style>
+  .preview-table td, .preview-table th {
+    white-space: nowrap; font-size: 12px; max-width: 220px;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .preview-table th {
+    position: sticky; top: 0; background: #334155; color: #fff; z-index: 1;
+    vertical-align: top; text-align: left;
+  }
+  .preview-table .preview-rownum {
+    color: var(--c-text-subtle, #9ca3af); text-align: right;
+    background: var(--c-surface-alt, #f9fafb); position: sticky; left: 0;
+  }
+  .preview-table thead .preview-rownum { background: #334155; }
+  .rg-letter { font-weight: 600; }
+  .rg-idx { opacity: .7; font-weight: 400; }
+  .rg-field {
+    font-size: 11px; font-weight: 600; margin-top: 3px;
+    padding: 1px 5px; border-radius: 4px; white-space: normal;
+  }
+  .preview-table th.rg-mapped { background: #1e3a5f; }
+  .preview-table th.rg-mapped .rg-field { background: #3b82f6; color: #fff; }
+  .preview-table th.rg-needs { background: #7c4a03; }
+  .preview-table th.rg-needs .rg-field { background: #f59e0b; color: #111; }
+  .preview-table td.rg-hi { background: #fef3c7 !important; color: #111 !important; }
+  .preview-table th.rg-hi { background: #b45309 !important; }
+</style>
 
 <nav class="breadcrumbs">
   <a href="/companies">Doanh nghiệp</a><span class="sep">›</span>
@@ -18,17 +45,49 @@
   </div>
   <div class="btn-group">
     <a href="/companies/{{ company.slug or company.code }}/documents" class="btn btn-secondary">← Về tài liệu</a>
-    <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/preview" class="btn btn-secondary">👁 Xem nội dung file</a>
+    <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/preview" class="btn btn-secondary">👁 Xem toàn bộ file</a>
   </div>
 </div>
 
 <div class="alert alert-warning" role="status" style="margin-bottom:var(--space-4)">
-  <p style="margin:0">⚠️ Một số cột đọc theo <strong>vị trí</strong> hoặc chỉ khớp <strong>đẳng thức cân đối</strong> — chưa đủ để chắc đúng cột (đẳng thức không phân biệt hai cột cùng dấu). Kiểm tra chỉ số cột bên dưới, sửa nếu sai, rồi bấm <strong>Xác nhận &amp; nạp dữ liệu</strong>. Chỉ số cột tính từ <strong>0</strong> (cột A = 0, B = 1…); mở “Xem nội dung file” để đối chiếu.</p>
+  <p style="margin:0">⚠️ Một số cột đọc theo <strong>vị trí</strong> hoặc chỉ khớp <strong>đẳng thức cân đối</strong> — chưa đủ để chắc đúng cột (đẳng thức không phân biệt hai cột cùng dấu). Đối chiếu với <strong>nội dung file bên dưới</strong>, sửa chỉ số cột nếu sai, rồi bấm <strong>Xác nhận &amp; nạp dữ liệu</strong>. Chỉ số cột tính từ <strong>0</strong> (cột A = 0, B = 1…).</p>
 </div>
 
 {% if not can_confirm %}
 <div class="card"><p class="text-muted">File này chưa có map cột để xác nhận (chưa phân tích, hoặc không phát hiện cột nào cần xác nhận).</p></div>
 {% else %}
+
+{% if preview and preview.rows and not preview.error %}
+<h2 style="font-size:var(--fs-md);margin:0 0 var(--space-2)">Nội dung file · đối chiếu chỉ số cột</h2>
+<div class="card" style="padding:0;overflow:auto;max-height:48vh;margin-bottom:var(--space-2)">
+  <table class="data-table preview-table" id="review-grid">
+    <thead>
+      <tr>
+        <th class="preview-rownum">#</th>
+        {% for c in preview.columns %}
+        {% set a = col_annot.get(loop.index0) %}
+        <th data-col-index="{{ loop.index0 }}" class="{% if a and a.needs %}rg-needs{% elif a %}rg-mapped{% endif %}">
+          <div class="rg-letter">{{ c }} <span class="rg-idx">· {{ loop.index0 }}</span></div>
+          {% if a %}<div class="rg-field">{% if a.needs %}⚠️ {% endif %}{{ a.label }}</div>{% endif %}
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in preview.rows %}
+      <tr>
+        <td class="preview-rownum">{{ loop.index }}</td>
+        {% for cell in r %}<td data-col-index="{{ loop.index0 }}" title="{{ cell }}">{{ cell }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="form-hint" style="margin:0 0 var(--space-4)">
+  Cột <span class="badge muted" style="background:#3b82f6;color:#fff">xanh</span> = đã nhận đúng theo tiêu đề · cột <span class="badge muted" style="background:#f59e0b;color:#111">vàng ⚠️</span> = cần xác nhận chỉ số. Sửa chỉ số ở bảng dưới — cột tương ứng trong file sẽ sáng lên.
+</p>
+{% endif %}
+
 <form method="post" action="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/review">
   <div class="card" style="padding:0;overflow-x:auto">
     <table class="data-table">
@@ -53,7 +112,7 @@
           <td class="text-muted">{% if c.checks %}{{ c.checks|join(', ') }}{% else %}—{% endif %}</td>
           <td>
             {% if needs %}
-            <input type="number" class="form-input mono-input" name="col_{{ c.field }}"
+            <input type="number" class="form-input mono-input review-idx" name="col_{{ c.field }}"
                    value="{{ c.col_index if c.col_index is not none else '' }}" min="0" step="1"
                    style="max-width:96px">
             {% else %}
@@ -75,6 +134,25 @@
     Xác nhận lưu map cho doanh nghiệp này theo cấu trúc biểu — lần sau gặp cùng bố cục (kể cả năm khác) sẽ không phải xác nhận lại.
   </p>
 </form>
+
+<script>
+(function () {
+  var grid = document.getElementById('review-grid');
+  if (!grid) return;
+  function highlight(idx) {
+    grid.querySelectorAll('.rg-hi').forEach(function (el) { el.classList.remove('rg-hi'); });
+    if (idx === '' || idx === null) return;
+    grid.querySelectorAll('[data-col-index="' + idx + '"]').forEach(function (el) {
+      el.classList.add('rg-hi');
+    });
+  }
+  document.querySelectorAll('input.review-idx').forEach(function (inp) {
+    inp.addEventListener('input', function () { highlight(inp.value); });
+    inp.addEventListener('focus', function () { highlight(inp.value); });
+    inp.addEventListener('blur', function () { highlight(''); });
+  });
+})();
+</script>
 {% endif %}
 
 {% endblock %}
