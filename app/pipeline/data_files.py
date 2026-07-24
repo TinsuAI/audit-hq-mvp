@@ -14,13 +14,15 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.adapters.evidence import FIELD_LABEL_VI, NEEDS_REVIEW, SOURCE_LABEL_VI
-from app.checks.registry import review_state
+from app.adapters.evidence import FIELD_LABEL_VI, NEEDS_REVIEW, SOURCE_LABEL_VI, VERIFIED
+from app.checks.registry import checks_reading, review_state
 from app.models import Company, DataFile, DataFileStatus
 from app.models.data_file import SLOT_SUBDIR
 from app.pipeline.discover import content_slots
@@ -172,17 +174,25 @@ def sync_data_files(session: Session, company: Company, raw_root: Path | None = 
 
 def _slot_status(
     slot: str, row_count: int, diag_errors: list, diag_warnings: list,
+    committed: bool = True,
 ) -> tuple[str, str | None]:
-    """Suy (parse_status, message) cho 1 slot từ row_count + diagnosis."""
+    """Suy (parse_status lifecycle, message) cho 1 slot từ row_count + diagnosis.
+
+    Lifecycle (ADR #18): dry-run parse xong → `analyzed`; commit dòng → `parsed`
+    (``OK``); đọc/nạp hỏng → `error`. WARNING không còn là status — cảnh báo cột
+    nằm ở trục review (`parse_detail.review`). Diag warning giữ lại làm message tư
+    vấn (không đổi lifecycle); file 0 dòng coi như `error` vì chưa dùng được.
+    """
     slot_errors = [d for d in diag_errors if d.slot == slot]
     if slot_errors:
         return DataFileStatus.ERROR, slot_errors[0].detail
+    if row_count <= 0:
+        return DataFileStatus.ERROR, "Nạp được 0 dòng — kiểm tra lại cấu trúc file."
+    ok_status = DataFileStatus.OK if committed else DataFileStatus.ANALYZED
     slot_warnings = [d for d in diag_warnings if d.slot == slot]
     if slot_warnings:
-        return DataFileStatus.WARNING, slot_warnings[0].detail
-    if row_count <= 0:
-        return DataFileStatus.WARNING, "Nạp được 0 dòng — kiểm tra lại cấu trúc file."
-    return DataFileStatus.OK, None
+        return ok_status, slot_warnings[0].detail  # advisory: giữ message, giữ lifecycle
+    return ok_status, None
 
 
 def record_parse_result(
@@ -191,12 +201,17 @@ def record_parse_result(
     year: int,
     stats,
     diagnosis=None,
+    committed: bool = True,
 ) -> None:
     """Cập nhật parse_status / row_count / message cho file của (DN, năm) sau ingest.
 
     ``stats`` là ``IngestStats``; ``diagnosis`` là ``UploadDiagnosis`` (tuỳ chọn).
     Áp trạng thái theo slot cho mọi DataFile của slot đó (BCCT có thể nhiều file →
     cùng tổng số dòng của slot).
+
+    ``committed`` = False khi ghi kết quả dry-run parse (ADR #18): lifecycle dừng ở
+    `analyzed` (chưa commit dòng), cổng review đọc `parse_detail.review` từ đây rồi
+    quyết định tự advance hay dừng. Bằng chứng cột + review vẫn tính như thường.
     """
     row_counts = {
         "m15": getattr(stats, "m15_rows", 0),
@@ -219,7 +234,7 @@ def record_parse_result(
     ).all()
     for row in rows:
         if row.slot == "bcct" and row.original_filename in skipped:
-            row.parse_status = DataFileStatus.WARNING
+            row.parse_status = DataFileStatus.ERROR
             row.parse_message = (
                 "Không phải báo cáo chi tiết tờ khai (thiếu số tờ khai / ngày ĐK) — "
                 "đã bỏ qua khi nạp, không đóng góp dòng nào."
@@ -227,7 +242,7 @@ def record_parse_result(
             row.row_count = 0
             continue
         rc = row_counts.get(row.slot, 0)
-        status, message = _slot_status(row.slot, rc, diag_errors, diag_warnings)
+        status, message = _slot_status(row.slot, rc, diag_errors, diag_warnings, committed)
         row.parse_status = status
         row.parse_message = message
         row.row_count = rc
@@ -243,7 +258,7 @@ def record_parse_result(
                 detail["columns"] = columns
                 detail["review"] = (
                     NEEDS_REVIEW if any(c["review"] == NEEDS_REVIEW for c in columns)
-                    else "verified"
+                    else VERIFIED
                 )
             row.parse_layout = prov_layout
             row.parse_detail = json.dumps(detail, ensure_ascii=False)
@@ -251,6 +266,86 @@ def record_parse_result(
             row.parse_layout = None
             row.parse_detail = None
     session.commit()
+
+
+# --- Cổng review vòng đời file (ADR #18) -----------------------------------
+
+
+@dataclass(frozen=True)
+class ReviewGateColumn:
+    """Một cột `needs_review` + các check đọc nó (cho banner cổng review)."""
+
+    slot: str
+    field: str
+    label: str
+    checks: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ReviewGate:
+    """Tập cột `needs_review` của (DN, năm) + check bị ảnh hưởng — dữ liệu banner."""
+
+    columns: tuple[ReviewGateColumn, ...] = ()
+
+    @property
+    def check_codes(self) -> list[str]:
+        """Mã check bị ảnh hưởng (gộp trùng, sắp xếp) — banner nêu 'ảnh hưởng: …'."""
+        seen: set[str] = set()
+        for col in self.columns:
+            seen.update(col.checks)
+        return sorted(seen)
+
+
+def review_gate_for_files(files: Iterable[DataFile]) -> ReviewGate | None:
+    """Dựng cổng review từ các DataFile: gom cột `needs_review` + check đọc chúng.
+
+    Đọc `parse_detail.review` mỗi file (trục review, ĐỘC LẬP lifecycle) — file có
+    thể `parsed` mà vẫn `needs_review`. Trả None khi không cột nào cần xác nhận.
+    """
+    columns: list[ReviewGateColumn] = []
+    for f in files:
+        detail = f.parse_detail_obj
+        if detail.get("review") != NEEDS_REVIEW:
+            continue
+        for c in detail.get("columns", ()):
+            if c.get("review") != NEEDS_REVIEW:
+                continue
+            field_name = c.get("field", "")
+            columns.append(ReviewGateColumn(
+                slot=f.slot,
+                field=field_name,
+                label=c.get("label", field_name),
+                checks=tuple(checks_reading(f.slot, field_name)),
+            ))
+    if not columns:
+        return None
+    return ReviewGate(columns=tuple(columns))
+
+
+def year_review_gate(session: Session, company: Company, year: int) -> ReviewGate | None:
+    """Cổng review cho (DN, năm) đọc thẳng từ registry — dùng ở luồng upload."""
+    rows = session.scalars(
+        select(DataFile).where(
+            DataFile.company_id == company.id,
+            DataFile.period_year == year,
+        )
+    ).all()
+    return review_gate_for_files(rows)
+
+
+def should_stop_for_review(gate: ReviewGate | None, has_saved_map: bool = False) -> bool:
+    """Quyết định `analyzed→parsed`: DỪNG chờ cán bộ (True) hay TỰ advance (False).
+
+    Đây là điểm quyết định duy nhất của cổng review (ADR #18): mọi cột `verified`
+    (``gate is None``) → tự advance, đường whitelist/demo chảy suốt không thêm click.
+    WS1-3 (#6) truyền ``has_saved_map=True`` khi có map đã lưu theo (DN, vân tay form)
+    khớp file — coi như `verified` → tự advance dù bằng chứng thô là `needs_review`.
+    """
+    if gate is None:
+        return False
+    if has_saved_map:
+        return False
+    return True
 
 
 def files_by_year_slot(session: Session, company: Company) -> dict[int, dict[str, list[DataFile]]]:
@@ -268,7 +363,12 @@ def files_by_year_slot(session: Session, company: Company) -> dict[int, dict[str
 
 __all__ = [
     "SLOT_SUBDIR",
+    "ReviewGate",
+    "ReviewGateColumn",
     "files_by_year_slot",
     "record_parse_result",
+    "review_gate_for_files",
+    "should_stop_for_review",
     "sync_data_files",
+    "year_review_gate",
 ]

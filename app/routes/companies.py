@@ -90,14 +90,19 @@ templates.env.globals["app_version_string"] = version_string()
 # Nhãn cho trang quản lý tài liệu (ma trận năm × loại file BCQT).
 templates.env.globals["SLOT_LABEL_VI"] = SLOT_LABEL_VI
 templates.env.globals["SLOT_ORDER"] = list(SLOT_ORDER)
+# Trục lifecycle (ADR #18): uploaded → analyzed → parsed (+ error). Cờ review
+# (verified/needs_review) là trục RIÊNG, render bằng badge khác. "warning" giữ lại
+# làm nhãn dự phòng cho dòng registry cũ (không code path nào ghi mới).
 DATA_FILE_STATUS_LABEL = {
-    "pending": "Chưa nạp",
+    "pending": "Đã tải lên",
+    "analyzed": "Đã phân tích",
     "ok": "Đã nạp",
     "warning": "Cảnh báo",
     "error": "Lỗi",
 }
 DATA_FILE_STATUS_BADGE = {
     "pending": "muted",
+    "analyzed": "info",
     "ok": "info",
     "warning": "warning",
     "error": "critical",
@@ -483,7 +488,12 @@ def upload_data(
         )
 
     # Cập nhật registry file ngay sau khi lưu (kể cả khi sắp báo lỗi chẩn đoán).
-    from app.pipeline.data_files import record_parse_result, sync_data_files
+    from app.pipeline.data_files import (
+        record_parse_result,
+        should_stop_for_review,
+        sync_data_files,
+        year_review_gate,
+    )
     sync_data_files(db, company)
 
     # CHẨN ĐOÁN trước khi nạp — chống misparse thầm lặng (file HQ sai mẫu/lệch cột).
@@ -509,11 +519,33 @@ def upload_data(
             status_code=422,
         )
 
-    # Không lỗi nặng → NẠP dữ liệu (ingest). KHÔNG tự chạy kiểm tra (bước riêng).
+    # Cổng review (ADR #18): dry-run parse trước để tính bằng chứng + review mỗi cột,
+    # CHƯA ghi dòng. Mọi cột `verified` → tự advance sang parsed (đường whitelist chảy
+    # suốt); có cột `needs_review` → DỪNG ở `analyzed`, cán bộ bấm "Nạp dữ liệu" để
+    # tiếp (cảnh báo, không chặn — check vẫn chạy sau khi parsed).
+    raw_path = Path(settings.raw_data_path)
     try:
-        stats = run_ingest(company.code, year, raw_root=Path(settings.raw_data_path))
+        analyze_stats = run_ingest(company.code, year, raw_root=raw_path, dry_run=True)
     except FileNotFoundError as e:
         raise HTTPException(status_code=400, detail=f"Discover lỗi: {e}") from e
+    except Exception as e:  # noqa: BLE001 — show parser errors back to user
+        raise HTTPException(status_code=500, detail=f"Phân tích file lỗi: {type(e).__name__}: {e}") from e
+    record_parse_result(db, company, year, analyze_stats, diagnosis, committed=False)
+
+    gate = year_review_gate(db, company, year)
+    if should_stop_for_review(gate):
+        return RedirectResponse(
+            url=(
+                f"/companies/{code}/documents?msg=%C4%90%C3%A3+t%E1%BA%A3i+l%C3%AAn+%26"
+                f"+ph%C3%A2n+t%C3%ADch+n%C4%83m+{year}+%E2%80%94+c%E1%BA%A7n+x%C3%A1c"
+                f"+nh%E1%BA%ADn+c%E1%BB%99t+tr%C6%B0%E1%BB%9Bc+khi+n%E1%BA%A1p"
+            ),
+            status_code=303,
+        )
+
+    # Tự advance: NẠP dữ liệu (commit). KHÔNG tự chạy kiểm tra (bước riêng).
+    try:
+        stats = run_ingest(company.code, year, raw_root=raw_path)
     except Exception as e:  # noqa: BLE001 — show parser errors back to user
         raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
 
@@ -667,7 +699,11 @@ def company_documents(
 ) -> HTMLResponse:
     company = get_company_or_404(db, code, user)
 
-    from app.pipeline.data_files import files_by_year_slot, sync_data_files
+    from app.pipeline.data_files import (
+        files_by_year_slot,
+        review_gate_for_files,
+        sync_data_files,
+    )
 
     # Reconcile registry với filesystem (bắt file demo có sẵn / xoá ngoài app).
     sync_data_files(db, company)
@@ -701,6 +737,11 @@ def company_documents(
     for i, y in enumerate(years):
         slots = {slot: matrix.get(y, {}).get(slot, []) for slot in SLOT_ORDER}
         has_files = any(slots.values())
+        # Cổng review (ADR #18): cột `needs_review` + check bị ảnh hưởng — banner cảnh
+        # báo, KHÔNG chặn (trục review độc lập lifecycle; file có thể parsed + cần xác nhận).
+        review_gate = review_gate_for_files(
+            f for slot_files in slots.values() for f in slot_files
+        )
         has_data = y in data_years
         slot_counts = _slot_row_counts(db, company.id, y) if has_data else {}
         total_rows = sum(slot_counts.values())
@@ -718,6 +759,7 @@ def company_documents(
             "year": y,
             "slots": slots,
             "has_files": has_files,
+            "review_gate": review_gate,
             "has_data": has_data,
             "total_rows": total_rows,
             "status_label": status_label,

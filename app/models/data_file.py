@@ -11,12 +11,17 @@ from app.database import Base
 
 
 class DataFileStatus(StrEnum):
-    """Trạng thái parse của 1 file đã tải lên (bền vững, hiển thị ở trang tài liệu)."""
+    """Vòng đời 1 file đã tải lên (bền vững, hiển thị ở trang tài liệu; ADR #18).
 
-    PENDING = "pending"   # đã tải lên, chưa nạp dữ liệu
-    OK = "ok"             # nạp thành công
-    WARNING = "warning"   # nạp được nhưng có cảnh báo (lệch cột nhẹ…)
-    ERROR = "error"       # đọc/nạp lỗi — chưa dùng được
+    Trục lifecycle ĐỘC LẬP với trục review (`parse_detail.review` = verified/
+    needs_review). Cờ cảnh báo cột KHÔNG còn là status — nó nằm ở trục review, nên
+    file có thể vừa `parsed` vừa `needs_review`.
+    """
+
+    PENDING = "pending"     # uploaded — đã lưu + đăng ký, chưa đọc
+    ANALYZED = "analyzed"   # dry-run parse xong (chưa ghi DB) — cổng review ở đây
+    OK = "ok"               # parsed — đã commit dòng vào DB
+    ERROR = "error"         # đọc/nạp lỗi — chưa dùng được
 
 
 # slot → (subdir filesystem, nhãn tiếng Việt). Dùng chung cho registry + UI.

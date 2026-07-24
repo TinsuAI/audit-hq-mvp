@@ -1179,6 +1179,12 @@ p { margin: 0 0 var(--space-3); }
   border-color: var(--c-warning-border);
 }
 
+.doc-review-gate { margin: var(--space-2) 0 var(--space-3); font-size: 0.85rem; }
+.doc-review-gate-lead { margin: 0 0 var(--space-2); }
+.doc-review-gate-cols { margin: 0; padding-left: var(--space-4); }
+.doc-review-gate-cols li { margin: 2px 0; }
+.doc-review-gate-slot { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
+
 .parse-note {
   display: flex;
   flex-wrap: wrap;
