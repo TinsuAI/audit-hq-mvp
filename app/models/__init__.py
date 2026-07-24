@@ -9,6 +9,7 @@ from app.models.data_file import DataFile, DataFileStatus
 from app.models.declaration import DeclarationLine
 from app.models.finding import Finding
 from app.models.job import Job, JobKind, JobStatus
+from app.models.saved_column_map import SavedColumnMap
 from app.models.score import CompanyYearScore
 from app.models.uom import UomAlias, UomCanonical
 from app.models.user import ROLE_ADMIN, ROLE_OFFICER, VALID_ROLES, User
@@ -36,6 +37,7 @@ __all__ = [
     "NvlBalance",
     "ROLE_ADMIN",
     "ROLE_OFFICER",
+    "SavedColumnMap",
     "SpBalance",
     "User",
     "UomAlias",

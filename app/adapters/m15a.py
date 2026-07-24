@@ -26,6 +26,7 @@ from app.adapters.evidence import (
     evidence_m15a_standard,
 )
 from app.adapters.extended_layout import M15aResolution, select_extended_m15a
+from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
 from app.adapters.sheet_select import SheetNotFound, select_sheet
 
@@ -100,6 +101,9 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
     if resolution is not None:
         rows = _rows_from_resolution(cells, resolution)
         scan_cols = [c for cols in resolution.cols.values() for c in cols]
+        evidence = evidence_m15a_extended(
+            [f for f in _EVIDENCE_FIELDS if resolution.cols.get(f)]
+        )
         return M15aFile(
             header=header, rows=rows, source_file=str(p), sheet=sheet,
             issues=ParseIssues(
@@ -116,10 +120,12 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
                     "match_rate": round(resolution.match_rate, 4),
                     "export_col": resolution.cols["export_qty"][0],
                     "export_label": resolution.export_label,
+                    "form_signature": compute_form_signature(cells, "m15a", resolution.data_start),
+                    "column_map": {
+                        f: resolution.cols[f][0] for f in evidence if resolution.cols.get(f)
+                    },
                 },
-                evidence=evidence_m15a_extended(
-                    [f for f in _EVIDENCE_FIELDS if resolution.cols.get(f)]
-                ),
+                evidence=evidence,
             ),
         )
 
@@ -151,6 +157,7 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
             )
         )
 
+    evidence = evidence_m15a_standard(cells, data_start, cand_colmap)
     return M15aFile(
         header=header, rows=rows, source_file=str(p), sheet=sheet,
         issues=ParseIssues(
@@ -159,7 +166,11 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
             scanned=True,
         ),
         provenance=ParseProvenance(
-            evidence=evidence_m15a_standard(cells, data_start, cand_colmap),
+            detail={
+                "form_signature": compute_form_signature(cells, "m15a", data_start),
+                "column_map": {f: _COL[f] for f in evidence if f in _COL},
+            },
+            evidence=evidence,
         ),
     )
 

@@ -22,6 +22,7 @@ from app.adapters._common import (
     to_str,
 )
 from app.adapters.evidence import evidence_m16
+from app.adapters.form_signature import compute_form_signature
 from app.adapters.sheet_select import SheetNotFound, select_sheet
 
 
@@ -160,6 +161,8 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
     evidence = evidence_m16(
         cells, data_start, cols["material_code"], cols["norm_qty"], norm_labeled=norm_labeled,
     )
+    form_sig = compute_form_signature(cells, "m16", data_start)
+    column_map = {f: cols[f] for f in evidence if f in cols}
     if norm_labeled:
         provenance = ParseProvenance(
             layout="labeled",
@@ -167,11 +170,16 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
                 "norm_col": norm_col,
                 "norm_label": norm_label,
                 "technical_col": tech_col,
+                "form_signature": form_sig,
+                "column_map": column_map,
             },
             evidence=evidence,
         )
     else:
-        provenance = ParseProvenance(evidence=evidence)
+        provenance = ParseProvenance(
+            detail={"form_signature": form_sig, "column_map": column_map},
+            evidence=evidence,
+        )
 
     current_product_code: str | None = None
     current_product_name: str | None = None

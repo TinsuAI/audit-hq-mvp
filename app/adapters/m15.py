@@ -26,6 +26,7 @@ from app.adapters.evidence import (
     evidence_m15_standard,
 )
 from app.adapters.extended_layout import ColMap, select_extended_m15
+from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
 from app.adapters.sheet_select import SheetNotFound, select_sheet
 
@@ -106,6 +107,7 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
     if colmap is not None:
         rows = _rows_from_colmap(cells, colmap)
         scan_cols = [c for cols in colmap.cols.values() for c in cols]
+        evidence = evidence_m15_extended([f for f in _EVIDENCE_FIELDS if colmap.has(f)])
         return M15File(
             header=header, rows=rows, source_file=str(p), sheet=sheet,
             issues=ParseIssues(
@@ -120,10 +122,12 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
                     "matched": colmap.matched,
                     "checked": colmap.checked,
                     "match_rate": round(colmap.match_rate, 4),
+                    "form_signature": compute_form_signature(cells, "m15", colmap.data_start),
+                    "column_map": {
+                        f: colmap.cols[f][0] for f in evidence if colmap.cols.get(f)
+                    },
                 },
-                evidence=evidence_m15_extended(
-                    [f for f in _EVIDENCE_FIELDS if colmap.has(f)]
-                ),
+                evidence=evidence,
             ),
         )
 
@@ -155,6 +159,7 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
             )
         )
 
+    evidence = evidence_m15_standard(cells, data_start, cand_colmap)
     return M15File(
         header=header, rows=rows, source_file=str(p), sheet=sheet,
         issues=ParseIssues(
@@ -163,7 +168,11 @@ def parse_m15(path: str | Path, sheet: str | None = None, year: int | None = Non
             scanned=True,
         ),
         provenance=ParseProvenance(
-            evidence=evidence_m15_standard(cells, data_start, cand_colmap),
+            detail={
+                "form_signature": compute_form_signature(cells, "m15", data_start),
+                "column_map": {f: _COL[f] for f in evidence if f in _COL},
+            },
+            evidence=evidence,
         ),
     )
 

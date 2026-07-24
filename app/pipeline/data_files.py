@@ -26,6 +26,7 @@ from app.checks.registry import checks_reading, review_state
 from app.models import Company, DataFile, DataFileStatus
 from app.models.data_file import SLOT_SUBDIR
 from app.pipeline.discover import content_slots
+from app.pipeline.saved_map import resolve_officer_confirmed
 from app.settings import settings
 
 _EXCEL_EXT = {".xls", ".xlsx"}
@@ -249,6 +250,13 @@ def record_parse_result(
         prov = provenance.get(row.slot)
         prov_evidence = getattr(prov, "evidence", None) if prov is not None else None
         prov_layout = getattr(prov, "layout", "standard") if prov is not None else "standard"
+        # Map đã lưu cho (DN, slot, vân tay form) khớp → các cột resolve
+        # `officer-confirmed` → `verified`, cổng review tự advance (WS1-3, ADR #18).
+        if prov_evidence:
+            form_sig = (getattr(prov, "detail", None) or {}).get("form_signature")
+            prov_evidence = resolve_officer_confirmed(
+                session, company.id, row.slot, form_sig, prov_evidence,
+            )
         # Ghi provenance cho MỌI file có bằng chứng cột (kể cả bố cục chuẩn) — badge
         # truy nguồn hiện nguồn + trạng thái review từng cột (WS1, ADR #18).
         if prov is not None and (prov_layout != "standard" or prov_evidence):
