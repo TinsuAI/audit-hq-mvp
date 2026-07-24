@@ -254,3 +254,45 @@ item_detail gây hiểu nhầm cho DN năm tài chính (tờ khai ngày 2026 dư
 `load_period_windows()` (chỉ kỳ ≠ dương lịch) → hiện "năm tài chính dd/mm/yyyy–dd/mm/yyyy" ở tab
 năm (sup TC), dòng chú dưới tab, phụ đề 2 section item_detail, tooltip cột Năm. DN dương lịch không
 đổi. Số liệu vốn ĐÚNG (gom theo `period_year`) — đây chỉ là làm rõ nhãn, không đổi logic.
+
+### 17. Mẫu 15a mở rộng (export theo NHÃN) + Mẫu 16 định mức thực tế + badge truy nguồn (2026-07-24)
+
+**Bối cảnh:** hoàn thành phần "CHƯA thực hiện — Mẫu 15a" của ADR #15 cho 004. Đo trên file thật:
+`select_sheet` (cột cố định) TRƯỢT cho M15a của 004 EPE/GC (mã ở c2, tách cột con), và
+`content_slots` chỉ dò bằng `select_sheet` → 004 **không nạp M15a** → C4.3/C1.4 không chạy.
+
+**Quyết định:**
+- **`resolve_m15a` (`extended_layout.py`):** cổng đẳng thức cân đối như M15, NHƯNG số biểu M15a
+  không ổn định giữa DN nên **KHÔNG map field theo số biểu**. Cột `export_qty` (thứ duy nhất
+  C4.3/C1.4 dùng) xác định theo **NHÃN** cột (`xuất khẩu`/`export`, loại `năm trước`/`chưa đăng
+  ký`/`xuất bán`/`nghiên cứu`/`trả lại`/`khác`), và bắt buộc là **số hạng TRỪ trong đẳng thức**
+  (cổng đẳng thức riêng), và phải **DUY NHẤT**. Không đủ 3 điều kiện → trả None → không nạp
+  (thà thiếu hơn nạp sai — đúng kiểu hỏng ADR #15 chống). Khai triển **nhãn gộp** `(8ab)`=8a+8b
+  (KHÔNG gồm 8c) cho sổ GC (`parse_formula_terms` giữ nhóm chữ).
+- **Discovery:** `content_slots` thử thêm đường mở rộng cho slot m15a (`_extended_m15a_ok`). Chỉ
+  m15a — m15 luôn nhận theo tên file ("NVL"/"NPL"); whitelist buckets đầy theo tên nên không đụng.
+- **Mẫu 16:** chọn cột ĐM theo nhãn "thực tế/Actual" khi có CẢ cột "kỹ thuật/Technical"
+  (`_detect_actual_norm_col`). DN một cột ĐM → giữ cột mặc định (c7) → 6 DN whitelist bất biến.
+- **Bằng chứng CÓ LƯU (không hộp đen):** `ParseProvenance` (layout `standard`/`extended`/`labeled`
+  + detail) trên M15File/M15aFile/M16File → `IngestStats.provenance` → `record_parse_result` ghi
+  `DataFile.parse_layout`/`parse_detail` (migration **`f5a6b7c8d9e0`**, 2 cột). Badge ở trang Tài
+  liệu + note ở trang Dữ liệu gốc: bố cục, đẳng thức khớp N/N, nhãn cột export/ĐM đã chọn.
+
+**Đo (dữ liệu thật):** 004 EPE M15a 43 dòng (43/43, export "Export this year" cột 10), M16 664
+dòng (thực tế c8) → C4.3 fire 8, phát hiện 111→98. 004 GC M15a 2 dòng (2/2), M16 216 → C1.4 fire 2
+(sau khi sửa kỳ tay, xem dưới). 006 vẫn đường CHUẨN (mã c1, export c7) — không đụng.
+
+**Regression:** harness nạp mới toàn whitelist vào DB rỗng (seed_uom + ingest + run_checks) =
+**419 finding, y hệt từng DN trước/sau** (DO_THANH 9 · GROWATT 175 · HONG_AN 126 · KIM_LONG 109).
+Trung tính. **LƯU Ý số liệu:** 419 KHÁC "1.331" ghi ở ADR #16/STATUS — 1.331 đo bằng nguồn khác
+(nhiều khả năng DB local có finding inject / gồm pilot), KHÔNG phải fresh-ingest whitelist. Cần
+chốt MỘT harness chuẩn cho lần sau (xem [[harness-baseline-methodology]]).
+
+**Kèm — sửa kỳ GC (dùng tính năng ADR #16):** header M15/M15a của GC ghi SAI kỳ (2024-04..2025-03)
+trong khi M16 + BCCT là FY2025 (2025-04..2026-03). `ingest` lấy header đầu (M15) → cửa sổ rỗng →
+`bcct=0` → 0 phát hiện. Đã đặt `company_periods` **manual** GC 2025 = 2025-04-01..2026-03-31 →
+bcct=547, C1.4 fire. Đây là đúng ca dùng manual-override của ADR #16 (cán bộ sửa header sai).
+
+**Alternatives loại:** *map M15a theo số biểu* (rejected — không ổn định giữa DN, đã đo); *sửa
+`default_bounds` chọn header khớp năm folder* cho ca GC (hoãn — đụng logic C1 đã deploy, rủi ro
+6 DN whitelist; manual-override an toàn hơn).

@@ -1,5 +1,17 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — M15a mở rộng + M16 ĐM thực tế cho 004 + badge truy nguồn — CHƯA COMMIT):**
+> Hoàn thành phần "CHƯA thực hiện — Mẫu 15a" của ADR #15 (nay là **ADR #17**). `resolve_m15a`
+> (`extended_layout.py`): cổng đẳng thức + `export_qty` theo NHÃN (duy nhất, phải là số hạng trừ)
+> + khai triển nhãn gộp `(8ab)`. `content_slots` dò thêm đường mở rộng cho m15a. M16 chọn cột ĐM
+> "thực tế" khi có cặp kỹ thuật/thực tế (004). **Badge CÓ LƯU** (`DataFile.parse_layout`/`parse_detail`,
+> migration **`f5a6b7c8d9e0`**): trang Tài liệu + trang Dữ liệu gốc hiện bố cục + đẳng thức N/N +
+> nhãn cột. Đo thật: 004 EPE M15a 43 (43/43) + M16 664 (c8 thực tế) → **C4.3 fire 8**; 004 GC M15a 2
+> + **C1.4 fire 2** (sau khi đặt kỳ GC manual = FY2025 vì header GC ghi sai). 006/whitelist đường
+> CHUẨN không đụng. **Harness: 419→419 y hệt** (trung tính; 419 ≠ "1.331" cũ — xem ADR #17 + memory).
+> Full suite **583 pass**, ruff clean. **CHƯA commit, CHƯA deploy** (local DB đã đổi + migration đã áp local).
+> Screenshot: `.ai/features/2026-07-24-m15a-m16-004/screenshots/`.
+>
 > **Trạng thái (2026-07-24 — C1 kỳ báo cáo custom-date, full-stack — ĐÃ DEPLOY PROD):**
 > Xong C1 `period_from/to` (ADR #16). BCCT chọn theo cửa sổ kỳ `[from,to]` thay `==year`;
 > `period_year` = nhãn kỳ (tách khỏi `declaration_date`). Bảng `company_periods` + migration
@@ -77,10 +89,11 @@
    lấn chéo năm — giới hạn manual-only có chủ đích (ADR #16). Đường tự động an toàn (FY liền kề
    không chồng). Ngoài ra: reload dữ liệu PILOT_002/004 lên prod để hưởng phục hồi dòng (prod
    hiện không có file nguồn 002/004 → cần upload hoặc chạy lại từ file).
-1. **M15a mở rộng + cột M16 của 004** — việc tiếp ADR 15. Số biểu M15a KHÔNG ổn định giữa DN
-   (006 trừ (7), 004 EPE cộng, 004 GC nhãn gộp), nên map `export_qty` phải theo NHÃN + cổng
-   đẳng thức riêng. Mở khoá C4.3/C1.4 cho 004. Cột định mức M16 của 004 đang đọc c7 (ĐM kỹ
-   thuật) thay c8 (ĐM thực tế) — sửa cùng đợt.
+1. **M15a mở rộng + cột M16 của 004 — ✅ XONG (2026-07-24, ADR #17, CHƯA COMMIT).** `resolve_m15a`
+   (đẳng thức + export theo nhãn + nhãn gộp), discovery dò mở rộng, M16 ĐM thực tế, badge có lưu.
+   Đo thật: EPE C4.3=8, GC C1.4=2. Harness whitelist 419→419 trung tính. 583 test pass.
+   **Còn (tuỳ chọn):** commit + deploy (prod chưa có file 002/004 → chỉ code lên, data cần upload);
+   reload 004 lên prod. C4.3 nhánh sản lượng M16 (hệ số nhân) vẫn CHẶN bởi đề án — xem #2.
 2. **Sửa đề án `../audit-hq/de-an-audit-hq.md:228` TRƯỚC** rồi mới làm B2 (đổi hệ số nhân C4.3
    sang lượng nhập kho SX), B4 (báo độ phủ C4.3), và hệ số nhân theo sản lượng Mẫu 16. Cả ba
    mâu thuẫn định nghĩa `Σ(định_mức × xuất_khẩu_M15a)` hiện tại — là "sửa catalog" theo AGENTS.md.
