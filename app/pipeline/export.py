@@ -60,6 +60,7 @@ def _severity_format(workbook: xlsxwriter.Workbook) -> dict:
 
 def _write_overview(
     wb: xlsxwriter.Workbook, ws, company: Company, year: int, findings: list[Finding],
+    only: set[str] | None = None,
 ) -> None:
     bold = wb.add_format({"bold": True})
     title = wb.add_format({
@@ -73,12 +74,14 @@ def _write_overview(
     ws.merge_range("A1:B1", "BÁO CÁO KIẾN NGHỊ KIỂM TRA", title)
     ws.set_row(0, 26)
 
+    scope_label = "Toàn bộ kiểm tra" if not only else "Các test đã chọn: " + ", ".join(sorted(only))
     rows = [
         ("Doanh nghiệp", company.code),
         ("Tên DN", company.name or "—"),
         ("MST", company.tax_id or "—"),
         ("Địa chỉ", company.address or "—"),
         ("Kỳ báo cáo", str(year)),
+        ("Phạm vi xuất", scope_label),
         ("Điểm rủi ro DN", company.risk_score),
     ]
     for i, (k, v) in enumerate(rows, start=3):
@@ -168,12 +171,20 @@ def _write_legal(wb: xlsxwriter.Workbook, ws) -> None:
         ws.write(f"B{i}", desc, cell)
 
 
-def build_export(session: Session, company: Company, year: int) -> bytes:
-    findings = session.scalars(
+def build_export(
+    session: Session, company: Company, year: int, only: set[str] | None = None,
+) -> bytes:
+    """Xuất Excel kiến nghị. `only` (tuỳ chọn) → chỉ xuất finding của các mã check
+    đã chọn; sheet chứng cứ tự thu hẹp theo subject của finding còn lại. Không chọn
+    = xuất toàn bộ (ADR #18 Revision — WS2). Combo là mã như mọi check."""
+    stmt = (
         select(Finding)
         .where(Finding.company_id == company.id, Finding.period_year == year)
         .order_by(Finding.check_code, Finding.subject_key)
-    ).all()
+    )
+    if only:
+        stmt = stmt.where(Finding.check_code.in_(only))
+    findings = session.scalars(stmt).all()
 
     # Subject codes referenced by findings to filter evidence sheets.
     nvl_codes = {f.subject_key for f in findings if f.subject_type == "material_code" and f.subject_key}
@@ -219,7 +230,7 @@ def build_export(session: Session, company: Company, year: int) -> bytes:
     buffer = BytesIO()
     wb = xlsxwriter.Workbook(buffer, {"in_memory": True})
 
-    _write_overview(wb, wb.add_worksheet("Tổng quan"), company, year, findings)
+    _write_overview(wb, wb.add_worksheet("Tổng quan"), company, year, findings, only=only)
     _write_findings(wb, wb.add_worksheet("Phát hiện"), findings)
     _write_table(
         wb, wb.add_worksheet("Chứng cứ M15"), nvls,

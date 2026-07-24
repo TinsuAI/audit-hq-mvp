@@ -22,6 +22,26 @@
   <a href="/admin/checks/new" class="btn btn-primary">+ Tạo kiểm tra mới</a>
 </div>
 
+<div class="card">
+  <h2 style="margin-top:0">Phát hiện kết hợp (combo)</h2>
+  <p class="text-muted">
+    Combo (§2.7 đề án) gộp nhiều kiểm tra cùng kích hoạt trên một đối tượng thành một
+    phát hiện ý nghĩa cao hơn. Hiện <strong>TẮT</strong> vì một số combo neo trên C4.3
+    đang đổi định nghĩa (số nhân định mức = sản lượng) — bật lại sau khi C4.3 chốt và
+    rà soát lại. Áp dụng theo mỗi (DN, năm) ở lần chạy kiểm tra kế tiếp.
+  </p>
+  <form method="post" action="/admin/checks/combos-toggle" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <label style="display:flex;gap:8px;align-items:center">
+      <input type="checkbox" name="enabled" value="1" {% if combos_enabled %}checked{% endif %}>
+      Bật phát hiện kết hợp
+    </label>
+    <button type="submit" class="btn btn-secondary">Lưu</button>
+    <span class="badge {{ 'published' if combos_enabled else 'muted' }}">
+      Hiện tại: {{ 'BẬT' if combos_enabled else 'TẮT' }}
+    </span>
+  </form>
+</div>
+
 {% if checks %}
 <div class="card" style="overflow:auto">
   <table class="data-table">

@@ -203,6 +203,25 @@
     <p style="margin:0 0 12px"><a href="?year={{ selected_year }}">← Về tất cả kiểm tra</a></p>
   {% endif %}
 
+  {% if selected_year and export_options %}
+  <details class="card export-select" style="margin-bottom:16px">
+    <summary style="cursor:pointer;font-weight:600">📊 Xuất Excel theo test đã chọn</summary>
+    <form method="get" action="/companies/{{ company.slug or company.code }}/export" style="margin-top:10px">
+      <input type="hidden" name="year" value="{{ selected_year }}">
+      <p class="text-muted" style="margin:0 0 8px">Không chọn test nào = xuất toàn bộ. Chọn một hoặc nhiều để chỉ xuất các test đó.</p>
+      <div class="export-select-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px 16px;margin-bottom:12px">
+        {% for opt in export_options %}
+        <label style="display:flex;gap:6px;align-items:baseline">
+          <input type="checkbox" name="check" value="{{ opt.code }}">
+          <span><span class="text-mono">{{ opt.code }}</span> — {{ opt.title }} <span class="text-muted">({{ opt.total }})</span></span>
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn btn-primary">📊 Xuất các test đã chọn</button>
+    </form>
+  </details>
+  {% endif %}
+
   {% for code, findings, group_total, group_sev in ordered_groups %}
     {% set spec = all_specs.get(code) or SPECS.get(code) %}
     <details class="finding-group" id="group-{{ code }}"{% if focus_check %} open{% endif %}>
@@ -218,6 +237,16 @@
         </span>
       </summary>
       <p class="group-desc">{{ spec.description if spec else '' }}</p>
+      {% if selected_year and not code.startswith('COMBO_') %}
+      <div class="group-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks" style="margin:0">
+          <input type="hidden" name="year" value="{{ selected_year }}">
+          <input type="hidden" name="check" value="{{ code }}">
+          <button type="submit" class="btn btn-sm btn-secondary" title="Chạy lại chỉ kiểm tra {{ code }} cho năm {{ selected_year }}">▶️ Chạy lại {{ code }}</button>
+        </form>
+        <a href="/companies/{{ company.slug or company.code }}/export?year={{ selected_year }}&check={{ code }}" class="btn btn-sm btn-secondary" title="Xuất Excel chỉ kiểm tra {{ code }}">📊 Xuất test này</a>
+      </div>
+      {% endif %}
       <div class="data-table-wrapper">
         <table class="data-table compact">
           <thead>

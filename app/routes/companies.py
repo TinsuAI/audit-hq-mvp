@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.app_settings import get_combos_enabled
 from app.audit import (
     ACTION_DOWNLOAD,
     ACTION_EXPORT,
@@ -1152,6 +1153,7 @@ async def documents_confirm_review(
     # hàng), KHÔNG theo id dòng → dòng thay khi re-ingest không làm treo finding của
     # check KHÔNG chạy lại (khoá lọc = mã hàng vẫn đúng vì cột mã không đổi). Nếu cột
     # KHOÁ (mã) đổi thì khoá lọc đổi → mở rộng ra mọi check đọc slot (gồm C2.1/C2.2).
+    label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
     if was_parsed and changed_fields:
         from app.checks.registry import checks_reading, checks_reading_slot
 
@@ -1161,10 +1163,30 @@ async def documents_confirm_review(
         if _SLOT_KEY_FIELD.get(slot) in changed_fields:
             affected.update(checks_reading_slot(slot))
         if affected:
+            # Re-run scoped chạy ASYNC qua job queue (ADR #18 Revision — WS2, option A):
+            # confirm + re-ingest (áp map, file→`parsed`) GIỮ đồng bộ ở trên; chỉ phần
+            # re-run enqueue → worker 1-thread serialize ghi, triệt tranh chấp SQLite.
+            if ur is not None:
+                from app.jobs import enqueue_job
+                from app.models.job import JobKind
+                job = enqueue_job(
+                    db, kind=JobKind.RUN_CHECKS,
+                    payload={
+                        "company_code": company.code, "year": year,
+                        "only": sorted(affected),
+                    },
+                    created_by=ur.id, company_id=company.id, period_year=year,
+                )
+                log_access(
+                    db, username=user.name, action=ACTION_RUN_CHECKS,
+                    company_code=company.code,
+                    detail=f"year={year} only={','.join(sorted(affected))} (confirm-review)",
+                )
+                return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+            # Fallback hiếm (session user không map được row): chạy inline để không bỏ sót.
             from app.pipeline.run_checks import run_checks
             run_checks(company.code, year, only=affected)
 
-    label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
     return _redirect(
         "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} & nạp dữ liệu")
     )
@@ -1264,13 +1286,16 @@ def documents_set_period(
 def rerun_checks(
     code: str,
     year: int | None = Form(default=None),
+    check: list[str] = Form(default=[]),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     """Enqueue job chạy checks.
 
-    Nếu có `year` → RUN_CHECKS đơn lẻ (CLI/dev). Mặc định không gửi year →
-    BATCH_RUN chạy tất cả năm có dữ liệu (UI default per design 2026-05-26).
+    - Không gửi `year` → BATCH_RUN mọi năm có dữ liệu (UI default 2026-05-26).
+    - Có `year`, không `check` → RUN_CHECKS full năm đó.
+    - Có `year` + `check` (lặp được) → RUN_CHECKS `only=` tập con (chạy test lẻ,
+      ADR #18 Revision — WS2). `check` bị bỏ qua khi chạy batch (mọi năm).
     """
     from app.auth_users import get_user_by_username
     from app.jobs import enqueue_job
@@ -1282,6 +1307,7 @@ def rerun_checks(
     if user_row is None:
         raise HTTPException(status_code=403, detail="Session user không tồn tại")
 
+    only = [c for c in check if c]
     if year is None:
         job = enqueue_job(
             db,
@@ -1291,17 +1317,22 @@ def rerun_checks(
             company_id=company.id,
             period_year=None,
         )
+        detail = "batch"
     else:
+        payload: dict = {"company_code": company.code, "year": year}
+        if only:
+            payload["only"] = only
         job = enqueue_job(
             db,
             kind=JobKind.RUN_CHECKS,
-            payload={"company_code": company.code, "year": year},
+            payload=payload,
             created_by=user_row.id,
             company_id=company.id,
             period_year=year,
         )
+        detail = f"year={year}" + (f" only={','.join(only)}" if only else "")
     log_access(db, username=user.name, action=ACTION_RUN_CHECKS, company_code=company.code,
-               detail=("batch" if year is None else f"year={year}"))
+               detail=detail)
     return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
@@ -1340,6 +1371,9 @@ def company_detail(
     counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     severity_totals = {"critical": 0, "warning": 0, "info": 0}
     combo_findings: list[Finding] = []
+    # Gate combo theo setting SỐNG (ADR #18 Revision — WS2): OFF → ẩn cả render, kể cả
+    # khi còn COMBO_* cũ trong DB (lazy). Flip giữa chừng ẩn/hiện ngay.
+    combos_on = get_combos_enabled(db)
     if selected_year is not None:
         for ccode, sev, n in db.execute(
             select(Finding.check_code, Finding.severity, func.count())
@@ -1351,15 +1385,16 @@ def company_detail(
             counts[ccode][sev] += n
             if sev in severity_totals:
                 severity_totals[sev] += n
-        combo_findings = db.scalars(
-            select(Finding)
-            .where(
-                Finding.company_id == company.id,
-                Finding.period_year == selected_year,
-                Finding.check_code.startswith("COMBO_"),
-            )
-            .order_by(Finding.subject_key)
-        ).all()
+        if combos_on:
+            combo_findings = db.scalars(
+                select(Finding)
+                .where(
+                    Finding.company_id == company.id,
+                    Finding.period_year == selected_year,
+                    Finding.check_code.startswith("COMBO_"),
+                )
+                .order_by(Finding.subject_key)
+            ).all()
 
     total_findings = sum(sum(s.values()) for s in counts.values())
 
@@ -1410,6 +1445,25 @@ def company_detail(
 
     all_specs = get_all_specs(db)
 
+    # Danh sách mã có finding — cho panel "Xuất các test đã chọn" (WS2-3). Gồm mọi
+    # mã regular (không phụ thuộc focus) + combo (mã như mọi check khi export).
+    export_options: list[dict] = []
+    for ccode in codes:
+        spec = all_specs.get(ccode) or SPECS.get(ccode)
+        export_options.append({
+            "code": ccode, "title": spec.title if spec else ccode,
+            "total": sum(counts[ccode].values()),
+        })
+    combo_counts: dict[str, int] = defaultdict(int)
+    for f in combo_findings:
+        combo_counts[f.check_code] += 1
+    for ccode in sorted(combo_counts):
+        spec = COMBO_SPECS.get(ccode)
+        export_options.append({
+            "code": ccode, "title": spec.title if spec else ccode,
+            "total": combo_counts[ccode],
+        })
+
     # Trạng thái tách upload/kiểm tra: có dữ liệu năm này chưa? đã chạy kiểm tra chưa?
     has_data = selected_year in data_years if selected_year is not None else False
     checks_run = year_score is not None or total_findings > 0 or bool(combo_findings)
@@ -1424,6 +1478,7 @@ def company_detail(
             "selected_year": selected_year,
             "period_windows": period_windows,
             "ordered_groups": ordered_groups,
+            "export_options": export_options,
             "combo_findings": combo_findings,
             "severity_totals": severity_totals,
             "total_findings": total_findings,
@@ -1482,14 +1537,20 @@ def _resolve_evidence(db: Session, ref: dict) -> tuple[list[tuple[str, str, str]
 def export_recommendations(
     code: str,
     year: int = Query(...),
+    check: list[str] = Query(default=[]),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
+    """Xuất Excel kiến nghị. `check` (lặp được) → chỉ xuất các test đã chọn; không
+    chọn = xuất toàn bộ (ADR #18 Revision — WS2)."""
     company = get_company_or_404(db, code, user)
-    payload = build_export(db, company, year)
+    only = {c for c in check if c} or None
+    payload = build_export(db, company, year, only=only)
     log_access(db, username=user.name, action=ACTION_EXPORT,
-               company_code=company.code, detail=f"year={year}")
-    filename = f"audit-hq_{company.slug or company.code}_{year}_kien-nghi-kiem-tra.xlsx"
+               company_code=company.code,
+               detail=f"year={year}" + (f" only={','.join(sorted(only))}" if only else ""))
+    scope = "" if not only else "_" + "-".join(sorted(only)).replace(".", "").replace("*", "")
+    filename = f"audit-hq_{company.slug or company.code}_{year}{scope}_kien-nghi-kiem-tra.xlsx"
     return Response(
         content=payload,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
