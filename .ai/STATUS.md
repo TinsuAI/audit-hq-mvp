@@ -1,5 +1,23 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-24 — LOAD PILOT 002/006 LÊN PROD (thay toàn bộ DN cũ) — main=`fe6efb9`, chỉ thao tác DỮ LIỆU):**
+> Nạp pilot 002+006 (ẩn danh) lên prod, XOÁ 14 DN cũ. **DB-ONLY, KHÔNG đổi code** (build_sha vẫn `fe6efb9`).
+> Prod DB giờ: **chỉ PILOT_002 (48 finding, điểm 7/2025) + PILOT_006 (14.883 finding, điểm 129/2024)** = 14.931 finding.
+> Ẩn danh theo §6.2 (helper `anonymize.py`): tên tổng hợp "(Demo)", MST giả (hash `_deterministic_mst`), địa chỉ/slug
+> tổng hợp, **179 partner→`NCC_*`**. Verify live: 0 MST thật, 0 partner thật, `/showcase` (công khai) không lộ tên/MST.
+> **GIỮ:** 2 user prod + 27 ai_settings (AI bật + api_key) + app_settings + uom + check_definitions.
+> **XOÁ kèm:** jobs, user_companies, ai_conversations/messages, access_events (log về DN đã gỡ, có thể chứa tên thật).
+> **Backup prod TRƯỚC swap:** `db-data/audit_hq.sqlite.bak-pre-pilot-load-20260724-230046` (rollback = swap lại + restart).
+> Cơ chế: snapshot WAL-safe prod (`src.backup()`) → build target local (empty tables DN cũ + copy 002/006 GIỮ id 7,8
+> để evidence_refs còn đúng + anonymize) → scp → `docker stop`/replace file/`start` → `alembic upgrade head` no-op → verify.
+> **LƯU Ý cho phiên sau:** (1) **DB-only** → trang Tài liệu/preview/download TRỐNG cho 002/006 (WS1 file-view KHÔNG
+> demo được trên prod; muốn có thì phải ẩn danh nội dung file Excel rồi upload). (2) **`check_runs` prod TRỐNG** (không
+> import run-history) → overview WS3 SINH được (đọc finding) nhưng staleness forward-only tới khi có người chạy check;
+> **CỐ Ý KHÔNG re-run trên prod** (finding import là bản pilot đã verify — re-run rủi ro méo do combo OFF/C4.3 basis…).
+> (3) Ẩn danh §6.2 GIỮ số tờ khai/hoá đơn/ngày + tên material/product — muốn scrub thêm là quyết định riêng.
+> (4) **disk server 99% (4.2G trống)** — DB 290M vừa đủ; nên dọn backup cũ `bak-pre-c24`/`bak-pre-cleanup` (June, ~26M mỗi cái).
+> Login prod: admin password chưa biết (như local) — kiểm authenticated bằng user throwaway nếu cần.
+
 > **Trạng thái (2026-07-24 — WS3 MERGE + DEPLOY PROD (PR #17) — main=`fe6efb9`):**
 > PR #17 (`feat/ws3-overview-staleness`→`main`) merge commit **`fe6efb9`**; CI run `30100248644` test+deploy XANH;
 > prod `audit-hq-demo.tinsu.ai` `/healthz` 200, `build_sha=fe6efb9` khớp (build_time 14:18:49Z). Deploy áp 2 migration
@@ -187,11 +205,12 @@
 - 9 commit phiên này (từ `fadc427`): xem session log `2026-07-23-tier-a-parse-layer.md`.
 
 ### Prod ≠ local — ĐỌC KỸ trước khi đụng dữ liệu
-- **DB prod ở server** (`/home/tinsu/audit-hq-mvp-deploy/db-data/audit_hq.sqlite`, 101 MB, 14 DN,
-  1.727 finding), truy cập qua `ssh tinsu` + `docker exec audit-hq-mvp`. KHÁC local
-  (`audit_hq.sqlite`, giờ ~300 MB sau khi nạp pilot).
-- **raw-data prod dùng tên anonymize** `DN_001/DN_103/DN_104/DN_105/DN_106`, mỗi DN chỉ 2024+2025.
-  `DN_103`=HONG_AN, `DN_104/105/106`=ba bản sao GROWATT. 10/14 DN prod KHÔNG có file nguồn.
+- **DB prod ở server** (`/home/tinsu/audit-hq-mvp-deploy/db-data/audit_hq.sqlite`, ~290 MB sau load pilot,
+  truy cập qua `ssh tinsu` + `docker exec audit-hq-mvp`). **CẬP NHẬT 2026-07-24:** prod giờ CHỈ có
+  **PILOT_002 + PILOT_006** (ẩn danh, 14.931 finding) — 14 DN `DN_xxx` cũ + 1.727 finding ĐÃ XOÁ (xem block
+  đầu file). Backup DN cũ: `db-data/audit_hq.sqlite.bak-pre-pilot-load-20260724-230046`.
+- **KHÔNG có file nguồn trên prod cho 002/006** (DB-only) → trang Tài liệu/preview/download trống cho 2 DN này.
+  (Cũ: raw-data prod dùng `DN_001/DN_103/...` — nay không còn dùng, 14 DN đó đã gỡ.)
 - **`run_all` tìm 0 cặp trên prod** (whitelist là HONG_AN/GROWATT/DO_THANH/KIM_LONG — không tồn
   tại ở server). Re-ingest prod bằng `run_all` là no-op.
 - **Local `data/` symlink** → `../audit-hq/data/raw`, có tên THẬT (HONG_AN…) + PILOT_002/004/006.
