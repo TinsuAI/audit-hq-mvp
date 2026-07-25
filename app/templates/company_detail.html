@@ -51,6 +51,23 @@
 {% if flash_msg %}<div class="form-alert form-alert-success" role="status"><span class="form-alert-icon">✅</span><div>{{ flash_msg }}</div></div>{% endif %}
 {% if flash_error %}<div class="form-alert form-alert-error" role="alert"><span class="form-alert-icon">⚠️</span><div>{{ flash_error }}</div></div>{% endif %}
 
+{% if book_strip %}
+<div class="book-strip" role="group" aria-label="Tổng quan theo sổ quyết toán">
+  {% for b in book_strip.books %}
+  <div class="book-strip-cell">
+    <span class="book-strip-label">{{ b.label }}</span>
+    <span class="book-strip-nums">{{ b.nvl_codes }} mã NVL · {{ b.findings }} phát hiện</span>
+  </div>
+  {% endfor %}
+  {% if book_strip.chung %}
+  <div class="book-strip-cell book-strip-chung">
+    <span class="book-strip-label">{{ book_strip.chung.label }}</span>
+    <span class="book-strip-nums">{{ book_strip.chung.findings }} phát hiện</span>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="stat-grid">
   <div class="stat tier-stat {% if checks_run %}{{ ys_css }}{% endif %}">
     <span class="stat-label">
@@ -181,6 +198,16 @@
   </div>
   {% endif %}
 
+  {% if multi_book %}
+  <div class="book-filter" role="group" aria-label="Lọc phát hiện theo sổ quyết toán">
+    <a href="?year={{ selected_year }}{% if focus_check %}&check={{ focus_check }}{% endif %}" class="{% if not book_selected %}active{% endif %}">Tất cả</a>
+    {% for b in books_list %}
+    <a href="?year={{ selected_year }}{% if focus_check %}&check={{ focus_check }}{% endif %}&book={{ b }}" class="{% if book_selected == b %}active{% endif %}">Sổ {{ b }}</a>
+    {% endfor %}
+    <a href="?year={{ selected_year }}{% if focus_check %}&check={{ focus_check }}{% endif %}&book=chung" class="{% if book_selected == 'chung' %}active{% endif %}">Chung</a>
+  </div>
+  {% endif %}
+
   {% if combo_findings %}
   <section class="combo-section">
     <h2>⚡ Phát hiện kết hợp ({{ combo_findings | length }})</h2>
@@ -190,6 +217,7 @@
       <div class="combo-card">
         <div class="combo-card-head">
           <span class="badge {{ f.severity }}">{{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}</span>
+          {% if multi_book %}<span class="book-pill chung" title="Chung (liên sổ)">Chung</span>{% endif %}
           <span class="combo-card-title">{{ spec.title }}</span>
           {% if f.subject_key %}<a class="text-mono" href="/companies/{{ company.slug or company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% endif %}
           <a href="/findings/{{ f.id }}" class="btn btn-sm btn-secondary" style="margin-left:auto">Chi tiết →</a>
@@ -204,13 +232,24 @@
   {% endif %}
 
   {% if not ordered_groups %}
+    {% if book_empty and book_empty.kind == 'clean' %}
+    <div class="card book-empty-clean" style="border-left:4px solid var(--c-success,#16a34a)">
+      <p style="margin:0"><strong>{{ book_empty.label }}</strong> đã được đánh giá — <strong>0 phát hiện</strong> trên {{ book_empty.nvl_codes }} mã NVL.</p>
+      <p class="text-subtle" style="font-size:var(--fs-xs);margin:var(--space-1) 0 0">Sổ này đã được kiểm tra và không có chênh lệch — khác với trạng thái thiếu dữ liệu hoặc chưa kiểm tra.</p>
+    </div>
+    {% elif book_empty and book_empty.kind == 'chung' %}
+    <div class="card">
+      <p class="text-muted">Không có phát hiện liên sổ (Chung) cho năm {{ selected_year }}.</p>
+    </div>
+    {% else %}
     <div class="card">
       <p class="text-muted">Năm {{ selected_year }} không có phát hiện nào.</p>
     </div>
+    {% endif %}
   {% endif %}
 
   {% if focus_check %}
-    <p style="margin:0 0 12px"><a href="?year={{ selected_year }}">← Về tất cả kiểm tra</a></p>
+    <p style="margin:0 0 12px"><a href="?year={{ selected_year }}{% if book_selected %}&book={{ book_selected }}{% endif %}">← Về tất cả kiểm tra</a></p>
   {% endif %}
 
 
@@ -229,6 +268,9 @@
         </span>
       </summary>
       <p class="group-desc">{{ spec.description if spec else '' }}</p>
+      {% if multi_book and book_splits.get(code) %}
+      <p class="book-split">Sổ: {% for label, n in book_splits[code] %}<span class="book-split-item">{{ label }} {{ n }}</span>{% if not loop.last %}· {% endif %}{% endfor %}</p>
+      {% endif %}
       {% if selected_year and not code.startswith('COMBO_') %}
       <div class="group-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks" style="margin:0">
@@ -287,7 +329,7 @@
                   {{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}
                 </span>
               </td>
-              <td class="code-cell">{% if f.subject_key %}<a href="/companies/{{ company.slug or company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% else %}—{% endif %}</td>
+              <td class="code-cell">{% if multi_book %}<span class="book-pill {% if not f.book %}chung{% endif %}" title="{{ book_label(f.book) }}">{{ f.book or 'Chung' }}</span> {% endif %}{% if f.subject_key %}<a href="/companies/{{ company.slug or company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% else %}—{% endif %}</td>
               <td class="wrap">
                 <div class="cell-clamp" title="{{ f.title }}{% if f.notes %} — 📝 {{ f.notes }}{% endif %}">
                   <a href="/findings/{{ f.id }}" style="color:inherit">{{ f.title }}</a>
@@ -317,17 +359,17 @@
         {% if pages > 1 %}
         <nav class="group-more" style="display:flex;gap:8px;align-items:center;margin-top:10px">
           {% if page > 1 %}
-            <a class="btn btn-sm btn-secondary" href="?year={{ selected_year }}&check={{ code }}&page={{ page - 1 }}">← Trước</a>
+            <a class="btn btn-sm btn-secondary" href="?year={{ selected_year }}&check={{ code }}{% if book_selected %}&book={{ book_selected }}{% endif %}&page={{ page - 1 }}">← Trước</a>
           {% endif %}
           <span class="text-muted">Trang {{ page }}/{{ pages }} · {{ page_size }} dòng/trang</span>
           {% if page < pages %}
-            <a class="btn btn-sm btn-secondary" href="?year={{ selected_year }}&check={{ code }}&page={{ page + 1 }}">Sau →</a>
+            <a class="btn btn-sm btn-secondary" href="?year={{ selected_year }}&check={{ code }}{% if book_selected %}&book={{ book_selected }}{% endif %}&page={{ page + 1 }}">Sau →</a>
           {% endif %}
         </nav>
         {% endif %}
       {% elif group_total > findings | length %}
         <p class="group-more" style="margin-top:10px">
-          <a href="?year={{ selected_year }}&check={{ code }}">
+          <a href="?year={{ selected_year }}&check={{ code }}{% if book_selected %}&book={{ book_selected }}{% endif %}">
             Xem tất cả {{ group_total }} phát hiện của {{ code }} →
           </a>
           <span class="text-muted">(đang hiện {{ findings | length }} dòng đầu)</span>
