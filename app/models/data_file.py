@@ -69,6 +69,10 @@ class DataFile(Base):
     uploaded_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True,
     )
+    # Sổ quyết toán (book) mà file settlement này thuộc về, gán ở màn review WS1
+    # (ADR #19 Revision — UI + upload). NULL = pháp nhân một sổ / tờ khai dùng chung.
+    # Chỉ có nghĩa với slot m15/m15a/m16; slot bcct luôn toàn pháp nhân → NULL.
+    book: Mapped[str | None] = mapped_column(String(32), nullable=True)
     parse_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=DataFileStatus.PENDING,
     )
