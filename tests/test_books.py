@@ -21,7 +21,7 @@ def test_book_label_known_fallback_null():
     assert book_label("EPE") == "Sổ EPE (chế xuất)"
     assert book_label("GC") == "Sổ GC (gia công)"
     assert book_label("XYZ") == "Sổ XYZ"       # mã lạ → fallback raw
-    assert book_label(None) == "Chung (liên sổ)"
+    assert book_label(None) == "Liên sổ"
 
 
 def test_company_books_gate_single_vs_multi(session, company):
@@ -160,7 +160,7 @@ def test_strip_shown_for_multi_book_hidden_for_single():
         assert "Sổ EPE (chế xuất)" in multi
         assert "Sổ GC (gia công)" in multi
         assert "mã NVL" in multi
-        assert "Chung (liên sổ)" in multi
+        assert "Liên sổ" in multi
 
         one = client.get("/companies/DN_1SO?year=2025").text
         assert "Sổ EPE" not in one       # single-book: không chrome theo sổ

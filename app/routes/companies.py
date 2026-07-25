@@ -1574,8 +1574,8 @@ def company_detail(
 
     total_findings = sum(sum(s.values()) for s in counts.values())
 
-    # Dòng split per-check "Sổ: EPE 8 · Chung 2" — chỉ pháp nhân nhiều sổ, chỉ bucket >0,
-    # sổ trước rồi Chung (book=NULL) cuối. Tính trên TOÀN pháp nhân (không theo bộ lọc).
+    # Dòng split per-check "Sổ: EPE 8 · Liên sổ 2" — chỉ pháp nhân nhiều sổ, chỉ bucket
+    # >0, sổ trước rồi Liên sổ (book=NULL) cuối. Tính trên TOÀN pháp nhân (không theo lọc).
     book_splits: dict[str, list[tuple[str, int]]] = {}
     if multi_book and selected_year is not None:
         raw_splits: dict[str, dict[str | None, int]] = defaultdict(dict)
@@ -1592,7 +1592,7 @@ def company_detail(
         for ccode, bkmap in raw_splits.items():
             ordered = [(bcode, bkmap[bcode]) for bcode in books_list if bkmap.get(bcode)]
             if bkmap.get(None):
-                ordered.append(("Chung", bkmap[None]))
+                ordered.append(("Liên sổ", bkmap[None]))
             book_splits[ccode] = ordered
 
     def _rank(ccode: str) -> tuple[int, str]:

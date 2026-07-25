@@ -204,7 +204,7 @@
     {% for b in books_list %}
     <a href="?year={{ selected_year }}{% if focus_check %}&check={{ focus_check }}{% endif %}&book={{ b }}" class="{% if book_selected == b %}active{% endif %}">Sổ {{ b }}</a>
     {% endfor %}
-    <a href="?year={{ selected_year }}{% if focus_check %}&check={{ focus_check }}{% endif %}&book=chung" class="{% if book_selected == 'chung' %}active{% endif %}">Chung</a>
+    <a href="?year={{ selected_year }}{% if focus_check %}&check={{ focus_check }}{% endif %}&book=chung" class="{% if book_selected == 'chung' %}active{% endif %}">Liên sổ</a>
   </div>
   {% endif %}
 
@@ -217,7 +217,7 @@
       <div class="combo-card">
         <div class="combo-card-head">
           <span class="badge {{ f.severity }}">{{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}</span>
-          {% if multi_book %}<span class="book-pill chung" title="Chung (liên sổ)">Chung</span>{% endif %}
+          {% if multi_book %}<span class="book-pill chung" title="Liên sổ (phát hiện liên sổ)">Liên sổ</span>{% endif %}
           <span class="combo-card-title">{{ spec.title }}</span>
           {% if f.subject_key %}<a class="text-mono" href="/companies/{{ company.slug or company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% endif %}
           <a href="/findings/{{ f.id }}" class="btn btn-sm btn-secondary" style="margin-left:auto">Chi tiết →</a>
@@ -243,7 +243,7 @@
     </div>
     {% elif book_empty and book_empty.kind == 'chung' %}
     <div class="card">
-      <p class="text-muted">Không có phát hiện liên sổ (Chung) cho năm {{ selected_year }}.</p>
+      <p class="text-muted">Không có phát hiện liên sổ cho năm {{ selected_year }}.</p>
     </div>
     {% else %}
     <div class="card">
@@ -333,7 +333,7 @@
                   {{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}
                 </span>
               </td>
-              <td class="code-cell">{% if multi_book %}<span class="book-pill {% if not f.book %}chung{% endif %}" title="{{ book_label(f.book) }}">{{ f.book or 'Chung' }}</span> {% endif %}{% if f.subject_key %}<a href="/companies/{{ company.slug or company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% else %}—{% endif %}</td>
+              <td class="code-cell">{% if multi_book %}<span class="book-pill {% if not f.book %}chung{% endif %}" title="{{ book_label(f.book) }}">{{ f.book or 'Liên sổ' }}</span> {% endif %}{% if f.subject_key %}<a href="/companies/{{ company.slug or company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% else %}—{% endif %}</td>
               <td class="wrap">
                 <div class="cell-clamp" title="{{ f.title }}{% if f.notes %} — 📝 {{ f.notes }}{% endif %}">
                   <a href="/findings/{{ f.id }}" style="color:inherit">{{ f.title }}</a>
