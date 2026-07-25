@@ -16,11 +16,13 @@ def add_norm(
     material_code: str,
     norm_qty: float,
     note: str | None = None,
+    book: str | None = None,
     year: int = 2024,
 ):
     n = Norm(
         company_id=company_id,
         period_year=year,
+        book=book,
         product_code=product_code,
         material_code=material_code,
         norm_qty=norm_qty,
@@ -161,3 +163,39 @@ def test_c4_3_divergent_repeated_norms_use_max_and_are_reported(session, company
     # MAX = 2.0 -> theoretical 200 vs actual 100
     assert findings[0].details["theoretical_consumption"] == 200.0
     assert findings[0].details["divergent_norm_products"] == ["TP"]
+
+
+# --- Nội-sổ: đánh giá per book (đa loại hình) ---
+
+
+def test_c4_1_evaluates_each_book_independently(session, company):
+    # Mã X ở hai sổ: sổ EPE có nguồn (M15 nhập>0), sổ GC KHÔNG có dòng M15.
+    # Phải fire cho sổ GC (thiếu nguồn) và KHÔNG bị dòng M15 sổ EPE che.
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0, book="EPE")
+    add_nvl(session, company.id, material_code="X", imported=100, book="EPE")
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0, book="GC")
+    session.commit()
+    findings = check_c4_1(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].subject_key == "X"
+    assert findings[0].book == "GC"
+    assert findings[0].details["reason"] == "no_m15"
+
+
+def test_c4_3_computes_each_book_independently(session, company):
+    # Mã X dùng ở hai sổ với định mức khác nhau — tiêu hao lý thuyết tính TRONG từng
+    # sổ, không cộng chéo sổ.
+    # Sổ EPE: 1.0 × 100 = 100 == xuất SX 100 → không lệch.
+    add_norm(session, company.id, product_code="TP_E", material_code="X", norm_qty=1.0, book="EPE")
+    add_sp(session, company.id, product_code="TP_E", export_qty=100, book="EPE")
+    add_nvl(session, company.id, material_code="X", production_out=100, book="EPE")
+    # Sổ GC: 2.0 × 100 = 200 > xuất SX 100 → lệch +100%.
+    add_norm(session, company.id, product_code="TP_G", material_code="X", norm_qty=2.0, book="GC")
+    add_sp(session, company.id, product_code="TP_G", export_qty=100, book="GC")
+    add_nvl(session, company.id, material_code="X", production_out=100, book="GC")
+    session.commit()
+    findings = check_c4_3(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].book == "GC"
+    assert findings[0].subject_key == "X"
+    assert findings[0].details["theoretical_consumption"] == 200.0

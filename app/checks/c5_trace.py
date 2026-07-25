@@ -36,6 +36,7 @@ def check_c5_1(session: Session, company_id: int, year: int) -> list[Finding]:
             severity=Severity.CRITICAL.value,
             subject_type="material_code",
             subject_key=r.material_code,
+            book=r.book,
             title=(
                 f"NVL {r.material_code} có xuất SX {r.production_out_qty:.2f} "
                 f"{r.unit or ''} nhưng không có nhập trong kỳ và không có tồn đầu kỳ"
@@ -47,11 +48,10 @@ def check_c5_1(session: Session, company_id: int, year: int) -> list[Finding]:
             },
             evidence_refs=[{
                 "table": "nvl_balances",
-                "filter": {
-                    "company_id": company_id,
-                    "period_year": year,
-                    "material_code": r.material_code,
-                },
+                "filter": (
+                    {"company_id": company_id, "period_year": year, "material_code": r.material_code}
+                    | ({"book": r.book} if r.book is not None else {})
+                ),
             }],
         )
         for r in rows

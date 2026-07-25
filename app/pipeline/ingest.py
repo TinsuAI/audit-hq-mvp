@@ -20,11 +20,13 @@ from app.database import SessionLocal
 from app.models import (
     Company,
     CompanyPeriod,
+    DataFile,
     DeclarationLine,
     Norm,
     NvlBalance,
     SpBalance,
 )
+from app.models.data_file import SETTLEMENT_SLOTS
 from app.pipeline.discover import DiscoveredFiles, discover
 from app.pipeline.period import default_bounds, in_period, resolve_period_bounds
 from app.settings import settings
@@ -59,6 +61,49 @@ def _get_or_create_company(
         company.name = company.name or name
         company.address = company.address or address
     return company
+
+
+_SETTLEMENT_PARSERS = {"m15": parse_m15, "m15a": parse_m15a, "m16": parse_m16}
+
+
+def _plan_settlement_files(
+    session, company_id: int, year: int, discovered_parsed: dict, raw_root: Path
+) -> dict[str, list[tuple]]:
+    """Kế hoạch nạp settlement theo SỔ (ADR #19 Revision — UI + upload).
+
+    Trả `{"m15": [(parsed, book)], "m15a": [...], "m16": [...]}`.
+
+    Nguồn book = cột `data_files.book` mỗi file settlement (gán ở review WS1). Nếu
+    KHÔNG có tag book nào (đường CLI/script, pilot một sổ) → dùng file discover một
+    lượt, book=NULL → 002/006 + script không đổi. Có tag book → data_files-driven:
+    gom MỌI file settlement theo book, parse từng file, tag rows theo book của file
+    → re-ingest full reprocess dựng lại mọi sổ, KHÔNG cần guard.
+    """
+    rows = session.scalars(
+        select(DataFile).where(
+            DataFile.company_id == company_id,
+            DataFile.period_year == year,
+            DataFile.slot.in_(SETTLEMENT_SLOTS),
+        )
+    ).all()
+    if not any(r.book for r in rows):
+        # Single-book / CLI: file discover đã parse sẵn, book=NULL (hành vi cũ).
+        return {slot: ([(obj, None)] if obj else []) for slot, obj in discovered_parsed.items()}
+
+    plan: dict[str, list[tuple]] = {"m15": [], "m15a": [], "m16": []}
+    for r in rows:
+        path = raw_root / r.stored_path
+        if not path.exists():
+            continue
+        parser = _SETTLEMENT_PARSERS[r.slot]
+        try:
+            parsed = parser(path, year=year)
+        except SheetNotFound:
+            # File không phục vụ slot đã đăng ký (sync phân loại nhầm) → bỏ, thà thiếu
+            # hơn nạp sai. Không nuốt lỗi khác (bug parser phải nổ ra).
+            continue
+        plan[r.slot].append((parsed, r.book))
+    return plan
 
 
 def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: bool = False) -> IngestStats:
@@ -141,6 +186,12 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         )
         stats.bcct_other_year = len(bcct_all) - stats.bcct_rows
 
+        # Kế hoạch nạp settlement theo SỔ: book per-file từ data_files (không có tag →
+        # book=NULL, single-book giữ nguyên). Thay guard cũ — ghi lại mọi sổ một lượt.
+        plan = _plan_settlement_files(
+            session, company.id, year, {"m15": m15, "m15a": m15a, "m16": m16}, raw_root
+        )
+
         # Wipe previous data for this company × year so re-ingest is idempotent.
         for model in (NvlBalance, SpBalance, Norm, DeclarationLine):
             session.execute(
@@ -149,11 +200,12 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                 )
             )
 
-        if m15:
+        for parsed, book in plan["m15"]:
             session.add_all(
                 NvlBalance(
                     company_id=company.id,
                     period_year=year,
+                    book=book,
                     row_no=r.row_no,
                     material_code=r.material_code,
                     material_name=r.material_name,
@@ -165,16 +217,17 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                     production_out_qty=r.production_out_qty,
                     other_out_qty=r.other_out_qty,
                     closing_qty=r.closing_qty,
-                    source_file=m15.source_file,
+                    source_file=parsed.source_file,
                 )
-                for r in m15.rows
+                for r in parsed.rows
             )
 
-        if m15a:
+        for parsed, book in plan["m15a"]:
             session.add_all(
                 SpBalance(
                     company_id=company.id,
                     period_year=year,
+                    book=book,
                     row_no=r.row_no,
                     product_code=r.product_code,
                     product_name=r.product_name,
@@ -185,16 +238,17 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                     export_qty=r.export_qty,
                     other_out_qty=r.other_out_qty,
                     closing_qty=r.closing_qty,
-                    source_file=m15a.source_file,
+                    source_file=parsed.source_file,
                 )
-                for r in m15a.rows
+                for r in parsed.rows
             )
 
-        if m16:
+        for parsed, book in plan["m16"]:
             session.add_all(
                 Norm(
                     company_id=company.id,
                     period_year=year,
+                    book=book,
                     product_code=r.product_code,
                     product_name=r.product_name,
                     product_unit=r.product_unit,
@@ -203,9 +257,9 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                     material_unit=r.material_unit,
                     norm_qty=r.norm_qty,
                     note=r.note,
-                    source_file=m16.source_file,
+                    source_file=parsed.source_file,
                 )
-                for r in m16.rows
+                for r in parsed.rows
             )
 
         # BCCT gán period_year = NHÃN kỳ (`year`), tách khỏi mốc giao dịch. Chỉ giữ

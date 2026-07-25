@@ -1,5 +1,62 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-25 — UI + INGEST THEO SỔ: cài trọn 5 ticket 2SỔ (branch A+B) trên `feat/004-two-loai-hinh`, CHƯA push/deploy):**
+> Cài hết 5 ticket GitHub #18/#20/#21/#19/#22 (2SỔ-1..5) theo **ADR #19 Revision — UI + upload**, test-first.
+> **5 commit mới** (từ `8b88996`): `8937118` docs ADR/glossary · `95f23eb` branch A · `148bd3d` branch B ingest ·
+> `250ee5f` branch B selector · (+1 commit review-fixes sắp tạo). **Full suite XANH**, ruff sạch.
+> **Branch A (hiển thị+lọc, `95f23eb`):** `app/books.py` = `company_books`/`is_multi_book` (gate ≥2 sổ từ
+> nvl∪sp∪norms, KHÔNG suy từ finding) · `book_label` (EPE/GC known-map, null→"Chung (liên sổ)") · `book_summary`
+> (strip mã NVL + phát hiện mỗi sổ + Chung, loại COMBO_). `company_detail`: strip header, dòng split per-check
+> `Sổ: EPE 8 · Chung 2`, pill book mỗi finding, segmented `?book=` (chung→`Finding.book IS NULL`), empty-state sổ
+> sạch. **View-filter thuần:** điểm năm/strip/export/run GIỮ toàn pháp nhân; `checks_run` full-entity (không lật
+> khi lọc sổ sạch). `finding_detail`: field "Sổ quyết toán". Một sổ (002/006) → book=NULL → KHÔNG chrome.
+> **Branch B (upload+ingest):** migration **`d0e1f2a3b4c5`** cột `data_files.book` (down `c9d0e1f2a3b4`, head giờ
+> `d0e1f2a3b4c5`). `ingest._plan_settlement_files`: đọc book per settlement file từ `data_files`, gom theo sổ,
+> parse từng file, tag rows; không tag (CLI/script) → book=NULL → 002/006+script KHÔNG đổi; tờ khai ghi MỘT lần.
+> **RETIRE `_guard_single_book`** (re-ingest nhiều sổ full-reprocess không mất sổ). Selector chọn sổ ở review WS1
+> (`document_review.html` + confirm handler): chỉ slot settlement, datalist `company_books()`+EPE/GC, normalize
+> trim/upper, ghi `data_files.book`; đổi sổ trên file đã parsed → re-run TOÀN BỘ năm.
+> **Test:** +28 test mới (test_books/book_findings_ui/book_filter/ingest_book/book_selector), bỏ test_ingest_guard.
+> E2E 2 sổ qua endpoint thật → branch A hiện strip 2 sổ.
+> **Code-review 2 trục (Standards+Spec):** SỬA 1 lỗi thực — empty-state "đã được đánh giá" thiếu guard
+> `checks_run` (nhiều sổ nạp nhưng CHƯA chạy → lọc sổ báo nhầm đánh giá-sạch); nay `checks_run` → tách nhánh
+> "chưa chạy kiểm tra". Cleanup: hằng `SETTLEMENT_SLOTS`, import `normalize_book` top-level, datalist EPE/GC từ
+> `BOOK_LABELS`. **Còn (ghi chú, ngoài scope):** multi-book UPLOAD đầy đủ chưa xong — `record_parse_result` áp
+> MỘT provenance/slot → `parse_detail`/`row_count` per-file chưa đúng khi nhiều file cùng slot (balances vẫn
+> đúng, chỉ số hiển thị per-file undercount); analyze-per-file là việc "B-plus" lớn hơn.
+> **Next:** push branch → PR → CI test+lint+deploy; áp `d0e1f2a3b4c5` lên prod (`alembic upgrade head`); muốn 004
+> hai sổ trên prod thì tạo dữ liệu book (upload+tag hoặc collapse như local). `uv.lock` untracked.
+> Session log: `.ai/sessions/2026-07-25-2so-ui-ingest.md`.
+
+> **Trạng thái (2026-07-25 — 004 HAI LOẠI HÌNH: fix 6 check + cột `book` + collapse + trim DB LOCAL còn 3 pilot — CHƯA commit, PROD chưa đụng):**
+> **ADR #19:** 004 (MST `0901051747`) là **1 DNCX có 2 SỔ QUYẾT TOÁN** khác loại hình (sổ tự sở hữu "EPE"
+> + gia công "GC"), KHÔNG phải 2 chế độ. Tờ khai 1 list DNCX (E11/E15/E42) **dùng chung, nhân đôi** 2 row.
+> Cũ: **C1.2=99, 91 GIẢ** (mã thuộc sổ kia bị báo "thiếu M15"). Từ đúng = "loại hình" (khớp enum
+> `CompanyType`) KHÔNG "chế độ".
+> **Code (test-first, 680 pass):** cột nullable `book` trên nvl/sp/norms/findings — migration
+> `c9d0e1f2a3b4` (down `b8c9d0e1f2a3`). **C1.1/C1.4 gộp `(mã,đơn vị)`** (không cộng MTR+ROLL); **C4.1/C4.3/
+> C6.1 `GROUP BY book`**; **C3.3** đơn vị per-`(book,mã)`; 8 check row-wise gắn `book`+evidence filter. Guard
+> `_guard_single_book` chặn re-ingest pháp nhân nhiều sổ. **book=NULL = pháp nhân 1 sổ → 002/006 KHÔNG đổi**
+> (re-run identical, verified).
+> **DB LOCAL đã đổi (KHÔNG phải prod):** collapse 004 (id9 EPE + id10 GC → 1 row `PILOT_004`/`DEMO_004`,
+> dedup tờ khai) → **C1.2 99→4, tổng 187→74, risk 30**. Trim còn **3 pilot**: PILOT_002 (48), PILOT_006
+> (14876), PILOT_004 (74); xoá DN_001–005/ZZ_DEMO/DN_GATE + FK. Backup: `bak-pre-004-collapse-20260725-020819`
+> + `bak-pre-trim-3pilots-20260725-023941` (+`-wal`/`-shm`; restore = cp đè).
+> **Sửa DRIFT DB local:** local ở alembic `f5a6b7c8d9e0`, THIẾU `company_periods.data_version` (model bắt
+> buộc) + `book` → `run_checks` CHẾT + server :8200 (`--reload` nạp model mới) 500 trên trang settlement/
+> findings. Sửa bằng **ALTER trực tiếp** (`alembic upgrade` FAIL vì `check_runs` đã tồn tại). Server OK lại.
+> Memory `local-db-schema-drift`.
+> **Next:** (1) **commit** 004 work (16 M + feature dir + migration + guard + tests + ADR#19/GLOSSARY;
+> `uv.lock` untracked); (2) prod ở `b8c9d0e1f2a3` = down_rev của migration mới → `alembic upgrade head` prod
+> áp `c9d0e1f2a3b4` SẠCH (prod không drift); prod hiện chỉ 002/006, muốn có 004 thì collapse trên prod;
+> (3) **UI 2 sổ: GRILL XONG (2026-07-25)** — design CHỐT ở **ADR #19 Revision — UI + upload**, CHƯA code.
+> Hai nhánh: **A hiển thị+lọc** (split per-check + strip header `mã NVL·phát hiện` + segmented `Tất cả·EPE·
+> GC·Chung` + pill row + finding_detail; `book`=null multi-book = "Chung liên sổ", KHÔNG gộp vào sổ khi lọc;
+> gate `company_books()` ≥2 book từ nvl/sp/norms) — chạy trên data 004 ĐÃ gắn book, ship một mình. **B
+> upload+ingest** (cột `data_files.book` + selector review WS1 + ingest đọc book per-file, full reprocess,
+> RETIRE `_guard_single_book`, tờ khai ghi 1 lần). **Build A trước, B sau.** Glossary + ADR đã ghi.
+> E2E proof/brief: `.ai/features/2026-07-25-004-two-loai-hinh/`. Session log `.ai/sessions/2026-07-25-004-two-loai-hinh.md`.
+
 > **Trạng thái (2026-07-24 — LOAD PILOT 002/006 LÊN PROD (thay toàn bộ DN cũ) — main=`fe6efb9`, chỉ thao tác DỮ LIỆU):**
 > Nạp pilot 002+006 (ẩn danh) lên prod, XOÁ 14 DN cũ. **DB-ONLY, KHÔNG đổi code** (build_sha vẫn `fe6efb9`).
 > Prod DB giờ: **chỉ PILOT_002 (48 finding, điểm 7/2025) + PILOT_006 (14.883 finding, điểm 129/2024)** = 14.931 finding.

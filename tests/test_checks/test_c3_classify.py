@@ -97,3 +97,17 @@ def test_c3_3_fires_when_real_mismatch(session, company):
     assert len(findings) == 1
     assert findings[0].severity == "critical"
     assert findings[0].subject_key == "A"
+
+
+def test_c3_3_checks_unit_per_book(session, company):
+    # Mã X ở hai sổ với đơn vị khác nhau: đối chiếu đơn vị M15 vs tờ khai theo TỪNG sổ,
+    # không để đơn vị sổ này che sổ kia.
+    add_decl(session, company.id, declaration_no="1", customs_code="E31",
+             item_code="X", quantity=10, unit="KG")
+    add_nvl(session, company.id, material_code="X", unit="KG", book="EPE")      # khớp tờ khai
+    add_nvl(session, company.id, material_code="X", unit="PIECES", book="GC")   # lệch
+    session.commit()
+    findings = check_c3_3(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].book == "GC"
+    assert findings[0].severity == "critical"

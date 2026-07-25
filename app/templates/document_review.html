@@ -89,6 +89,18 @@
 {% endif %}
 
 <form method="post" action="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/review">
+  {% if is_settlement %}
+  <div class="card" style="margin-bottom:var(--space-4)">
+    <label for="book-input" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Sổ quyết toán (loại hình)</label>
+    <p class="form-hint" style="margin:0 0 var(--space-2)">Để trống = <strong>1 sổ (dùng chung)</strong>. Nếu doanh nghiệp giữ nhiều sổ quyết toán khác loại hình (vd DNCX vừa chế xuất vừa gia công), nhập mã sổ cho file này — vd <code>EPE</code>, <code>GC</code>. Nạp lại sẽ gom dữ liệu theo sổ.</p>
+    <input list="book-datalist" id="book-input" name="book" class="form-input" style="max-width:280px"
+           value="{{ file.book or '' }}" placeholder="1 sổ (dùng chung)" autocomplete="off">
+    <datalist id="book-datalist">
+      {% for b in book_options %}<option value="{{ b }}">{{ book_label(b) }}</option>{% endfor %}
+      {% for code, label in book_known.items() if code not in book_options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </datalist>
+  </div>
+  {% endif %}
   <div class="card" style="padding:0;overflow-x:auto">
     <table class="data-table">
       <thead>

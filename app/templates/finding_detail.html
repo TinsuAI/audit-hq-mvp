@@ -20,6 +20,7 @@
     <p class="page-subtitle">
       DN <a href="/companies/{{ company.slug or company.code }}">{{ company.name or company.code }}</a>
       · Kỳ {{ finding.period_year }}
+      {% if show_book %}· Sổ quyết toán: <strong>{{ book_label(finding.book) }}</strong>{% endif %}
       {% if finding.subject_key %}· Đối tượng: <a class="text-mono" href="/companies/{{ company.slug or company.code }}/items/{{ finding.subject_key }}?year={{ finding.period_year }}" title="Trang chi tiết mã {{ finding.subject_key }}">{{ finding.subject_key }}</a>{% endif %}
       · <span class="status-pill status-{{ finding.status }}">{{ STATUS_LABEL[finding.status] }}</span>
     </p>

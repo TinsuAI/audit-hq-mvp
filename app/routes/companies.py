@@ -22,6 +22,14 @@ from app.audit import (
     log_access,
 )
 from app.auth import SessionUser, require_user
+from app.books import (
+    BOOK_LABELS,
+    book_label,
+    book_summary,
+    company_books,
+    is_multi_book,
+    normalize_book,
+)
 from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
 from app.checks.scoring import tier_css_for, tier_for
@@ -49,7 +57,7 @@ from app.models import (
     NvlBalance,
     SpBalance,
 )
-from app.models.data_file import SLOT_LABEL_VI, SLOT_ORDER
+from app.models.data_file import SETTLEMENT_SLOTS, SLOT_LABEL_VI, SLOT_ORDER
 from app.pipeline.export import build_export
 from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.period import load_period_windows
@@ -69,6 +77,8 @@ templates.env.globals["SPECS"] = {code: spec for code, spec in SPECS.items()}
 templates.env.globals["COMBO_SPECS"] = COMBO_SPECS
 templates.env.globals["tier_css_for"] = tier_css_for
 templates.env.globals["tier_for"] = tier_for
+# Nhãn sổ quyết toán (book) — dùng ở company_detail (split line) + finding_detail (field).
+templates.env.globals["book_label"] = book_label
 
 # Trang DN chỉ xem trước vài dòng mỗi kiểm tra; xem đủ thì mở riêng từng kiểm tra.
 _PREVIEW_PER_GROUP = 15
@@ -1098,6 +1108,11 @@ def documents_review_file(
         if isinstance(c.get("col_index"), int)
     }
 
+    # Selector chọn sổ quyết toán — chỉ file settlement (m15/m15a/m16), tờ khai không có
+    # (toàn pháp nhân). Datalist gợi ý sổ ĐÃ có của DN năm này (ADR #19 Revision — upload).
+    is_settlement = row.slot in SETTLEMENT_SLOTS
+    book_options = company_books(db, company.id, row.period_year) if is_settlement else []
+
     return templates.TemplateResponse(
         request,
         "document_review.html",
@@ -1112,6 +1127,9 @@ def documents_review_file(
             "human_size": _human_size,
             "preview": preview,
             "col_annot": col_annot,
+            "is_settlement": is_settlement,
+            "book_options": book_options,
+            "book_known": BOOK_LABELS,
         },
     )
 
@@ -1172,6 +1190,15 @@ async def documents_confirm_review(
         f for f, idx in column_map.items() if int(base_map.get(f, idx)) != int(idx)
     }
 
+    # Sổ quyết toán (book) — chỉ file settlement mang book; tờ khai luôn toàn pháp nhân.
+    # Set NGAY trên row (cùng session) → commit dưới → run_ingest đọc data_files.book,
+    # gom balances theo sổ (ADR #19 Revision — upload). Rỗng → None (một sổ).
+    book_changed = False
+    if slot in SETTLEMENT_SLOTS:
+        new_book = normalize_book(form.get("book"))
+        book_changed = (row.book or None) != new_book
+        row.book = new_book
+
     evidence = {c["field"]: c.get("evidence") for c in columns if c.get("field")}
 
     from app.auth_users import get_user_by_username
@@ -1213,38 +1240,43 @@ async def documents_confirm_review(
     # check KHÔNG chạy lại (khoá lọc = mã hàng vẫn đúng vì cột mã không đổi). Nếu cột
     # KHOÁ (mã) đổi thì khoá lọc đổi → mở rộng ra mọi check đọc slot (gồm C2.1/C2.2).
     label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
+    # Re-run check sau re-ingest (ADR #18 Revision — WS2, async qua job): cột đổi map →
+    # scoped theo check đọc cột đó; ĐỔI SỔ (book) trên file đã parsed → gom nội-sổ +
+    # union cross-layer đổi trên diện rộng → chạy lại TOÀN BỘ năm (only=None).
+    affected: set[str] = set()
     if was_parsed and changed_fields:
         from app.checks.registry import checks_reading, checks_reading_slot
 
-        affected: set[str] = set()
         for f in changed_fields:
             affected.update(checks_reading(slot, f))
         if _SLOT_KEY_FIELD.get(slot) in changed_fields:
             affected.update(checks_reading_slot(slot))
-        if affected:
-            # Re-run scoped chạy ASYNC qua job queue (ADR #18 Revision — WS2, option A):
-            # confirm + re-ingest (áp map, file→`parsed`) GIỮ đồng bộ ở trên; chỉ phần
-            # re-run enqueue → worker 1-thread serialize ghi, triệt tranh chấp SQLite.
-            if ur is not None:
-                from app.jobs import enqueue_job
-                from app.models.job import JobKind
-                job = enqueue_job(
-                    db, kind=JobKind.RUN_CHECKS,
-                    payload={
-                        "company_code": company.code, "year": year,
-                        "only": sorted(affected),
-                    },
-                    created_by=ur.id, company_id=company.id, period_year=year,
-                )
-                log_access(
-                    db, username=user.name, action=ACTION_RUN_CHECKS,
-                    company_code=company.code,
-                    detail=f"year={year} only={','.join(sorted(affected))} (confirm-review)",
-                )
-                return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
-            # Fallback hiếm (session user không map được row): chạy inline để không bỏ sót.
-            from app.pipeline.run_checks import run_checks
-            run_checks(company.code, year, only=affected)
+    run_full = was_parsed and book_changed
+    if was_parsed and (affected or run_full):
+        # confirm + re-ingest (áp map/book, file→`parsed`) GIỮ đồng bộ ở trên; chỉ phần
+        # re-run enqueue → worker 1-thread serialize ghi, triệt tranh chấp SQLite.
+        if ur is not None:
+            from app.jobs import enqueue_job
+            from app.models.job import JobKind
+            payload: dict = {"company_code": company.code, "year": year}
+            if not run_full:
+                payload["only"] = sorted(affected)
+            job = enqueue_job(
+                db, kind=JobKind.RUN_CHECKS, payload=payload,
+                created_by=ur.id, company_id=company.id, period_year=year,
+            )
+            log_access(
+                db, username=user.name, action=ACTION_RUN_CHECKS,
+                company_code=company.code,
+                detail=(
+                    f"year={year} "
+                    f"only={'ALL' if run_full else ','.join(sorted(affected))} (confirm-review)"
+                ),
+            )
+            return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+        # Fallback hiếm (session user không map được row): chạy inline để không bỏ sót.
+        from app.pipeline.run_checks import run_checks
+        run_checks(company.code, year, only=None if run_full else affected)
 
     return _redirect(
         "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} & nạp dữ liệu")
@@ -1452,6 +1484,7 @@ def company_detail(
     year: int | None = Query(default=None),
     ingested: int = Query(default=0),
     check: str | None = Query(default=None),
+    book: str | None = Query(default=None),
     page: int = Query(default=1),
     msg: str | None = Query(default=None),
     error: str | None = Query(default=None),
@@ -1477,6 +1510,32 @@ def company_detail(
     selected_year = year if year is not None else (years[0] if years else None)
     period_windows = load_period_windows(db, company.id)
 
+    # Pháp nhân nhiều sổ (004 EPE/GC): strip tổng quan theo sổ + gate chrome theo sổ
+    # (ADR #19 Revision — UI). Một sổ (002/006) → book_strip=None, multi_book=False.
+    book_strip = book_summary(db, company.id, selected_year) if selected_year is not None else None
+    multi_book = book_strip is not None
+    books_list = company_books(db, company.id, selected_year) if multi_book else []
+
+    # Lọc theo sổ (?book=) — VIEW-FILTER thuần: chỉ thu hẹp danh sách finding (đếm +
+    # dòng + nhóm). `book=chung` → Finding.book IS NULL (phát hiện liên sổ). KHÔNG gộp
+    # Chung vào một sổ. Điểm năm / strip / export / run GIỮ toàn pháp nhân.
+    book_selected: str | None = None      # giá trị query để giữ ở link + highlight
+    book_filter: str | None = None        # None=tất cả · "__chung__" · mã sổ
+    if multi_book and book:
+        b = book.strip()
+        if b.lower() == "chung":
+            book_selected, book_filter = "chung", "__chung__"
+        elif b in books_list:
+            book_selected, book_filter = b, b
+        # mã lạ → bỏ qua (coi như tất cả)
+
+    def _book_clause() -> tuple:
+        if book_filter == "__chung__":
+            return (Finding.book.is_(None),)
+        if book_filter:
+            return (Finding.book == book_filter,)
+        return ()
+
     # Đếm bằng SQL, KHÔNG nạp hết Finding vào bộ nhớ: một DN thật đã sinh 11.003
     # phát hiện cho một kỳ, render hết ra một trang là 18,7 MB HTML.
     counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -1488,7 +1547,11 @@ def company_detail(
     if selected_year is not None:
         for ccode, sev, n in db.execute(
             select(Finding.check_code, Finding.severity, func.count())
-            .where(Finding.company_id == company.id, Finding.period_year == selected_year)
+            .where(
+                Finding.company_id == company.id,
+                Finding.period_year == selected_year,
+                *_book_clause(),
+            )
             .group_by(Finding.check_code, Finding.severity)
         ).all():
             if ccode.startswith("COMBO_"):
@@ -1497,17 +1560,40 @@ def company_detail(
             if sev in severity_totals:
                 severity_totals[sev] += n
         if combos_on:
+            # Combo book=NULL → lọc "Chung"/"tất cả" giữ, lọc một sổ (EPE/GC) loại.
             combo_findings = db.scalars(
                 select(Finding)
                 .where(
                     Finding.company_id == company.id,
                     Finding.period_year == selected_year,
                     Finding.check_code.startswith("COMBO_"),
+                    *_book_clause(),
                 )
                 .order_by(Finding.subject_key)
             ).all()
 
     total_findings = sum(sum(s.values()) for s in counts.values())
+
+    # Dòng split per-check "Sổ: EPE 8 · Chung 2" — chỉ pháp nhân nhiều sổ, chỉ bucket >0,
+    # sổ trước rồi Chung (book=NULL) cuối. Tính trên TOÀN pháp nhân (không theo bộ lọc).
+    book_splits: dict[str, list[tuple[str, int]]] = {}
+    if multi_book and selected_year is not None:
+        raw_splits: dict[str, dict[str | None, int]] = defaultdict(dict)
+        for ccode, bk, n in db.execute(
+            select(Finding.check_code, Finding.book, func.count())
+            .where(
+                Finding.company_id == company.id,
+                Finding.period_year == selected_year,
+                ~Finding.check_code.startswith("COMBO_"),
+            )
+            .group_by(Finding.check_code, Finding.book)
+        ).all():
+            raw_splits[ccode][bk] = n
+        for ccode, bkmap in raw_splits.items():
+            ordered = [(bcode, bkmap[bcode]) for bcode in books_list if bkmap.get(bcode)]
+            if bkmap.get(None):
+                ordered.append(("Chung", bkmap[None]))
+            book_splits[ccode] = ordered
 
     def _rank(ccode: str) -> tuple[int, str]:
         sevs = counts[ccode]
@@ -1525,6 +1611,7 @@ def company_detail(
                 Finding.company_id == company.id,
                 Finding.period_year == selected_year,
                 Finding.check_code == ccode,
+                *_book_clause(),
             )
             .order_by(Finding.severity, Finding.subject_key)
             .limit(limit)
@@ -1544,6 +1631,18 @@ def company_detail(
             ordered_groups.append(
                 (ccode, _rows(ccode, _PREVIEW_PER_GROUP), total, dict(counts[ccode]))
             )
+
+    # Lọc trúng sổ sạch (0 phát hiện, có mã NVL) → empty-state riêng, tách khỏi
+    # "chưa nạp dữ liệu"/"chưa chạy kiểm tra". Chung rỗng → thông điệp liên-sổ riêng.
+    book_empty: dict | None = None
+    if multi_book and book_filter and not ordered_groups and not combo_findings:
+        if book_filter == "__chung__":
+            book_empty = {"kind": "chung"}
+        else:
+            nvl_codes = next(
+                (c["nvl_codes"] for c in book_strip["books"] if c["code"] == book_filter), 0
+            )
+            book_empty = {"kind": "clean", "label": book_label(book_filter), "nvl_codes": nvl_codes}
 
     year_score = None
     if selected_year is not None:
@@ -1597,8 +1696,10 @@ def company_detail(
         )
 
     # Trạng thái tách upload/kiểm tra: có dữ liệu năm này chưa? đã chạy kiểm tra chưa?
+    # checks_run phải TOÀN pháp nhân (không theo bộ lọc ?book=) — lọc sổ sạch không
+    # được lật về "chưa chạy kiểm tra". finding_years/year_score đều full-entity.
     has_data = selected_year in data_years if selected_year is not None else False
-    checks_run = year_score is not None or total_findings > 0 or bool(combo_findings)
+    checks_run = year_score is not None or (selected_year in finding_years)
 
     return templates.TemplateResponse(
         request,
@@ -1617,6 +1718,12 @@ def company_detail(
             "combo_findings": combo_findings,
             "severity_totals": severity_totals,
             "total_findings": total_findings,
+            "book_strip": book_strip,
+            "multi_book": multi_book,
+            "book_splits": book_splits,
+            "books_list": books_list,
+            "book_selected": book_selected,
+            "book_empty": book_empty,
             "focus_check": focus,
             "page": page,
             "page_size": _PAGE_SIZE,
@@ -2113,6 +2220,8 @@ def finding_detail(
     company = db.get(Company, finding.company_id)
     is_combo = finding.check_code.startswith("COMBO_")
     spec = COMBO_SPECS.get(finding.check_code) if is_combo else SPECS.get(finding.check_code)
+    # Field "Sổ quyết toán" chỉ cho pháp nhân nhiều sổ (một sổ → book vô nghĩa).
+    show_book = is_multi_book(db, finding.company_id, finding.period_year)
 
     evidence_blocks: list[dict] = []
     for ref in (finding.evidence_refs or []):
@@ -2132,6 +2241,7 @@ def finding_detail(
             "company": company,
             "spec": spec,
             "is_combo": is_combo,
+            "show_book": show_book,
             "evidence_blocks": evidence_blocks,
         },
     )

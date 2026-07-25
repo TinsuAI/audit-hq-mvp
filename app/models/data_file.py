@@ -42,6 +42,10 @@ SLOT_LABEL_VI: dict[str, str] = {
 # Thứ tự cột hiển thị ở ma trận năm × loại.
 SLOT_ORDER: tuple[str, ...] = ("m15", "m15a", "m16", "bcct")
 
+# Slot settlement (BCQT) — mang `book` (sổ quyết toán); slot `bcct` luôn toàn pháp
+# nhân (book=NULL). Dùng chung ở ingest (gom theo sổ) + review (selector sổ).
+SETTLEMENT_SLOTS: tuple[str, ...] = ("m15", "m15a", "m16")
+
 
 class DataFile(Base):
     """Registry mỗi file BCQT đã tải lên (theo DN × năm × loại).
@@ -69,6 +73,10 @@ class DataFile(Base):
     uploaded_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True,
     )
+    # Sổ quyết toán (book) mà file settlement này thuộc về, gán ở màn review WS1
+    # (ADR #19 Revision — UI + upload). NULL = pháp nhân một sổ / tờ khai dùng chung.
+    # Chỉ có nghĩa với slot m15/m15a/m16; slot bcct luôn toàn pháp nhân → NULL.
+    book: Mapped[str | None] = mapped_column(String(32), nullable=True)
     parse_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=DataFileStatus.PENDING,
     )

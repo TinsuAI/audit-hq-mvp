@@ -90,11 +90,13 @@ def add_nvl(
     production_out: float = 0,
     other_out: float = 0,
     closing: float = 0,
+    book: str | None = None,
     year: int = 2024,
 ) -> NvlBalance:
     row = NvlBalance(
         company_id=company_id,
         period_year=year,
+        book=book,
         material_code=material_code,
         unit=unit,
         opening_qty=opening,
@@ -121,11 +123,13 @@ def add_sp(
     export_qty: float = 0,
     other_out: float = 0,
     closing: float = 0,
+    book: str | None = None,
     year: int = 2024,
 ) -> SpBalance:
     row = SpBalance(
         company_id=company_id,
         period_year=year,
+        book=book,
         product_code=product_code,
         unit=unit,
         opening_qty=opening,
