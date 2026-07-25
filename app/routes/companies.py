@@ -22,7 +22,14 @@ from app.audit import (
     log_access,
 )
 from app.auth import SessionUser, require_user
-from app.books import book_label, book_summary, company_books, is_multi_book
+from app.books import (
+    BOOK_LABELS,
+    book_label,
+    book_summary,
+    company_books,
+    is_multi_book,
+    normalize_book,
+)
 from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
 from app.checks.scoring import tier_css_for, tier_for
@@ -50,7 +57,7 @@ from app.models import (
     NvlBalance,
     SpBalance,
 )
-from app.models.data_file import SLOT_LABEL_VI, SLOT_ORDER
+from app.models.data_file import SETTLEMENT_SLOTS, SLOT_LABEL_VI, SLOT_ORDER
 from app.pipeline.export import build_export
 from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.period import load_period_windows
@@ -1103,7 +1110,7 @@ def documents_review_file(
 
     # Selector chọn sổ quyết toán — chỉ file settlement (m15/m15a/m16), tờ khai không có
     # (toàn pháp nhân). Datalist gợi ý sổ ĐÃ có của DN năm này (ADR #19 Revision — upload).
-    is_settlement = row.slot in ("m15", "m15a", "m16")
+    is_settlement = row.slot in SETTLEMENT_SLOTS
     book_options = company_books(db, company.id, row.period_year) if is_settlement else []
 
     return templates.TemplateResponse(
@@ -1122,6 +1129,7 @@ def documents_review_file(
             "col_annot": col_annot,
             "is_settlement": is_settlement,
             "book_options": book_options,
+            "book_known": BOOK_LABELS,
         },
     )
 
@@ -1185,9 +1193,8 @@ async def documents_confirm_review(
     # Sổ quyết toán (book) — chỉ file settlement mang book; tờ khai luôn toàn pháp nhân.
     # Set NGAY trên row (cùng session) → commit dưới → run_ingest đọc data_files.book,
     # gom balances theo sổ (ADR #19 Revision — upload). Rỗng → None (một sổ).
-    from app.books import normalize_book
     book_changed = False
-    if slot in ("m15", "m15a", "m16"):
+    if slot in SETTLEMENT_SLOTS:
         new_book = normalize_book(form.get("book"))
         book_changed = (row.book or None) != new_book
         row.book = new_book

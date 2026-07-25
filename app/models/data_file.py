@@ -42,6 +42,10 @@ SLOT_LABEL_VI: dict[str, str] = {
 # Thứ tự cột hiển thị ở ma trận năm × loại.
 SLOT_ORDER: tuple[str, ...] = ("m15", "m15a", "m16", "bcct")
 
+# Slot settlement (BCQT) — mang `book` (sổ quyết toán); slot `bcct` luôn toàn pháp
+# nhân (book=NULL). Dùng chung ở ingest (gom theo sổ) + review (selector sổ).
+SETTLEMENT_SLOTS: tuple[str, ...] = ("m15", "m15a", "m16")
+
 
 class DataFile(Base):
     """Registry mỗi file BCQT đã tải lên (theo DN × năm × loại).

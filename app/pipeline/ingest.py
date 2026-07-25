@@ -26,6 +26,7 @@ from app.models import (
     NvlBalance,
     SpBalance,
 )
+from app.models.data_file import SETTLEMENT_SLOTS
 from app.pipeline.discover import DiscoveredFiles, discover
 from app.pipeline.period import default_bounds, in_period, resolve_period_bounds
 from app.settings import settings
@@ -82,7 +83,7 @@ def _plan_settlement_files(
         select(DataFile).where(
             DataFile.company_id == company_id,
             DataFile.period_year == year,
-            DataFile.slot.in_(("m15", "m15a", "m16")),
+            DataFile.slot.in_(SETTLEMENT_SLOTS),
         )
     ).all()
     if not any(r.book for r in rows):

@@ -163,6 +163,29 @@ def test_invalid_book_treated_as_all():
         _teardown(new_engine)
 
 
+def test_clean_book_empty_state_not_run_does_not_claim_evaluated():
+    """Pháp nhân nhiều sổ ĐÃ nạp nhưng CHƯA chạy kiểm tra → lọc sổ KHÔNG được báo
+    'đã được đánh giá' (0 mã ≠ đánh giá-sạch khi chưa chạy). Xem ADR #19 (strip)."""
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as db:
+            c = Company(code="DN_NR", name="Chưa chạy", tax_id="0901051747")
+            db.add(c)
+            db.flush()
+            db.add_all([  # 2 sổ có mã NVL, KHÔNG finding, KHÔNG year_score → chưa chạy
+                NvlBalance(company_id=c.id, period_year=2025, book="EPE", material_code="A", unit="PCE"),
+                NvlBalance(company_id=c.id, period_year=2025, book="GC", material_code="C", unit="PCE"),
+            ])
+            db.commit()
+        client = TestClient(app)
+        _login(client)
+        html = client.get("/companies/DN_NR?year=2025&book=GC").text
+        assert "đã được đánh giá" not in html      # KHÔNG khẳng định đánh giá-sạch
+        assert "chưa chạy kiểm tra" in html.lower()  # đúng trạng thái chưa chạy
+    finally:
+        _teardown(new_engine)
+
+
 def test_single_book_no_segmented_control():
     new_engine, new_session = _setup_db()
     try:

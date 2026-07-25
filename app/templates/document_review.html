@@ -97,8 +97,7 @@
            value="{{ file.book or '' }}" placeholder="1 sổ (dùng chung)" autocomplete="off">
     <datalist id="book-datalist">
       {% for b in book_options %}<option value="{{ b }}">{{ book_label(b) }}</option>{% endfor %}
-      {% if 'EPE' not in book_options %}<option value="EPE">Sổ EPE (chế xuất)</option>{% endif %}
-      {% if 'GC' not in book_options %}<option value="GC">Sổ GC (gia công)</option>{% endif %}
+      {% for code, label in book_known.items() if code not in book_options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
     </datalist>
   </div>
   {% endif %}

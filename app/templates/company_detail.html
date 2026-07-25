@@ -232,10 +232,14 @@
   {% endif %}
 
   {% if not ordered_groups %}
-    {% if book_empty and book_empty.kind == 'clean' %}
+    {% if book_empty and book_empty.kind == 'clean' and checks_run %}
     <div class="card book-empty-clean" style="border-left:4px solid var(--c-success,#16a34a)">
       <p style="margin:0"><strong>{{ book_empty.label }}</strong> đã được đánh giá — <strong>0 phát hiện</strong> trên {{ book_empty.nvl_codes }} mã NVL.</p>
       <p class="text-subtle" style="font-size:var(--fs-xs);margin:var(--space-1) 0 0">Sổ này đã được kiểm tra và không có chênh lệch — khác với trạng thái thiếu dữ liệu hoặc chưa kiểm tra.</p>
+    </div>
+    {% elif book_empty and book_empty.kind == 'clean' and not checks_run %}
+    <div class="card">
+      <p class="text-muted"><strong>{{ book_empty.label }}</strong> — <strong>chưa chạy kiểm tra</strong> cho năm {{ selected_year }} ({{ book_empty.nvl_codes }} mã NVL đã nạp). Bấm <strong>▶️ Chạy kiểm tra</strong> để đánh giá.</p>
     </div>
     {% elif book_empty and book_empty.kind == 'chung' %}
     <div class="card">
