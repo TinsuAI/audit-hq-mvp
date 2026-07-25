@@ -1,6 +1,27 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-07-25 — UI + INGEST THEO SỔ: cài trọn 5 ticket 2SỔ (branch A+B) trên `feat/004-two-loai-hinh`, CHƯA push/deploy):**
+> **Trạng thái (2026-07-25 — NẠP 004 HAI SỔ (ẩn danh) LÊN PROD + 2SỔ đã MERGE+DEPLOY — main=`1eea393`):**
+> **PR #23** (2SỔ UI+ingest, branch A+B) + **PR #24** ("Chung"→"Liên sổ") đã merge vào `main`, CI test+deploy XANH.
+> Prod `audit-hq-demo.tinsu.ai` chạy **`1eea393`**, migration head **`d0e1f2a3b4c5`** (đã áp cột `data_files.book`).
+> **Nạp 004 lên prod (CHỈ THAO TÁC DỮ LIỆU, build_sha KHÔNG đổi):** prod giờ **3 pháp nhân** — PILOT_002 (id7),
+> PILOT_006 (id8), **PILOT_004 (id9, HAI SỔ)**. 004 = Sổ EPE 98 mã·34 pđ · Sổ GC 37 mã·0 pđ · Liên sổ 40 pđ
+> (tổng 74). Tổng finding prod = **14.998**.
+> **Ẩn danh §6.2 (verify 0 rò):** MST `0901051747`→`6944313927`; tên→"Công ty TNHH Chế Xuất & Gia Công Thí Điểm";
+> 23 partner thật→`NCC_*`; GIỮ book tags + tên material/product. Quét TOÀN DB + `/showcase` (công khai): **0** hit
+> MST/partner/tên thật. `evidence_refs` giữ `company_id=9` (id 9 trống trên prod) nên resolve đúng; bảng con
+> DROP id → autoincrement mới, KHÔNG đụng id 002/006.
+> **Cơ chế (2 stage, xem `$CLAUDE_JOB_DIR/tmp/prodload/build_004.py` — script throwaway, KHÔNG commit):**
+> Stage 1 = snapshot WAL-safe dev DB (`.backup()`, KHÔNG đụng :8200) + snapshot prod → merge 004 ẩn danh vào bản
+> copy prod → verify local (0 rò, UI hai sổ render). Stage 2 = online-backup prod (rollback) + giữ raw gốc →
+> `docker stop`/thay file/`start` → `alembic upgrade head` (no-op) → verify.
+> **Rollback (trên server `db-data/`):** `audit_hq.sqlite.bak-pre-004-load-20260725-152615` (online) +
+> `audit_hq.sqlite.raw-pre-004-load-20260725-152615` (raw gốc). Restore = docker stop → cp bak→.sqlite → rm -wal/-shm → start.
+> **LƯU Ý:** prod DB-ONLY (không file nguồn) → trang Tài liệu + selector review (branch B) của 004 TRỐNG; branch A
+> (strip/lọc/Liên sổ) chạy đủ. `check_runs` prod trống → staleness forward-only. E2E proof 2SỔ: `.ai/features/
+> 2026-07-25-2so-ui-ingest/` (nhãn "Liên sổ"). Prod screenshot 004 (đăng nhập) CHƯA chụp (tránh seed user prod).
+> **Next:** — (không việc treo). Muốn xem UI hai sổ đăng nhập trên prod: seed admin throwaway (create_user) rồi purge.
+
+> **Trạng thái (2026-07-25 — UI + INGEST THEO SỔ: cài trọn 5 ticket 2SỔ (branch A+B), ĐÃ MERGE PR #23/#24 + DEPLOY):**
 > Cài hết 5 ticket GitHub #18/#20/#21/#19/#22 (2SỔ-1..5) theo **ADR #19 Revision — UI + upload**, test-first.
 > **5 commit mới** (từ `8b88996`): `8937118` docs ADR/glossary · `95f23eb` branch A · `148bd3d` branch B ingest ·
 > `250ee5f` branch B selector · (+1 commit review-fixes sắp tạo). **Full suite XANH**, ruff sạch.
@@ -24,8 +45,8 @@
 > `BOOK_LABELS`. **Còn (ghi chú, ngoài scope):** multi-book UPLOAD đầy đủ chưa xong — `record_parse_result` áp
 > MỘT provenance/slot → `parse_detail`/`row_count` per-file chưa đúng khi nhiều file cùng slot (balances vẫn
 > đúng, chỉ số hiển thị per-file undercount); analyze-per-file là việc "B-plus" lớn hơn.
-> **Next:** push branch → PR → CI test+lint+deploy; áp `d0e1f2a3b4c5` lên prod (`alembic upgrade head`); muốn 004
-> hai sổ trên prod thì tạo dữ liệu book (upload+tag hoặc collapse như local). `uv.lock` untracked.
+> **ĐÃ SHIP:** PR #23 (2SỔ, merge `9d90d3d`) + PR #24 ("Liên sổ", merge `1eea393`) merge+deploy XANH; prod áp
+> `d0e1f2a3b4c5`; 004 hai sổ ẩn danh đã nạp prod (xem block trên cùng). `uv.lock` untracked.
 > Session log: `.ai/sessions/2026-07-25-2so-ui-ingest.md`.
 
 > **Trạng thái (2026-07-25 — 004 HAI LOẠI HÌNH: fix 6 check + cột `book` + collapse + trim DB LOCAL còn 3 pilot — CHƯA commit, PROD chưa đụng):**
@@ -253,19 +274,22 @@
 ## Current State
 
 ### Git / deploy
-- **`main` = `origin/main` = prod = `fe6efb9`** (merge PR #17 — WS3), working tree sạch (trừ `uv.lock` untracked).
-  Prod live `audit-hq-demo.tinsu.ai` chạy `fe6efb9` (verify 2026-07-24: `/healthz` 200, `build_sha=fe6efb9` khớp).
-- Migration head prod = **`b8c9d0e1f2a3`** (check_overviews; qua `a7b8c9d0e1f2` check_runs+data_version) — CI đã `alembic upgrade head`.
+- **`main` = `origin/main` = prod = `1eea393`** (merge PR #24 — "Liên sổ"; PR #23 2SỔ ở `9d90d3d`), working tree
+  sạch (trừ `uv.lock` untracked). Prod live `audit-hq-demo.tinsu.ai` chạy `1eea393` (verify 2026-07-25: `/healthz`
+  200, `build_sha=1eea393` khớp).
+- Migration head prod = **`d0e1f2a3b4c5`** (`data_files.book`; qua `c9d0e1f2a3b4` book settlement/findings) — CI đã `alembic upgrade head`.
+- Prod data = **3 pháp nhân**: PILOT_002, PILOT_006, PILOT_004 (hai sổ EPE/GC, ẩn danh — nạp 2026-07-25, xem block đầu file).
 - Deploy = push `main` → CI "Test & Deploy to Tinsu" (self-hosted `tinsu-prod`): test+lint →
   docker build → restart → `alembic upgrade head` → healthcheck. Watch: `gh run watch <id> --exit-status`.
   **LƯU Ý:** runner self-hosted đôi khi queue 10+ phút trước khi chạy — không phải lỗi.
 - 9 commit phiên này (từ `fadc427`): xem session log `2026-07-23-tier-a-parse-layer.md`.
 
 ### Prod ≠ local — ĐỌC KỸ trước khi đụng dữ liệu
-- **DB prod ở server** (`/home/tinsu/audit-hq-mvp-deploy/db-data/audit_hq.sqlite`, ~290 MB sau load pilot,
-  truy cập qua `ssh tinsu` + `docker exec audit-hq-mvp`). **CẬP NHẬT 2026-07-24:** prod giờ CHỈ có
-  **PILOT_002 + PILOT_006** (ẩn danh, 14.931 finding) — 14 DN `DN_xxx` cũ + 1.727 finding ĐÃ XOÁ (xem block
-  đầu file). Backup DN cũ: `db-data/audit_hq.sqlite.bak-pre-pilot-load-20260724-230046`.
+- **DB prod ở server** (`/home/tinsu/audit-hq-mvp-deploy/db-data/audit_hq.sqlite`, ~291 MB,
+  truy cập qua `ssh tinsu` + `docker exec audit-hq-mvp`). **CẬP NHẬT 2026-07-25:** prod giờ có
+  **PILOT_002 + PILOT_006 + PILOT_004 (hai sổ, ẩn danh)** = 14.998 finding (xem block đầu file).
+  Rollback 004-load: `db-data/audit_hq.sqlite.{bak,raw}-pre-004-load-20260725-152615`.
+  Backup DN cũ (2026-07-24): `db-data/audit_hq.sqlite.bak-pre-pilot-load-20260724-230046`.
 - **KHÔNG có file nguồn trên prod cho 002/006** (DB-only) → trang Tài liệu/preview/download trống cho 2 DN này.
   (Cũ: raw-data prod dùng `DN_001/DN_103/...` — nay không còn dùng, 14 DN đó đã gỡ.)
 - **`run_all` tìm 0 cặp trên prod** (whitelist là HONG_AN/GROWATT/DO_THANH/KIM_LONG — không tồn
