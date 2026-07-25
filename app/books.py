@@ -38,6 +38,14 @@ def book_label(code: str | None) -> str:
     return BOOK_LABELS.get(code, f"Sổ {code}")
 
 
+def normalize_book(raw: str | None) -> str | None:
+    """Chuẩn hoá mã sổ nhập ở selector review: trim + upper; rỗng → None (một sổ)."""
+    if raw is None:
+        return None
+    code = raw.strip().upper()
+    return code or None
+
+
 def company_books(db: Session, company_id: int, year: int) -> list[str]:
     """Tập mã sổ (book khác null) của một pháp nhân theo năm, đã sort.
 

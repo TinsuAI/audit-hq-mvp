@@ -1101,6 +1101,11 @@ def documents_review_file(
         if isinstance(c.get("col_index"), int)
     }
 
+    # Selector chọn sổ quyết toán — chỉ file settlement (m15/m15a/m16), tờ khai không có
+    # (toàn pháp nhân). Datalist gợi ý sổ ĐÃ có của DN năm này (ADR #19 Revision — upload).
+    is_settlement = row.slot in ("m15", "m15a", "m16")
+    book_options = company_books(db, company.id, row.period_year) if is_settlement else []
+
     return templates.TemplateResponse(
         request,
         "document_review.html",
@@ -1115,6 +1120,8 @@ def documents_review_file(
             "human_size": _human_size,
             "preview": preview,
             "col_annot": col_annot,
+            "is_settlement": is_settlement,
+            "book_options": book_options,
         },
     )
 
@@ -1175,6 +1182,16 @@ async def documents_confirm_review(
         f for f, idx in column_map.items() if int(base_map.get(f, idx)) != int(idx)
     }
 
+    # Sổ quyết toán (book) — chỉ file settlement mang book; tờ khai luôn toàn pháp nhân.
+    # Set NGAY trên row (cùng session) → commit dưới → run_ingest đọc data_files.book,
+    # gom balances theo sổ (ADR #19 Revision — upload). Rỗng → None (một sổ).
+    from app.books import normalize_book
+    book_changed = False
+    if slot in ("m15", "m15a", "m16"):
+        new_book = normalize_book(form.get("book"))
+        book_changed = (row.book or None) != new_book
+        row.book = new_book
+
     evidence = {c["field"]: c.get("evidence") for c in columns if c.get("field")}
 
     from app.auth_users import get_user_by_username
@@ -1216,38 +1233,43 @@ async def documents_confirm_review(
     # check KHÔNG chạy lại (khoá lọc = mã hàng vẫn đúng vì cột mã không đổi). Nếu cột
     # KHOÁ (mã) đổi thì khoá lọc đổi → mở rộng ra mọi check đọc slot (gồm C2.1/C2.2).
     label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
+    # Re-run check sau re-ingest (ADR #18 Revision — WS2, async qua job): cột đổi map →
+    # scoped theo check đọc cột đó; ĐỔI SỔ (book) trên file đã parsed → gom nội-sổ +
+    # union cross-layer đổi trên diện rộng → chạy lại TOÀN BỘ năm (only=None).
+    affected: set[str] = set()
     if was_parsed and changed_fields:
         from app.checks.registry import checks_reading, checks_reading_slot
 
-        affected: set[str] = set()
         for f in changed_fields:
             affected.update(checks_reading(slot, f))
         if _SLOT_KEY_FIELD.get(slot) in changed_fields:
             affected.update(checks_reading_slot(slot))
-        if affected:
-            # Re-run scoped chạy ASYNC qua job queue (ADR #18 Revision — WS2, option A):
-            # confirm + re-ingest (áp map, file→`parsed`) GIỮ đồng bộ ở trên; chỉ phần
-            # re-run enqueue → worker 1-thread serialize ghi, triệt tranh chấp SQLite.
-            if ur is not None:
-                from app.jobs import enqueue_job
-                from app.models.job import JobKind
-                job = enqueue_job(
-                    db, kind=JobKind.RUN_CHECKS,
-                    payload={
-                        "company_code": company.code, "year": year,
-                        "only": sorted(affected),
-                    },
-                    created_by=ur.id, company_id=company.id, period_year=year,
-                )
-                log_access(
-                    db, username=user.name, action=ACTION_RUN_CHECKS,
-                    company_code=company.code,
-                    detail=f"year={year} only={','.join(sorted(affected))} (confirm-review)",
-                )
-                return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
-            # Fallback hiếm (session user không map được row): chạy inline để không bỏ sót.
-            from app.pipeline.run_checks import run_checks
-            run_checks(company.code, year, only=affected)
+    run_full = was_parsed and book_changed
+    if was_parsed and (affected or run_full):
+        # confirm + re-ingest (áp map/book, file→`parsed`) GIỮ đồng bộ ở trên; chỉ phần
+        # re-run enqueue → worker 1-thread serialize ghi, triệt tranh chấp SQLite.
+        if ur is not None:
+            from app.jobs import enqueue_job
+            from app.models.job import JobKind
+            payload: dict = {"company_code": company.code, "year": year}
+            if not run_full:
+                payload["only"] = sorted(affected)
+            job = enqueue_job(
+                db, kind=JobKind.RUN_CHECKS, payload=payload,
+                created_by=ur.id, company_id=company.id, period_year=year,
+            )
+            log_access(
+                db, username=user.name, action=ACTION_RUN_CHECKS,
+                company_code=company.code,
+                detail=(
+                    f"year={year} "
+                    f"only={'ALL' if run_full else ','.join(sorted(affected))} (confirm-review)"
+                ),
+            )
+            return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+        # Fallback hiếm (session user không map được row): chạy inline để không bỏ sót.
+        from app.pipeline.run_checks import run_checks
+        run_checks(company.code, year, only=None if run_full else affected)
 
     return _redirect(
         "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} & nạp dữ liệu")
