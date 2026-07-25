@@ -14,13 +14,15 @@ from sqlalchemy.orm import Session
 from app.models import Finding, Norm, NvlBalance, SpBalance
 
 # Known-map mã sổ → nhãn tiếng Việt. Book code là chuỗi tự do per-pháp-nhân
-# (không enum) — mã lạ dùng fallback `Sổ {code}`, null → "Chung (liên sổ)".
+# (không enum) — mã lạ dùng fallback `Sổ {code}`, null → "Liên sổ".
 BOOK_LABELS: dict[str, str] = {
     "EPE": "Sổ EPE (chế xuất)",
     "GC": "Sổ GC (gia công)",
 }
 
-CHUNG_LABEL = "Chung (liên sổ)"
+# Nhãn UI cho finding book=NULL ở pháp nhân nhiều sổ (phát hiện liên sổ — cross-layer
+# đối chiếu tờ khai dùng chung với UNION các sổ, không quy được về sổ nào).
+CHUNG_LABEL = "Liên sổ"
 
 # Nguồn book ở tầng dữ liệu — nơi book THỰC SỰ nằm (KHÔNG suy từ findings, vì sổ
 # sạch 0 finding vẫn là một sổ).
@@ -32,7 +34,7 @@ _BOOK_COLUMNS = (
 
 
 def book_label(code: str | None) -> str:
-    """Nhãn tiếng Việt cho một mã sổ; null → 'Chung (liên sổ)', lạ → 'Sổ {code}'."""
+    """Nhãn tiếng Việt cho một mã sổ; null → 'Liên sổ', lạ → 'Sổ {code}'."""
     if code is None:
         return CHUNG_LABEL
     return BOOK_LABELS.get(code, f"Sổ {code}")

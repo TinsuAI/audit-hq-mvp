@@ -73,14 +73,14 @@ def test_multi_book_shows_split_and_pills():
         _login(client)
         html = client.get("/companies/DN_MB?year=2025").text
 
-        # Dòng split per-check: C4.3 → "Sổ: EPE 2"; C1.1 → "Sổ: Chung 1".
+        # Dòng split per-check: C4.3 → "Sổ: EPE 2"; C1.1 → "Sổ: Liên sổ 1".
         assert "Sổ: " in html
         assert "EPE 2" in html
-        assert "Chung 1" in html
+        assert "Liên sổ 1" in html
         # Pill mỗi dòng finding.
         assert "book-pill" in html
         assert ">EPE<" in html or "EPE</span>" in html
-        assert ">Chung<" in html or "Chung</span>" in html
+        assert ">Liên sổ<" in html or "Liên sổ</span>" in html
     finally:
         _teardown(new_engine)
 
@@ -133,7 +133,7 @@ def test_finding_detail_book_field_multi_vs_single():
 
         chung = client.get(f"/findings/{chung_fid}").text
         assert "Sổ quyết toán" in chung
-        assert "Chung (liên sổ)" in chung
+        assert "Liên sổ" in chung
 
         single = client.get(f"/findings/{sb_fid}").text
         assert "Sổ quyết toán" not in single      # một sổ → không field

@@ -116,9 +116,10 @@ null trên `nvl_balances`/`sp_balances`/`norms`, phạm vi theo năm) — KHÔNG
 0 finding vẫn là một sổ, vd GC của 004 = 37 mã NVL, 0 phát hiện 2025). Pháp nhân một sổ (002/006):
 toàn bộ `book` null → KHÔNG có chrome theo sổ.
 
-**Chung (phát hiện liên sổ)** — finding KHÔNG quy được về một sổ, do check cross-layer đối chiếu list
-tờ khai dùng chung với UNION các sổ (C1.1/C1.2/C1.4/C3.2). Nhãn UI "Chung (cả pháp nhân)". `book`
-null trên finding vì thế MANG HAI NGHĨA tuỳ pháp nhân: (a) nhiều sổ → liên sổ, chưa/không quy về sổ
-nào; (b) một sổ → trục sổ không liên quan. UI chỉ hiện "Chung" như một loại thứ ba khi pháp nhân
-nhiều sổ. KHÔNG gộp "Chung" vào một sổ khi lọc theo sổ — check chưa quy kết sổ nào thì UI không được
-khẳng định thay (kỷ luật truy nguồn, không hộp đen). 004/2025: EPE 34 · GC 0 · Chung 40.
+**Liên sổ (phát hiện liên sổ)** — finding KHÔNG quy được về một sổ, do check cross-layer đối chiếu list
+tờ khai dùng chung với UNION các sổ (C1.1/C1.2/C1.4/C3.2). **Nhãn UI "Liên sổ"** (param `?book=chung`,
+định danh nội bộ giữ "chung"). `book` null trên finding vì thế MANG HAI NGHĨA tuỳ pháp nhân: (a) nhiều
+sổ → liên sổ, chưa/không quy về sổ nào; (b) một sổ → trục sổ không liên quan. UI chỉ hiện "Liên sổ" như
+một loại thứ ba khi pháp nhân nhiều sổ, TÁCH khỏi "Tất cả" (= hợp EPE ∪ GC ∪ Liên sổ). KHÔNG gộp "Liên
+sổ" vào một sổ khi lọc theo sổ — check chưa quy kết sổ nào thì UI không được khẳng định thay (kỷ luật
+truy nguồn, không hộp đen). 004/2025: EPE 34 · GC 0 · Liên sổ 40.
