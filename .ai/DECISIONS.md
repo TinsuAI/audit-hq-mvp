@@ -596,3 +596,77 @@ nối từ head hiện tại (`b8c9d0e1f2a3` theo STATUS — xác nhận lúc c�
 - **S2 sửa:** bỏ assert "identical to current" cho C1.1/C1.4; pin ngữ nghĩa mới `(mã,đơn vị)`-SUM bằng fixture single-book 2 dòng-cùng-mã.
 - Non-risk đã verify: không index unique nào vỡ khi 2 dòng/mã dưới 1 company; `detect_company_type` vẫn DNCX sau collapse (multiset mã tờ khai giữ nguyên); C6.1 TRƠ trên 004 thật (chỉ có 2025) → thay đổi group-by-book ở đó là fixture-only.
 - **Giả định cần verify sau:** sổ EPE/GC là ledger TÁCH biệt hợp lệ về nghiệp vụ (lấy theo ADR — nếu định mức GC được phép tiêu thụ NVL sổ EPE thì C4.1 per-sổ ra finding gây tranh cãi; KHÔNG phải regression vì bản 2-row cũng đã per-sổ); prod mirror local cho 004.
+
+---
+
+**Revision — UI + upload (hai sổ EPE/GC) (2026-07-25, grill `/grill-with-docs`)**
+
+> Grill chốt cách ĐƯA `book` lên giao diện (hiện `book` chỉ ở tầng dữ liệu — findings/nvl/sp/norms,
+> KHÔNG route/template nào render) và cách GÁN `book` lúc upload (thay workaround "2 company → collapse").
+> Gộp vào ADR #19 (không tách #20). Hai nhánh độc lập về build: **A (hiển thị + lọc)** chạy trên dữ liệu
+> 004 ĐÃ gắn book (từ collapse) → ship được một mình; **B (upload + ingest)** là thay đổi hợp đồng ingest,
+> chỉ cần khi tạo dữ liệu book MỚI qua trình duyệt. Build A trước, B sau. Số liệu neo: 004/2025 = EPE 34 ·
+> GC 0 · Chung 40 phát hiện; EPE 104 mã NVL · GC 37 mã NVL. Glossary thêm `Pháp nhân nhiều sổ`,
+> `Chung (phát hiện liên sổ)` (chốt `book`=null MANG HAI NGHĨA: liên-sổ ở pháp nhân nhiều sổ · vô-nghĩa ở
+> pháp nhân một sổ).
+
+*Ba quyết định khó đảo / gây bất ngờ (lý do vào ADR):*
+- **`book`=null trong pháp nhân nhiều sổ = "Chung (liên sổ)" — KHÔNG gộp vào một sổ khi lọc.** Check
+  cross-layer (C1.1/C1.2/C1.4/C3.2) đối chiếu list tờ khai dùng chung với UNION các sổ nên KHÔNG quy
+  được finding về sổ nào → để nguyên là loại thứ ba. Chọn "Sổ EPE" hiện EPE-only; KHÔNG kéo Chung vào
+  (gộp = khẳng định sổ mà check chưa quy kết → vi phạm truy nguồn; và nhân đôi across EPE+GC). Người đọc
+  tương lai sẽ hỏi "sao lọc EPE không thấy 33 finding C1.1?" — đây là câu trả lời.
+- **Ingest đọc `book` per-file từ `data_files`, RETIRE `_guard_single_book`.** `book` là thuộc tính file
+  (cột mới `data_files.book`), gán ở bước review WS1; ingest gom file settlement theo book, wipe
+  `(company, year)`, ghi lại MỌI sổ trong một lượt (full reprocess). Không có info book (đường CLI/script,
+  pilot một sổ) → book=NULL → 002/006 + script KHÔNG đổi. `_guard_single_book` (chặn re-ingest pháp nhân
+  nhiều sổ) là stopgap của bản collapse — ingest book-aware ghi nhiều sổ hợp lệ nên bỏ guard, thay bằng
+  chính nhãn book per-file. Tờ khai ghi MỘT lần toàn pháp nhân (book=NULL) — sửa lỗi nhân đôi tờ khai 004
+  bằng CẤU TRÚC (một pháp nhân upload tờ khai một lần), KHÔNG bằng thuật toán dedup.
+- **Gate hiển thị = dữ liệu, KHÔNG phải finding.** `company_books(db, company_id, year)` = tập `book` khác
+  null trên `nvl+sp+norms` theo năm; multi-book ⇔ `len ≥ 2`. Đọc từ balances/norms (nơi book thực sự ở),
+  KHÔNG từ findings — sổ sạch (GC: 37 mã, 0 finding) vẫn phải hiện. Một helper cấp nguồn cho gate + strip
+  header + dòng split + option lọc.
+
+*(A) Hiển thị + lọc — chạy trên dữ liệu đã gắn book:*
+- **Scope:** đầy đủ (hiển thị + lọc + split per-check). Chỉ bật cho pháp nhân nhiều sổ; một sổ (002/006)
+  KHÔNG có chrome nào.
+- **Split per-check:** giữ chip severity làm chính; thêm dòng phụ gọn `Sổ: EPE 8 · Chung 2` dưới tiêu đề
+  mỗi nhóm, chỉ bucket khác 0. KHÔNG ma trận book×severity (9 ô/check, hầu hết 0).
+- **Strip header:** `Sổ EPE (chế xuất): 104 mã NVL · 34 phát hiện | Sổ GC (gia công): 37 mã NVL · 0 phát
+  hiện | Chung (liên sổ): 40 phát hiện`. Con số **mã NVL** làm "0 phát hiện" đọc thành ĐÃ đánh giá-sạch,
+  KHÔNG phải chưa chạy. Strip luôn hiện tổng toàn pháp nhân, KHÔNG theo bộ lọc.
+- **Lọc:** segmented `Tất cả · Sổ EPE · Sổ GC · Chung` qua param `?book=` (`book=chung`→`Finding.book IS
+  NULL`). **View-filter thuần:** phạm vi = danh sách finding (đếm + dòng + nhóm hiện), compose với
+  `?check=`, reset trang. Điểm năm · strip header · export · run GIỮ toàn pháp nhân (book là lăng kính,
+  KHÔNG phải chủ thể kiểm toán — 004 = một pháp nhân một điểm).
+- **Nhãn:** known-map `{EPE:'Sổ EPE (chế xuất)', GC:'Sổ GC (gia công)'}`, lạ→`Sổ {code}`, null→`Chung
+  (liên sổ)`. Book code là chuỗi TỰ DO per-pháp-nhân (không enum — chỉ có trong comment adapter, gán lúc
+  collapse), nên fallback raw. KHÔNG suy loại hình per-sổ từ dữ liệu (tờ khai dùng chung không có book;
+  `detect_company_type` sau collapse trả một loại cho cả pháp nhân).
+- **Leaf:** pill book mỗi dòng finding (EPE/GC/Chung, chỉ multi-book) + field `Sổ quyết toán` ở
+  finding_detail. Bỏ item_detail (book của mã ngầm định theo đường drill). Combo `COMBO_*` (cross-book) →
+  book=NULL → hiện dưới Chung, không special-case.
+- **Empty-state khi lọc trúng sổ sạch:** `Sổ GC (gia công) đã được đánh giá — 0 phát hiện trên 37 mã
+  NVL.` — tách khỏi state "chưa nạp dữ liệu" / "chưa chạy kiểm tra".
+
+*(B) Upload + ingest — thay đổi hợp đồng ingest, build sau:*
+- **Gán book per-file ở review WS1:** cột `book` trên `data_files`; selector ở slot M15/M15a/M16;
+  tờ khai/BCCT KHÔNG có selector (toàn pháp nhân). Default `1 sổ (dùng chung)`=NULL; gõ/chọn code từ
+  datalist autocomplete `company_books()`; non-null ĐẦU TIÊN → pháp nhân nhiều sổ (KHÔNG cờ riêng);
+  normalize code (trim/upper). KHÔNG registry book (YAGNI — demo một pháp nhân nhiều sổ, EPE/GC đã ở
+  known-map).
+- **Hợp đồng ingest:** đọc book per-file từ `data_files`; gom settlement theo book; wipe `(company,year)`;
+  ghi lại mọi sổ (full reprocess, idempotent); tờ khai ghi một lần book=NULL. Đổi tag book một file →
+  re-ingest full dựng lại nhất quán (qua đường confirm/re-ingest sẵn có). `discover()` (single m15/company
+  folder) → nguồn book chuyển sang `data_files`; đường CLI thiếu data_files → book=NULL (single-book giữ
+  nguyên). Bỏ `_guard_single_book`.
+
+*Không làm:* chấm điểm per-sổ · book vào export/run · book ở item_detail · registry book kèm loại hình ·
+ingest incremental wipe theo book.
+
+*Bề mặt cài đặt (khi build):* helper `company_books()`/`book_label()` · route+template `company_detail`
+(đếm theo book, dòng split, lọc, strip) · finding row + finding_detail · migration thêm `data_files.book` ·
+selector review WS1 · viết lại ingest (data_files-driven, gom theo book, full reprocess, bỏ guard).
+
+Xem [[pilot-004-epe-gc-merge]] · glossary `Pháp nhân nhiều sổ` · `Chung (phát hiện liên sổ)`.
