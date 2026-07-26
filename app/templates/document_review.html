@@ -92,7 +92,7 @@
   {% if is_settlement %}
   <div class="card" style="margin-bottom:var(--space-4)">
     <label for="book-input" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Sổ quyết toán (loại hình)</label>
-    <p class="form-hint" style="margin:0 0 var(--space-2)">Để trống = <strong>1 sổ (dùng chung)</strong>. Nếu doanh nghiệp giữ nhiều sổ quyết toán khác loại hình (vd DNCX vừa chế xuất vừa gia công), nhập mã sổ cho file này — vd <code>EPE</code>, <code>GC</code>. Nạp lại sẽ gom dữ liệu theo sổ.</p>
+    <p class="form-hint" style="margin:0 0 var(--space-2)">Nếu doanh nghiệp giữ nhiều sổ quyết toán khác loại hình (vd DNCX vừa chế xuất vừa gia công), nhập mã sổ cho file này — vd <code>EPE</code>, <code>GC</code>. Nạp lại sẽ gom dữ liệu theo sổ. <strong>Gán sổ là tất cả hoặc không</strong>: để trống mọi file quyết toán (Mẫu 15, 15a, 16) của kỳ = doanh nghiệp <strong>1 sổ</strong>; đã gán cho một file thì phải gán cho tất cả, bỏ sót file nào thì lượt nạp dừng và báo tên file đó.</p>
     <input list="book-datalist" id="book-input" name="book" class="form-input" style="max-width:280px"
            value="{{ file.book or '' }}" placeholder="1 sổ (dùng chung)" autocomplete="off">
     <datalist id="book-datalist">
