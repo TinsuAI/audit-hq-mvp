@@ -19,6 +19,23 @@ def test_c3_1_fires_when_e31_and_e13(session, company):
     assert findings[0].subject_key == "DUAL"
 
 
+def test_c3_1_and_c3_2_are_not_attributed_to_a_book(session, company):
+    # Cả hai check đọc DUY NHẤT `declaration_lines` — bảng không có cột `book` vì tờ
+    # khai là của cả pháp nhân. Dù DN có hai sổ, finding vẫn phải để "Chung (liên sổ)".
+    add_nvl(session, company.id, material_code="DUAL", book="EPE", imported=1)
+    add_nvl(session, company.id, material_code="DUAL", book="GC", imported=1)
+    add_decl(session, company.id, declaration_no="1", customs_code="E31", item_code="DUAL",
+             quantity=100, hs_code="39011000")
+    add_decl(session, company.id, declaration_no="2", customs_code="E13", item_code="DUAL",
+             quantity=1, hs_code="84771000")
+    session.commit()
+    c3_1 = check_c3_1(session, company.id, 2024)
+    c3_2 = check_c3_2(session, company.id, 2024)
+    assert len(c3_1) == 1 and len(c3_2) == 1
+    assert c3_1[0].book is None
+    assert c3_2[0].book is None
+
+
 def test_c3_1_no_fire_when_only_nvl(session, company):
     add_decl(session, company.id, declaration_no="1", customs_code="E31", item_code="ONLY_NVL", quantity=100)
     session.commit()
