@@ -229,3 +229,76 @@ def test_ingest_no_tags_is_book_null_and_idempotent(tmp_path):
     finally:
         settings.raw_data_path = prev_root
         _restore_db(new_engine)
+
+
+# ─────────────────── an toàn: không âm thầm gộp sổ / mất sổ ───────────────────
+
+
+def test_reingest_refuses_to_merge_books_when_tags_were_pruned(tmp_path):
+    """data_files bị prune mất tag book nhưng DB đã có 2 sổ → phải DỪNG, không nạp đè.
+
+    Đây là kịch bản đang có thật trên máy local: company 9 có 0 dòng data_files, nên
+    lượt ingest kế tiếp rơi vào nhánh không-tag và dựng lại 004 thành một sổ gộp.
+    """
+    import pytest
+
+    from app.pipeline.ingest import IngestPlanError, ingest
+    from app.settings import settings
+
+    prev_root = settings.raw_data_path
+    new_engine, new_session = _fresh_db()
+    try:
+        with new_session() as db:
+            _seed_two_book_files(db, tmp_path, "DN_MB")
+        ingest("DN_MB", 2024, raw_root=tmp_path)
+
+        # Prune xoá mọi đăng ký (vd thư mục nguồn vắng mặt lúc sync).
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_MB"))
+            for r in db.scalars(select(DataFile).where(DataFile.company_id == c.id)):
+                db.delete(r)
+            db.commit()
+
+        with pytest.raises(IngestPlanError, match="EPE"):
+            ingest("DN_MB", 2024, raw_root=tmp_path)
+
+        # Dữ liệu cũ còn NGUYÊN — dừng trước khi wipe.
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_MB"))
+            books = set(db.scalars(select(NvlBalance.book).where(
+                NvlBalance.company_id == c.id).distinct()))
+            assert books == {"EPE", "GC"}
+            assert db.scalar(select(func.count()).select_from(NvlBalance).where(
+                NvlBalance.company_id == c.id)) == 5
+    finally:
+        settings.raw_data_path = prev_root
+        _restore_db(new_engine)
+
+
+def test_reingest_refuses_when_a_registered_book_file_is_missing(tmp_path):
+    """Thiếu file của một sổ → DỪNG, không được xoá sổ đó rồi im lặng nạp thiếu."""
+    import pytest
+
+    from app.pipeline.ingest import IngestPlanError, ingest
+    from app.settings import settings
+
+    prev_root = settings.raw_data_path
+    new_engine, new_session = _fresh_db()
+    try:
+        with new_session() as db:
+            _seed_two_book_files(db, tmp_path, "DN_MB")
+        ingest("DN_MB", 2024, raw_root=tmp_path)
+
+        (tmp_path / "DN_MB" / "2024" / "BCQT" / "NVL_GC.xlsx").unlink()
+
+        with pytest.raises(IngestPlanError, match="NVL_GC"):
+            ingest("DN_MB", 2024, raw_root=tmp_path)
+
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_MB"))
+            books = set(db.scalars(select(NvlBalance.book).where(
+                NvlBalance.company_id == c.id).distinct()))
+            assert books == {"EPE", "GC"}, "sổ GC bị xoá dù lượt nạp đã hỏng"
+    finally:
+        settings.raw_data_path = prev_root
+        _restore_db(new_engine)
