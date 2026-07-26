@@ -1,5 +1,46 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-26 — AUDIT 004 HAI SỔ → SỬA LỖI TRỤC ĐƠN VỊ + CHẶN MẤT SỔ KHI INGEST — main=`dd763d4`):**
+> Rà soát read-only tính đúng đắn mô hình hai sổ rồi sửa luôn. **Kết luận: trục `book` ĐÚNG, không check nào sai
+> phạm vi; lỗi thật ở trục ĐƠN VỊ TÍNH.** Hai PR đã merge, **721 test pass trên `main` sau merge**.
+> **PR #25** (`fix/multi-unit-findings`, merge `dd763d4`): C1.3/C1.6/C1.7 khử trùng theo `(book, material_code)`;
+> C1.1/C1.4 so trong cùng đơn vị (CHỈ áp cho mã nhiều đơn vị — mã một đơn vị giữ nguyên nên 002/006 KHÔNG đổi);
+> C3.3 dùng TẬP đơn vị thay ghi đè dict (hết phụ thuộc thứ tự dòng). Rồi 2 fix từ `/rev`: vế tờ khai đã chuẩn hoá
+> đơn vị mà vế sổ còn khoá chuỗi thô (`MTR` vs `METRES` thành 2 lát), và `TypeError` khi một mã có dòng đơn vị NULL
+> lẫn dòng có đơn vị — **check built-in KHÔNG được bọc try/except ở `run_checks.py:113`** nên lỗi này giết cả 17
+> check + scoring của (DN,năm), không riêng C1.1. **004: 74 → 65 phát hiện** (C1.1 33→28, C1.3 15→13, C3.3 4→2);
+> 3 CRITICAL sai (+99900% ×2, −98%) biến mất, 2 phát hiện −100% THẬT vẫn còn.
+> **PR #26** (`fix/ingest-book-safety`, merge `bc9e887`): `_plan_settlement_files` ném `IngestPlanError` thay vì suy
+> giảm im lặng — (a) từ chối gộp sổ khi tag `data_files` bị prune, đối chiếu `_books_already_stored()` đọc sổ từ
+> `nvl_balances`/`sp_balances`/`norms` (nguồn ĐỘC LẬP với `data_files`); (b) từ chối chạy khi file settlement đã
+> đăng ký bị thiếu/không đọc được. Chạy ở `ingest.py:191` **TRƯỚC** lệnh xoá `:196` → lượt nạp hỏng KHÔNG đụng dữ
+> liệu cũ. Kiểm chứng read-only trên DB thật: company 9 kỳ 2025 → `['EPE','GC']`, guard ném đúng.
+> **ĐÃ DEPLOY:** merge kích hoạt CI push/main, 2 run XANH, prod chạy **`dd763d4`** (`/healthz` 200, verify
+> 2026-07-26T15:53Z). Hai PR này không có migration → head prod vẫn `d0e1f2a3b4c5`.
+> **LƯU Ý:** deploy chỉ đổi CODE. Finding 004 trên prod VẪN là 74 bản cũ (gồm 3 CRITICAL sai) cho tới khi chạy
+> lại check — xem Next (4).
+> **DB LOCAL (không nằm trong git): ĐÃ SỬA DRIFT.** Đối chiếu từng revision trong 5 bản thiếu với schema thật —
+> bốn bản đầu đã có sẵn (sửa tay trước đó), CHỈ thiếu `data_files.book`. Thêm cột + stamp `alembic_version` =
+> **`d0e1f2a3b4c5` = head**. Backup `audit_hq.sqlite.bak-pre-schema-fix-20260726` (`Connection.backup()`,
+> `integrity_check: ok`, 607.745 dòng / 24 bảng không đổi). Local giờ HẾT drift.
+> **Punch-list (mục 5 báo cáo): đóng 1, 2, 3. CÒN MỞ 6, 7, 8, 9.**
+> **Next:** (1) **nhãn sổ chưa bền** — guard chặn hậu quả nhưng tag vẫn mất khi prune, sau đó phải sync + gán lại
+> book mới nạp được; ứng viên: ngừng prune dòng có tag · khôi phục map file→sổ từ `nvl_balances.source_file` ·
+> chuyển sang `company_periods` → **cần ADR**; (2) punch-list 7 (GLOSSARY "Pháp nhân" còn tả mô hình 2 row đã bỏ;
+> ADR #19 xếp nhầm C3.1/C3.2; "104 mã" vs 98) + ghi vào ADR #19 rằng che khuất tờ khai chỉ xảy ra **khi pháp nhân
+> hai sổ khai cả hai sổ dưới mã CÙNG một loại hình**, không phổ quát; (3) punch-list 6 test-first — bản vá union
+> 99→4 mà ADR #19 sinh ra để giải quyết vẫn CHƯA có test; (4) **prod vẫn hiện 3 CRITICAL sai** — finding nằm trong
+> DB tới khi chạy lại check, chạy lại riêng 004 khả thi (check đọc bảng DB, chỉ ingest cần file nguồn) và ra 65,
+> chính sách hiện tại CỐ Ý không re-run → **cần user quyết**; (5) CX.1 check rò rỉ liên sổ = mục catalog MỚI, phải
+> vào `../audit-hq/de-an-audit-hq.md` trước (`CLAUDE.md:38`).
+> **ĐỪNG tin lại:** gán nhãn tờ khai theo sổ **KHÔNG** phải bất khả thi với khách sau — `customs_code` cho sẵn khi
+> mỗi sổ khai đúng loại hình của nó (tập mã rời nhau ở `app/checks/company_type.py:31-41`). **004 là ngoại lệ** vì
+> khai cả hai sổ dưới mã chế xuất. Nên union ở check cross-layer là **mặc định đúng, không phải bắt buộc vĩnh
+> viễn**; `detect_company_type` (một loại hình cho một DN, `:57-77`) mới là chỗ chặn nếu muốn hỗ trợ DN hai sổ khai
+> đúng. Cột nhãn EPE/GC trong file NK thô là **do người gõ tay** (đối chiếu 33 file BCCT của 10 DN) → dùng làm bằng
+> chứng audit, **KHÔNG** cho adapter đọc.
+> Báo cáo audit: `.ai/sessions/2026-07-26-audit-004-hai-so.md`. Session log: `.ai/sessions/2026-07-26-multi-unit-fixes-ingest-guard.md`.
+
 > **Trạng thái (2026-07-25 — NẠP 004 HAI SỔ (ẩn danh) LÊN PROD + 2SỔ đã MERGE+DEPLOY — main=`1eea393`):**
 > **PR #23** (2SỔ UI+ingest, branch A+B) + **PR #24** ("Chung"→"Liên sổ") đã merge vào `main`, CI test+deploy XANH.
 > Prod `audit-hq-demo.tinsu.ai` chạy **`1eea393`**, migration head **`d0e1f2a3b4c5`** (đã áp cột `data_files.book`).
@@ -274,9 +315,11 @@
 ## Current State
 
 ### Git / deploy
-- **`main` = `origin/main` = prod = `1eea393`** (merge PR #24 — "Liên sổ"; PR #23 2SỔ ở `9d90d3d`), working tree
-  sạch (trừ `uv.lock` untracked). Prod live `audit-hq-demo.tinsu.ai` chạy `1eea393` (verify 2026-07-25: `/healthz`
-  200, `build_sha=1eea393` khớp).
+- **`main` = `origin/main` = prod = `dd763d4`** (merge PR #25 multi-unit; PR #26 ingest-guard ở `bc9e887`), working
+  tree sạch (trừ `uv.lock` untracked). Merge kích hoạt CI push/main: 2 run `30208834738` + `30208836492` đều XANH,
+  prod `audit-hq-demo.tinsu.ai` `/healthz` 200 `build_sha=dd763d4` (verify 2026-07-26T15:53Z). Migration head
+  KHÔNG đổi (`d0e1f2a3b4c5`) — hai PR này không có migration.
+- **DB local ở alembic head `d0e1f2a3b4c5`** (hết drift, sửa 2026-07-26). Backup `bak-pre-schema-fix-20260726`.
 - Migration head prod = **`d0e1f2a3b4c5`** (`data_files.book`; qua `c9d0e1f2a3b4` book settlement/findings) — CI đã `alembic upgrade head`.
 - Prod data = **3 pháp nhân**: PILOT_002, PILOT_006, PILOT_004 (hai sổ EPE/GC, ẩn danh — nạp 2026-07-25, xem block đầu file).
 - Deploy = push `main` → CI "Test & Deploy to Tinsu" (self-hosted `tinsu-prod`): test+lint →
