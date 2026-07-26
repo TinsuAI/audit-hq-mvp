@@ -338,6 +338,37 @@ def test_c1_1_reports_undeclared_dual_unit_material_once(session, company):
     assert abs(findings[0].details["diff_pct"] + 100.0) < 0.01
 
 
+def test_c1_1_sums_rows_whose_units_are_aliases_of_one_canonical(session, company):
+    # 'MTR' và 'METRES' là cùng một đơn vị vật lý (cùng canonical) → phải CỘNG,
+    # không tách thành hai lát rồi đem mỗi lát so với cả tổng tờ khai.
+    add_nvl(session, company.id, material_code="ALIAS", unit="MTR", imported=10000)
+    add_nvl(session, company.id, material_code="ALIAS", unit="METRES", imported=10000)
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="ALIAS",
+             quantity=20000, unit="M")
+    session.commit()
+    assert check_c1_1(session, company.id, 2024) == []
+
+
+def test_c1_1_handles_row_with_null_unit(session, company):
+    # Dòng thiếu đơn vị không được làm hỏng cả lượt chạy check.
+    add_nvl(session, company.id, material_code="NU", unit=None, imported=500)
+    add_nvl(session, company.id, material_code="NU", unit="MTR", imported=500)
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="NU",
+             quantity=500, unit="M")
+    session.commit()
+    assert check_c1_1(session, company.id, 2024) == []
+
+
+def test_c1_4_handles_row_with_null_unit(session, company):
+    # sp_balances thực tế đang có dòng đơn vị NULL → C1.4 phải chịu được.
+    add_sp(session, company.id, product_code="NU", unit=None, export_qty=500)
+    add_sp(session, company.id, product_code="NU", unit="MTR", export_qty=500)
+    add_decl(session, company.id, declaration_no="1", customs_code="E42", item_code="NU",
+             quantity=500, unit="M")
+    session.commit()
+    assert check_c1_4(session, company.id, 2024) == []
+
+
 def test_c1_4_no_fire_when_one_unit_slice_matches_declaration(session, company):
     add_sp(session, company.id, product_code="TP", unit="MTR", export_qty=20000)
     add_sp(session, company.id, product_code="TP", unit="PIECES", export_qty=20)

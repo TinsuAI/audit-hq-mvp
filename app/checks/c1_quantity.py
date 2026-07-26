@@ -102,13 +102,14 @@ def _sum_bcct_by_item_unit(
 
 
 def _unit_targets(
-    session: Session,
     code: str,
-    slices: list[tuple[str, float]],
+    slices: list[tuple[str | None, float]],
     sums_by_item: dict[str, float],
     sums_by_item_unit: dict[tuple[str, str | None], float],
-) -> list[tuple[str, float, float]]:
+) -> list[tuple[str | None, float, float]]:
     """Chọn lát đơn vị nào của một mã được đem đối chiếu với tờ khai.
+
+    `slices` đã khoá theo đơn vị CHUẨN HOÁ, cùng hệ khoá với `sums_by_item_unit`.
 
     - Mã chỉ có MỘT đơn vị: giữ nguyên hành vi cũ (so với tổng tờ khai của mã).
     - Mã có NHIỀU đơn vị (cùng một lượng ghi lại ở đơn vị thứ hai): chỉ so lát nào
@@ -121,9 +122,9 @@ def _unit_targets(
         return [(unit, qty, sums_by_item.get(code, 0.0))]
 
     matched = [
-        (unit, qty, sums_by_item_unit[(code, _unit_key(session, unit))])
+        (unit, qty, sums_by_item_unit[(code, unit)])
         for unit, qty in slices
-        if (code, _unit_key(session, unit)) in sums_by_item_unit
+        if (code, unit) in sums_by_item_unit
     ]
     if matched:
         return matched
@@ -154,15 +155,18 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
-    # Gộp import_qty theo (mã, đơn vị): một mã có thể có NHIỀU dòng M15 khi pháp nhân
-    # giữ nhiều sổ (đa loại hình) hoặc khai cùng mã ở hai đơn vị. Cộng across sổ,
-    # KHÔNG cộng across đơn vị. Khớp đơn vị phía tờ khai là việc riêng (xem ADR #19).
-    agg: dict[tuple[str, str], float] = {}
+    # Gộp import_qty theo (mã, đơn vị CHUẨN HOÁ): một mã có thể có NHIỀU dòng M15 khi
+    # pháp nhân giữ nhiều sổ (đa loại hình) hoặc khai cùng mã ở hai đơn vị. Cộng across
+    # sổ VÀ across các cách viết cùng một đơn vị ('MTR' với 'METRES'), KHÔNG cộng across
+    # hai đơn vị khác nhau. Giữ đơn vị thô để báo cáo (truy nguồn về dòng biểu gốc).
+    agg: dict[tuple[str, str | None], float] = {}
+    display_unit: dict[tuple[str, str | None], str] = {}
     for r in rows:
-        key = (r.material_code, r.unit)
+        key = (r.material_code, _unit_key(session, r.unit))
         agg[key] = agg.get(key, 0.0) + r.import_qty
+        display_unit.setdefault(key, r.unit)
 
-    slices_by_code: dict[str, list[tuple[str, float]]] = {}
+    slices_by_code: dict[str, list[tuple[str | None, float]]] = {}
     for (code, unit), imported in agg.items():
         if imported <= 0:
             continue  # C1.1 chỉ áp với NVL có khai nhập trong M15
@@ -173,7 +177,10 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
     findings: list[Finding] = []
     for code in sorted(slices_by_code):
         targets = _unit_targets(
-            session, code, sorted(slices_by_code[code]), bcct_sums, bcct_by_unit
+            code,
+            sorted(slices_by_code[code], key=lambda s: (s[0] or "")),
+            bcct_sums,
+            bcct_by_unit,
         )
         for unit, imported, bcct_qty in targets:
             diff_pct = _pct_diff(bcct_qty, imported)
@@ -196,7 +203,7 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
                 details={
                     "company_type": company_type.value,
                     "import_codes": sorted(import_codes),
-                    "unit": unit,
+                    "unit": display_unit.get((code, unit)),
                     "m15_import": imported,
                     "bcct_sum": bcct_qty,
                     "diff_pct": diff_pct,
@@ -342,13 +349,15 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
-    # Gộp export_qty theo (mã, đơn vị) — như C1.1: cộng across sổ, không across đơn vị.
-    agg: dict[tuple[str, str], float] = {}
+    # Gộp export_qty theo (mã, đơn vị CHUẨN HOÁ) — như C1.1.
+    agg: dict[tuple[str, str | None], float] = {}
+    display_unit: dict[tuple[str, str | None], str] = {}
     for r in rows:
-        key = (r.product_code, r.unit)
+        key = (r.product_code, _unit_key(session, r.unit))
         agg[key] = agg.get(key, 0.0) + r.export_qty
+        display_unit.setdefault(key, r.unit)
 
-    slices_by_code: dict[str, list[tuple[str, float]]] = {}
+    slices_by_code: dict[str, list[tuple[str | None, float]]] = {}
     for (code, unit), exported in agg.items():
         if exported <= 0:
             continue
@@ -359,7 +368,10 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
     findings: list[Finding] = []
     for code in sorted(slices_by_code):
         targets = _unit_targets(
-            session, code, sorted(slices_by_code[code]), bcct_sums, bcct_by_unit
+            code,
+            sorted(slices_by_code[code], key=lambda s: (s[0] or "")),
+            bcct_sums,
+            bcct_by_unit,
         )
         for unit, exported, bcct_qty in targets:
             diff_pct = _pct_diff(bcct_qty, exported)
@@ -382,7 +394,7 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
                 details={
                     "company_type": company_type.value,
                     "export_codes": sorted(export_codes),
-                    "unit": unit,
+                    "unit": display_unit.get((code, unit)),
                     "m15a_export": exported,
                     "bcct_sum": bcct_qty,
                     "diff_pct": diff_pct,
