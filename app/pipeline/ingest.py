@@ -127,6 +127,17 @@ def _plan_settlement_files(
         # Single-book / CLI: file discover đã parse sẵn, book=NULL (hành vi cũ).
         return {slot: ([(obj, None)] if obj else []) for slot, obj in discovered_parsed.items()}
 
+    # Gán sổ phải là tất-cả-hoặc-không. Dòng của file chưa gán rơi vào book=NULL, mà ở
+    # pháp nhân nhiều sổ NULL nghĩa là "liên sổ" — C4.1/C4.3/C6.1 gom NULL thành sổ thứ
+    # ba và đối chiếu định mức/tồn kho bên trong cái sổ không tồn tại đó.
+    untagged = [f"{r.slot}: {r.stored_path}" for r in rows if not r.book]
+    if untagged:
+        raise IngestPlanError(
+            "Một số file settlement đã gán sổ, số khác chưa: "
+            + "; ".join(sorted(untagged))
+            + ". Gán sổ cho MỌI file settlement của kỳ rồi nạp lại."
+        )
+
     plan: dict[str, list[tuple]] = {"m15": [], "m15a": [], "m16": []}
     unusable: list[str] = []
     for r in rows:
