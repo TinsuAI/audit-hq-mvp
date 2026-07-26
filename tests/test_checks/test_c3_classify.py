@@ -111,3 +111,33 @@ def test_c3_3_checks_unit_per_book(session, company):
     assert len(findings) == 1
     assert findings[0].book == "GC"
     assert findings[0].severity == "critical"
+
+
+def test_c3_3_result_does_not_depend_on_m15_row_order(session, company):
+    # Cùng một mã ghi ở hai đơn vị: nếu MỘT đơn vị khớp tờ khai thì sổ đó nhất quán.
+    # Hai mã dưới đây chỉ khác nhau thứ tự dòng — kết quả phải giống nhau.
+    add_decl(session, company.id, declaration_no="1", customs_code="E11",
+             item_code="DUAL_A", quantity=3000, unit="M")
+    add_decl(session, company.id, declaration_no="2", customs_code="E11",
+             item_code="DUAL_B", quantity=3000, unit="M")
+    add_nvl(session, company.id, material_code="DUAL_A", unit="MTR", imported=3000)
+    add_nvl(session, company.id, material_code="DUAL_A", unit="PIECES", imported=1)
+    add_nvl(session, company.id, material_code="DUAL_B", unit="PIECES", imported=1)
+    add_nvl(session, company.id, material_code="DUAL_B", unit="MTR", imported=3000)
+    session.commit()
+    findings = check_c3_3(session, company.id, 2024)
+    assert [f.subject_key for f in findings] == []
+
+
+def test_c3_3_reports_every_m15_unit_it_saw(session, company):
+    # Mã ghi ở hai đơn vị, cả hai đều lệch tờ khai → finding phải nêu cả hai,
+    # không chỉ đơn vị đại diện, vì evidence trả về cả hai dòng.
+    add_decl(session, company.id, declaration_no="1", customs_code="E11",
+             item_code="TWO", quantity=10, unit="KG")
+    add_nvl(session, company.id, material_code="TWO", unit="MTR", imported=10)
+    add_nvl(session, company.id, material_code="TWO", unit="PIECES", imported=1)
+    session.commit()
+    findings = check_c3_3(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].details["m15_units"] == ["MTR", "PIECES"]
+    assert "MTR" in findings[0].title and "PIECES" in findings[0].title

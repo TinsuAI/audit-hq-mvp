@@ -268,3 +268,122 @@ def test_c1_3_tags_finding_with_book(session, company):
     assert len(findings) == 1
     assert findings[0].subject_key == "X"
     assert findings[0].book == "GC"
+
+
+# --- Đa đơn vị: một mã ghi ở hai đơn vị là MỘT lượng tồn ghi lại, không phải hai vật tư ---
+
+
+def test_c1_3_emits_one_finding_per_material_across_units(session, company):
+    add_nvl(session, company.id, material_code="DUAL", unit="MTR", imported=3000)
+    add_nvl(session, company.id, material_code="DUAL", unit="PCE", imported=1)
+    add_decl(session, company.id, declaration_no="z", customs_code="E11", item_code="OTHER", quantity=1)
+    session.commit()
+    findings = check_c1_3(session, company.id, 2024)
+    assert [f.subject_key for f in findings] == ["DUAL"]
+
+
+def test_c1_3_reports_the_largest_unit_slice(session, company):
+    # Dòng nhỏ nằm trước trong bảng — finding vẫn phải báo lượng lớn, không phụ thuộc thứ tự dòng.
+    add_nvl(session, company.id, material_code="DUAL", unit="PCE", imported=1)
+    add_nvl(session, company.id, material_code="DUAL", unit="MTR", imported=3000)
+    add_decl(session, company.id, declaration_no="z", customs_code="E11", item_code="OTHER", quantity=1)
+    session.commit()
+    findings = check_c1_3(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].details["m15_import"] == 3000
+    assert "3000" in findings[0].title
+
+
+def test_c1_3_keeps_one_finding_per_book_for_shared_code(session, company):
+    # Khử trùng theo (sổ, mã) — KHÔNG được gộp hai sổ vào một finding.
+    add_nvl(session, company.id, material_code="SHARED", unit="MTR", imported=100, book="EPE")
+    add_nvl(session, company.id, material_code="SHARED", unit="MTR", imported=200, book="GC")
+    add_decl(session, company.id, declaration_no="z", customs_code="E11", item_code="OTHER", quantity=1)
+    session.commit()
+    findings = check_c1_3(session, company.id, 2024)
+    assert sorted(f.book for f in findings) == ["EPE", "GC"]
+
+
+def test_c1_6_emits_one_finding_per_material_across_units(session, company):
+    add_nvl(session, company.id, material_code="DUAL", unit="MTR", imported=3000, repurpose=600)
+    add_nvl(session, company.id, material_code="DUAL", unit="PCE", imported=1, repurpose=0.2)
+    add_decl(session, company.id, declaration_no="z", customs_code="E62", item_code="EX", quantity=1)
+    session.commit()
+    findings = check_c1_6(session, company.id, 2024)
+    assert [f.subject_key for f in findings] == ["DUAL"]
+    assert findings[0].details["m15_repurpose"] == 600
+
+
+def test_c1_1_no_fire_when_one_unit_slice_matches_declaration(session, company):
+    # Lát MTR khớp đơn vị tờ khai và khớp số → nhất quán. Lát PIECES là cùng lượng đó
+    # ghi lại, KHÔNG được đem so với tổng tờ khai tính bằng mét.
+    add_nvl(session, company.id, material_code="DUAL", unit="MTR", imported=20000)
+    add_nvl(session, company.id, material_code="DUAL", unit="PIECES", imported=20)
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="DUAL",
+             quantity=20000, unit="M")
+    session.commit()
+    assert check_c1_1(session, company.id, 2024) == []
+
+
+def test_c1_1_reports_undeclared_dual_unit_material_once(session, company):
+    # Không tờ khai nào cho mã này → vẫn phải fire -100%, nhưng CHỈ MỘT lần.
+    add_nvl(session, company.id, material_code="DUAL", unit="MTR", imported=4463)
+    add_nvl(session, company.id, material_code="DUAL", unit="PIECES", imported=1.49)
+    add_decl(session, company.id, declaration_no="z", customs_code="E11", item_code="OTHER", quantity=1)
+    session.commit()
+    findings = check_c1_1(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].subject_key == "DUAL"
+    assert findings[0].details["m15_import"] == 4463
+    assert abs(findings[0].details["diff_pct"] + 100.0) < 0.01
+
+
+def test_c1_1_sums_rows_whose_units_are_aliases_of_one_canonical(session, company):
+    # 'MTR' và 'METRES' là cùng một đơn vị vật lý (cùng canonical) → phải CỘNG,
+    # không tách thành hai lát rồi đem mỗi lát so với cả tổng tờ khai.
+    add_nvl(session, company.id, material_code="ALIAS", unit="MTR", imported=10000)
+    add_nvl(session, company.id, material_code="ALIAS", unit="METRES", imported=10000)
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="ALIAS",
+             quantity=20000, unit="M")
+    session.commit()
+    assert check_c1_1(session, company.id, 2024) == []
+
+
+def test_c1_1_handles_row_with_null_unit(session, company):
+    # Dòng thiếu đơn vị không được làm hỏng cả lượt chạy check.
+    add_nvl(session, company.id, material_code="NU", unit=None, imported=500)
+    add_nvl(session, company.id, material_code="NU", unit="MTR", imported=500)
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="NU",
+             quantity=500, unit="M")
+    session.commit()
+    assert check_c1_1(session, company.id, 2024) == []
+
+
+def test_c1_4_handles_row_with_null_unit(session, company):
+    # sp_balances thực tế đang có dòng đơn vị NULL → C1.4 phải chịu được.
+    add_sp(session, company.id, product_code="NU", unit=None, export_qty=500)
+    add_sp(session, company.id, product_code="NU", unit="MTR", export_qty=500)
+    add_decl(session, company.id, declaration_no="1", customs_code="E42", item_code="NU",
+             quantity=500, unit="M")
+    session.commit()
+    assert check_c1_4(session, company.id, 2024) == []
+
+
+def test_c1_4_no_fire_when_one_unit_slice_matches_declaration(session, company):
+    add_sp(session, company.id, product_code="TP", unit="MTR", export_qty=20000)
+    add_sp(session, company.id, product_code="TP", unit="PIECES", export_qty=20)
+    add_decl(session, company.id, declaration_no="1", customs_code="E42", item_code="TP",
+             quantity=20000, unit="M")
+    session.commit()
+    assert check_c1_4(session, company.id, 2024) == []
+
+
+def test_c1_7_emits_one_finding_per_material_across_units(session, company):
+    # Hai lát tỉ lệ thuận cho cùng một tỉ số → không được bắn hai lần.
+    add_nvl(session, company.id, material_code="DUAL", unit="MTR", imported=3000, repurpose=600)
+    add_nvl(session, company.id, material_code="DUAL", unit="PCE", imported=1, repurpose=0.2)
+    session.commit()
+    findings = check_c1_7(session, company.id, 2024)
+    assert [f.subject_key for f in findings] == ["DUAL"]
+    assert abs(findings[0].details["ratio_pct"] - 20.0) < 0.01
+    assert findings[0].details["import"] == 3000

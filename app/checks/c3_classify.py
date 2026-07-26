@@ -168,6 +168,9 @@ def check_c3_2(session: Session, company_id: int, year: int) -> list[Finding]:
     return findings
 
 
+_MATCH_RANK = {UomMatch.EQUIVALENT: 0, UomMatch.SAME_FAMILY: 1, UomMatch.DIFFERENT: 2}
+
+
 def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
     """Đơn vị tính không nhất quán giữa M15 và BCCT cùng mã NVL.
 
@@ -185,7 +188,11 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
     ).all()
     # Đơn vị M15 theo (SỔ, mã): đối chiếu đơn vị của TỪNG sổ với tờ khai (tờ khai dùng
     # chung cả pháp nhân), không để đơn vị sổ này che sổ kia (xem ADR #19).
-    m15_units = {(book, code): unit for book, code, unit in m15_rows}
+    # Gom thành TẬP đơn vị: một mã có thể ghi ở hai đơn vị (cùng một lượng ghi lại),
+    # nếu ghi đè thì đơn vị khớp tờ khai bị đơn vị kia che, kết quả phụ thuộc thứ tự dòng.
+    m15_units: dict[tuple[str | None, str], set[str]] = defaultdict(set)
+    for book, code, unit in m15_rows:
+        m15_units[(book, code)].add(unit)
 
     bcct_units: dict[str, set[str]] = defaultdict(set)
     bcct_rows = session.execute(
@@ -202,37 +209,49 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
         bcct_units[code].add(unit)
 
     findings: list[Finding] = []
-    for (book, code), m15_unit in sorted(
+    for (book, code), unit_set in sorted(
         m15_units.items(), key=lambda kv: (kv[0][1], kv[0][0] is None, kv[0][0] or "")
     ):
         bcct_set = bcct_units.get(code, set())
         if not bcct_set:
             continue
 
-        # So sánh M15 với từng BCCT unit; lấy match yếu nhất (worst case).
-        worst_match = UomMatch.EQUIVALENT
-        for bcct_unit in bcct_set:
-            m = uom_compare(session, m15_unit, bcct_unit)
-            if m == UomMatch.DIFFERENT:
-                worst_match = UomMatch.DIFFERENT
-                break
-            if m == UomMatch.SAME_FAMILY and worst_match == UomMatch.EQUIVALENT:
-                worst_match = UomMatch.SAME_FAMILY
+        # Với TỪNG đơn vị M15: so với mọi đơn vị BCCT, lấy match yếu nhất (worst case).
+        # Giữa các đơn vị M15 của cùng một mã: lấy match TỐT NHẤT — chỉ cần một đơn vị
+        # khớp tờ khai là sổ đó nhất quán, các đơn vị còn lại ghi lại cùng lượng đó.
+        worst_match = UomMatch.DIFFERENT
+        m15_unit = sorted(unit_set)[0]
+        for candidate in sorted(unit_set):
+            candidate_worst = UomMatch.EQUIVALENT
+            for bcct_unit in bcct_set:
+                m = uom_compare(session, candidate, bcct_unit)
+                if m == UomMatch.DIFFERENT:
+                    candidate_worst = UomMatch.DIFFERENT
+                    break
+                if m == UomMatch.SAME_FAMILY and candidate_worst == UomMatch.EQUIVALENT:
+                    candidate_worst = UomMatch.SAME_FAMILY
+            if _MATCH_RANK[candidate_worst] < _MATCH_RANK[worst_match]:
+                worst_match = candidate_worst
+                m15_unit = candidate
 
         if worst_match == UomMatch.EQUIVALENT:
-            continue  # Tất cả equivalent — skip.
+            continue  # Có đơn vị khớp tờ khai — skip.
+
+        # Mã ghi ở nhiều đơn vị thì nêu cả tập, đừng để tiêu đề chỉ hiện một đơn vị
+        # trong khi bằng chứng trả về nhiều dòng khác đơn vị.
+        m15_label = f"'{m15_unit}'" if len(unit_set) == 1 else str(sorted(unit_set))
 
         if worst_match == UomMatch.SAME_FAMILY:
             severity = Severity.INFO
             title = (
                 f"Đơn vị tính NVL {code} dùng nhiều đơn vị cùng họ "
-                f"(có thể quy đổi): M15='{m15_unit}', BCCT={sorted(bcct_set)}"
+                f"(có thể quy đổi): M15={m15_label}, BCCT={sorted(bcct_set)}"
             )
         else:
             severity = Severity.CRITICAL
             title = (
                 f"Đơn vị tính NVL {code} không nhất quán: "
-                f"M15='{m15_unit}', BCCT={sorted(bcct_set)}"
+                f"M15={m15_label}, BCCT={sorted(bcct_set)}"
             )
 
         findings.append(Finding(
@@ -246,6 +265,7 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
             title=title,
             details={
                 "m15_unit": m15_unit,
+                "m15_units": sorted(unit_set),
                 "bcct_units": sorted(bcct_set),
                 "uom_match": worst_match.value,
             },

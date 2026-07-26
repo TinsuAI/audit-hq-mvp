@@ -6,6 +6,8 @@ C1.5 (tái xuất M15 vs B13) là W.I.P theo §4.1 — chưa implement.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,7 @@ from app.checks.company_type import (
     import_codes_for,
 )
 from app.checks.registry import Severity, severity_for
+from app.checks.uom import normalize, resolve_canonical
 from app.models import DeclarationLine, Finding, NvlBalance, SpBalance
 
 
@@ -65,6 +68,91 @@ def _sum_bcct_by_item(
     return {code: float(qty or 0.0) for code, qty in rows}
 
 
+def _unit_key(session: Session, unit: str | None) -> str | None:
+    """Khoá so khớp đơn vị: canonical nếu resolve được, không thì raw đã chuẩn hoá."""
+    return resolve_canonical(session, unit) or normalize(unit)
+
+
+def _sum_bcct_by_item_unit(
+    session: Session,
+    company_id: int,
+    year: int,
+    customs_codes: set[str],
+) -> dict[tuple[str, str | None], float]:
+    """Như _sum_bcct_by_item nhưng tách theo đơn vị đã chuẩn hoá."""
+    if not customs_codes:
+        return {}
+    rows = session.execute(
+        select(
+            DeclarationLine.item_code,
+            DeclarationLine.unit,
+            func.coalesce(func.sum(DeclarationLine.quantity), 0.0),
+        )
+        .where(
+            DeclarationLine.company_id == company_id,
+            DeclarationLine.period_year == year,
+            DeclarationLine.customs_code.in_(customs_codes),
+            DeclarationLine.item_code.is_not(None),
+        )
+        .group_by(DeclarationLine.item_code, DeclarationLine.unit)
+    ).all()
+    out: dict[tuple[str, str | None], float] = {}
+    for code, unit, qty in rows:
+        key = (code, _unit_key(session, unit))
+        out[key] = out.get(key, 0.0) + float(qty or 0.0)
+    return out
+
+
+def _unit_targets(
+    code: str,
+    slices: list[tuple[str | None, float]],
+    sums_by_item: dict[str, float],
+    sums_by_item_unit: dict[tuple[str, str | None], float],
+) -> list[tuple[str | None, float, float]]:
+    """Chọn lát đơn vị nào của một mã được đem đối chiếu với tờ khai.
+
+    `slices` đã khoá theo đơn vị CHUẨN HOÁ, cùng hệ khoá với `sums_by_item_unit`.
+
+    - Mã chỉ có MỘT đơn vị: giữ nguyên hành vi cũ (so với tổng tờ khai của mã).
+    - Mã có NHIỀU đơn vị (cùng một lượng ghi lại ở đơn vị thứ hai): chỉ so lát nào
+      khớp đơn vị tờ khai, so với tổng của chính đơn vị đó.
+    - Nhiều đơn vị nhưng không lát nào khớp (gồm cả trường hợp không có tờ khai):
+      báo MỘT lần bằng lát lớn nhất, so với tổng của mã.
+    """
+    if len(slices) == 1:
+        unit, qty = slices[0]
+        return [(unit, qty, sums_by_item.get(code, 0.0))]
+
+    matched = [
+        (unit, qty, sums_by_item_unit[(code, unit)])
+        for unit, qty in slices
+        if (code, unit) in sums_by_item_unit
+    ]
+    if matched:
+        return matched
+
+    unit, qty = max(slices, key=lambda s: s[1])
+    return [(unit, qty, sums_by_item.get(code, 0.0))]
+
+
+def _one_row_per_material(
+    rows: list[NvlBalance],
+    weight: Callable[[NvlBalance], float],
+) -> list[NvlBalance]:
+    """Gộp theo (sổ, mã), giữ dòng có `weight` lớn nhất, trả theo thứ tự (mã, sổ).
+
+    Một mã ghi ở nhiều đơn vị là MỘT vật tư ghi lại, không phải nhiều vật tư — check
+    emit theo dòng (C1.3/C1.6/C1.7) chỉ được ra một finding cho mỗi (sổ, mã).
+    """
+    best: dict[tuple[str | None, str], NvlBalance] = {}
+    for r in rows:
+        key = (r.book, r.material_code)
+        cur = best.get(key)
+        if cur is None or weight(r) > weight(cur):
+            best[key] = r
+    return [best[k] for k in sorted(best, key=lambda k: (k[1], k[0] is None, k[0] or ""))]
+
+
 def _pct_diff(actual: float, expected: float) -> float:
     """Chênh lệch % so với `expected`. Trả 0 khi expected ≈ 0 và actual ≈ 0."""
     if abs(expected) < 1e-9:
@@ -87,47 +175,67 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
-    # Gộp import_qty theo (mã, đơn vị): một mã có thể có NHIỀU dòng M15 khi pháp nhân
-    # giữ nhiều sổ (đa loại hình) hoặc khai cùng mã ở hai đơn vị. Cộng across sổ,
-    # KHÔNG cộng across đơn vị. Khớp đơn vị phía tờ khai là việc riêng (xem ADR #19).
-    agg: dict[tuple[str, str], float] = {}
+    # Gộp import_qty theo (mã, đơn vị CHUẨN HOÁ): một mã có thể có NHIỀU dòng M15 khi
+    # pháp nhân giữ nhiều sổ (đa loại hình) hoặc khai cùng mã ở hai đơn vị. Cộng across
+    # sổ VÀ across các cách viết cùng một đơn vị ('MTR' với 'METRES'), KHÔNG cộng across
+    # hai đơn vị khác nhau. Giữ đơn vị thô để báo cáo (truy nguồn về dòng biểu gốc).
+    agg: dict[tuple[str, str | None], float] = {}
+    display_unit: dict[tuple[str, str | None], str] = {}
     for r in rows:
-        key = (r.material_code, r.unit)
+        key = (r.material_code, _unit_key(session, r.unit))
         agg[key] = agg.get(key, 0.0) + r.import_qty
+        display_unit.setdefault(key, r.unit)
 
-    findings: list[Finding] = []
-    for (code, unit), imported in sorted(agg.items()):
+    slices_by_code: dict[str, list[tuple[str | None, float]]] = {}
+    for (code, unit), imported in agg.items():
         if imported <= 0:
             continue  # C1.1 chỉ áp với NVL có khai nhập trong M15
-        bcct_qty = bcct_sums.get(code, 0.0)
-        diff_pct = _pct_diff(bcct_qty, imported)
-        if abs(diff_pct) < 0.5:
-            continue  # floor 0.5% — coi như khớp (lọc nhiễu làm tròn).
-        sev = severity_for("C1.1", abs(diff_pct))
-        if sev is None:
-            continue
-        findings.append(Finding(
-            company_id=company_id,
-            period_year=year,
-            check_code="C1.1",
-            severity=sev.value,
-            subject_type="material_code",
-            subject_key=code,
-            title=(
-                f"Lệch nhập NVL {code}: "
-                f"M15={imported:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
-            ),
-            details={
-                "company_type": company_type.value,
-                "import_codes": sorted(import_codes),
-                "unit": unit,
-                "m15_import": imported,
-                "bcct_sum": bcct_qty,
-                "diff_pct": diff_pct,
-            },
-            evidence_refs=_evidence_nvl(code, year, company_id)
-            + _evidence_decl(code, year, company_id, import_codes),
-        ))
+        slices_by_code.setdefault(code, []).append((unit, imported))
+
+    # Chỉ cần tổng tách theo đơn vị khi có mã ghi ở nhiều hơn một đơn vị.
+    bcct_by_unit = (
+        _sum_bcct_by_item_unit(session, company_id, year, import_codes)
+        if any(len(v) > 1 for v in slices_by_code.values())
+        else {}
+    )
+
+    findings: list[Finding] = []
+    for code in sorted(slices_by_code):
+        targets = _unit_targets(
+            code,
+            sorted(slices_by_code[code], key=lambda s: (s[0] or "")),
+            bcct_sums,
+            bcct_by_unit,
+        )
+        for unit, imported, bcct_qty in targets:
+            diff_pct = _pct_diff(bcct_qty, imported)
+            if abs(diff_pct) < 0.5:
+                continue  # floor 0.5% — coi như khớp (lọc nhiễu làm tròn).
+            sev = severity_for("C1.1", abs(diff_pct))
+            if sev is None:
+                continue
+            findings.append(Finding(
+                company_id=company_id,
+                period_year=year,
+                check_code="C1.1",
+                severity=sev.value,
+                subject_type="material_code",
+                subject_key=code,
+                title=(
+                    f"Lệch nhập NVL {code}: "
+                    f"M15={imported:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
+                ),
+                details={
+                    "company_type": company_type.value,
+                    "import_codes": sorted(import_codes),
+                    "unit": display_unit.get((code, unit)),
+                    "m15_import": imported,
+                    "bcct_sum": bcct_qty,
+                    "diff_pct": diff_pct,
+                },
+                evidence_refs=_evidence_nvl(code, year, company_id)
+                + _evidence_decl(code, year, company_id, import_codes),
+            ))
     return findings
 
 
@@ -216,9 +324,10 @@ def check_c1_3(session: Session, company_id: int, year: int) -> list[Finding]:
     ).all()
 
     findings: list[Finding] = []
-    for r in m15_with_imports:
-        if r.material_code in bcct_codes:
-            continue
+    for r in _one_row_per_material(
+        [r for r in m15_with_imports if r.material_code not in bcct_codes],
+        lambda r: r.import_qty,
+    ):
         findings.append(Finding(
             company_id=company_id,
             period_year=year,
@@ -256,45 +365,64 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
-    # Gộp export_qty theo (mã, đơn vị) — như C1.1: cộng across sổ, không across đơn vị.
-    agg: dict[tuple[str, str], float] = {}
+    # Gộp export_qty theo (mã, đơn vị CHUẨN HOÁ) — như C1.1.
+    agg: dict[tuple[str, str | None], float] = {}
+    display_unit: dict[tuple[str, str | None], str] = {}
     for r in rows:
-        key = (r.product_code, r.unit)
+        key = (r.product_code, _unit_key(session, r.unit))
         agg[key] = agg.get(key, 0.0) + r.export_qty
+        display_unit.setdefault(key, r.unit)
 
-    findings: list[Finding] = []
-    for (code, unit), exported in sorted(agg.items()):
+    slices_by_code: dict[str, list[tuple[str | None, float]]] = {}
+    for (code, unit), exported in agg.items():
         if exported <= 0:
             continue
-        bcct_qty = bcct_sums.get(code, 0.0)
-        diff_pct = _pct_diff(bcct_qty, exported)
-        if abs(diff_pct) < 0.1:
-            continue  # floor 0.1% — coi như khớp (lọc nhiễu làm tròn).
-        sev = severity_for("C1.4", abs(diff_pct))
-        if sev is None:
-            continue
-        findings.append(Finding(
-            company_id=company_id,
-            period_year=year,
-            check_code="C1.4",
-            severity=sev.value,
-            subject_type="product_code",
-            subject_key=code,
-            title=(
-                f"Lệch xuất TP {code}: "
-                f"M15a={exported:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
-            ),
-            details={
-                "company_type": company_type.value,
-                "export_codes": sorted(export_codes),
-                "unit": unit,
-                "m15a_export": exported,
-                "bcct_sum": bcct_qty,
-                "diff_pct": diff_pct,
-            },
-            evidence_refs=_evidence_sp(code, year, company_id)
-            + _evidence_decl(code, year, company_id, export_codes),
-        ))
+        slices_by_code.setdefault(code, []).append((unit, exported))
+
+    # Chỉ cần tổng tách theo đơn vị khi có mã ghi ở nhiều hơn một đơn vị.
+    bcct_by_unit = (
+        _sum_bcct_by_item_unit(session, company_id, year, export_codes)
+        if any(len(v) > 1 for v in slices_by_code.values())
+        else {}
+    )
+
+    findings: list[Finding] = []
+    for code in sorted(slices_by_code):
+        targets = _unit_targets(
+            code,
+            sorted(slices_by_code[code], key=lambda s: (s[0] or "")),
+            bcct_sums,
+            bcct_by_unit,
+        )
+        for unit, exported, bcct_qty in targets:
+            diff_pct = _pct_diff(bcct_qty, exported)
+            if abs(diff_pct) < 0.1:
+                continue  # floor 0.1% — coi như khớp (lọc nhiễu làm tròn).
+            sev = severity_for("C1.4", abs(diff_pct))
+            if sev is None:
+                continue
+            findings.append(Finding(
+                company_id=company_id,
+                period_year=year,
+                check_code="C1.4",
+                severity=sev.value,
+                subject_type="product_code",
+                subject_key=code,
+                title=(
+                    f"Lệch xuất TP {code}: "
+                    f"M15a={exported:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
+                ),
+                details={
+                    "company_type": company_type.value,
+                    "export_codes": sorted(export_codes),
+                    "unit": display_unit.get((code, unit)),
+                    "m15a_export": exported,
+                    "bcct_sum": bcct_qty,
+                    "diff_pct": diff_pct,
+                },
+                evidence_refs=_evidence_sp(code, year, company_id)
+                + _evidence_decl(code, year, company_id, export_codes),
+            ))
     return findings
 
 
@@ -321,9 +449,10 @@ def check_c1_6(session: Session, company_id: int, year: int) -> list[Finding]:
     ).all()
 
     findings: list[Finding] = []
-    for r in rows:
-        if r.material_code in a42_codes:
-            continue
+    for r in _one_row_per_material(
+        [r for r in rows if r.material_code not in a42_codes],
+        lambda r: r.repurpose_qty,
+    ):
         findings.append(Finding(
             company_id=company_id,
             period_year=year,
@@ -353,12 +482,17 @@ def check_c1_7(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
+    # Các lát đơn vị của cùng một mã tỉ lệ thuận nên cho cùng tỉ số; giữ lát có
+    # mẫu số (tồn đầu + nhập) lớn nhất.
+    def _denom(r: NvlBalance) -> float:
+        return (r.opening_qty or 0.0) + (r.import_qty or 0.0)
+
     findings: list[Finding] = []
-    for r in rows:
-        denom = (r.opening_qty or 0.0) + (r.import_qty or 0.0)
-        if denom <= 0 or (r.repurpose_qty or 0.0) <= 0:
-            continue
-        pct = r.repurpose_qty / denom * 100.0
+    for r in _one_row_per_material(
+        [r for r in rows if _denom(r) > 0 and (r.repurpose_qty or 0.0) > 0],
+        _denom,
+    ):
+        pct = r.repurpose_qty / _denom(r) * 100.0
         sev = severity_for("C1.7", pct)
         if sev is None:
             continue
