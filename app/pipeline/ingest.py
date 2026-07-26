@@ -66,6 +66,33 @@ def _get_or_create_company(
 _SETTLEMENT_PARSERS = {"m15": parse_m15, "m15a": parse_m15a, "m16": parse_m16}
 
 
+class IngestPlanError(RuntimeError):
+    """Kế hoạch nạp sẽ làm mất sổ quyết toán — dừng TRƯỚC khi xoá dữ liệu cũ.
+
+    `ingest` xoá sạch (company, year) rồi nạp lại theo kế hoạch, nên một kế hoạch
+    thiếu sổ là mất dữ liệu im lặng. Thà hỏng ồn còn hơn gộp nhầm hai sổ làm một.
+    """
+
+
+def _books_already_stored(session, company_id: int, year: int) -> set[str]:
+    """Các sổ đang có trong DB cho (DN, kỳ) — nguồn sự thật độc lập với data_files."""
+    books: set[str] = set()
+    for model in (NvlBalance, SpBalance, Norm):
+        books |= {
+            b
+            for (b,) in session.execute(
+                select(model.book)
+                .where(
+                    model.company_id == company_id,
+                    model.period_year == year,
+                    model.book.is_not(None),
+                )
+                .distinct()
+            ).all()
+        }
+    return books
+
+
 def _plan_settlement_files(
     session, company_id: int, year: int, discovered_parsed: dict, raw_root: Path
 ) -> dict[str, list[tuple]]:
@@ -87,22 +114,42 @@ def _plan_settlement_files(
         )
     ).all()
     if not any(r.book for r in rows):
+        # Tag book chỉ sống trong data_files, mà `sync_data_files` prune dòng khi file
+        # vắng trên đĩa. Mất tag + nạp tiếp = dựng lại pháp nhân nhiều sổ thành MỘT sổ
+        # gộp, im lặng. Đối chiếu với sổ đang có trong DB trước khi cho đi tiếp.
+        prior = _books_already_stored(session, company_id, year)
+        if prior:
+            raise IngestPlanError(
+                f"DN đang có sổ {sorted(prior)} trong kỳ {year} nhưng data_files không "
+                f"còn tag book nào — nạp tiếp sẽ gộp tất cả thành một sổ. Chạy lại "
+                f"sync/đăng ký file và gán book cho từng file settlement rồi nạp lại."
+            )
         # Single-book / CLI: file discover đã parse sẵn, book=NULL (hành vi cũ).
         return {slot: ([(obj, None)] if obj else []) for slot, obj in discovered_parsed.items()}
 
     plan: dict[str, list[tuple]] = {"m15": [], "m15a": [], "m16": []}
+    unusable: list[str] = []
     for r in rows:
         path = raw_root / r.stored_path
+        label = f"{r.slot}/{r.book or 'không sổ'}: {r.stored_path}"
         if not path.exists():
+            unusable.append(f"{label} (không thấy file)")
             continue
         parser = _SETTLEMENT_PARSERS[r.slot]
         try:
             parsed = parser(path, year=year)
         except SheetNotFound:
-            # File không phục vụ slot đã đăng ký (sync phân loại nhầm) → bỏ, thà thiếu
-            # hơn nạp sai. Không nuốt lỗi khác (bug parser phải nổ ra).
+            # File không phục vụ slot đã đăng ký (sync phân loại nhầm). Không nuốt lỗi
+            # khác (bug parser phải nổ ra).
+            unusable.append(f"{label} (không đọc được sheet)")
             continue
         plan[r.slot].append((parsed, r.book))
+
+    if unusable:
+        # Bỏ qua file ở đây = xoá sổ đó khỏi DB rồi không nạp lại, không báo gì.
+        raise IngestPlanError(
+            "Không dùng được file settlement đã đăng ký: " + "; ".join(unusable)
+        )
     return plan
 
 
