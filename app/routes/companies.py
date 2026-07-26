@@ -59,6 +59,7 @@ from app.models import (
 )
 from app.models.data_file import SETTLEMENT_SLOTS, SLOT_LABEL_VI, SLOT_ORDER
 from app.pipeline.export import build_export
+from app.pipeline.ingest import IngestPlanError
 from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.period import load_period_windows
 from app.pipeline.validate import diagnose_upload
@@ -592,6 +593,15 @@ def upload_data(
     # Tự advance: NẠP dữ liệu (commit). KHÔNG tự chạy kiểm tra (bước riêng).
     try:
         stats = run_ingest(company.code, year, raw_root=raw_path)
+    except IngestPlanError as e:
+        # Kế hoạch nạp bị từ chối (gán sổ nửa vời / thiếu file đã đăng ký) — việc cán bộ
+        # phải xử lý ở trang tài liệu, không phải lỗi hệ thống. File đã tải lên + đăng ký;
+        # kế hoạch bị từ chối TRƯỚC lệnh xoá nên dữ liệu cũ nguyên vẹn.
+        return RedirectResponse(
+            url=f"/companies/{code}/documents?error="
+            + quote_plus(f"Đã tải lên, CHƯA nạp dữ liệu. {e}"),
+            status_code=303,
+        )
     except Exception as e:  # noqa: BLE001 — show parser errors back to user
         raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
 
@@ -1228,6 +1238,15 @@ async def documents_confirm_review(
         )
     try:
         stats = run_ingest(company.code, year, raw_root=raw_root)
+    except IngestPlanError as e:
+        # Selector sổ là per-file: gán xong file này thì file kia còn trống — bước BẮT BUỘC
+        # đi qua khi dựng pháp nhân nhiều sổ, không phải lỗi hệ thống. Sổ vừa gán đã commit
+        # ở trên nên cán bộ gán tiếp file sau; kế hoạch bị từ chối TRƯỚC lệnh xoá nên dòng
+        # của lượt nạp trước còn nguyên.
+        sync_data_files(db, company)
+        return _redirect(
+            "error=" + quote_plus(f"Đã lưu sổ cho file này, CHƯA nạp dữ liệu. {e}")
+        )
     except Exception as e:  # noqa: BLE001 — show parser errors back to user
         raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
 
@@ -1309,6 +1328,14 @@ def documents_ingest_year(
         )
     try:
         stats = run_ingest(company.code, year, raw_root=raw_root)
+    except IngestPlanError as e:
+        # Gán sổ nửa vời / thiếu file đã đăng ký: việc cán bộ phải xử lý, không phải lỗi
+        # hệ thống. Từ chối xảy ra TRƯỚC lệnh xoá nên dữ liệu của lượt nạp trước còn nguyên.
+        sync_data_files(db, company)
+        return RedirectResponse(
+            url=f"/companies/{code}/documents?error=" + quote_plus(str(e)),
+            status_code=303,
+        )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
 

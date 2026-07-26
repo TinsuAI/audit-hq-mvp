@@ -222,10 +222,14 @@ def test_two_books_tagged_via_browser_show_in_branch_a(tmp_path):
 
         assert base_map, "cần parse_detail có column_map để confirm"
         payload = {f"col_{f}": str(i) for f, i in base_map.items()}
-        client.post(f"/companies/DN_SEL/documents/file/{epe_fid}/review",
-                    data={**payload, "book": "EPE"}, follow_redirects=False)
-        client.post(f"/companies/DN_SEL/documents/file/{gc_fid}/review",
-                    data={**payload, "book": "GC"}, follow_redirects=False)
+        # Cả hai lượt confirm phải là 303 — không kiểm status thì lượt đầu 500 vẫn lọt
+        # (file kia chưa gán sổ), test vẫn xanh nhờ lượt hai nạp đủ hai sổ.
+        r_epe = client.post(f"/companies/DN_SEL/documents/file/{epe_fid}/review",
+                            data={**payload, "book": "EPE"}, follow_redirects=False)
+        r_gc = client.post(f"/companies/DN_SEL/documents/file/{gc_fid}/review",
+                           data={**payload, "book": "GC"}, follow_redirects=False)
+        assert r_epe.status_code == 303
+        assert r_gc.status_code == 303
 
         with dbmod.SessionLocal() as db:
             c = db.query(Company).filter_by(code="DN_SEL").first()
@@ -236,5 +240,91 @@ def test_two_books_tagged_via_browser_show_in_branch_a(tmp_path):
         html = client.get("/companies/DN_SEL?year=2024").text
         assert "Sổ EPE (chế xuất)" in html           # branch A strip hiện 2 sổ
         assert "Sổ GC (gia công)" in html
+    finally:
+        _teardown(new_engine, prev_root)
+
+
+# ──────────────── gán sổ nửa vời: dừng kèm thông báo, KHÔNG 500 ────────────────
+
+
+def _seed_two_m15_on_disk(tmp_path: Path, client) -> tuple[int, int, dict]:
+    """2 file M15 trên đĩa → sync → analyze. Trả (id file EPE, id file GC, column_map)."""
+    from app.pipeline.data_files import sync_data_files
+
+    bcqt = tmp_path / "DN_SEL" / "2024" / "BCQT"
+    bcqt.mkdir(parents=True, exist_ok=True)
+    (bcqt / "NVL_EPE_2024.xlsx").write_bytes(_m15_bytes(["EPE1", "EPE2"]))
+    (bcqt / "NVL_GC_2024.xlsx").write_bytes(_m15_bytes(["GC1"]))
+
+    with dbmod.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_SEL").first()
+        sync_data_files(db, c)
+    client.post("/companies/DN_SEL/documents/ingest", data={"year": "2024"},
+                follow_redirects=False)
+
+    with dbmod.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_SEL").first()
+        rows = db.query(DataFile).filter_by(company_id=c.id, slot="m15").order_by(
+            DataFile.original_filename).all()
+        return rows[0].id, rows[1].id, rows[0].parse_detail_obj.get("column_map", {})
+
+
+def test_confirm_stops_with_a_message_when_another_file_has_no_book(tmp_path):
+    """Gán sổ cho file ĐẦU của kỳ nhiều file settlement → file kia còn trống → dừng nạp.
+
+    Selector sổ là per-file, nên "một file đã gán, file kia chưa" là bước BẮT BUỘC đi qua
+    khi dựng pháp nhân hai sổ. Phải trả về trang tài liệu kèm thông báo tên file còn thiếu,
+    KHÔNG phải 500. Sổ vừa gán giữ nguyên để cán bộ gán tiếp file sau.
+    """
+    new_engine, prev_root = _setup(tmp_path)
+    try:
+        client = TestClient(app)
+        _login(client)
+        epe_fid, _gc_fid, base_map = _seed_two_m15_on_disk(tmp_path, client)
+        assert base_map, "cần parse_detail có column_map để confirm"
+
+        payload = {f"col_{f}": str(i) for f, i in base_map.items()}
+        r = client.post(f"/companies/DN_SEL/documents/file/{epe_fid}/review",
+                        data={**payload, "book": "EPE"}, follow_redirects=False)
+
+        assert r.status_code == 303
+        loc = r.headers["location"]
+        assert "error=" in loc
+        assert "NVL_GC" in loc                       # báo đích danh file còn thiếu sổ
+
+        with dbmod.SessionLocal() as db:
+            c = db.query(Company).filter_by(code="DN_SEL").first()
+            tags = {f.original_filename: f.book for f in db.query(DataFile).filter_by(
+                company_id=c.id, slot="m15")}
+            assert tags == {"NVL_EPE_2024.xlsx": "EPE", "NVL_GC_2024.xlsx": None}
+            # Kế hoạch bị từ chối TRƯỚC lệnh xoá → dòng của lượt nạp trước còn nguyên.
+            assert {b.book for b in db.query(NvlBalance).filter_by(company_id=c.id)} == {None}
+    finally:
+        _teardown(new_engine, prev_root)
+
+
+def test_ingest_year_stops_with_a_message_when_only_some_files_have_a_book(tmp_path):
+    """Nút "Nạp lại dữ liệu" gặp kỳ gán sổ nửa vời → thông báo ở trang tài liệu, KHÔNG 500."""
+    new_engine, prev_root = _setup(tmp_path)
+    try:
+        client = TestClient(app)
+        _login(client)
+        epe_fid, _gc_fid, _ = _seed_two_m15_on_disk(tmp_path, client)
+
+        with dbmod.SessionLocal() as db:
+            db.get(DataFile, epe_fid).book = "EPE"   # selector gán 1 file, file kia trống
+            db.commit()
+
+        r = client.post("/companies/DN_SEL/documents/ingest", data={"year": "2024"},
+                        follow_redirects=False)
+
+        assert r.status_code == 303
+        loc = r.headers["location"]
+        assert "error=" in loc
+        assert "NVL_GC" in loc
+
+        with dbmod.SessionLocal() as db:
+            c = db.query(Company).filter_by(code="DN_SEL").first()
+            assert {b.book for b in db.query(NvlBalance).filter_by(company_id=c.id)} == {None}
     finally:
         _teardown(new_engine, prev_root)

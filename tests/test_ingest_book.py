@@ -39,6 +39,19 @@ def _write_m15(path: Path, codes: list[str]) -> None:
     path.write_bytes(buf.getvalue())
 
 
+def _write_unreadable(path: Path) -> None:
+    """Workbook hợp lệ nhưng không có sheet nào phục vụ slot settlement (sync phân loại nhầm)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ghi chú"
+    ws.append(["Danh sách liên hệ"])
+    ws.append(["Nguyễn Văn A", "0900000000"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    buf = io.BytesIO()
+    wb.save(buf)
+    path.write_bytes(buf.getvalue())
+
+
 def _write_bcct(path: Path, item_codes: list[str]) -> None:
     """BCCT tối thiểu: header row 9 (Số TK/Ngày ĐK/Mã loại hình/Mã hiệu PTVC), data từ row 10."""
     wb = Workbook()
@@ -270,6 +283,142 @@ def test_reingest_refuses_to_merge_books_when_tags_were_pruned(tmp_path):
             assert books == {"EPE", "GC"}
             assert db.scalar(select(func.count()).select_from(NvlBalance).where(
                 NvlBalance.company_id == c.id)) == 5
+    finally:
+        settings.raw_data_path = prev_root
+        _restore_db(new_engine)
+
+
+def test_plan_refuses_when_a_registered_book_file_has_no_usable_sheet(tmp_path):
+    """File còn trên đĩa nhưng không đọc được sheet → DỪNG, kèm tên file.
+
+    Bỏ qua file này = xoá sổ của nó khỏi DB rồi không nạp lại, không báo gì. Khác với
+    nhánh "thiếu file": ở đây file tồn tại nên `path.exists()` không bắt được.
+    """
+    import pytest
+
+    from app.pipeline.ingest import IngestPlanError, _plan_settlement_files
+
+    new_engine, new_session = _fresh_db()
+    try:
+        base = tmp_path / "DN_MB" / "2024"
+        _write_m15(base / "BCQT" / "NVL_EPE.xlsx", ["EPE1"])
+        _write_unreadable(base / "BCQT" / "NVL_GC.xlsx")
+
+        with new_session() as db:
+            c = Company(code="DN_MB", name="Pháp nhân 2 sổ", tax_id="1")
+            db.add(c)
+            db.flush()
+            db.add_all([
+                DataFile(company_id=c.id, period_year=2024, slot="m15", book="EPE",
+                         original_filename="NVL_EPE.xlsx",
+                         stored_path="DN_MB/2024/BCQT/NVL_EPE.xlsx"),
+                DataFile(company_id=c.id, period_year=2024, slot="m15", book="GC",
+                         original_filename="NVL_GC.xlsx",
+                         stored_path="DN_MB/2024/BCQT/NVL_GC.xlsx"),
+            ])
+            db.commit()
+
+            with pytest.raises(IngestPlanError, match="NVL_GC"):
+                _plan_settlement_files(
+                    db, c.id, 2024, {"m15": None, "m15a": None, "m16": None}, tmp_path
+                )
+    finally:
+        _restore_db(new_engine)
+
+
+def test_ingest_refuses_when_only_some_settlement_files_carry_a_book(tmp_path):
+    """Gán sổ nửa vời → DỪNG. Dòng của file không gán rơi vào book=NULL, mà ở pháp
+    nhân nhiều sổ NULL nghĩa là "liên sổ" — C4.1/C4.3/C6.1 gom NULL thành SỔ THỨ BA
+    và đối chiếu định mức/tồn kho trong cái sổ không tồn tại đó.
+    """
+    import pytest
+
+    from app.pipeline.ingest import IngestPlanError, ingest
+    from app.settings import settings
+
+    prev_root = settings.raw_data_path
+    new_engine, new_session = _fresh_db()
+    try:
+        base = tmp_path / "DN_MB" / "2024"
+        _write_m15(base / "BCQT" / "NVL_EPE.xlsx", ["EPE1", "EPE2"])
+        _write_m15(base / "BCQT" / "NVL_GC.xlsx", ["GC1"])
+        settings.raw_data_path = str(tmp_path)
+
+        with new_session() as db:
+            c = Company(code="DN_MB", name="Pháp nhân 2 sổ", tax_id="1")
+            db.add(c)
+            db.flush()
+            db.add_all([
+                DataFile(company_id=c.id, period_year=2024, slot="m15", book="EPE",
+                         original_filename="NVL_EPE.xlsx",
+                         stored_path="DN_MB/2024/BCQT/NVL_EPE.xlsx"),
+                DataFile(company_id=c.id, period_year=2024, slot="m15", book=None,
+                         original_filename="NVL_GC.xlsx",
+                         stored_path="DN_MB/2024/BCQT/NVL_GC.xlsx"),
+            ])
+            db.commit()
+            cid = c.id
+
+        with pytest.raises(IngestPlanError, match="NVL_GC"):
+            ingest("DN_MB", 2024, raw_root=tmp_path)
+
+        with new_session() as db:
+            assert db.scalar(select(func.count()).select_from(NvlBalance).where(
+                NvlBalance.company_id == cid)) == 0
+    finally:
+        settings.raw_data_path = prev_root
+        _restore_db(new_engine)
+
+
+def test_books_are_restored_after_tags_are_pruned_and_registered_again(tmp_path):
+    """Nhãn sổ mất khi prune, gán lại rồi nạp lại → hai sổ trở về nguyên trạng.
+
+    Đây là đường thoát của mục 1 punch-list: guard chỉ DỪNG lượt nạp, cán bộ vẫn phải
+    đăng ký + gán sổ lại được rồi nạp bình thường. Nếu đường này hỏng thì guard biến
+    thành ngõ cụt.
+    """
+    from app.pipeline.ingest import ingest
+    from app.settings import settings
+
+    prev_root = settings.raw_data_path
+    new_engine, new_session = _fresh_db()
+    try:
+        with new_session() as db:
+            _seed_two_book_files(db, tmp_path, "DN_MB")
+        ingest("DN_MB", 2024, raw_root=tmp_path)
+
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_MB"))
+            cid = c.id
+            for r in db.scalars(select(DataFile).where(DataFile.company_id == cid)):
+                db.delete(r)
+            db.commit()
+
+        # Đăng ký lại + gán sổ cho từng file (sync + selector review WS1).
+        with new_session() as db:
+            db.add_all([
+                DataFile(company_id=cid, period_year=2024, slot="m15", book="EPE",
+                         original_filename="NVL_EPE.xlsx",
+                         stored_path="DN_MB/2024/BCQT/NVL_EPE.xlsx"),
+                DataFile(company_id=cid, period_year=2024, slot="m15", book="GC",
+                         original_filename="NVL_GC.xlsx",
+                         stored_path="DN_MB/2024/BCQT/NVL_GC.xlsx"),
+            ])
+            db.commit()
+
+        ingest("DN_MB", 2024, raw_root=tmp_path)
+
+        with new_session() as db:
+            epe = {r.material_code for r in db.scalars(
+                select(NvlBalance).where(NvlBalance.company_id == cid, NvlBalance.book == "EPE"))}
+            gc = {r.material_code for r in db.scalars(
+                select(NvlBalance).where(NvlBalance.company_id == cid, NvlBalance.book == "GC"))}
+            assert epe == {"EPE1", "EPE2", "EPE3"}
+            assert gc == {"GC1", "GC2"}
+            assert db.scalar(select(func.count()).select_from(NvlBalance).where(
+                NvlBalance.company_id == cid, NvlBalance.book.is_(None))) == 0
+            assert db.scalar(select(func.count()).select_from(DeclarationLine).where(
+                DeclarationLine.company_id == cid)) == 2
     finally:
         settings.raw_data_path = prev_root
         _restore_db(new_engine)

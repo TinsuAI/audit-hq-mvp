@@ -240,10 +240,10 @@ def test_c1_7_uses_opening_plus_import(session, company):
 
 
 def test_c1_1_sums_rows_of_same_code_and_unit(session, company):
-    # Mã C xuất hiện ở hai sổ (sau collapse: hai dòng M15 cùng mã + cùng đơn vị dưới
-    # một company). import_qty phải CỘNG trước khi so tờ khai, KHÔNG so per-row.
-    add_nvl(session, company.id, material_code="C", unit="PCE", imported=500)
-    add_nvl(session, company.id, material_code="C", unit="PCE", imported=500)
+    # Mã C xuất hiện ở HAI SỔ: import_qty phải CỘNG qua sổ trước khi so tờ khai (một
+    # luồng tờ khai cho cả pháp nhân), KHÔNG so per-row và KHÔNG gộp theo (sổ, mã, đơn vị).
+    add_nvl(session, company.id, material_code="C", unit="PCE", imported=500, book="EPE")
+    add_nvl(session, company.id, material_code="C", unit="PCE", imported=500, book="GC")
     add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="C", quantity=1000)
     session.commit()
     # 500 + 500 == 1000 khai → khớp → không finding. (per-row hiện tại: 2 finding critical)
@@ -251,9 +251,9 @@ def test_c1_1_sums_rows_of_same_code_and_unit(session, company):
 
 
 def test_c1_4_sums_rows_of_same_code_and_unit(session, company):
-    # Mã TP P ở hai sổ: export_qty phải CỘNG theo (mã, đơn vị) trước khi so tờ khai xuất.
-    add_sp(session, company.id, product_code="P", unit="PCE", export_qty=500)
-    add_sp(session, company.id, product_code="P", unit="PCE", export_qty=500)
+    # Mã TP P ở hai sổ: export_qty phải CỘNG theo (mã, đơn vị) qua cả hai sổ.
+    add_sp(session, company.id, product_code="P", unit="PCE", export_qty=500, book="EPE")
+    add_sp(session, company.id, product_code="P", unit="PCE", export_qty=500, book="GC")
     add_decl(session, company.id, declaration_no="1", customs_code="E42", item_code="P", quantity=1000)
     session.commit()
     assert check_c1_4(session, company.id, 2024) == []
@@ -387,3 +387,77 @@ def test_c1_7_emits_one_finding_per_material_across_units(session, company):
     assert [f.subject_key for f in findings] == ["DUAL"]
     assert abs(findings[0].details["ratio_pct"] - 20.0) < 0.01
     assert findings[0].details["import"] == 3000
+
+
+# --- Pháp nhân nhiều sổ: tờ khai dùng chung, M15 tách sổ (ADR #19) ---
+
+
+def test_c1_2_treats_m15_of_every_book_as_declared(session, company):
+    """Mã chỉ có trong M15 của sổ GC vẫn tính là "đã có trong M15".
+
+    Đây là bản vá union mà ADR #19 sinh ra: luồng tờ khai là của cả pháp nhân, nên
+    tập mã M15 đem trừ phải là hợp của mọi sổ. Lọc M15 theo sổ đưa C1.2 của 004 từ
+    4 lên 99 — 91 finding giả cho mã thuộc sổ kia.
+    """
+    add_nvl(session, company.id, material_code="EPE_ONLY", imported=100, book="EPE")
+    add_nvl(session, company.id, material_code="GC_ONLY", imported=100, book="GC")
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="EPE_ONLY", quantity=100)
+    add_decl(session, company.id, declaration_no="2", customs_code="E11", item_code="GC_ONLY", quantity=100)
+    add_decl(session, company.id, declaration_no="3", customs_code="E11", item_code="MISSING_BOTH",
+             quantity=7)
+    add_decl(session, company.id, declaration_no="4", customs_code="E42", item_code="TP", quantity=1)
+    session.commit()
+    findings = check_c1_2(session, company.id, 2024)
+    assert [f.subject_key for f in findings] == ["MISSING_BOTH"]
+
+
+def test_c1_2_finding_is_not_attributed_to_a_book(session, company):
+    # Không quy được về sổ nào → book=NULL = "Chung (liên sổ)". Gán đại một sổ là
+    # khẳng định điều check chưa kết luận (vi phạm truy nguồn, ADR #19 Revision).
+    add_nvl(session, company.id, material_code="EPE_ONLY", imported=100, book="EPE")
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="EPE_ONLY", quantity=100)
+    add_decl(session, company.id, declaration_no="2", customs_code="E11", item_code="MISSING", quantity=7)
+    add_decl(session, company.id, declaration_no="3", customs_code="E42", item_code="TP", quantity=1)
+    session.commit()
+    findings = check_c1_2(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].book is None
+
+
+def test_c1_3_accepts_an_unlabelled_declaration_for_a_book_labelled_row(session, company):
+    """Dòng M15 mang nhãn sổ được thoả bởi tờ khai KHÔNG mang nhãn.
+
+    `declaration_lines` không có cột `book` — tờ khai là của cả pháp nhân. Nếu C1.3
+    đòi tờ khai cùng sổ thì MỌI dòng M15 có nhãn đều bắn, vì không tờ khai nào có nhãn.
+    """
+    add_nvl(session, company.id, material_code="EPE_MAT", imported=100, book="EPE")
+    add_nvl(session, company.id, material_code="GC_MAT", imported=100, book="GC")
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="EPE_MAT", quantity=100)
+    add_decl(session, company.id, declaration_no="2", customs_code="E11", item_code="GC_MAT", quantity=100)
+    add_decl(session, company.id, declaration_no="3", customs_code="E42", item_code="TP", quantity=1)
+    session.commit()
+    assert check_c1_3(session, company.id, 2024) == []
+
+
+def test_c1_1_finding_is_not_attributed_to_a_book(session, company):
+    # Vế đối chiếu là tổng tờ khai toàn pháp nhân, cộng qua cả hai sổ → book=NULL.
+    add_nvl(session, company.id, material_code="SHARED", unit="PCE", imported=500, book="EPE")
+    add_nvl(session, company.id, material_code="SHARED", unit="PCE", imported=500, book="GC")
+    add_decl(session, company.id, declaration_no="1", customs_code="E11", item_code="SHARED", quantity=900)
+    add_decl(session, company.id, declaration_no="2", customs_code="E42", item_code="TP", quantity=1)
+    session.commit()
+    findings = check_c1_1(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].details["m15_import"] == 1000
+    assert findings[0].book is None
+
+
+def test_c1_4_finding_is_not_attributed_to_a_book(session, company):
+    add_sp(session, company.id, product_code="P", unit="PCE", export_qty=500, book="EPE")
+    add_sp(session, company.id, product_code="P", unit="PCE", export_qty=500, book="GC")
+    add_decl(session, company.id, declaration_no="1", customs_code="E42", item_code="P", quantity=900)
+    session.commit()
+    findings = check_c1_4(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].details["m15a_export"] == 1000
+    assert findings[0].book is None
