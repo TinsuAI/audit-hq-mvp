@@ -1,5 +1,33 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-27 — CHẠY LẠI CHECK 004 TRÊN PROD: 74 → 65, hết 3 CRITICAL sai — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `03d5031`):**
+> Owner chốt chạy lại. Chạy **scoped 17 check built-in** cho `PILOT_004`/2025 trong container prod
+> (`python -m app.pipeline.run_checks --company PILOT_004 --year 2025 --check C1.1 … --check C6.1`).
+> **74 → 65 finding: 9 dòng bị xoá, 0 dòng thêm mới.** 3 CRITICAL sai đã biến mất (+99900% ở
+> `6067385-08B`/`6067385-09B`, −98% ở `NO 153-BLACK`); 6 dòng còn lại là bản trùng đơn vị thứ hai
+> (C1.1 ×2, C1.3 ×2, C3.3 ×2). Theo check: **C1.1 33→28 · C1.3 15→13 · C3.3 4→2**, mười check kia không đổi.
+> Severity: critical 61→52, warning 7, info 6 (không đổi). Tổng finding prod **14.998 → 14.989**.
+> **002/006 KHÔNG đụng** (48 và 14.876 y nguyên, `COMBO_HS_GAMING` 28 dòng của 006 còn đủ); `X.*` vẫn 0 finding.
+> **Điểm năm 004: 30 → 25**, tier giữ "Dữ liệu nhất quán". `companies.risk_score` vẫn **30** — `run_checks:188`
+> đọc `CompanyYearScore` trên session `autoflush=False` (`database.py:12`) nên cache chỉ tăng, không giảm.
+> **KHÔNG hiện sai trên UI**: `companies.py:190` cố ý đọc `max(company_year_scores)`, không đọc cache.
+> **`check_runs`: company 9 từ 0 → 17 dòng** (`data_version=0`) → staleness WS3 của 004 tính từ mốc này.
+> **Nhãn sổ nguyên vẹn:** nvl EPE 104/GC 37 · sp 43/2 · norms 664/216; finding `book` = NULL 35 / EPE 30
+> (GC 0, như trước). Mọi finding còn `evidence_refs` (0 dòng rỗng). `/healthz` 200, `/showcase` 200.
+> **Cách làm (an toàn 2 lớp):** backup WAL-safe bằng `sqlite3.Connection.backup()` →
+> `db-data/audit_hq.sqlite.bak-pre-004-recheck-20260727-012604` (`integrity_check: ok`), rồi **dry-run trên
+> BẢN COPY** với `DATABASE_URL` trỏ file copy, diff finding cũ/mới (74 vs 65, 9 removed / 0 added) → khớp mới
+> chạy live. Bản copy đã xoá (cả `-wal`/`-shm`). **Rollback:** `docker stop audit-hq-mvp` → `cp` bản bak đè
+> `audit_hq.sqlite` → `rm -f *-wal *-shm` → `docker start`.
+> **CỐ Ý chạy scoped, không full:** `X.1` đang `published` trên prod (bản `cross_table_match` trùng nghiệp vụ
+> với C1.1). Chạy full sẽ sinh finding `X.1` **chỉ cho 004** trong khi 002/006 không có → lệch giữa các DN trên
+> demo. Truyền `only=` cũng bỏ luôn nhánh xoá orphan `X.*` nên không đụng gì khác.
+> **Disk server 96% (12G trống).** Backup cũ tháng 6 (`bak-pre-c24`, `bak-pre-cleanup`, ~26MB mỗi cái) vẫn còn — chưa xoá.
+> **Next:** (1) punch-list 7 (lệch GLOSSARY/ADR #19: mục "Pháp nhân" còn mô tả mô hình 2 row; C3.1 chưa được
+> xếp lại; "104 mã" là số DÒNG, đúng là 98 mã) và 8 (`X.*` luôn `book=NULL`, `sql_runner.py:217-227`) vẫn mở;
+> (2) ADR "nhãn sổ sống ở đâu cho bền" — gồm cả đường quay từ nhiều sổ về một sổ (hiện bị từ chối);
+> (3) issue GitHub #4–#15 (WS1/WS2/WS3) đã ship nhưng vẫn OPEN — nên đóng.
+
 > **Trạng thái (2026-07-27 — PUNCH-LIST 6: TEST HỒI QUY NGỮ NGHĨA SỔ + CHẶN GÁN SỔ NỬA VỜI — ĐÃ MERGE PR #27 + DEPLOY, main=prod=`03d5031`):**
 > Chạy `/tdd` cho mục 6 punch-list của audit 004 (thiếu test hồi quy), rồi `/rev` → sửa 2 lỗi → PR #27 merge
 > `03d5031`. **732 test pass** (mốc trước 721 → 730 sau /tdd → 732 sau /rev), ruff sạch (`app tests scripts`).
@@ -372,7 +400,8 @@
 ### Prod ≠ local — ĐỌC KỸ trước khi đụng dữ liệu
 - **DB prod ở server** (`/home/tinsu/audit-hq-mvp-deploy/db-data/audit_hq.sqlite`, ~291 MB,
   truy cập qua `ssh tinsu` + `docker exec audit-hq-mvp`). **CẬP NHẬT 2026-07-25:** prod giờ có
-  **PILOT_002 + PILOT_006 + PILOT_004 (hai sổ, ẩn danh)** = 14.998 finding (xem block đầu file).
+  **PILOT_002 + PILOT_006 + PILOT_004 (hai sổ, ẩn danh)** = **14.989** finding sau khi chạy lại check 004
+  ngày 2026-07-27 (trước đó 14.998 — xem block đầu file).
   Rollback 004-load: `db-data/audit_hq.sqlite.{bak,raw}-pre-004-load-20260725-152615`.
   Backup DN cũ (2026-07-24): `db-data/audit_hq.sqlite.bak-pre-pilot-load-20260724-230046`.
 - **KHÔNG có file nguồn trên prod cho 002/006** (DB-only) → trang Tài liệu/preview/download trống cho 2 DN này.
