@@ -6,6 +6,8 @@ C1.5 (tái xuất M15 vs B13) là W.I.P theo §4.1 — chưa implement.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -133,6 +135,24 @@ def _unit_targets(
     return [(unit, qty, sums_by_item.get(code, 0.0))]
 
 
+def _one_row_per_material(
+    rows: list[NvlBalance],
+    weight: Callable[[NvlBalance], float],
+) -> list[NvlBalance]:
+    """Gộp theo (sổ, mã), giữ dòng có `weight` lớn nhất, trả theo thứ tự (mã, sổ).
+
+    Một mã ghi ở nhiều đơn vị là MỘT vật tư ghi lại, không phải nhiều vật tư — check
+    emit theo dòng (C1.3/C1.6/C1.7) chỉ được ra một finding cho mỗi (sổ, mã).
+    """
+    best: dict[tuple[str | None, str], NvlBalance] = {}
+    for r in rows:
+        key = (r.book, r.material_code)
+        cur = best.get(key)
+        if cur is None or weight(r) > weight(cur):
+            best[key] = r
+    return [best[k] for k in sorted(best, key=lambda k: (k[1], k[0] is None, k[0] or ""))]
+
+
 def _pct_diff(actual: float, expected: float) -> float:
     """Chênh lệch % so với `expected`. Trả 0 khi expected ≈ 0 và actual ≈ 0."""
     if abs(expected) < 1e-9:
@@ -172,7 +192,12 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
             continue  # C1.1 chỉ áp với NVL có khai nhập trong M15
         slices_by_code.setdefault(code, []).append((unit, imported))
 
-    bcct_by_unit = _sum_bcct_by_item_unit(session, company_id, year, import_codes)
+    # Chỉ cần tổng tách theo đơn vị khi có mã ghi ở nhiều hơn một đơn vị.
+    bcct_by_unit = (
+        _sum_bcct_by_item_unit(session, company_id, year, import_codes)
+        if any(len(v) > 1 for v in slices_by_code.values())
+        else {}
+    )
 
     findings: list[Finding] = []
     for code in sorted(slices_by_code):
@@ -298,20 +323,11 @@ def check_c1_3(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
-    # Một mã ghi ở nhiều đơn vị là MỘT vật tư ghi lại, không phải nhiều vật tư:
-    # gộp theo (sổ, mã) và giữ lát có lượng nhập lớn nhất để báo cáo.
-    best: dict[tuple[str | None, str], NvlBalance] = {}
-    for r in m15_with_imports:
-        if r.material_code in bcct_codes:
-            continue
-        key = (r.book, r.material_code)
-        cur = best.get(key)
-        if cur is None or r.import_qty > cur.import_qty:
-            best[key] = r
-
     findings: list[Finding] = []
-    for key in sorted(best, key=lambda k: (k[1], k[0] is None, k[0] or "")):
-        r = best[key]
+    for r in _one_row_per_material(
+        [r for r in m15_with_imports if r.material_code not in bcct_codes],
+        lambda r: r.import_qty,
+    ):
         findings.append(Finding(
             company_id=company_id,
             period_year=year,
@@ -363,7 +379,12 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
             continue
         slices_by_code.setdefault(code, []).append((unit, exported))
 
-    bcct_by_unit = _sum_bcct_by_item_unit(session, company_id, year, export_codes)
+    # Chỉ cần tổng tách theo đơn vị khi có mã ghi ở nhiều hơn một đơn vị.
+    bcct_by_unit = (
+        _sum_bcct_by_item_unit(session, company_id, year, export_codes)
+        if any(len(v) > 1 for v in slices_by_code.values())
+        else {}
+    )
 
     findings: list[Finding] = []
     for code in sorted(slices_by_code):
@@ -427,19 +448,11 @@ def check_c1_6(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
-    # Như C1.3: gộp theo (sổ, mã), giữ lát có lượng chuyển MĐSD lớn nhất.
-    best: dict[tuple[str | None, str], NvlBalance] = {}
-    for r in rows:
-        if r.material_code in a42_codes:
-            continue
-        key = (r.book, r.material_code)
-        cur = best.get(key)
-        if cur is None or r.repurpose_qty > cur.repurpose_qty:
-            best[key] = r
-
     findings: list[Finding] = []
-    for key in sorted(best, key=lambda k: (k[1], k[0] is None, k[0] or "")):
-        r = best[key]
+    for r in _one_row_per_material(
+        [r for r in rows if r.material_code not in a42_codes],
+        lambda r: r.repurpose_qty,
+    ):
         findings.append(Finding(
             company_id=company_id,
             period_year=year,
@@ -469,22 +482,17 @@ def check_c1_7(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
-    # Như C1.3/C1.6: các lát đơn vị của cùng một mã tỉ lệ thuận nên cho cùng tỉ số;
-    # giữ lát có mẫu số (tồn đầu + nhập) lớn nhất.
-    best: dict[tuple[str | None, str], tuple[float, NvlBalance]] = {}
-    for r in rows:
-        denom = (r.opening_qty or 0.0) + (r.import_qty or 0.0)
-        if denom <= 0 or (r.repurpose_qty or 0.0) <= 0:
-            continue
-        key = (r.book, r.material_code)
-        cur = best.get(key)
-        if cur is None or denom > cur[0]:
-            best[key] = (denom, r)
+    # Các lát đơn vị của cùng một mã tỉ lệ thuận nên cho cùng tỉ số; giữ lát có
+    # mẫu số (tồn đầu + nhập) lớn nhất.
+    def _denom(r: NvlBalance) -> float:
+        return (r.opening_qty or 0.0) + (r.import_qty or 0.0)
 
     findings: list[Finding] = []
-    for key in sorted(best, key=lambda k: (k[1], k[0] is None, k[0] or "")):
-        denom, r = best[key]
-        pct = r.repurpose_qty / denom * 100.0
+    for r in _one_row_per_material(
+        [r for r in rows if _denom(r) > 0 and (r.repurpose_qty or 0.0) > 0],
+        _denom,
+    ):
+        pct = r.repurpose_qty / _denom(r) * 100.0
         sev = severity_for("C1.7", pct)
         if sev is None:
             continue

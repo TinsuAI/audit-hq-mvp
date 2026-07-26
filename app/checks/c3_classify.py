@@ -237,17 +237,21 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
         if worst_match == UomMatch.EQUIVALENT:
             continue  # Có đơn vị khớp tờ khai — skip.
 
+        # Mã ghi ở nhiều đơn vị thì nêu cả tập, đừng để tiêu đề chỉ hiện một đơn vị
+        # trong khi bằng chứng trả về nhiều dòng khác đơn vị.
+        m15_label = f"'{m15_unit}'" if len(unit_set) == 1 else str(sorted(unit_set))
+
         if worst_match == UomMatch.SAME_FAMILY:
             severity = Severity.INFO
             title = (
                 f"Đơn vị tính NVL {code} dùng nhiều đơn vị cùng họ "
-                f"(có thể quy đổi): M15='{m15_unit}', BCCT={sorted(bcct_set)}"
+                f"(có thể quy đổi): M15={m15_label}, BCCT={sorted(bcct_set)}"
             )
         else:
             severity = Severity.CRITICAL
             title = (
                 f"Đơn vị tính NVL {code} không nhất quán: "
-                f"M15='{m15_unit}', BCCT={sorted(bcct_set)}"
+                f"M15={m15_label}, BCCT={sorted(bcct_set)}"
             )
 
         findings.append(Finding(
@@ -261,6 +265,7 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
             title=title,
             details={
                 "m15_unit": m15_unit,
+                "m15_units": sorted(unit_set),
                 "bcct_units": sorted(bcct_set),
                 "uom_match": worst_match.value,
             },
