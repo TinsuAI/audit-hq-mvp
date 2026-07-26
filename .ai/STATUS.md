@@ -1,9 +1,12 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-07-27 — PUNCH-LIST 6: TEST HỒI QUY NGỮ NGHĨA SỔ + CHẶN GÁN SỔ NỬA VỜI — nhánh `fix/book-tags-all-or-nothing` CHƯA MERGE):**
-> Chạy `/tdd` cho mục 6 punch-list của audit 004 (thiếu test hồi quy). **730 test pass** (mốc trước 721),
-> ruff sạch. **3 commit trên nhánh `fix/book-tags-all-or-nothing`, tách từ `main` tại `33c078f` — CHƯA push,
-> CHƯA PR, CHƯA deploy.** `main` vẫn `33c078f`, prod vẫn `dd763d4`.
+> **Trạng thái (2026-07-27 — PUNCH-LIST 6: TEST HỒI QUY NGỮ NGHĨA SỔ + CHẶN GÁN SỔ NỬA VỜI — ĐÃ MERGE PR #27 + DEPLOY, main=prod=`03d5031`):**
+> Chạy `/tdd` cho mục 6 punch-list của audit 004 (thiếu test hồi quy), rồi `/rev` → sửa 2 lỗi → PR #27 merge
+> `03d5031`. **732 test pass** (mốc trước 721 → 730 sau /tdd → 732 sau /rev), ruff sạch (`app tests scripts`).
+> **5 commit** (tách từ `main` tại `33c078f`): `61706af` test tầng check · `e219154` fix ingest + test ingest ·
+> `0c0a181` text màn review · `c8ef81a` route trả 303 thay 500 · `5fc2711` sửa lại text màn review.
+> **ĐÃ DEPLOY:** CI run `30214242113` XANH, prod `/healthz` 200 `build_sha=03d5031` (build_time
+> 2026-07-26T18:16:40Z theo đồng hồ server). **KHÔNG có migration** → head prod vẫn `d0e1f2a3b4c5`.
 > **9 test mới, 2 test cũ được siết.** Mọi test kiểm bằng MUTATION (sửa hỏng đúng dòng nó bảo vệ, xác nhận
 > đỏ, hoàn nguyên) — bảng mutant đầy đủ ở session log. Nội dung: C1.2 trừ tập mã M15 của MỌI sổ (bản vá union
 > 99→4); C1.1/C1.2/C1.4/C3.1/C3.2 để `book` trống vì vế đối chiếu là luồng tờ khai toàn pháp nhân; C1.3 chấp
@@ -16,14 +19,25 @@
 > ở pháp nhân nhiều sổ ĐÃ mang nghĩa "liên sổ", nên dòng của file chưa gán rơi vào nhóm liên sổ và
 > C4.1/C4.3/C6.1 gom `None` thành SỔ THỨ BA rồi đối chiếu định mức/tồn kho bên trong sổ không tồn tại đó.
 > Đặt SAU nhánh return sớm "không file nào có nhãn" → đường CLI + 002/006 KHÔNG đổi (2 test cũ vẫn xanh).
-> Text hướng dẫn `document_review.html:95` đã sửa theo (cũ ghi "để trống = 1 sổ", chỉ đúng khi MỌI file để trống).
+> **`/rev` bắt 2 lỗi thực, đã sửa trong PR:**
+> (1) **`IngestPlanError` tới cán bộ dưới dạng HTTP 500 (JSON thô)** ở CẢ BA route gọi `run_ingest`
+> (`upload_data`, `documents_confirm_review`, `documents_ingest_year`) — mà selector sổ là **per-file**, nên
+> gán sổ cho file ĐẦU của kỳ hai file LUÔN đi qua đúng trạng thái bị từ chối: 500 nằm trên đường chính dựng
+> pháp nhân hai sổ. Nay bắt `IngestPlanError` riêng → **303 về trang tài liệu + banner `?error=`**
+> (`company_documents.html:29` render sẵn). Sổ vừa gán đã commit trước đó nên cán bộ gán tiếp file sau; từ
+> chối xảy ra TRƯỚC lệnh xoá nên dòng của lượt nạp trước còn nguyên (kiểm bằng repro chạy endpoint thật).
+> (2) **Text hướng dẫn `document_review.html:95` hứa sai:** "để trống mọi file = 1 sổ" chỉ đúng với kỳ **CHƯA
+> từng nạp theo sổ** — kỳ đã có dòng EPE/GC thì bỏ hết nhãn bị `_books_already_stored` từ chối (guard PR #26),
+> **không có đường quay về một sổ qua UI**, chỉ gán lại nhãn từng file. Text đã nói đúng giới hạn đó.
+> (3) Minor: `test_two_books_tagged_via_browser_show_in_branch_a` không assert status 2 POST confirm → 500 ở
+> lượt đầu lọt CI; nay assert 303. **+2 test route** cho luồng bị từ chối (confirm-review + nạp lại).
 > **ĐỪNG tin lại:** chia BCCT thành 2 file theo sổ **KHÔNG** gán sổ được — `slot="bcct"` ngoài
 > `SETTLEMENT_SLOTS` nên selector không render và handler confirm không đọc `book`; sâu hơn là
 > `declaration_lines` không có cột `book`. Hai file vẫn nạp đủ nhưng bị trộn thành một luồng (`ingest.py:198`).
-> **Next:** (1) `/rev` rồi PR/merge/deploy nhánh này (`CLAUDE.md:44` đặt `/rev` là cổng trước merge — thay đổi
-> có sửa hành vi ingest); (2) punch-list 7 (lệch GLOSSARY/ADR #19) và 8 (`X.*` luôn `book=NULL`,
-> `sql_runner.py:217-227`) vẫn mở; (3) nhãn sổ nên sống ở đâu cho bền — cần ADR; (4) prod vẫn hiện 3 CRITICAL
-> sai của 004 tới khi chạy lại check — **cần owner quyết**.
+> **Next:** (1) punch-list 7 (lệch GLOSSARY/ADR #19) và 8 (`X.*` luôn `book=NULL`, `sql_runner.py:217-227`)
+> vẫn mở; (2) nhãn sổ nên sống ở đâu cho bền — cần ADR, và ADR này giờ phải trả lời cả "đổi từ nhiều sổ về
+> một sổ" (hiện bị từ chối, chỉ sửa được bằng gán lại nhãn); (3) prod vẫn hiện 3 CRITICAL sai của 004 tới khi
+> chạy lại check — **cần owner quyết**.
 > Session log: `.ai/sessions/2026-07-27-punchlist-6-book-tests.md`.
 
 > **Trạng thái (2026-07-26 — AUDIT 004 HAI SỔ → SỬA LỖI TRỤC ĐƠN VỊ + CHẶN MẤT SỔ KHI INGEST — main=`dd763d4`):**
@@ -341,13 +355,12 @@
 ## Current State
 
 ### Git / deploy
-- **ĐANG TREO: nhánh `fix/book-tags-all-or-nothing`** (3 commit từ `33c078f`: `61706af` test tầng check ·
-  `e219154` fix ingest + test ingest · `0c0a181` text màn review). **CHƯA push, CHƯA PR, CHƯA merge, CHƯA
-  deploy.** 730 test pass, ruff sạch. Cần `/rev` trước khi merge.
-- **`main` = `origin/main` = prod = `dd763d4`** (merge PR #25 multi-unit; PR #26 ingest-guard ở `bc9e887`), working
-  tree sạch (trừ `uv.lock` untracked). Merge kích hoạt CI push/main: 2 run `30208834738` + `30208836492` đều XANH,
-  prod `audit-hq-demo.tinsu.ai` `/healthz` 200 `build_sha=dd763d4` (verify 2026-07-26T15:53Z). Migration head
-  KHÔNG đổi (`d0e1f2a3b4c5`) — hai PR này không có migration.
+- **`main` = `origin/main` = prod = `03d5031`** (merge PR #27 `fix/book-tags-all-or-nothing`, nhánh đã xoá trên
+  origin), working tree sạch (trừ `uv.lock` untracked). CI run `30214242113` XANH, prod
+  `audit-hq-demo.tinsu.ai` `/healthz` 200 `build_sha=03d5031`. **732 test pass**, ruff sạch. Migration head
+  KHÔNG đổi (`d0e1f2a3b4c5`) — PR #27 không có migration.
+- Mốc trước: `dd763d4` (PR #25 multi-unit; PR #26 ingest-guard ở `bc9e887`), 2 run `30208834738` +
+  `30208836492` XANH.
 - **DB local ở alembic head `d0e1f2a3b4c5`** (hết drift, sửa 2026-07-26). Backup `bak-pre-schema-fix-20260726`.
 - Migration head prod = **`d0e1f2a3b4c5`** (`data_files.book`; qua `c9d0e1f2a3b4` book settlement/findings) — CI đã `alembic upgrade head`.
 - Prod data = **3 pháp nhân**: PILOT_002, PILOT_006, PILOT_004 (hai sổ EPE/GC, ẩn danh — nạp 2026-07-25, xem block đầu file).
