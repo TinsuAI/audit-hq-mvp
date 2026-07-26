@@ -1,5 +1,31 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-27 — PUNCH-LIST 6: TEST HỒI QUY NGỮ NGHĨA SỔ + CHẶN GÁN SỔ NỬA VỜI — nhánh `fix/book-tags-all-or-nothing` CHƯA MERGE):**
+> Chạy `/tdd` cho mục 6 punch-list của audit 004 (thiếu test hồi quy). **730 test pass** (mốc trước 721),
+> ruff sạch. **3 commit trên nhánh `fix/book-tags-all-or-nothing`, tách từ `main` tại `33c078f` — CHƯA push,
+> CHƯA PR, CHƯA deploy.** `main` vẫn `33c078f`, prod vẫn `dd763d4`.
+> **9 test mới, 2 test cũ được siết.** Mọi test kiểm bằng MUTATION (sửa hỏng đúng dòng nó bảo vệ, xác nhận
+> đỏ, hoàn nguyên) — bảng mutant đầy đủ ở session log. Nội dung: C1.2 trừ tập mã M15 của MỌI sổ (bản vá union
+> 99→4); C1.1/C1.2/C1.4/C3.1/C3.2 để `book` trống vì vế đối chiếu là luồng tờ khai toàn pháp nhân; C1.3 chấp
+> nhận tờ khai KHÔNG nhãn cho dòng M15 CÓ nhãn; ingest dừng khi file đã đăng ký không đọc được sheet; nhãn sổ
+> mất do prune → đăng ký lại + gán lại → hai sổ về nguyên trạng. **Hai test cũ
+> `test_c1_1/c1_4_sums_rows_of_same_code_and_unit` trước đây vô hiệu** (hai dòng đều `book=NULL` nên mutant
+> đổi khoá gộp sang `(sổ,mã,đơn vị)` vẫn pass) — nay gắn EPE/GC, mutant đó làm đỏ 4 test.
+> **MỘT THAY ĐỔI HÀNH VI (owner chốt):** `_plan_settlement_files` (`ingest.py:130-139`) ném `IngestPlanError`
+> khi một số file settlement đã gán sổ còn số khác chưa — **gán sổ là tất-cả-hoặc-không**. Lý do: `book=NULL`
+> ở pháp nhân nhiều sổ ĐÃ mang nghĩa "liên sổ", nên dòng của file chưa gán rơi vào nhóm liên sổ và
+> C4.1/C4.3/C6.1 gom `None` thành SỔ THỨ BA rồi đối chiếu định mức/tồn kho bên trong sổ không tồn tại đó.
+> Đặt SAU nhánh return sớm "không file nào có nhãn" → đường CLI + 002/006 KHÔNG đổi (2 test cũ vẫn xanh).
+> Text hướng dẫn `document_review.html:95` đã sửa theo (cũ ghi "để trống = 1 sổ", chỉ đúng khi MỌI file để trống).
+> **ĐỪNG tin lại:** chia BCCT thành 2 file theo sổ **KHÔNG** gán sổ được — `slot="bcct"` ngoài
+> `SETTLEMENT_SLOTS` nên selector không render và handler confirm không đọc `book`; sâu hơn là
+> `declaration_lines` không có cột `book`. Hai file vẫn nạp đủ nhưng bị trộn thành một luồng (`ingest.py:198`).
+> **Next:** (1) `/rev` rồi PR/merge/deploy nhánh này (`CLAUDE.md:44` đặt `/rev` là cổng trước merge — thay đổi
+> có sửa hành vi ingest); (2) punch-list 7 (lệch GLOSSARY/ADR #19) và 8 (`X.*` luôn `book=NULL`,
+> `sql_runner.py:217-227`) vẫn mở; (3) nhãn sổ nên sống ở đâu cho bền — cần ADR; (4) prod vẫn hiện 3 CRITICAL
+> sai của 004 tới khi chạy lại check — **cần owner quyết**.
+> Session log: `.ai/sessions/2026-07-27-punchlist-6-book-tests.md`.
+
 > **Trạng thái (2026-07-26 — AUDIT 004 HAI SỔ → SỬA LỖI TRỤC ĐƠN VỊ + CHẶN MẤT SỔ KHI INGEST — main=`dd763d4`):**
 > Rà soát read-only tính đúng đắn mô hình hai sổ rồi sửa luôn. **Kết luận: trục `book` ĐÚNG, không check nào sai
 > phạm vi; lỗi thật ở trục ĐƠN VỊ TÍNH.** Hai PR đã merge, **721 test pass trên `main` sau merge**.
@@ -315,6 +341,9 @@
 ## Current State
 
 ### Git / deploy
+- **ĐANG TREO: nhánh `fix/book-tags-all-or-nothing`** (3 commit từ `33c078f`: `61706af` test tầng check ·
+  `e219154` fix ingest + test ingest · `0c0a181` text màn review). **CHƯA push, CHƯA PR, CHƯA merge, CHƯA
+  deploy.** 730 test pass, ruff sạch. Cần `/rev` trước khi merge.
 - **`main` = `origin/main` = prod = `dd763d4`** (merge PR #25 multi-unit; PR #26 ingest-guard ở `bc9e887`), working
   tree sạch (trừ `uv.lock` untracked). Merge kích hoạt CI push/main: 2 run `30208834738` + `30208836492` đều XANH,
   prod `audit-hq-demo.tinsu.ai` `/healthz` 200 `build_sha=dd763d4` (verify 2026-07-26T15:53Z). Migration head
