@@ -136,8 +136,8 @@ def test_batch_generates_every_missing_check(factory, world, monkeypatch):
         result = ov.run_overview_batch_job(
             {"company_code": "DN_B", "year": 2025, "username": "off"}, db
         )
-        assert result["da_tao"] == 3
-        assert result["dung_vi"] is None
+        assert result["created"] == 3
+        assert result["stopped_reason"] is None
         assert len(db.scalars(select(CheckOverview)).all()) == 3
 
 
@@ -152,10 +152,10 @@ def test_batch_stops_on_exhausted_budget_without_failing(factory, world, monkeyp
         result = ov.run_overview_batch_job(
             {"company_code": "DN_B", "year": 2025, "username": "off"}, db
         )
-    assert result["dung_vi"] == "hết ngân sách ngày"
-    assert result["da_tao"] == 2
-    assert result["bo_qua"] == 1
-    assert result["bo_qua_chua_toi_luot"] == 1
+    assert result["stopped_reason"] == "hết ngân sách ngày"
+    assert result["created"] == 2
+    assert result["skipped"] == 1
+    assert result["skipped_not_reached"] == 1
     with factory() as db:
         # Phần đã sinh CÒN NGUYÊN — commit từng kiểm tra.
         assert len(db.scalars(select(CheckOverview)).all()) == 2
@@ -169,7 +169,7 @@ def test_batch_result_reports_counts_and_reason(factory, world, monkeypatch):
         result = ov.run_overview_batch_job(
             {"company_code": "DN_B", "year": 2025, "username": "off"}, db
         )
-    assert set(result) >= {"da_tao", "bo_qua", "loi", "dung_vi"}
+    assert set(result) >= {"created", "skipped", "failed", "stopped_reason"}
     # Kết quả in nguyên ra /jobs/{id} cho mọi cán bộ → không được có tiền.
     flat = str(result).lower()
     assert "cost" not in flat and "token" not in flat
@@ -191,9 +191,9 @@ def test_one_failing_check_does_not_kill_the_batch(factory, world, monkeypatch):
         result = ov.run_overview_batch_job(
             {"company_code": "DN_B", "year": 2025, "username": "off"}, db
         )
-    assert result["da_tao"] == 2
-    assert result["loi"] == 1
-    assert result["checks_loi"] == ["C1.4"]
+    assert result["created"] == 2
+    assert result["failed"] == 1
+    assert result["failed_checks"] == ["C1.4"]
 
 
 def test_batch_counts_checks_already_fresh_as_skipped(factory, world, monkeypatch):
@@ -210,10 +210,10 @@ def test_batch_counts_checks_already_fresh_as_skipped(factory, world, monkeypatc
         result = ov.run_overview_batch_job(
             {"company_code": "DN_B", "year": 2025, "username": "off"}, db
         )
-    assert result["da_tao"] == 2
-    assert result["bo_qua"] == 1
-    assert result["bo_qua_con_moi"] == 1
-    assert result["bo_qua_chua_toi_luot"] == 0
+    assert result["created"] == 2
+    assert result["skipped"] == 1
+    assert result["skipped_fresh"] == 1
+    assert result["skipped_not_reached"] == 0
 
 
 def test_batch_on_company_with_no_findings_is_a_no_op(factory, world, monkeypatch):
@@ -224,8 +224,8 @@ def test_batch_on_company_with_no_findings_is_a_no_op(factory, world, monkeypatc
         result = ov.run_overview_batch_job(
             {"company_code": "DN_B", "year": 2099, "username": "off"}, db
         )
-    assert result["da_tao"] == 0
-    assert result["bo_qua"] == 0
+    assert result["created"] == 0
+    assert result["skipped"] == 0
 
 
 def test_batch_job_kind_goes_to_the_ai_worker(factory, world):

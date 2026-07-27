@@ -434,14 +434,14 @@ def run_overview_batch_job(payload: dict, db: Session) -> dict:
     return {
         "company_code": code,
         "year": year,
-        "da_tao": len(created),
-        "bo_qua": already_fresh + not_reached,
-        "bo_qua_con_moi": already_fresh,
-        "bo_qua_chua_toi_luot": not_reached,
-        "loi": len(failed),
-        "checks_da_tao": created,
-        "checks_loi": failed,
-        "dung_vi": stopped,
+        "created": len(created),
+        "skipped": already_fresh + not_reached,
+        "skipped_fresh": already_fresh,
+        "skipped_not_reached": not_reached,
+        "failed": len(failed),
+        "created_checks": created,
+        "failed_checks": failed,
+        "stopped_reason": stopped,
     }
 
 

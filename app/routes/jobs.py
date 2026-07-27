@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.auth import SessionUser, require_user
 from app.auth_users import get_user_by_username
 from app.database import get_db
+from app.jobs.result_labels import JOB_KIND_LABEL_VI, describe_result
 from app.models.job import Job, JobStatus
 from app.version import VERSION, version_string
 
@@ -35,6 +36,7 @@ JOB_STATUS_LABEL_VI = {
     JobStatus.FAILED.value: "Thất bại",
 }
 templates.env.globals["JOB_STATUS_LABEL"] = JOB_STATUS_LABEL_VI
+templates.env.globals["JOB_KIND_LABEL"] = JOB_KIND_LABEL_VI
 
 
 def _now() -> datetime:
@@ -44,7 +46,10 @@ def _now() -> datetime:
 def _current_user_id(db: Session, user: SessionUser) -> int:
     u = get_user_by_username(db, user.name)
     if u is None:
-        raise HTTPException(status_code=403, detail="Session user không tồn tại trong DB")
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.",
+        )
     return u.id
 
 
@@ -114,9 +119,9 @@ def job_detail(
     user_id = _current_user_id(db, user)
     job = db.get(Job, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy job {job_id}")
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy công việc {job_id}")
     if job.created_by != user_id and not user.is_admin:
-        raise HTTPException(status_code=403, detail="Bạn không có quyền xem job này")
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem công việc này")
 
     # Mark viewed nếu job đã xong và lần đầu xem.
     if job.viewed_at is None and job.status in (JobStatus.DONE.value, JobStatus.FAILED.value):
@@ -129,6 +134,7 @@ def job_detail(
         {
             "user": user,
             "job": job,
+            "result_rows": describe_result(job.result),
             "auto_refresh": job.status in (JobStatus.QUEUED.value, JobStatus.RUNNING.value),
         },
     )

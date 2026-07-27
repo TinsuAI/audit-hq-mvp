@@ -11,7 +11,7 @@
     <h1>Công việc #{{ job.id }}</h1>
     <p class="page-sub">
       <span class="job-status job-status-{{ job.status }}">{{ JOB_STATUS_LABEL[job.status] }}</span>
-      · {{ job.kind }}
+      · {{ JOB_KIND_LABEL.get(job.kind, job.kind) }}
     </p>
   </header>
 
@@ -21,14 +21,20 @@
       {{ job.payload.get("company_code", "—") if job.payload else "—" }}
     </div>
     <div><strong>Năm:</strong> {{ job.period_year or "—" }}</div>
-    <div><strong>Tạo lúc:</strong> {{ job.created_at.strftime("%Y-%m-%d %H:%M:%S") if job.created_at else "—" }}</div>
-    <div><strong>Bắt đầu:</strong> {{ job.started_at.strftime("%Y-%m-%d %H:%M:%S") if job.started_at else "—" }}</div>
-    <div><strong>Hoàn tất:</strong> {{ job.finished_at.strftime("%Y-%m-%d %H:%M:%S") if job.finished_at else "—" }}</div>
+    <div><strong>Tạo lúc:</strong> {{ job.created_at.strftime("%d/%m/%Y %H:%M:%S") if job.created_at else "—" }}</div>
+    <div><strong>Bắt đầu:</strong> {{ job.started_at.strftime("%d/%m/%Y %H:%M:%S") if job.started_at else "—" }}</div>
+    <div><strong>Hoàn tất:</strong> {{ job.finished_at.strftime("%d/%m/%Y %H:%M:%S") if job.finished_at else "—" }}</div>
   </div>
 
   {% if job.status == "done" and job.result %}
   <h3>Kết quả</h3>
-  <pre class="data-mono">{{ job.result | tojson(indent=2) }}</pre>
+  <table class="data-table compact">
+    <tbody>
+    {% for row in result_rows %}
+      <tr><th scope="row">{{ row.label }}</th><td>{{ row.value }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
   {% if job.payload and job.payload.get("company_code") %}
   <p>
     <a href="/companies/{{ job.payload['company_code'] }}?year={{ job.period_year or '' }}" class="btn-link">

@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.pool import StaticPool
 
+from app.ai.overview_stats import build_stats
 from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import CheckOverview, CheckRun, Company, CompanyPeriod, Finding
@@ -348,5 +349,38 @@ def test_company_detail_renders_overview_and_stale_badge(monkeypatch):
         assert "Tổng quan đã cũ" in html  # badge stale
         # Mốc based_on (lần chạy overview dựa vào) phải hiện khi stale — ADR §(4).
         assert "dựa trên lần chạy 01/01/2026 09:00" in html
+    finally:
+        _teardown(new_engine)
+
+
+def test_percentile_field_shows_vietnamese_label_not_raw_key(monkeypatch):
+    """Ô phân vị phải hiện nhãn tiếng Việt, không in khoá `details` thô ra màn hình."""
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_OV"))
+            for i, qty in enumerate((10, 20, 30)):
+                db.add(Finding(
+                    company_id=c.id, period_year=2024, check_code="C1.6",
+                    severity="critical", subject_type="material_code",
+                    subject_key=f"MAT{i}", title="Chuyển MĐSD",
+                    details={"m15_repurpose": qty},
+                ))
+            db.flush()
+            db.add(CheckOverview(
+                company_id=c.id, period_year=2024, check_code="C1.6",
+                content="Nội dung tổng quan mẫu.",
+                based_on_run_at=None, based_on_data_version=0,
+                aggregate_json=build_stats(
+                    db, company_id=c.id, period_year=2024, check_code="C1.6"
+                ),
+            ))
+            db.commit()
+
+        client = TestClient(app)
+        _login(client)
+        html = client.get("/companies/DN_OV?year=2024").text
+        assert "Lượng chuyển mục đích sử dụng" in html
+        assert "m15_repurpose" not in html
     finally:
         _teardown(new_engine)

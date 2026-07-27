@@ -140,7 +140,7 @@ def _resume_or_create_conversation(
     if conv_id:
         conv = db.get(AiConversation, conv_id)
         if conv is None or conv.user != user.name:
-            raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+            raise HTTPException(status_code=404, detail="Cuộc trò chuyện không tồn tại.")
         locked = _conversation_lock(db, conv, user)
         if locked:
             raise HTTPException(status_code=403, detail=locked)
@@ -269,9 +269,9 @@ async def chat(
     db: Session = Depends(get_db),
 ) -> dict:
     if not get_setting("enabled"):
-        raise HTTPException(status_code=503, detail="AI assistant đang tắt. Bật trong /admin/ai.")
+        raise HTTPException(status_code=503, detail="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
-        raise HTTPException(status_code=503, detail="Chưa cấu hình API key. Cấu hình ở /admin/ai.")
+        raise HTTPException(status_code=503, detail="Chưa cấu hình mã API. Vào /admin/ai để thiết lập.")
     check_rate_limit(user.name, db)
     check_daily_budget(db)
 
@@ -281,7 +281,7 @@ async def chat(
     try:
         body = await request.json()
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Dữ liệu gửi lên không phải JSON hợp lệ: {e}") from e
 
     user_message: str = (body.get("message") or "").strip()
     conv_id: int | None = body.get("conversation_id")
@@ -293,7 +293,7 @@ async def chat(
         page_context = {**page_context, "mentions": mentions}
 
     if not user_message:
-        raise HTTPException(status_code=400, detail="Message không được trống.")
+        raise HTTPException(status_code=400, detail="Nội dung tin nhắn không được trống.")
 
     # Resume hay tạo mới conversation
     conv = _resume_or_create_conversation(
@@ -347,7 +347,7 @@ async def chat(
             log.warning("LLM API status error: %s", e)
             raise HTTPException(
                 status_code=502,
-                detail=f"Provider lỗi {e.status_code}: {str(e)[:200]}",
+                detail=f"Nhà cung cấp AI báo lỗi {e.status_code}: {str(e)[:200]}",
             ) from e
         except APIError as e:
             log.warning("LLM API error: %s", e)
@@ -435,7 +435,7 @@ async def chat(
         # Exceeded tool_call_cap without a stop — model is looping.
         raise HTTPException(
             status_code=500,
-            detail=f"Model vượt {tool_call_cap} vòng tool call mà chưa trả lời.",
+            detail=f"Mô hình vượt {tool_call_cap} vòng gọi công cụ mà chưa trả lời.",
         )
 
     return {
@@ -549,7 +549,7 @@ def list_conversations(
         try:
             stmt = stmt.where(AiConversation.company_id == int(company_id))
         except ValueError as e:
-            raise HTTPException(status_code=400, detail="company_id không hợp lệ.") from e
+            raise HTTPException(status_code=400, detail="Mã doanh nghiệp không hợp lệ.") from e
     if q.strip():
         stmt = stmt.where(_search_clause(q.strip()))
 
@@ -645,12 +645,12 @@ async def update_conversation_company(
     """
     conv = db.get(AiConversation, conv_id)
     if conv is None or (conv.user != user.name and not user.is_admin):
-        raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+        raise HTTPException(status_code=404, detail="Cuộc trò chuyện không tồn tại.")
 
     try:
         body = await request.json()
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Dữ liệu gửi lên không phải JSON hợp lệ: {e}") from e
 
     code = body.get("company_code")
     if code in (None, ""):
@@ -679,7 +679,7 @@ def get_conversation_messages(
     """Resume — render full transcript của 1 conversation. Admin đọc được của mọi user."""
     conv = db.get(AiConversation, conv_id)
     if conv is None or (conv.user != user.name and not user.is_admin):
-        raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+        raise HTTPException(status_code=404, detail="Cuộc trò chuyện không tồn tại.")
     msgs = db.scalars(
         select(AiMessage)
         .where(AiMessage.conversation_id == conv.id)
@@ -724,7 +724,7 @@ def delete_conversation(
 ) -> dict:
     conv = db.get(AiConversation, conv_id)
     if conv is None or conv.user != user.name:
-        raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+        raise HTTPException(status_code=404, detail="Cuộc trò chuyện không tồn tại.")
     db.delete(conv)  # cascade xoá messages
     db.commit()
     return {"deleted": conv_id}
@@ -915,18 +915,21 @@ async def chat_run_checks(
     try:
         body = await request.json()
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Dữ liệu gửi lên không phải JSON hợp lệ: {e}") from e
 
     company_code = (body.get("company_code") or "").strip()
     year = body.get("year")
     if not company_code:
-        raise HTTPException(status_code=400, detail="Thiếu company_code.")
+        raise HTTPException(status_code=400, detail="Thiếu mã doanh nghiệp.")
 
     company = get_company_or_404(db, company_code, user)
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        raise HTTPException(status_code=403, detail="Session user không tồn tại.")
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.",
+        )
 
     if year is None:
         job = enqueue_job(
@@ -992,9 +995,9 @@ async def chat_stream(
       error       {"detail": str}
     """
     if not get_setting("enabled"):
-        raise HTTPException(status_code=503, detail="AI assistant đang tắt.")
+        raise HTTPException(status_code=503, detail="Trợ lý AI đang tắt.")
     if not get_setting("api_key"):
-        raise HTTPException(status_code=503, detail="Chưa cấu hình API key.")
+        raise HTTPException(status_code=503, detail="Chưa cấu hình mã API.")
 
     # Ranh giới phân quyền DN cho tool (officer: chỉ DN được phân công; admin: None).
     allowed_codes = allowed_company_codes(db, user)
@@ -1002,7 +1005,7 @@ async def chat_stream(
     try:
         body = await request.json()
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Dữ liệu gửi lên không phải JSON hợp lệ: {e}") from e
     user_message: str = (body.get("message") or "").strip()
     conv_id: int | None = body.get("conversation_id")
     page_context: dict = body.get("page_context") or {}
@@ -1013,7 +1016,7 @@ async def chat_stream(
         page_context = {**page_context, "mentions": mentions}
 
     if not user_message:
-        raise HTTPException(status_code=400, detail="Message không được trống.")
+        raise HTTPException(status_code=400, detail="Nội dung tin nhắn không được trống.")
 
     conv = _resume_or_create_conversation(
         db, user, conv_id,
@@ -1199,10 +1202,10 @@ async def chat_stream(
                     },
                 })
                 return
-            yield _sse("error", {"detail": f"Vượt {tool_call_cap} vòng tool call."})
+            yield _sse("error", {"detail": f"Vượt {tool_call_cap} vòng gọi công cụ."})
         except APIStatusError as e:
             log.warning("LLM API status error: %s", e)
-            yield _sse("error", {"detail": f"Provider lỗi {e.status_code}: {str(e)[:200]}"})
+            yield _sse("error", {"detail": f"Nhà cung cấp AI báo lỗi {e.status_code}: {str(e)[:200]}"})
         except APIError as e:
             log.warning("LLM API error: %s", e)
             yield _sse("error", {"detail": f"Lỗi LLM: {e}"})

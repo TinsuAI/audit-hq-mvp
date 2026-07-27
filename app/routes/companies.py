@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled
 from app.audit import (
     ACTION_DOWNLOAD,
@@ -78,6 +79,7 @@ templates.env.globals["SPECS"] = {code: spec for code, spec in SPECS.items()}
 templates.env.globals["COMBO_SPECS"] = COMBO_SPECS
 templates.env.globals["tier_css_for"] = tier_css_for
 templates.env.globals["tier_for"] = tier_for
+templates.env.globals["PERCENTILE_LABEL"] = PERCENTILE_LABEL_VI
 # Nhãn sổ quyết toán (book) — dùng ở company_detail (split line) + finding_detail (field).
 templates.env.globals["book_label"] = book_label
 
@@ -574,7 +576,7 @@ def upload_data(
     try:
         analyze_stats = run_ingest(company.code, year, raw_root=raw_path, dry_run=True)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=400, detail=f"Discover lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Lỗi khi dò cấu trúc file: {e}") from e
     except Exception as e:  # noqa: BLE001 — show parser errors back to user
         raise HTTPException(status_code=500, detail=f"Phân tích file lỗi: {type(e).__name__}: {e}") from e
     record_parse_result(db, company, year, analyze_stats, diagnosis, committed=False)
@@ -627,7 +629,7 @@ def diagnose_ai(
     from app.ai.limits import check_daily_budget, check_rate_limit
 
     if not (get_setting("enabled") and get_setting("api_key")):
-        raise HTTPException(status_code=503, detail="AI assistant đang tắt. Bật trong /admin/ai.")
+        raise HTTPException(status_code=503, detail="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     check_rate_limit(user.name, db)
     check_daily_budget(db)
 
@@ -1180,7 +1182,7 @@ async def documents_confirm_review(
 
     if not form_signature or not base_map:
         return _redirect(
-            "error=" + quote_plus("File này không có thông tin map cột để xác nhận.")
+            "error=" + quote_plus("File này không có thông tin bố cục cột để xác nhận.")
         )
 
     # Map đầy đủ = cột officer sửa (field `needs_review`) chồng lên map đề xuất. Ô thiếu /
@@ -1234,7 +1236,7 @@ async def documents_confirm_review(
             IngestStats(company_code=company.code, period_year=year), diagnosis,
         )
         return _redirect(
-            "error=" + quote_plus("Đã lưu map nhưng nạp lỗi — xem chi tiết ở trang tải lên.")
+            "error=" + quote_plus("Đã lưu bố cục cột nhưng nạp lỗi — xem chi tiết ở trang tải lên.")
         )
     try:
         stats = run_ingest(company.code, year, raw_root=raw_root)
@@ -1298,7 +1300,7 @@ async def documents_confirm_review(
         run_checks(company.code, year, only=None if run_full else affected)
 
     return _redirect(
-        "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} & nạp dữ liệu")
+        "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} và nạp dữ liệu")
     )
 
 
@@ -1423,7 +1425,10 @@ def rerun_checks(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        raise HTTPException(status_code=403, detail="Session user không tồn tại")
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.",
+        )
 
     only = [c for c in check if c]
     if year is None:
@@ -1491,9 +1496,9 @@ def generate_overview(
         )
 
     if not get_setting("enabled"):
-        return _back(error="AI assistant đang tắt. Bật trong /admin/ai.")
+        return _back(error="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
-        return _back(error="Chưa cấu hình API key AI. Cấu hình ở /admin/ai.")
+        return _back(error="Chưa cấu hình mã API cho AI. Vào /admin/ai để thiết lập.")
     # Trần ngày chặn TRƯỚC khi xếp hàng. Giới hạn tin nhắn/giờ KHÔNG áp: nó là
     # guard của trợ lý chat, một lượt sinh tổng quan không được khoá trợ lý của
     # cán bộ một tiếng (ADR #21 mục 11).
@@ -1504,7 +1509,7 @@ def generate_overview(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        return _back(error="Session user không tồn tại.")
+        return _back(error="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.")
 
     try:
         job_id, existing = start_overview_job(
@@ -1553,9 +1558,9 @@ def generate_overview_batch(
         )
 
     if not get_setting("enabled"):
-        return _back(error="AI assistant đang tắt. Bật trong /admin/ai.")
+        return _back(error="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
-        return _back(error="Chưa cấu hình API key AI. Cấu hình ở /admin/ai.")
+        return _back(error="Chưa cấu hình mã API cho AI. Vào /admin/ai để thiết lập.")
     try:
         check_daily_budget(db)
     except HTTPException as e:
@@ -1567,7 +1572,7 @@ def generate_overview_batch(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        return _back(error="Session user không tồn tại.")
+        return _back(error="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.")
 
     job = enqueue_job(
         db, kind=JobKind.AI_OVERVIEW_BATCH,

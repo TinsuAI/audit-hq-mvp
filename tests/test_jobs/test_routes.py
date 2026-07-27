@@ -178,6 +178,40 @@ def test_get_job_detail_shows_status_and_marks_viewed():
         _teardown(new_engine)
 
 
+def test_job_detail_renders_labels_not_raw_json():
+    """Trang công việc hiện nhãn tiếng Việt; khoá `result` và `kind` không lọt ra thô."""
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as s:
+            admin = s.query(User).filter_by(username="admin").one()
+            j = Job(
+                kind=JobKind.RUN_CHECKS.value, payload={"company_code": "X", "year": 2024},
+                created_by=admin.id, status=JobStatus.DONE.value,
+                result={
+                    "total_findings": 5,
+                    "findings_per_check": {"C1.1": 3, "C1.3": 2},
+                    "combos_fired": [],
+                    "risk_score": 30,
+                },
+            )
+            s.add(j)
+            s.commit()
+            job_id = j.id
+
+        client = TestClient(app)
+        _login_admin(client)
+        html = client.get(f"/jobs/{job_id}").text
+        assert "Tổng số phát hiện" in html
+        assert "Phát hiện theo kiểm tra" in html
+        assert "C1.1: 3 · C1.3: 2" in html
+        assert "Chạy kiểm tra" in html  # nhãn của kind
+        for raw in ("total_findings", "findings_per_check", "combos_fired",
+                    "risk_score", "run_checks"):
+            assert raw not in html, f"khoá thô {raw} lọt ra giao diện"
+    finally:
+        _teardown(new_engine)
+
+
 def test_unread_badge_counts_done_jobs_not_viewed():
     new_engine, new_session = _setup_db()
     try:

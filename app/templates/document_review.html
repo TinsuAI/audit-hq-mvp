@@ -38,7 +38,7 @@
 
 <div class="page-header">
   <div class="page-title-group">
-    <h1 style="word-break:break-all">Xác nhận map cột</h1>
+    <h1 style="word-break:break-all">Xác nhận vị trí cột</h1>
     <p class="page-subtitle">
       {{ slot_label }} · Năm {{ file.period_year }} · {{ file.original_filename }}
     </p>
@@ -54,7 +54,7 @@
 </div>
 
 {% if not can_confirm %}
-<div class="card"><p class="text-muted">File này chưa có map cột để xác nhận (chưa phân tích, hoặc không phát hiện cột nào cần xác nhận).</p></div>
+<div class="card"><p class="text-muted">File này chưa có vị trí cột để xác nhận (chưa phân tích, hoặc không phát hiện cột nào cần xác nhận).</p></div>
 {% else %}
 
 {% if preview and preview.rows and not preview.error %}
@@ -109,7 +109,7 @@
           <th>Nguồn bằng chứng</th>
           <th>Trạng thái</th>
           <th>Kiểm tra đọc cột</th>
-          <th>Chỉ số cột (0-index)</th>
+          <th>Chỉ số cột (đếm từ 0)</th>
         </tr>
       </thead>
       <tbody>
@@ -143,7 +143,7 @@
     <a href="/companies/{{ company.slug or company.code }}/documents" class="btn btn-secondary">Huỷ</a>
   </div>
   <p class="form-hint" style="margin-top:var(--space-3)">
-    Xác nhận lưu map cho doanh nghiệp này theo cấu trúc biểu — lần sau gặp cùng bố cục (kể cả năm khác) sẽ không phải xác nhận lại.
+    Xác nhận lưu vị trí cột cho doanh nghiệp này theo cấu trúc biểu — lần sau gặp cùng bố cục (kể cả năm khác) sẽ không phải xác nhận lại.
   </p>
 </form>
 

@@ -101,9 +101,9 @@
       if (kind === 'finding') {
         const single = val.trim();
         if (/^\d+$/.test(single)) {
-          return `<a href="/findings/${single}" class="cite" title="Mở finding">📎 finding ${single}</a>`;
+          return `<a href="/findings/${single}" class="cite" title="Mở phát hiện">📎 phát hiện ${single}</a>`;
         }
-        return `<span class="cite" title="Nhiều phát hiện">📎 finding ${safeVal}</span>`;
+        return `<span class="cite" title="Nhiều phát hiện">📎 phát hiện ${safeVal}</span>`;
       }
       if (kind === 'check') {
         return `<span class="cite" title="Mã kiểm tra">${kind}:${safeVal}</span>`;

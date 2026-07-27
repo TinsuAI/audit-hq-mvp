@@ -173,3 +173,40 @@ def test_every_registered_column_has_known_field():
         for slot, _field, how in uses:
             assert slot in ("m15", "m15a", "m16")
             assert how in ("individual", "sum")
+
+
+def test_every_evidence_source_and_field_has_a_vietnamese_label():
+    """Badge truy nguồn không được rơi về định danh thô (`position-only`, `norm_qty`).
+
+    `_evidence_columns` tra nhãn bằng `.get(key, key)`; test này chốt nhánh fallback
+    không bao giờ chạy với dữ liệu thật.
+    """
+    from app.adapters.evidence import (
+        _RANK,
+        FIELD_LABEL_VI,
+        REVIEW_LABEL_VI,
+        SOURCE_LABEL_VI,
+    )
+    from app.pipeline.data_files import _EVIDENCE_ORDER
+
+    assert set(_RANK) == set(SOURCE_LABEL_VI)
+    assert {VERIFIED, NEEDS_REVIEW} == set(REVIEW_LABEL_VI)
+    for slot, fields in _EVIDENCE_ORDER.items():
+        missing = set(fields) - set(FIELD_LABEL_VI)
+        assert not missing, f"slot {slot} thiếu nhãn cho: {missing}"
+
+
+def test_evidence_columns_label_every_field_under_every_source():
+    """Mọi (cột, nguồn) parser sinh ra đều có nhãn tiếng Việt ở cả hai phía."""
+    from app.adapters.evidence import _RANK
+    from app.pipeline.data_files import _EVIDENCE_ORDER, _evidence_columns
+
+    for slot, fields in _EVIDENCE_ORDER.items():
+        for source in _RANK:
+            cols = _evidence_columns(slot, dict.fromkeys(fields, source))
+            assert len(cols) == len(fields)
+            for c in cols:
+                assert c["label"] != c["field"], f"{slot}.{c['field']} còn tên trường thô"
+                assert c["evidence_label"] != c["evidence"], (
+                    f"{slot}.{c['field']} còn nguồn thô {c['evidence']}"
+                )

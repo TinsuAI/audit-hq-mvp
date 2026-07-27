@@ -151,7 +151,7 @@ def checks_draft(
         )
 
     if not (get_setting("enabled") and get_setting("api_key")):
-        return _new_with_error("AI assistant đang tắt hoặc chưa cấu hình. Bật trong /admin/ai.", 503)
+        return _new_with_error("Trợ lý AI đang tắt hoặc chưa cấu hình. Bật trong /admin/ai.", 503)
 
     company = db.scalar(select(Company).where(Company.code == ref_company))
     if company is None:
@@ -207,7 +207,7 @@ def checks_create(
         subject_table=subject_table, scope=scope,
     )
     if err:
-        raise HTTPException(status_code=400, detail=f"Check không hợp lệ: {err}")
+        raise HTTPException(status_code=400, detail=f"Định nghĩa kiểm tra không hợp lệ: {err}")
 
     def _loads(raw: str, default):
         try:
@@ -253,7 +253,7 @@ def checks_detail(
 ) -> HTMLResponse:
     cd = db.get(CheckDefinition, check_id)
     if cd is None:
-        raise HTTPException(status_code=404, detail="Check không tồn tại")
+        raise HTTPException(status_code=404, detail="Không tìm thấy bài kiểm tra")
     companies = db.scalars(select(Company).order_by(Company.code)).all()
     return templates.TemplateResponse(
         request, "admin_checks_detail.html",
@@ -276,7 +276,7 @@ def checks_preview(
     """Chạy thử check trên (DN, năm) — không ghi findings."""
     cd = db.get(CheckDefinition, check_id)
     if cd is None:
-        raise HTTPException(status_code=404, detail="Check không tồn tại")
+        raise HTTPException(status_code=404, detail="Không tìm thấy bài kiểm tra")
     company = db.scalar(select(Company).where(Company.code == (payload.get("company_code") or "").strip()))
     if company is None:
         return JSONResponse({"findings": None, "count": 0, "error": "Không tìm thấy DN"})
@@ -307,7 +307,7 @@ def checks_publish(
 ) -> RedirectResponse:
     cd = db.get(CheckDefinition, check_id)
     if cd is None:
-        raise HTTPException(status_code=404, detail="Check không tồn tại")
+        raise HTTPException(status_code=404, detail="Không tìm thấy bài kiểm tra")
     cd.status = CheckStatus.PUBLISHED
     db.commit()
     return RedirectResponse(url=f"/admin/checks/{check_id}", status_code=303)
@@ -321,7 +321,7 @@ def checks_disable(
 ) -> RedirectResponse:
     cd = db.get(CheckDefinition, check_id)
     if cd is None:
-        raise HTTPException(status_code=404, detail="Check không tồn tại")
+        raise HTTPException(status_code=404, detail="Không tìm thấy bài kiểm tra")
     cd.status = CheckStatus.DISABLED
     db.commit()
     return RedirectResponse(url=f"/admin/checks/{check_id}", status_code=303)
@@ -335,7 +335,7 @@ def checks_revert_draft(
 ) -> RedirectResponse:
     cd = db.get(CheckDefinition, check_id)
     if cd is None:
-        raise HTTPException(status_code=404, detail="Check không tồn tại")
+        raise HTTPException(status_code=404, detail="Không tìm thấy bài kiểm tra")
     cd.status = CheckStatus.DRAFT
     db.commit()
     return RedirectResponse(url=f"/admin/checks/{check_id}", status_code=303)

@@ -120,9 +120,9 @@ def _plan_settlement_files(
         prior = _books_already_stored(session, company_id, year)
         if prior:
             raise IngestPlanError(
-                f"DN đang có sổ {sorted(prior)} trong kỳ {year} nhưng data_files không "
-                f"còn tag book nào — nạp tiếp sẽ gộp tất cả thành một sổ. Chạy lại "
-                f"sync/đăng ký file và gán book cho từng file settlement rồi nạp lại."
+                f"DN đang có sổ {', '.join(sorted(prior))} trong kỳ {year} nhưng không "
+                f"file nào còn nhãn sổ — nạp tiếp sẽ gộp tất cả thành một sổ. Hãy đồng "
+                f"bộ lại danh sách file rồi gán nhãn sổ cho từng file quyết toán và nạp lại."
             )
         # Single-book / CLI: file discover đã parse sẵn, book=NULL (hành vi cũ).
         return {slot: ([(obj, None)] if obj else []) for slot, obj in discovered_parsed.items()}
@@ -133,9 +133,9 @@ def _plan_settlement_files(
     untagged = [f"{r.slot}: {r.stored_path}" for r in rows if not r.book]
     if untagged:
         raise IngestPlanError(
-            "Một số file settlement đã gán sổ, số khác chưa: "
+            "Một số file quyết toán đã gán sổ, số khác chưa: "
             + "; ".join(sorted(untagged))
-            + ". Gán sổ cho MỌI file settlement của kỳ rồi nạp lại."
+            + ". Gán sổ cho MỌI file quyết toán của kỳ rồi nạp lại."
         )
 
     plan: dict[str, list[tuple]] = {"m15": [], "m15a": [], "m16": []}
@@ -152,14 +152,14 @@ def _plan_settlement_files(
         except SheetNotFound:
             # File không phục vụ slot đã đăng ký (sync phân loại nhầm). Không nuốt lỗi
             # khác (bug parser phải nổ ra).
-            unusable.append(f"{label} (không đọc được sheet)")
+            unusable.append(f"{label} (không đọc được trang tính)")
             continue
         plan[r.slot].append((parsed, r.book))
 
     if unusable:
         # Bỏ qua file ở đây = xoá sổ đó khỏi DB rồi không nạp lại, không báo gì.
         raise IngestPlanError(
-            "Không dùng được file settlement đã đăng ký: " + "; ".join(unusable)
+            "Không dùng được file quyết toán đã đăng ký: " + "; ".join(unusable)
         )
     return plan
 
