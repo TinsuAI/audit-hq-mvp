@@ -200,6 +200,8 @@ def generate_check_overview(
     ov.generated_at = generated_at
     ov.based_on_run_at = based_on_run_at
     ov.based_on_data_version = based_on_data_version
+    ov.status = CheckOverview.STATUS_DONE
+    ov.error = None
     ov.model = used_model
     ov.tokens_in = tokens_in
     ov.tokens_out = tokens_out
@@ -221,6 +223,100 @@ def generate_check_overview(
     db.commit()
     db.refresh(ov)
     return ov
+
+
+def start_overview_job(
+    db: Session, *, company: Company, period_year: int, check_code: str, created_by: int,
+    username: str | None = None,
+) -> tuple[int, bool]:
+    """Xếp hàng sinh tổng quan. Trả `(job_id, đã_có_sẵn)` (ADR #21 mục 5-6).
+
+    Bấm lại khi job cũ còn `queued`/`running` → TRẢ JOB CŨ, không tạo job thứ
+    hai: hai lần bấm liên tiếp là một thao tác của cán bộ, không phải hai lời
+    gọi tính tiền.
+    """
+    from app.jobs import enqueue_job
+    from app.models.job import Job, JobKind, JobStatus
+
+    ov = db.scalar(
+        select(CheckOverview).where(
+            CheckOverview.company_id == company.id,
+            CheckOverview.period_year == period_year,
+            CheckOverview.check_code == check_code,
+        )
+    )
+    if ov is not None and ov.job_id is not None and ov.status == CheckOverview.STATUS_RUNNING:
+        running = db.get(Job, ov.job_id)
+        if running is not None and running.status in (
+            JobStatus.QUEUED.value, JobStatus.RUNNING.value
+        ):
+            return running.id, True
+
+    job = enqueue_job(
+        db,
+        kind=JobKind.AI_OVERVIEW,
+        payload={
+            "company_code": company.code,
+            "year": period_year,
+            "check_code": check_code,
+            "username": username,
+        },
+        created_by=created_by,
+        company_id=company.id,
+        period_year=period_year,
+    )
+    # Dòng tổng quan tồn tại NGAY: bảng số liệu hiện được liền, chỗ nhận định
+    # hiện "đang viết" thay vì trang trống cho tới khi job xong.
+    if ov is None:
+        ov = CheckOverview(
+            company_id=company.id, period_year=period_year, check_code=check_code,
+            content="", based_on_data_version=0,
+        )
+        db.add(ov)
+    ov.status = CheckOverview.STATUS_RUNNING
+    ov.job_id = job.id
+    ov.error = None
+    db.commit()
+    return job.id, False
+
+
+def run_overview_job(payload: dict, db: Session) -> dict:
+    """Handler job `ai_overview`. KHÔNG trả chi phí/token — `/jobs/{id}` in nguyên
+    `result` ra màn hình cho mọi cán bộ, tiền chỉ vào sổ + telemetry dòng tổng quan.
+    """
+    code = payload["company_code"]
+    year = int(payload["year"])
+    check_code = payload["check_code"]
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise ValueError(f"Không tìm thấy doanh nghiệp {code}")
+
+    try:
+        ov = generate_check_overview(
+            db, company=company, period_year=year, check_code=check_code,
+            created_by=payload.get("username"),
+        )
+    except Exception as e:
+        db.rollback()
+        row = db.scalar(
+            select(CheckOverview).where(
+                CheckOverview.company_id == company.id,
+                CheckOverview.period_year == year,
+                CheckOverview.check_code == check_code,
+            )
+        )
+        if row is not None:
+            row.status = CheckOverview.STATUS_FAILED
+            row.error = f"{type(e).__name__}: {str(e)[:500]}"
+            db.commit()
+        raise
+
+    return {
+        "company_code": code,
+        "year": year,
+        "check_code": check_code,
+        "chars": len(ov.content or ""),
+    }
 
 
 def load_overviews_with_staleness(

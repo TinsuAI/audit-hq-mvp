@@ -310,7 +310,22 @@
             {% endif %}
           </span>
         </div>
+        {% if ov.status == 'running' %}
+        {# Sinh chạy nền: chỗ nhận định hiện trạng thái + link job, tự thay bằng
+           nội dung khi job xong (poller ở overview-poll.js). #}
+        <p class="text-muted ov-pending" style="margin:0;font-size:var(--fs-sm)"
+           data-ov-check="{{ code }}" data-ov-job="{{ ov.job_id }}">
+          ⏳ Đang viết nhận định…
+          {% if ov.job_id %}(<a href="/jobs/{{ ov.job_id }}">công việc #{{ ov.job_id }}</a>){% endif %}
+        </p>
+        {% elif ov.status == 'failed' %}
+        <p class="text-danger" style="margin:0;font-size:var(--fs-sm)">
+          ❌ Không viết được nhận định: {{ ov.error }}
+          {% if ov.job_id %}— <a href="/jobs/{{ ov.job_id }}">xem công việc #{{ ov.job_id }}</a>{% endif %}
+        </p>
+        {% else %}
         <p class="{% if ov_entry.stale %}text-muted{% endif %}" style="margin:0;white-space:pre-wrap;font-size:var(--fs-sm)">{{ ov.content }}</p>
+        {% endif %}
       </div>
       {% endif %}
       {% endif %}
@@ -519,5 +534,12 @@
     <a href="/tai-lieu/scoring-methodology">Xem cách tính điểm →</a>
   </p>
 </aside>
+
+{% if selected_year %}
+<div id="company-detail-root" hidden
+     data-year="{{ selected_year }}"
+     data-overview-url="/companies/{{ company.slug or company.code }}/overview.json"></div>
+<script src="/static/overview-poll.js?v={{ app_version_string | urlencode }}" defer></script>
+{% endif %}
 
 {% endblock %}

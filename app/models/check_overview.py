@@ -48,6 +48,18 @@ class CheckOverview(Base):
         Integer, nullable=False, default=0,
     )
 
+    # Trạng thái sinh (ADR #21 mục 6): dòng tồn tại NGAY khi cán bộ bấm, mang
+    # `running` + job đang chạy, rồi thành `done` hoặc `failed` kèm lỗi.
+    STATUS_RUNNING = "running"
+    STATUS_DONE = "done"
+    STATUS_FAILED = "failed"
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default=STATUS_DONE)
+    job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Telemetry — gương AiMessage (models/ai.py). Overview là gọi LLM tính tiền.
     model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
