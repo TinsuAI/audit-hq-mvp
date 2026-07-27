@@ -23,7 +23,7 @@
     <ul class="docs-list">
       {% for entry in section.entries %}
       <li class="docs-list-item">
-        <a href="/tai-lieu/{{ entry.slug }}" class="docs-card">
+        <a href="{{ entry.href }}" class="docs-card">
           <h3 class="docs-card-title">{{ entry.title }}</h3>
           <p class="docs-card-desc">{{ entry.description }}</p>
           <span class="docs-card-link">Xem chi tiết →</span>
