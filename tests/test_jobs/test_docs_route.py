@@ -115,6 +115,33 @@ def test_legal_doc_renders():
         _teardown(new_engine)
 
 
+def test_guide_slug_redirects_to_standalone_manual():
+    """Cẩm nang là trang HTML riêng dưới /static — slug cũ phải redirect, không 500."""
+    new_engine, _ = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/tai-lieu/huong-dan-su-dung", follow_redirects=False)
+        assert r.status_code == 307
+        assert r.headers["location"] == "/static/docs/huong-dan/index.html"
+    finally:
+        _teardown(new_engine)
+
+
+def test_docs_index_links_guide_to_standalone_manual():
+    new_engine, _ = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/tai-lieu")
+        assert r.status_code == 200
+        assert "/static/docs/huong-dan/index.html" in r.text
+        # Các tài liệu .md khác vẫn đi qua route render markdown.
+        assert "/tai-lieu/scoring-methodology" in r.text
+    finally:
+        _teardown(new_engine)
+
+
 def test_navbar_has_docs_link():
     new_engine, _ = _setup_db()
     try:

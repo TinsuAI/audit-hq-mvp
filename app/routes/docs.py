@@ -1,7 +1,8 @@
-"""Routes hiển thị tài liệu .md từ thư mục docs/.
+"""Routes thư viện tài liệu.
 
-Single source of truth: file .md trong repo. Markdown render bằng `python-markdown`
-với extensions `tables` + `fenced_code` cho bảng và code block.
+Văn bản pháp lý + phương pháp luận: file .md trong `docs/`, render bằng
+`python-markdown`. Cẩm nang hướng dẫn sử dụng là NGOẠI LỆ — trang HTML tự chứa dưới
+`/static` (xem GUIDE_URL), slug cũ trả redirect để link đã phát ra ngoài vẫn chạy.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import markdown
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import SessionUser, require_user
@@ -26,15 +27,22 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals["app_version"] = VERSION
 templates.env.globals["app_version_string"] = version_string()
 
+# Cẩm nang hướng dẫn KHÔNG phải file .md: là trang HTML tự chứa (mục lục bên trái,
+# ô tìm kiếm, ảnh chụp có khung đỏ + số thứ tự khớp từng bước) ở
+# `app/static/docs/huong-dan/`. Thư mục đó copy sang host tĩnh khác chạy được nguyên vẹn.
+GUIDE_SLUG = "huong-dan-su-dung"
+GUIDE_URL = "/static/docs/huong-dan/index.html"
+
 # Mỗi entry: slug → (file, title, description, category).
 # category: "guide" (hướng dẫn) | "methodology" (phương pháp luận) | "legal" (văn bản pháp lý).
 # Whitelist — chỉ slug ở đây mới được render. Thêm tài liệu mới: thêm 1 entry.
 PUBLIC_DOCS: dict[str, tuple[str, str, str, str]] = {
-    "huong-dan-su-dung": (
-        "huong-dan-su-dung.md",
-        "Hướng dẫn sử dụng hệ thống",
-        "Hướng dẫn từng bước cho cán bộ và quản trị viên: đăng nhập, nạp dữ liệu, "
-        "chạy kiểm tra, đọc điểm và phát hiện, xử lý truy nguồn, xuất kiến nghị.",
+    GUIDE_SLUG: (
+        "",  # trang HTML riêng, không render markdown
+        "Cẩm nang sử dụng Audit-HQ",
+        "Hướng dẫn từng bước cho cán bộ và quản trị viên, mỗi thao tác kèm ảnh chụp "
+        "có đánh số đúng chỗ cần bấm: đăng nhập, nạp dữ liệu, chạy kiểm tra, đọc điểm "
+        "và phát hiện, xử lý truy nguồn, xuất kiến nghị.",
         "guide",
     ),
     "scoring-methodology": (
@@ -101,7 +109,12 @@ def docs_index(
     by_category: dict[str, list[dict]] = {cat: [] for cat in CATEGORY_ORDER}
     for slug, (_filename, title, description, category) in PUBLIC_DOCS.items():
         by_category.setdefault(category, []).append(
-            {"slug": slug, "title": title, "description": description}
+            {
+                "slug": slug,
+                "title": title,
+                "description": description,
+                "href": GUIDE_URL if slug == GUIDE_SLUG else f"/tai-lieu/{slug}",
+            }
         )
     sections = [
         {"key": cat, "label": CATEGORY_LABEL.get(cat, cat), "entries": entries}
@@ -114,15 +127,18 @@ def docs_index(
     )
 
 
-@router.get("/tai-lieu/{slug}", response_class=HTMLResponse)
+@router.get("/tai-lieu/{slug}", response_class=HTMLResponse, response_model=None)
 def render_doc(
     slug: str,
     request: Request,
     user: SessionUser = Depends(require_user),
-) -> HTMLResponse:
+) -> HTMLResponse | RedirectResponse:
     entry = PUBLIC_DOCS.get(slug)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Không có tài liệu '{slug}'")
+    if slug == GUIDE_SLUG:
+        # Cẩm nang là trang HTML riêng — giữ URL cũ chạy được cho link đã phát ra ngoài.
+        return RedirectResponse(url=GUIDE_URL, status_code=307)
     filename, title, _description, _category = entry
     try:
         html_body = _render_doc(filename)

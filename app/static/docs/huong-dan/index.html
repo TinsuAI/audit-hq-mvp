@@ -1,0 +1,1027 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Cẩm nang sử dụng Audit-HQ — Tinsu AI × Trọng Tín</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#eef1f7; --panel:#ffffff; --ink:#181b24; --muted:#5c6274; --faint:#8b90a2;
+    --line:#e2e6f0; --line-2:#d3d8e6;
+    --brand:#1d3557; --brand-soft:#e4eaf4;
+    --start:#2563eb; --start-soft:#e6effe;
+    --data:#7c3aed; --data-soft:#f0e9fe;
+    --run:#0891b2; --run-soft:#dcf1f8;
+    --read:#0d9488; --read-soft:#d9f5f0;
+    --act:#b45309; --act-soft:#f8ecdd;
+    --ai:#c026d3; --ai-soft:#fbe8fd;
+    --adm:#475569; --adm-soft:#e8edf3;
+    --warn:#c2410c; --warn-soft:#fdece1;
+    --ok:#0f9d6e; --ok-soft:#e3f6ee;
+    --mark:#e11d48;
+    --shadow:0 1px 2px rgba(20,22,45,.04),0 10px 30px rgba(20,22,45,.06);
+    --radius:14px;
+    --sans:"Inter","Segoe UI",Roboto,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    --mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sbw:290px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0f1118; --panel:#181b25; --ink:#e9ebf3; --muted:#a2a8bd; --faint:#767c92;
+      --line:#262a38; --line-2:#333849;
+      --brand:#7ea6dd; --brand-soft:#16233a;
+      --start:#5b9bff; --start-soft:#152447; --data:#a98bff; --data-soft:#241a47;
+      --run:#3fb6d6; --run-soft:#102b34; --read:#3fcfbc; --read-soft:#0f2f2b;
+      --act:#e0a45c; --act-soft:#33240f; --ai:#e879f9; --ai-soft:#33143a;
+      --adm:#9aa8bd; --adm-soft:#1d2431;
+      --warn:#f0925e; --warn-soft:#361d10; --ok:#3ad39a; --ok-soft:#102b23;
+      --shadow:0 1px 2px rgba(0,0,0,.35),0 12px 34px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#eef1f7; --panel:#fff; --ink:#181b24; --muted:#5c6274; --faint:#8b90a2;
+    --line:#e2e6f0; --line-2:#d3d8e6; --brand:#1d3557; --brand-soft:#e4eaf4;
+    --start:#2563eb; --start-soft:#e6effe; --data:#7c3aed; --data-soft:#f0e9fe;
+    --run:#0891b2; --run-soft:#dcf1f8; --read:#0d9488; --read-soft:#d9f5f0;
+    --act:#b45309; --act-soft:#f8ecdd; --ai:#c026d3; --ai-soft:#fbe8fd;
+    --adm:#475569; --adm-soft:#e8edf3;
+    --warn:#c2410c; --warn-soft:#fdece1; --ok:#0f9d6e; --ok-soft:#e3f6ee;
+    --shadow:0 1px 2px rgba(20,22,45,.04),0 10px 30px rgba(20,22,45,.06);
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1118; --panel:#181b25; --ink:#e9ebf3; --muted:#a2a8bd; --faint:#767c92;
+    --line:#262a38; --line-2:#333849; --brand:#7ea6dd; --brand-soft:#16233a;
+    --start:#5b9bff; --start-soft:#152447; --data:#a98bff; --data-soft:#241a47;
+    --run:#3fb6d6; --run-soft:#102b34; --read:#3fcfbc; --read-soft:#0f2f2b;
+    --act:#e0a45c; --act-soft:#33240f; --ai:#e879f9; --ai-soft:#33143a;
+    --adm:#9aa8bd; --adm-soft:#1d2431;
+    --warn:#f0925e; --warn-soft:#361d10; --ok:#3ad39a; --ok-soft:#102b23;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 12px 34px rgba(0,0,0,.4);
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased}
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{position:fixed;top:0;left:0;width:var(--sbw);height:100vh;background:var(--panel);
+           border-right:1px solid var(--line);display:flex;flex-direction:column;z-index:40}
+  .brand{display:flex;gap:11px;align-items:center;padding:18px 16px;border-bottom:1px solid var(--line)}
+  .brand .logo{width:38px;height:38px;border-radius:11px;background:var(--brand);
+               display:grid;place-items:center;flex:0 0 auto;color:#fff;font-weight:800;font-size:18px}
+  .brand h1{margin:0;font-size:15px;font-weight:750;letter-spacing:-.01em}
+  .brand span{display:block;font-size:11.5px;color:var(--faint)}
+  .searchwrap{padding:12px 12px 4px}
+  .searchwrap input{width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:10px;
+                    background:var(--bg);color:var(--ink);font:inherit;font-size:13px}
+  .searchwrap input:focus{outline:2px solid var(--brand-soft);border-color:var(--brand)}
+  nav.toc{flex:1;overflow-y:auto;padding:10px 10px 24px}
+  nav.toc .sec{margin-top:12px}
+  nav.toc .sec-h{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:11px;font-weight:700;
+                 text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+  nav.toc .sec-h .pin{width:8px;height:8px;border-radius:3px}
+  nav.toc a{display:flex;gap:8px;align-items:baseline;padding:6px 12px;font-size:13px;
+            color:var(--muted);text-decoration:none;border-radius:8px}
+  nav.toc a .n{flex:0 0 26px;color:var(--faint);font-family:var(--mono);font-size:10.5px}
+  nav.toc a:hover{background:var(--bg);color:var(--ink)}
+  nav.toc a.active{background:var(--brand-soft);color:var(--ink);font-weight:600}
+  .sb-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;
+           padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+
+  /* ---------- Main ---------- */
+  main{margin-left:var(--sbw)}
+  .topbar{display:none;position:sticky;top:0;z-index:30;align-items:center;gap:10px;
+          padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .topbar button{background:none;border:1px solid var(--line-2);border-radius:9px;padding:5px 7px;
+                 color:var(--ink);cursor:pointer}
+  .scrim{display:none;position:fixed;inset:0;background:rgba(10,12,20,.45);z-index:35}
+
+  .hero{padding:40px 6vw 26px;border-bottom:1px solid var(--line);
+        background:radial-gradient(1200px 300px at 12% -40%,var(--brand-soft),transparent 70%)}
+  .hero-logo{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+  .hero-logo .mk{width:40px;height:40px;border-radius:12px;background:var(--brand);color:#fff;
+                 display:grid;place-items:center;font-weight:800;font-size:20px}
+  .hero-logo b{font-size:15px;font-weight:750}
+  .hero .eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brand)}
+  .hero h2{margin:6px 0 8px;font-size:31px;line-height:1.15;letter-spacing:-.02em}
+  .hero p{margin:0;max-width:72ch;color:var(--muted);font-size:15px}
+  .hero .apps{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+  .appchip{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);
+           border-radius:12px;padding:9px 13px;box-shadow:var(--shadow);font-size:13px}
+  .appchip .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+               color:#fff;font-size:15px;flex:0 0 auto}
+  .appchip b{display:block;font-size:13px;font-weight:700}
+  .appchip small{color:var(--faint);font-size:11.5px}
+
+  .wrap{padding:8px 6vw 70px;max-width:1180px}
+  section.block{margin-top:40px;scroll-margin-top:14px}
+  .block-h{display:flex;align-items:center;gap:13px;margin:10px 0 4px}
+  .block-h .badge{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+                  color:#fff;font-weight:800;flex:0 0 auto}
+  .block-h h2{margin:0;font-size:22px;letter-spacing:-.01em}
+  .block-lead{margin:2px 0 0;color:var(--muted);font-size:14px;max-width:78ch}
+
+  article.guide{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+                box-shadow:var(--shadow);margin-top:16px;overflow:hidden;scroll-margin-top:14px}
+  .guide-head{display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid var(--line)}
+  .guide-head .gid{font-family:var(--mono);font-size:12px;font-weight:700;padding:3px 9px;border-radius:7px}
+  .guide-head h3{margin:0;font-size:16.5px;font-weight:650}
+  .guide-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:22px;padding:20px}
+  .guide-body.wide{grid-template-columns:minmax(0,1fr)}
+
+  .steps ol{margin:0;padding:0;list-style:none;counter-reset:s}
+  .steps li{position:relative;padding:0 0 12px 34px;counter-increment:s}
+  .steps li:last-child{padding-bottom:0}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:23px;height:23px;
+    border-radius:50%;background:var(--mark);color:#fff;font-size:13px;font-weight:700;
+    display:grid;place-items:center;box-shadow:0 1px 3px rgba(225,29,72,.4)}
+  .steps li.plain{padding-left:16px}
+  .steps li.plain::before{content:"";width:6px;height:6px;top:10px;left:3px;background:var(--faint);box-shadow:none}
+  .steps strong{font-weight:650}
+  .k{font-family:var(--mono);font-size:12.5px;background:var(--bg);border:1px solid var(--line-2);
+     border-radius:5px;padding:1px 6px}
+  .plain-list{margin:0;padding:0;list-style:none}
+  .plain-list li{position:relative;padding:0 0 10px 16px}
+  .plain-list li::before{content:"";position:absolute;left:3px;top:9px;width:6px;height:6px;
+                         border-radius:50%;background:var(--faint)}
+
+  figure{margin:0;align-self:start}
+  figure img{width:100%;display:block;border:1px solid var(--line-2);border-radius:10px;
+             cursor:zoom-in;background:var(--bg)}
+  .fig-tag{display:inline-block;font-size:11px;color:var(--muted);background:var(--bg);
+           border:1px solid var(--line);border-radius:6px;padding:2px 8px;margin-bottom:8px}
+  figcaption{margin-top:8px;font-size:12px;color:var(--faint);text-align:center}
+
+  .note{display:flex;gap:11px;margin:0 20px 20px;padding:12px 15px;border-radius:11px;
+        font-size:13.5px;line-height:1.55}
+  .note .ni{flex:0 0 auto;width:19px;height:19px;margin-top:1px;stroke:currentColor;fill:none;
+            stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .note.tip{background:var(--ok-soft);border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)}
+  .note.tip .ni{color:var(--ok)}
+  .note.warn{background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 34%,transparent)}
+  .note.warn .ni{color:var(--warn)}
+  .note.info{background:var(--brand-soft);border:1px solid color-mix(in srgb,var(--brand) 28%,transparent)}
+  .note.info .ni{color:var(--brand)}
+  .note b{font-weight:700}
+
+  .tblwrap{overflow-x:auto;margin:0 20px 20px}
+  table.tb{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.tb th,table.tb td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);
+                          vertical-align:top}
+  table.tb th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+
+  .noresult{display:none;padding:40px 0;color:var(--muted)}
+  .noresult.show{display:block}
+
+  .lb{display:none;position:fixed;inset:0;z-index:60;background:rgba(8,10,18,.9);cursor:zoom-out;padding:24px}
+  .lb.show{display:flex;align-items:center;justify-content:center}
+  .lb img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .lb .cls{position:absolute;top:16px;right:20px;color:#fff;font-size:30px;cursor:pointer;line-height:1}
+
+  .themebtn{position:fixed;right:18px;bottom:18px;z-index:50;width:42px;height:42px;border-radius:50%;
+            border:1px solid var(--line-2);background:var(--panel);color:var(--ink);cursor:pointer;
+            box-shadow:var(--shadow);font-size:17px}
+
+  /* section accents */
+  .sec-start .badge{background:var(--start)} .sec-start .gid{color:var(--start);background:var(--start-soft)}
+  .sec-data  .badge{background:var(--data)}  .sec-data  .gid{color:var(--data);background:var(--data-soft)}
+  .sec-run   .badge{background:var(--run)}   .sec-run   .gid{color:var(--run);background:var(--run-soft)}
+  .sec-read  .badge{background:var(--read)}  .sec-read  .gid{color:var(--read);background:var(--read-soft)}
+  .sec-act   .badge{background:var(--act)}   .sec-act   .gid{color:var(--act);background:var(--act-soft)}
+  .sec-ai    .badge{background:var(--ai)}    .sec-ai    .gid{color:var(--ai);background:var(--ai-soft)}
+  .sec-adm   .badge{background:var(--adm)}   .sec-adm   .gid{color:var(--adm);background:var(--adm-soft)}
+
+  @media (max-width:1080px){ .guide-body{grid-template-columns:minmax(0,1fr)} }
+  @media (max-width:900px){
+    main{margin-left:0}
+    .topbar{display:flex}
+    .sidebar{transform:translateX(-100%);transition:transform .25s ease;box-shadow:var(--shadow)}
+    body.nav-open .sidebar{transform:none}
+    body.nav-open .scrim{display:block}
+    .hero{padding-top:26px} .hero h2{font-size:25px}
+  }
+  @media print{
+    .sidebar,.topbar,.scrim,.themebtn,.searchwrap{display:none!important}
+    main{margin-left:0} body{background:#fff}
+    article.guide{break-inside:avoid;box-shadow:none}
+    .hero{background:none}
+  }
+</style>
+</head>
+<body>
+
+<aside class="sidebar" id="sidebar">
+  <div class="brand">
+    <div class="logo">A</div>
+    <div><h1>Cẩm nang Audit-HQ</h1><span>Hướng dẫn cán bộ Hải quan</span></div>
+  </div>
+  <div class="searchwrap">
+    <input id="q" type="search" placeholder="Tìm thao tác… (vd: nạp dữ liệu, điểm, xuất Excel)" autocomplete="off">
+  </div>
+  <nav class="toc" id="toc"></nav>
+  <div class="sb-foot"><span id="cnt"></span><span style="font-size:11px;color:var(--faint)">Tinsu AI × Trọng Tín</span></div>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-tip" viewBox="0 0 24 24"><path d="M9.5 18h5M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.3 1 2.2V17h6v-1.3c0-.9.2-1.4 1-2.2A6 6 0 0 0 12 3Z"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4L21 20H3Z"/><path d="M12 10v4.5"/><path d="M12 17.5h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.5h.01"/></symbol>
+</defs></svg>
+
+<main>
+  <div class="topbar">
+    <button id="burger" aria-label="Mở mục lục">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <b>Cẩm nang Audit-HQ</b>
+  </div>
+
+  <div class="hero">
+    <div class="hero-logo"><span class="mk">A</span><b>Audit-HQ · Quản lý rủi ro Hải quan</b></div>
+    <div class="eyebrow">Tài liệu hướng dẫn sử dụng</div>
+    <h2>Hướng dẫn sử dụng hệ thống Audit-HQ</h2>
+    <p>
+      Cẩm nang từng bước cho cán bộ Hải quan: nạp Báo cáo Quyết toán của doanh nghiệp gia công,
+      sản xuất xuất khẩu và chế xuất, chạy bộ kiểm tra chênh lệch, đọc điểm rủi ro dữ liệu,
+      xử lý phát hiện có truy nguồn và xuất kiến nghị. Mỗi hướng dẫn có ảnh chụp thật với
+      <b style="color:#e11d48">khung đỏ và số thứ tự</b> chỉ đúng chỗ cần bấm — số trên ảnh khớp
+      với số của các bước bên cạnh.
+    </p>
+    <div class="apps">
+      <div class="appchip"><span class="ic" style="background:#2563eb">🏢</span><div><b>Doanh nghiệp &amp; dữ liệu</b><small>Nạp BCQT, xác nhận cột</small></div></div>
+      <div class="appchip"><span class="ic" style="background:#0891b2">▶</span><div><b>Kiểm tra</b><small>Chạy nền theo hàng đợi</small></div></div>
+      <div class="appchip"><span class="ic" style="background:#0d9488">📊</span><div><b>Điểm &amp; phát hiện</b><small>Truy nguồn về dòng dữ liệu</small></div></div>
+      <div class="appchip"><span class="ic" style="background:#c026d3">🤖</span><div><b>Trợ lý AI</b><small>Tra cứu, tổng quan kiểm tra</small></div></div>
+    </div>
+  </div>
+
+  <div class="wrap" id="content">
+    <div class="noresult" id="noresult">Không tìm thấy hướng dẫn phù hợp. Thử từ khoá khác.</div>
+
+    <!-- ============ A. BẮT ĐẦU ============ -->
+    <section class="block sec-start" id="start">
+      <div class="block-h"><span class="badge">A</span><h2>Bắt đầu</h2></div>
+      <p class="block-lead">Đăng nhập, làm quen thanh điều hướng và nắm quy trình sáu bước. Đọc mục này trước khi làm bất kỳ thao tác nào.</p>
+
+      <article class="guide" id="a1" data-t="A1 đăng nhập tài khoản mật khẩu login khoá phiên">
+        <div class="guide-head"><span class="gid">A1</span><h3>Đăng nhập hệ thống</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li>Nhập <strong>tài khoản</strong> do quản trị viên cấp.</li>
+            <li>Nhập <strong>mật khẩu</strong>.</li>
+            <li>Bấm <strong>Đăng nhập</strong>.</li>
+          </ol>
+          <ul class="plain-list" style="margin-top:14px">
+            <li>Phiên đăng nhập có hiệu lực <strong>8 giờ</strong>, sau đó phải đăng nhập lại.</li>
+            <li>Sai mật khẩu <strong>8 lần trong 5 phút</strong> thì địa chỉ truy cập bị khoá <strong>5 phút</strong>.</li>
+          </ul></div>
+          <figure><span class="fig-tag">Màn hình đăng nhập</span><img src="00-dang-nhap.png" alt="Màn hình đăng nhập Audit-HQ"><figcaption>Số ①②③ tương ứng bước 1, 2, 3.</figcaption></figure>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Lần đăng nhập đầu tiên, hoặc sau khi quản trị viên đặt lại mật khẩu, hệ thống <b>buộc đổi mật khẩu</b> trước khi cho thao tác. Mật khẩu tối thiểu <b>8 ký tự</b>. Đổi lúc khác: bấm tên tài khoản góc phải → <b>🔑 Đổi mật khẩu</b>.</div></div>
+      </article>
+
+      <article class="guide" id="a2" data-t="A2 thanh điều hướng menu trợ lý danh mục tài liệu công việc quản trị giao diện">
+        <div class="guide-head"><span class="gid">A2</span><h3>Làm quen thanh điều hướng</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>💬 Trợ lý</strong> — trang trợ lý AI (mục F).</li>
+            <li><strong>📑 Danh mục</strong> — danh mục toàn bộ bài kiểm tra.</li>
+            <li><strong>📚 Tài liệu</strong> — thư viện phương pháp luận và văn bản pháp lý.</li>
+            <li><strong>📋 Công việc</strong> — hàng đợi các lượt chạy nền. Số trên biểu tượng là số việc đang chạy hoặc vừa xong mà chưa xem.</li>
+            <li><strong>⚙️ Quản trị</strong> — chỉ quản trị viên thấy nhóm này.</li>
+            <li><strong>👤 Tên tài khoản</strong> — đổi mật khẩu, đăng xuất.</li>
+          </ol>
+          <ul class="plain-list" style="margin-top:12px">
+            <li>Nút <strong>💬</strong> ở góc dưới bên phải mọi trang — mở trợ lý ngay tại trang đang xem, không phải rời trang (mục F2).</li>
+          </ul></div>
+          <figure><span class="fig-tag">Thanh điều hướng</span><img src="00b-thanh-dieu-huong.png" alt="Thanh điều hướng Audit-HQ"><figcaption>Thanh này hiển thị ở mọi trang.</figcaption></figure>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Dải màu vàng ở đầu mỗi trang nhắc rằng dữ liệu trong bản dùng thử đã được giả lập từ hồ sơ thực, không phản ánh doanh nghiệp có thật.</div></div>
+      </article>
+
+      <article class="guide" id="a3" data-t="A3 quy trình sáu bước tổng quan luồng làm việc">
+        <div class="guide-head"><span class="gid">A3</span><h3>Quy trình sáu bước</h3></div>
+        <div class="guide-body wide">
+          <div class="steps"><ol>
+            <li><strong>Chọn hoặc tạo doanh nghiệp</strong> — mục B1, B2.</li>
+            <li><strong>Nạp dữ liệu</strong> — tải Mẫu 15, 15a, 16 và Báo cáo hàng chi tiết theo từng kỳ, xác nhận cột nếu hệ thống yêu cầu — mục B3 đến B8.</li>
+            <li><strong>Chạy kiểm tra</strong> — chạy toàn bộ hoặc chọn từng bài; hệ thống xử lý nền — mục C.</li>
+            <li><strong>Đọc kết quả</strong> — điểm rủi ro, phát hiện theo bài kiểm tra, tổng quan AI — mục D.</li>
+            <li><strong>Xử lý phát hiện</strong> — đối chiếu chứng cứ truy nguồn rồi đánh dấu trạng thái — mục E1, E2.</li>
+            <li><strong>Xuất kiến nghị</strong> — kết xuất Excel để lập hồ sơ — mục E4.</li>
+          </ol></div>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Phạm vi của hệ thống.</b> Điểm và phát hiện là <b>chỉ số rủi ro về chất lượng dữ liệu báo cáo</b>, dùng để sắp xếp ưu tiên kiểm tra. Đây <b>không</b> phải đánh giá mức tuân thủ pháp luật — việc phân loại tuân thủ chính thức thuộc thẩm quyền Tổng cục Hải quan theo Thông tư 81/2019/TT-BTC. Mọi quyết định cuối cùng thuộc thẩm quyền cán bộ Hải quan.</div></div>
+      </article>
+
+      <article class="guide" id="a4" data-t="A4 vai trò cán bộ quản trị viên phân quyền phạm vi doanh nghiệp">
+        <div class="guide-head"><span class="gid">A4</span><h3>Hai vai trò và phạm vi nhìn thấy</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li><strong>Cán bộ</strong> — chỉ thấy và thao tác trên doanh nghiệp được <strong>phân công</strong>. Doanh nghiệp ngoài phạm vi bị ẩn hoàn toàn, kể cả khi hỏi qua trợ lý AI. Không thấy nhóm <strong>⚙️ Quản trị</strong>.</li>
+            <li><strong>Quản trị viên</strong> — thấy <strong>tất cả</strong> doanh nghiệp và toàn bộ chức năng quản trị (mục H).</li>
+          </ul></div>
+          <figure><span class="fig-tag">Góc nhìn cán bộ</span><img src="33-goc-nhin-can-bo.png" alt="Bảng tổng quan dưới góc nhìn cán bộ"><figcaption>Cùng hệ thống, tài khoản cán bộ được phân công 2 doanh nghiệp: danh sách chỉ còn 2 dòng, thanh trên cùng không có nhóm ⚙️ Quản trị.</figcaption></figure>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Không thấy doanh nghiệp cần làm việc? Tài khoản của bạn chưa được phân công doanh nghiệp đó — liên hệ quản trị viên (mục H2).</div></div>
+      </article>
+    </section>
+
+    <!-- ============ B. DOANH NGHIỆP & DỮ LIỆU ============ -->
+    <section class="block sec-data" id="data">
+      <div class="block-h"><span class="badge">B</span><h2>Doanh nghiệp &amp; nạp dữ liệu</h2></div>
+      <p class="block-lead">Từ bảng tổng quan đến khi kỳ báo cáo có đủ dữ liệu Tầng 1 trong kho, sẵn sàng chạy kiểm tra.</p>
+
+      <article class="guide" id="b1" data-t="B1 bảng tổng quan danh sách doanh nghiệp điểm rủi ro lọc tìm kiếm xếp hạng">
+        <div class="guide-head"><span class="gid">B1</span><h3>Bảng tổng quan doanh nghiệp</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Ô tìm</strong> — lọc nhanh theo tên hoặc mã số thuế.</li>
+            <li><strong>Bộ lọc mức cảnh báo</strong> — chỉ hiện doanh nghiệp thuộc mức đã chọn. Bên cạnh còn bộ lọc theo ngành và tuỳ chọn <span class="k">Nhóm theo ngành</span>.</li>
+            <li><strong>Cột điểm rủi ro</strong> — bấm tiêu đề cột để đổi chiều sắp xếp. Mặc định danh sách xếp theo điểm giảm dần.</li>
+            <li><strong>Mức cảnh báo</strong> — nhãn màu tương ứng năm mức ngưỡng.</li>
+            <li><strong>Phát hiện theo năm</strong> — mỗi kỳ một nhãn, kèm số phát hiện tách theo ba mức độ.</li>
+            <li><strong>+ Thêm DN mới</strong> — tạo hồ sơ doanh nghiệp (mục B2).</li>
+          </ol></div>
+          <figure><span class="fig-tag">Bảng tổng quan</span><img src="01-danh-sach-doanh-nghiep.png" alt="Bảng tổng quan doanh nghiệp"><figcaption>Khối "Cách tính điểm rủi ro" ở đầu trang tóm tắt công thức và năm mức cảnh báo.</figcaption></figure>
+        </div>
+      </article>
+
+      <article class="guide" id="b2" data-t="B2 thêm tạo doanh nghiệp mới mã số thuế ngành địa chỉ">
+        <div class="guide-head"><span class="gid">B2</span><h3>Thêm doanh nghiệp</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Tên doanh nghiệp</strong> — bắt buộc. Hệ thống tự thêm hậu tố <span class="k">(Demo)</span> nếu chưa có.</li>
+            <li><strong>Ngành</strong> — dùng để lọc và nhóm ở bảng tổng quan.</li>
+            <li><strong>Mã số thuế</strong>.</li>
+            <li><strong>Địa chỉ</strong>.</li>
+            <li>Bấm <strong>Tạo DN &amp; quản lý tài liệu</strong> — hệ thống chuyển thẳng sang trang tài liệu.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Thêm doanh nghiệp</span><img src="02-them-doanh-nghiep.png" alt="Biểu mẫu thêm doanh nghiệp"><figcaption>Mã doanh nghiệp dạng <span class="k">DN_NNN</span> do hệ thống tự gán.</figcaption></figure>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Cán bộ tạo doanh nghiệp được <b>tự động phân công</b> doanh nghiệp đó, không cần chờ quản trị viên gán quyền.</div></div>
+      </article>
+
+      <article class="guide" id="b3" data-t="B3 trang tài liệu BCQT thêm năm kỳ báo cáo bốn loại mẫu 15 15a 16 bcct">
+        <div class="guide-head"><span class="gid">B3</span><h3>Trang tài liệu BCQT</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li>Chọn <strong>năm</strong> cần mở.</li>
+            <li>Bấm <strong>+ Thêm</strong> để tạo kỳ đó trong hồ sơ.</li>
+            <li>Hoặc bấm <strong>Tải lên dữ liệu BCQT</strong> để đi thẳng sang màn hình tải nhiều file (mục B4).</li>
+          </ol></div>
+          <figure><span class="fig-tag">Doanh nghiệp chưa có tài liệu</span><img src="03-tai-lieu-chua-co-file.png" alt="Trang tài liệu khi chưa có file"><figcaption>Trang tài liệu tổ chức theo từng năm.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Loại tài liệu</th><th>Nội dung</th><th>Số file mỗi kỳ</th></tr></thead>
+          <tbody>
+            <tr><td><b>Mẫu 15</b></td><td>Cân đối nhập – xuất – tồn nguyên vật liệu</td><td>1 file, tải lại sẽ thay</td></tr>
+            <tr><td><b>Mẫu 15a</b></td><td>Cân đối nhập – xuất – tồn thành phẩm</td><td>1 file, tải lại sẽ thay</td></tr>
+            <tr><td><b>Mẫu 16</b></td><td>Định mức thực tế</td><td>1 file, tải lại sẽ thay</td></tr>
+            <tr><td><b>BCCT</b></td><td>Báo cáo hàng chi tiết (dữ liệu tờ khai)</td><td>nhiều file, cộng dồn</td></tr>
+          </tbody>
+        </table></div>
+      </article>
+
+      <article class="guide" id="b4" data-t="B4 tải lên nhiều file excel xls xlsx 100MB chẩn đoán AI">
+        <div class="guide-head"><span class="gid">B4</span><h3>Tải file lên</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li>Chọn <strong>kỳ báo cáo</strong>.</li>
+            <li>Chọn file <strong>Mẫu 15</strong>.</li>
+            <li>Chọn file <strong>Mẫu 15a</strong>.</li>
+            <li>Chọn file <strong>Mẫu 16</strong>.</li>
+            <li>Chọn file <strong>BCCT</strong>.</li>
+            <li>Bấm <strong>Tải lên</strong>.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Tải lên nhiều file</span><img src="04-tai-len-nhieu-file.png" alt="Màn hình tải lên nhiều file"><figcaption>Có thể tải từng ô riêng lẻ trên trang tài liệu thay vì tải cả bốn loại một lần.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Cách tải</th><th>Bước tiếp theo</th></tr></thead>
+          <tbody>
+            <tr><td><b>Tải lên nhiều file</b></td><td>Phân tích rồi <b>nạp luôn</b> vào kho dữ liệu — trừ khi có cột cần xác nhận, khi đó lượt nạp dừng lại và báo <i>cần xác nhận cột trước khi nạp</i> (mục B7).</td></tr>
+            <tr><td><b>Tải từng ô</b></td><td>Chỉ lưu file. Nạp bằng nút <b>⤵️ Nạp dữ liệu</b> của kỳ.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Chỉ chấp nhận <span class="k">.xls</span> và <span class="k">.xlsx</span>, tối đa <b>100 MB</b> mỗi file. Hệ thống kiểm tra định dạng thật của file, không tin phần mở rộng tên file. Nếu cấu trúc bất thường, hệ thống báo lỗi ngay và cho bấm <b>Chẩn đoán bằng AI</b> để biết file sai ở đâu. <b>Cả hai cách đều không tự chạy kiểm tra</b> — đó là bước riêng (mục C).</div></div>
+      </article>
+
+      <article class="guide" id="b5" data-t="B5 trạng thái file đã nạp đã kiểm cần xác nhận nhãn badge nạp dữ liệu">
+        <div class="guide-head"><span class="gid">B5</span><h3>Đọc trạng thái sau khi tải</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Trạng thái của kỳ</strong> — tóm tắt kỳ đã nạp bao nhiêu dòng.</li>
+            <li><strong>⤵️ Nạp dữ liệu</strong> — đưa file đã tải vào kho dữ liệu Tầng 1 cho cả kỳ.</li>
+            <li><strong>▶️ Chạy kiểm tra</strong> — chỉ bật khi kỳ đã có dữ liệu.</li>
+            <li><strong>Nhãn tiến độ</strong> của từng file.</li>
+            <li><strong>Nhãn độ tin cậy cột</strong> của từng file.</li>
+            <li><strong>✏️ Sửa cột</strong> — mở lại màn hình map cột của file đã nạp (mục B7).</li>
+          </ol></div>
+          <figure><span class="fig-tag">Kỳ đã nạp đủ bốn loại</span><img src="04b-tai-lieu-da-tai-len.png" alt="Trang tài liệu sau khi nạp"><figcaption>Mỗi file mang hai nhãn, đọc theo hai trục khác nhau.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Nhãn tiến độ</th><th>Ý nghĩa</th></tr></thead>
+          <tbody>
+            <tr><td><b>Đã tải lên</b></td><td>File đã lưu, chưa nạp vào kho dữ liệu.</td></tr>
+            <tr><td><b>Đã phân tích</b></td><td>Đã đọc được cấu trúc, đang chờ cán bộ xác nhận cột.</td></tr>
+            <tr><td><b>Đã nạp</b></td><td>Dữ liệu đã vào kho Tầng 1, sẵn sàng chạy kiểm tra.</td></tr>
+            <tr><td><b>Cảnh báo</b> / <b>Lỗi</b></td><td>Nạp không trọn vẹn hoặc không đọc được — xem thông báo kèm theo.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Nhãn độ tin cậy cột</th><th>Ý nghĩa</th></tr></thead>
+          <tbody>
+            <tr><td><b>Đã kiểm</b></td><td>Mọi cột đọc đều khớp tiêu đề hoặc đã được cán bộ xác nhận.</td></tr>
+            <tr><td><b>Cần xác nhận</b></td><td>Có cột chỉ suy theo vị trí, hoặc chỉ khớp đẳng thức cân đối — chưa đủ để chắc đúng cột.</td></tr>
+          </tbody>
+        </table></div>
+      </article>
+
+      <article class="guide" id="b6" data-t="B6 xem nhanh nội dung file excel thô preview đối chiếu">
+        <div class="guide-head"><span class="gid">B6</span><h3>Xem nhanh nội dung file</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li>Bấm biểu tượng <strong>👁</strong> hoặc tên file để xem nội dung Excel thô, đúng như hệ thống đọc được.</li>
+            <li>Dùng màn hình này để đối chiếu khi nghi ngờ hệ thống đọc sai cột hoặc sai dòng dữ liệu.</li>
+            <li>Nút <strong>↓</strong> tải file gốc về máy. Mỗi lượt tải xuống đều được ghi vào nhật ký truy cập.</li>
+          </ul></div>
+          <figure><span class="fig-tag">Xem nhanh Mẫu 15</span><img src="05-xem-nhanh-file.png" alt="Xem nhanh nội dung file Excel"><figcaption>Hàng tiêu đề và vùng dữ liệu hiển thị nguyên trạng.</figcaption></figure>
+        </div>
+      </article>
+
+      <article class="guide" id="b7" data-t="B7 xác nhận map cột chỉ số cột bằng chứng khớp tiêu đề đẳng thức sổ quyết toán">
+        <div class="guide-head"><span class="gid">B7</span><h3>Xác nhận map cột</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Hàng tiêu đề</strong> của bảng nội dung file: cột tô <strong>xanh</strong> đã nhận đúng theo tiêu đề, cột tô <strong>vàng ⚠️</strong> cần cán bộ xác nhận.</li>
+            <li><strong>Nội dung file</strong> — đối chiếu trực tiếp để biết cột nào chứa số liệu nào.</li>
+            <li><strong>Sổ quyết toán</strong> — chỉ dùng cho doanh nghiệp giữ nhiều sổ (mục D5). Để trống nghĩa là doanh nghiệp một sổ.</li>
+            <li><strong>Bảng cột dữ liệu</strong> — mỗi dòng cho biết nguồn bằng chứng, trạng thái, <strong>những bài kiểm tra đọc cột đó</strong>, và ô nhập chỉ số cột.</li>
+            <li>Bấm <strong>✅ Xác nhận &amp; nạp dữ liệu</strong>.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Xác nhận map cột</span><img src="07-xac-nhan-map-cot.png" alt="Màn hình xác nhận map cột"><figcaption>Sửa chỉ số ở bảng dưới thì cột tương ứng trong bảng trên sáng lên.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Nguồn bằng chứng</th><th>Nghĩa là</th></tr></thead>
+          <tbody>
+            <tr><td><b>Khớp tiêu đề</b></td><td>Tiêu đề tại đúng vị trí cột khớp nhãn mong đợi — chắc chắn đúng cột.</td></tr>
+            <tr><td><b>Khớp đẳng thức</b></td><td>Đẳng thức cân đối của biểu khớp nếu lấy cột này. Đủ cho cột dùng dạng tổng, nhưng <b>không phân biệt hai cột cùng dấu</b>.</td></tr>
+            <tr><td><b>Chỉ theo vị trí</b></td><td>Chỉ dựa vào chỉ số cột cố định, không có tín hiệu nào khác.</td></tr>
+            <tr><td><b>Cán bộ xác nhận</b></td><td>Đã được người dùng duyệt ở màn hình này.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div><b>Chỉ số cột tính từ 0</b>: cột A = 0, cột B = 1, tiếp tục như vậy. Xác nhận xong, map được lưu theo cấu trúc biểu của doanh nghiệp — lần sau gặp cùng bố cục, kể cả năm khác, không phải xác nhận lại.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Cảnh báo <i>cần xác nhận cột</i> <b>không chặn</b> việc nạp: vẫn nạp và chạy kiểm tra được, nhưng phát hiện sinh ra sẽ mang cờ cho biết dựa trên cột chưa xác nhận. Đổi map cột trên file đã nạp sẽ kéo theo việc chạy lại các bài kiểm tra đọc cột đó.</div></div>
+      </article>
+
+      <article class="guide" id="b8" data-t="B8 kỳ báo cáo năm tài chính lệch dương lịch sửa kỳ từ ngày đến ngày">
+        <div class="guide-head"><span class="gid">B8</span><h3>Kỳ báo cáo lệch năm dương lịch</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Nhãn nguồn kỳ</strong> — cho biết kỳ được <i>tự đọc từ file</i> hay <i>sửa tay</i>.</li>
+            <li>Nhập <strong>Từ ngày</strong>.</li>
+            <li>Nhập <strong>Đến ngày</strong>.</li>
+            <li>Bấm <strong>Lưu kỳ</strong>.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Sửa kỳ báo cáo</span><img src="22-ky-bao-cao.png" alt="Sửa kỳ báo cáo theo năm tài chính"><figcaption>Mặc định kỳ của năm N là 01/01–31/12.</figcaption></figure>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Sau khi sửa kỳ phải bấm <b>⤵️ Nạp dữ liệu</b> rồi <b>▶️ Chạy kiểm tra</b> thì cửa sổ kỳ mới có hiệu lực. Trên hồ sơ doanh nghiệp, năm có kỳ tuỳ chỉnh được đánh dấu <b>TC</b> ở tab năm.</div></div>
+      </article>
+    </section>
+
+    <!-- ============ C. CHẠY KIỂM TRA ============ -->
+    <section class="block sec-run" id="run">
+      <div class="block-h"><span class="badge">C</span><h2>Chạy kiểm tra</h2></div>
+      <p class="block-lead">Mọi lượt chạy đều diễn ra ở chế độ nền và được ghi vào hàng đợi công việc.</p>
+
+      <article class="guide" id="c1" data-t="C1 chạy kiểm tra chọn test tất cả năm chạy lại một bài">
+        <div class="guide-head"><span class="gid">C1</span><h3>Bốn cách chạy kiểm tra</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li>Bấm <strong>Chọn tất cả</strong> hoặc <strong>Bỏ chọn</strong> để đặt nhanh.</li>
+            <li>Tick các <strong>bài kiểm tra</strong> cần chạy. Cả hàng đều bấm được.</li>
+            <li>Bấm nút chạy. Không tick bài nào thì <strong>chạy tất cả</strong>.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Chọn bài kiểm tra để chạy</span><img src="15-chon-test-de-chay.png" alt="Hộp thoại chọn bài kiểm tra"><figcaption>Mở bằng nút <b>☑️ Chọn test chạy</b> trên hồ sơ doanh nghiệp.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Muốn chạy</th><th>Bấm nút</th></tr></thead>
+          <tbody>
+            <tr><td>Toàn bộ bài kiểm tra cho kỳ đang xem</td><td><b>▶️ Chạy kiểm tra &lt;năm&gt;</b> trên hồ sơ doanh nghiệp</td></tr>
+            <tr><td>Toàn bộ cho mọi kỳ có dữ liệu</td><td><b>🔄 Tất cả năm</b></td></tr>
+            <tr><td>Một số bài chọn trước</td><td><b>☑️ Chọn test chạy</b></td></tr>
+            <tr><td>Đúng một bài</td><td><b>▶️ Chạy lại &lt;mã bài&gt;</b> trong nhóm phát hiện của bài đó</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Nút chạy kiểm tra bị mờ nghĩa là kỳ đó <b>chưa có dữ liệu trong kho</b>. Tải file lên rồi bấm <b>⤵️ Nạp dữ liệu</b> trước.</div></div>
+      </article>
+
+      <article class="guide" id="c2" data-t="C2 theo dõi công việc tiến độ job chạy nền hoàn tất thất bại">
+        <div class="guide-head"><span class="gid">C2</span><h3>Theo dõi lượt chạy</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li>Sau khi bấm chạy, hệ thống tạo một <strong>công việc</strong> và chuyển sang trang theo dõi.</li>
+            <li>Trang <strong>tự làm mới</strong> trong lúc công việc còn chạy.</li>
+            <li>Xong thì trang hiển thị kết quả tóm tắt: số phát hiện, lỗi nếu có.</li>
+            <li>Không cần ngồi chờ — đóng trang vẫn không ảnh hưởng lượt chạy.</li>
+          </ul></div>
+          <figure><span class="fig-tag">Đang chạy</span><img src="09-cong-viec-dang-chay.png" alt="Trang công việc đang chạy"><figcaption>Trạng thái cập nhật liên tục.</figcaption></figure>
+        </div>
+        <div class="guide-body" style="padding-top:0">
+          <div class="steps"><ul class="plain-list">
+            <li>Khi hoàn tất, phần kết quả cho biết lượt chạy đã sinh ra bao nhiêu phát hiện.</li>
+            <li>Từ đây bấm về hồ sơ doanh nghiệp để đọc kết quả (mục D).</li>
+          </ul></div>
+          <figure><span class="fig-tag">Hoàn tất</span><img src="10-cong-viec-hoan-tat.png" alt="Trang công việc hoàn tất"><figcaption>Kết quả tóm tắt của lượt chạy.</figcaption></figure>
+        </div>
+      </article>
+
+      <article class="guide" id="c3" data-t="C3 hàng đợi công việc lọc trạng thái đang chờ đang chạy hoàn tất thất bại">
+        <div class="guide-head"><span class="gid">C3</span><h3>Hàng đợi công việc</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Bộ lọc trạng thái</strong> — Tất cả · Đang chờ · Đang chạy · Hoàn tất · Thất bại.</li>
+            <li><strong>Cột trạng thái</strong> của từng lượt chạy.</li>
+            <li><strong>Xem</strong> — mở trang chi tiết lượt chạy đó.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Hàng đợi công việc</span><img src="11-hang-doi-cong-viec.png" alt="Hàng đợi công việc"><figcaption>Mở bằng <b>📋 Công việc</b> trên thanh trên cùng.</figcaption></figure>
+        </div>
+      </article>
+    </section>
+
+    <!-- ============ D. ĐỌC KẾT QUẢ ============ -->
+    <section class="block sec-read" id="read">
+      <div class="block-h"><span class="badge">D</span><h2>Đọc kết quả</h2></div>
+      <p class="block-lead">Điểm rủi ro dữ liệu, danh sách phát hiện theo bài kiểm tra, tổng quan AI và trường hợp doanh nghiệp giữ nhiều sổ quyết toán.</p>
+
+      <article class="guide" id="d1" data-t="D1 hồ sơ doanh nghiệp điểm rủi ro thống kê mức độ tab năm">
+        <div class="guide-head"><span class="gid">D1</span><h3>Hồ sơ doanh nghiệp</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>▶️ Chạy kiểm tra &lt;năm&gt;</strong> — cùng thanh còn có Sửa, Tài liệu, Tải lên, Chọn test chạy, Tất cả năm, Dữ liệu gốc, Xuất Excel kiến nghị, Tạo tổng quan còn thiếu.</li>
+            <li><strong>Điểm rủi ro dữ liệu</strong> của kỳ đang chọn, kèm mức cảnh báo.</li>
+            <li><strong>Số phát hiện theo mức độ</strong> — nghiêm trọng, cảnh báo, thông tin.</li>
+            <li><strong>Khối cách tính điểm</strong> — bấm để mở chi tiết (mục D2).</li>
+            <li><strong>Tab kỳ</strong> — chuyển giữa các kỳ báo cáo.</li>
+            <li><strong>Phát hiện nhóm theo bài kiểm tra</strong> (mục D3).</li>
+          </ol></div>
+          <figure><span class="fig-tag">Hồ sơ doanh nghiệp</span><img src="12-ho-so-doanh-nghiep.png" alt="Hồ sơ doanh nghiệp"><figcaption>Mỗi cặp (doanh nghiệp, kỳ) có một điểm từ 0 đến 1000.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Điểm</th><th>Mức cảnh báo (ngưỡng mặc định)</th></tr></thead>
+          <tbody>
+            <tr><td><span class="k">0–50</span></td><td>Dữ liệu nhất quán</td></tr>
+            <tr><td><span class="k">51–100</span></td><td>Có chênh lệch nhỏ</td></tr>
+            <tr><td><span class="k">101–300</span></td><td>Cần rà soát</td></tr>
+            <tr><td><span class="k">301–600</span></td><td>Có dấu hiệu bất thường</td></tr>
+            <tr><td><span class="k">601–1000</span></td><td>Bất thường nghiêm trọng</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Quản trị viên chỉnh được các ngưỡng này (mục H3). Ngưỡng chỉ đổi cách <b>xếp mức</b>, không đổi <b>điểm</b>.</div></div>
+      </article>
+
+      <article class="guide" id="d2" data-t="D2 cách tính điểm rate-based công thức kịch khung quy mô dữ liệu mẫu số">
+        <div class="guide-head"><span class="gid">D2</span><h3>Cách tính điểm rủi ro</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Công thức</strong> — điểm thô quy về thang 0–1000.</li>
+            <li><strong>Điểm từng bài kiểm tra</strong> — mỗi bài tối đa 10 điểm; bài đã đạt trần được đánh dấu <span class="k">kịch khung</span>, phát hiện thêm không làm điểm tăng nữa.</li>
+            <li><strong>Quy mô dữ liệu</strong> — mẫu số của tỷ lệ: số mã nguyên vật liệu, số mã thành phẩm, số dòng định mức.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Chi tiết điểm</span><img src="13-cach-tinh-diem.png" alt="Bảng chi tiết cách tính điểm"><figcaption>Điểm tính theo <b>tỷ lệ</b> giữa số phát hiện và quy mô dữ liệu, không cộng dồn theo số lượng tuyệt đối.</figcaption></figure>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Vì chuẩn hoá theo tỷ lệ, doanh nghiệp quy mô lớn không bị chấm điểm cao chỉ vì có nhiều mã hàng. Trọng số mức độ: nghiêm trọng 10đ · cảnh báo 3đ · thông tin 1đ.</div></div>
+      </article>
+
+      <article class="guide" id="d3" data-t="D3 danh sách phát hiện nhóm bài kiểm tra mức độ nghiêm trọng cảnh báo thông tin">
+        <div class="guide-head"><span class="gid">D3</span><h3>Danh sách phát hiện</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Số phát hiện của nhóm</strong>, tách theo ba mức độ.</li>
+            <li><strong>▶️ Chạy lại</strong> đúng bài kiểm tra này. Bên cạnh là <strong>📊 Xuất test này</strong> và <strong>✨ Tạo tổng quan</strong>.</li>
+            <li><strong>Mã đối tượng</strong> — bấm để mở trang chi tiết mã hàng (mục E3).</li>
+            <li><strong>Đổi trạng thái nhanh</strong> ngay tại bảng, không cần mở trang chi tiết.</li>
+            <li><strong>Chi tiết →</strong> mở trang phát hiện kèm chứng cứ truy nguồn (mục E1).</li>
+          </ol></div>
+          <figure><span class="fig-tag">Một nhóm phát hiện</span><img src="14-nhom-phat-hien.png" alt="Nhóm phát hiện của một bài kiểm tra"><figcaption>Bảng hiện 15 dòng đầu; bấm <i>Xem tất cả … phát hiện</i> để mở danh sách đầy đủ có phân trang.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Mức độ</th><th>Ý nghĩa</th><th>Trọng số điểm</th></tr></thead>
+          <tbody>
+            <tr><td>🔴 <b>Nghiêm trọng</b></td><td>Chênh lệch lớn, khả năng cao là sai phạm.</td><td>10 điểm</td></tr>
+            <tr><td>🟡 <b>Cảnh báo</b></td><td>Chênh lệch cần lưu ý, có thể do sai sót nghiệp vụ.</td><td>3 điểm</td></tr>
+            <tr><td>🔵 <b>Thông tin</b></td><td>Chênh lệch nhỏ, ghi nhận để theo dõi.</td><td>1 điểm</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Khi quản trị viên bật chức năng <b>phát hiện kết hợp</b>, các tổ hợp nhiều dấu hiệu cùng kích hoạt trên một mã hàng được hiển thị riêng ở đầu trang.</div></div>
+      </article>
+
+      <article class="guide" id="d4" data-t="D4 tổng quan AI nhận định bảng số liệu điểm nóng đề xuất cần đối chiếu đã cũ">
+        <div class="guide-head"><span class="gid">D4</span><h3>Tổng quan AI cho một bài kiểm tra</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Bảng số liệu</strong> — do <strong>hệ thống tính</strong>, hiện ngay khi bấm: tổng phát hiện theo mức độ, số mã liên quan và độ tập trung, phân vị các trường số, tách theo sổ quyết toán, so sánh với kỳ trước.</li>
+            <li><strong>Nhận định chung</strong> — do <strong>mô hình ngôn ngữ viết</strong>, xuất hiện sau vài giây.</li>
+            <li><strong>Điểm nóng</strong> và <strong>Đề xuất rà soát</strong> — mỗi mã trong điểm nóng là một liên kết sang trang chi tiết mã.</li>
+            <li><strong>Miễn trừ trách nhiệm</strong> — là text tĩnh của giao diện, không phải do mô hình viết.</li>
+            <li><strong>🔄 Tạo lại</strong> — sinh lại theo lần chạy mới nhất.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Tổng quan AI</span><img src="22b-tong-quan-ai.png" alt="Khối tổng quan AI"><figcaption>Trong lúc chờ, chỗ nhận định hiện <span class="k">⏳ Đang viết nhận định…</span> kèm liên kết tới công việc tương ứng.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Nhãn</th><th>Nghĩa là</th><th>Cần làm gì</th></tr></thead>
+          <tbody>
+            <tr><td><b>⚠️ Tổng quan đã cũ</b></td><td>Đã chạy lại kiểm tra hoặc nạp lại dữ liệu kể từ lúc sinh tổng quan.</td><td>Bấm <b>🔄 Tạo lại</b>.</td></tr>
+            <tr><td><b>⚠️ Cần đối chiếu số liệu</b></td><td>Hậu kiểm thấy trong nhận định có con số không khớp bảng số liệu.</td><td>Đọc lại nhận định đó trước khi sử dụng.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Số liệu dùng để lập hồ sơ phải lấy từ <b>bảng số liệu</b> và <b>trang chi tiết phát hiện</b>. Phần nhận định do AI viết chỉ để tham khảo, không phải kết luận vi phạm.</div></div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Nút <b>✨ Tạo tổng quan còn thiếu</b> ở đầu hồ sơ doanh nghiệp làm việc này cho mọi bài chưa có tổng quan hoặc có tổng quan đã cũ, thay vì bấm từng bài.</div></div>
+      </article>
+
+      <article class="guide" id="d5" data-t="D5 hai sổ quyết toán EPE GC chế xuất gia công liên sổ bộ lọc">
+        <div class="guide-head"><span class="gid">D5</span><h3>Doanh nghiệp giữ nhiều sổ quyết toán</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Ô tổng quan mỗi sổ</strong> — số mã nguyên vật liệu và số phát hiện của sổ đó.</li>
+            <li><strong>Ô liên sổ</strong> — phát hiện không thuộc riêng sổ nào.</li>
+            <li><strong>Bộ lọc theo sổ</strong> — Tất cả · từng sổ · Liên sổ.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Doanh nghiệp hai sổ</span><img src="21-hai-so-quyet-toan.png" alt="Hồ sơ doanh nghiệp hai sổ quyết toán"><figcaption>Doanh nghiệp chế xuất vừa làm chế xuất (EPE) vừa nhận gia công (GC).</figcaption></figure>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Liên sổ</b> điển hình là các phát hiện đối chiếu với tờ khai, vì tờ khai dùng chung cho cả hai sổ. Khi lọc theo một sổ mà không có phát hiện nào, hệ thống nói rõ sổ đó <b>đã được kiểm tra và không có chênh lệch</b> — khác với trạng thái thiếu dữ liệu hoặc chưa chạy kiểm tra.</div></div>
+      </article>
+    </section>
+
+    <!-- ============ E. XỬ LÝ & KẾT XUẤT ============ -->
+    <section class="block sec-act" id="act">
+      <div class="block-h"><span class="badge">E</span><h2>Xử lý phát hiện &amp; kết xuất</h2></div>
+      <p class="block-lead">Đối chiếu chứng cứ truy nguồn, đánh dấu trạng thái, đào sâu một mã hàng và xuất hồ sơ kiến nghị.</p>
+
+      <article class="guide" id="e1" data-t="E1 chi tiết phát hiện chứng cứ truy nguồn tầng 1 bảng dữ liệu gốc">
+        <div class="guide-head"><span class="gid">E1</span><h3>Chi tiết phát hiện và chứng cứ truy nguồn</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Mức độ và mã bài kiểm tra</strong>, kèm doanh nghiệp, kỳ, đối tượng và trạng thái.</li>
+            <li><strong>Mô tả nghiệp vụ</strong> của bài kiểm tra, kèm ngưỡng phân mức.</li>
+            <li><strong>Chi tiết</strong> — các trường tính toán làm nên phát hiện.</li>
+            <li><strong>Chứng cứ truy nguồn (Tầng 1)</strong> — đúng những dòng dữ liệu gốc làm phát sinh phát hiện, kèm tên bảng và điều kiện lọc.</li>
+            <li><strong>Cập nhật trạng thái</strong> (mục E2).</li>
+          </ol></div>
+          <figure><span class="fig-tag">Chi tiết phát hiện</span><img src="17-chi-tiet-phat-hien.png" alt="Trang chi tiết phát hiện"><figcaption>Mọi phát hiện đều truy nguồn được về dòng dữ liệu cụ thể.</figcaption></figure>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Khối chứng cứ có <b>0 dòng</b> cũng là thông tin. Trong ảnh trên, bảng tờ khai trả 0 dòng chính là lý do phát hiện tồn tại: Mẫu 15 khai nhập 1.440 nhưng không có dòng tờ khai nào tương ứng.</div></div>
+      </article>
+
+      <article class="guide" id="e2" data-t="E2 trạng thái phát hiện xác nhận loại trừ đã ghi chú tính lại điểm">
+        <div class="guide-head"><span class="gid">E2</span><h3>Đánh dấu trạng thái phát hiện</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li>Chọn <strong>trạng thái</strong>.</li>
+            <li>Nhập <strong>ghi chú</strong> giải thích căn cứ.</li>
+            <li>Bấm <strong>Lưu cập nhật</strong>.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Cập nhật trạng thái</span><img src="18-cap-nhat-trang-thai.png" alt="Biểu mẫu cập nhật trạng thái phát hiện"><figcaption>Ghi chú hiển thị ngay trong bảng danh sách phát hiện.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Trạng thái</th><th>Khi nào dùng</th></tr></thead>
+          <tbody>
+            <tr><td><b>Mới</b></td><td>Chưa xử lý (mặc định).</td></tr>
+            <tr><td><b>Xác nhận</b></td><td>Đã xác minh là vấn đề thực sự.</td></tr>
+            <tr><td><b>Loại trừ</b></td><td>Không phải vấn đề — giải thích được, hoặc sai dương.</td></tr>
+            <tr><td><b>Đã ghi chú</b></td><td>Ghi nhận để theo dõi, chưa kết luận.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Phát hiện đánh dấu <b>Loại trừ</b> không tính vào điểm, và <b>điểm rủi ro được tính lại ngay</b> — không cần chạy lại kiểm tra.</div></div>
+      </article>
+
+      <article class="guide" id="e3" data-t="E3 chi tiết mã hàng nguyên vật liệu thành phẩm cân đối kho định mức tồn cuối">
+        <div class="guide-head"><span class="gid">E3</span><h3>Chi tiết mã hàng</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Chỉ số tổng hợp</strong> — tồn cuối kỳ, tổng nhập, tổng xuất, số năm có lệch, biến động tồn cuối qua các năm.</li>
+            <li><strong>Cân đối kho</strong> của kỳ — biểu đồ kèm kết luận có khớp phương trình kho hay không, và đối chiếu BCCT với Mẫu 15.</li>
+            <li><strong>Quan hệ định mức</strong> — mã này là đầu vào của những thành phẩm nào, định mức bao nhiêu.</li>
+            <li><strong>Phát hiện liên quan</strong> — toàn bộ phát hiện của mã trong kỳ.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Chi tiết mã nguyên vật liệu</span><img src="19-chi-tiet-ma-hang.png" alt="Trang chi tiết mã hàng"><figcaption>Mở bằng cách bấm vào mã hàng ở bất kỳ đâu trong hệ thống.</figcaption></figure>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Nút <b>🤖 Hỏi trợ lý AI về mã này</b> mở khung trợ lý với ngữ cảnh mã hàng sẵn, không phải gõ lại mã.</div></div>
+      </article>
+
+      <article class="guide" id="e4" data-t="E4 xuất excel kiến nghị hồ sơ kết xuất chọn bài">
+        <div class="guide-head"><span class="gid">E4</span><h3>Xuất Excel kiến nghị</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li>Tick các <strong>bài kiểm tra</strong> cần xuất.</li>
+            <li><strong>Số phát hiện</strong> của mỗi bài hiển thị bên phải.</li>
+            <li>Bấm nút xuất. Không tick bài nào thì <strong>xuất tất cả</strong>.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Xuất Excel kiến nghị</span><img src="16-xuat-excel-kien-nghi.png" alt="Hộp thoại xuất Excel"><figcaption>Tệp gồm danh sách phát hiện kèm chứng cứ của kỳ đang chọn.</figcaption></figure>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Trong từng nhóm phát hiện còn có nút <b>📊 Xuất test này</b> để xuất riêng một bài. Mỗi lượt kết xuất đều được ghi vào nhật ký truy cập.</div></div>
+      </article>
+
+      <article class="guide" id="e5" data-t="E5 tra cứu dữ liệu gốc tầng 1 duyệt bảng m15 m15a m16 bcct">
+        <div class="guide-head"><span class="gid">E5</span><h3>Tra cứu dữ liệu gốc</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li>Nút <strong>📋 Dữ liệu gốc</strong> mở màn hình duyệt trực tiếp dữ liệu Tầng 1 đã nạp.</li>
+            <li>Chọn bảng (Mẫu 15 / 15a / 16 / BCCT) và kỳ báo cáo.</li>
+            <li>Có ô tìm kiếm và phân trang.</li>
+          </ul></div>
+          <figure><span class="fig-tag">Dữ liệu gốc Tầng 1</span><img src="20-du-lieu-goc.png" alt="Màn hình tra cứu dữ liệu gốc"><figcaption>Đây là dữ liệu sau khi nạp, khác với <i>xem nhanh file</i> (mục B6) là nội dung Excel thô.</figcaption></figure>
+        </div>
+      </article>
+    </section>
+
+    <!-- ============ F. TRỢ LÝ AI ============ -->
+    <section class="block sec-ai" id="ai">
+      <div class="block-h"><span class="badge">F</span><h2>Trợ lý AI</h2></div>
+      <p class="block-lead">Trợ lý làm việc trên dữ liệu của các doanh nghiệp bạn được phép xem, và luôn cho biết đã tra cứu bằng công cụ nào.</p>
+
+      <article class="guide" id="f1" data-t="F1 hỏi trợ lý AI tra cứu phát hiện công cụ tool nhắc @ doanh nghiệp">
+        <div class="guide-head"><span class="gid">F1</span><h3>Hỏi trợ lý trên trang riêng</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Danh sách cuộc trò chuyện</strong> — nhóm theo doanh nghiệp, cuộc chưa gắn doanh nghiệp xếp cuối.</li>
+            <li><strong>Câu hỏi</strong> gõ bằng tiếng Việt tự nhiên.</li>
+            <li><strong>Nhãn công cụ</strong> — cho biết trợ lý đã dùng công cụ tra cứu nào để lấy số. Bấm vào nhãn để xem dữ liệu nguồn.</li>
+            <li><strong>Ô nhập</strong> — gõ <span class="k">@</span> để nhắc tên doanh nghiệp hoặc mã phát hiện.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Một lượt hỏi đáp</span><img src="23-tro-ly-ai.png" alt="Trang trợ lý AI"><figcaption>Trong ảnh, trợ lý tra <span class="k">DN_004</span> không thấy, tự tra lại danh sách mã doanh nghiệp rồi làm tiếp với mã đúng — thao tác hiển thị đầy đủ chứ không bị giấu đi.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Trợ lý làm được</th><th>Ví dụ câu hỏi</th></tr></thead>
+          <tbody>
+            <tr><td>Tra cứu và giải thích phát hiện</td><td>“Liệt kê phát hiện nghiêm trọng của @DN_003 năm 2024”</td></tr>
+            <tr><td>Tra cứu dữ liệu gốc Mẫu 15/15a/16 và BCCT</td><td>“Mã NVL nào có tồn cuối âm?”</td></tr>
+            <tr><td>Giải thích điểm rủi ro</td><td>“Vì sao doanh nghiệp này được 129 điểm?”</td></tr>
+            <tr><td>Giải thích bài kiểm tra và căn cứ pháp lý</td><td>“C1.6 kiểm tra cái gì, theo thông tư nào?”</td></tr>
+            <tr><td>Đề xuất chạy kiểm tra</td><td>“Chạy lại C4.3 cho kỳ 2025”</td></tr>
+            <tr><td>Kết xuất Excel từ kết quả tra cứu</td><td>“Xuất danh sách vừa liệt kê ra Excel”</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Trợ lý là công cụ hỗ trợ tra cứu, <b>không thay thế phán đoán nghiệp vụ</b>. Đề xuất chạy kiểm tra chỉ thực hiện khi cán bộ bấm xác nhận. Đối chiếu trang chi tiết phát hiện trước khi kết luận.</div></div>
+      </article>
+
+      <article class="guide" id="f2" data-t="F2 trợ lý bên trang khung nổi gắn doanh nghiệp phạm vi cuộc mới">
+        <div class="guide-head"><span class="gid">F2</span><h3>Trợ lý ngay trên trang đang xem</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Cuộc mới gắn</strong> — cho biết cuộc trò chuyện mới sẽ gắn vào doanh nghiệp nào, và đổi được.</li>
+            <li><strong>📜 Lịch sử</strong> — mở danh sách cuộc cũ, có ô lọc theo doanh nghiệp.</li>
+            <li><strong>⛶ Phóng to</strong> — mở rộng khung trợ lý.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Khung trợ lý bên trang</span><img src="23b-tro-ly-ben-trang.png" alt="Khung trợ lý mở trên trang doanh nghiệp"><figcaption>Mở bằng nút <b>💬</b> ở góc dưới bên phải mọi trang — không phải rời trang đang xem.</figcaption></figure>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Nếu cuộc đang mở gắn với doanh nghiệp A trong khi bạn đã chuyển sang trang doanh nghiệp B, hệ thống báo lệch phạm vi và mời mở cuộc mới cho B — <b>không tự đổi nhãn</b> của cuộc đang có.</div></div>
+      </article>
+
+      <article class="guide" id="f3" data-t="F3 quản lý cuộc trò chuyện chỉ của tôi tìm kiếm đổi doanh nghiệp">
+        <div class="guide-head"><span class="gid">F3</span><h3>Quản lý cuộc trò chuyện</h3></div>
+        <div class="guide-body wide">
+          <div class="steps"><ul class="plain-list">
+            <li>Danh sách bên trái <strong>nhóm theo doanh nghiệp</strong>; cuộc chưa gắn doanh nghiệp xếp cuối.</li>
+            <li>Công tắc <strong>Chỉ của tôi</strong> bật sẵn. Quản trị viên bỏ tick để xem cuộc của cán bộ khác.</li>
+            <li>Ô tìm kiếm lọc theo <strong>nội dung</strong> hoặc <strong>tên doanh nghiệp</strong>.</li>
+            <li>Bấm biểu tượng <strong>🏢</strong> trên một cuộc để <strong>đổi doanh nghiệp</strong> của cuộc đó. Cán bộ chỉ chọn được doanh nghiệp trong phạm vi của mình.</li>
+            <li>Cuộc trò chuyện được lưu lại; mở lại để xem hoặc hỏi tiếp.</li>
+          </ul></div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ============ G. TRA CỨU ============ -->
+    <section class="block sec-start" id="ref">
+      <div class="block-h"><span class="badge">G</span><h2>Danh mục &amp; thư viện tài liệu</h2></div>
+      <p class="block-lead">Hai trang chỉ để tra cứu, không thao tác dữ liệu.</p>
+
+      <article class="guide" id="g1" data-t="G1 danh mục kiểm tra mô tả mức độ trạng thái triển khai">
+        <div class="guide-head"><span class="gid">G1</span><h3>Danh mục kiểm tra</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li>Liệt kê toàn bộ bài kiểm tra kèm <strong>mô tả nghiệp vụ</strong>, mức độ và trạng thái triển khai.</li>
+            <li>Dùng để tra ý nghĩa một mã bài kiểm tra khi đọc phát hiện.</li>
+          </ul></div>
+          <figure><span class="fig-tag">📑 Danh mục</span><img src="24-danh-muc-kiem-tra.png" alt="Danh mục kiểm tra"><figcaption>Mở bằng <b>📑 Danh mục</b> trên thanh trên cùng.</figcaption></figure>
+        </div>
+      </article>
+
+      <article class="guide" id="g2" data-t="G2 thư viện tài liệu phương pháp tính điểm thông tư 38 39 81 pháp lý">
+        <div class="guide-head"><span class="gid">G2</span><h3>Thư viện tài liệu</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li><strong>Hướng dẫn sử dụng</strong> — bản trong ứng dụng của cẩm nang này.</li>
+            <li><strong>Phương pháp tính điểm rủi ro</strong> — công thức đầy đủ.</li>
+            <li><strong>Văn bản pháp lý</strong> — Thông tư 38/2015, 39/2018 và 81/2019.</li>
+          </ul></div>
+          <figure><span class="fig-tag">📚 Tài liệu</span><img src="25-thu-vien-tai-lieu.png" alt="Thư viện tài liệu"><figcaption>Mở bằng <b>📚 Tài liệu</b> trên thanh trên cùng.</figcaption></figure>
+        </div>
+      </article>
+    </section>
+
+    <!-- ============ H. QUẢN TRỊ ============ -->
+    <section class="block sec-adm" id="adm">
+      <div class="block-h"><span class="badge">H</span><h2>Dành cho quản trị viên</h2></div>
+      <p class="block-lead">Các mục dưới đây nằm trong nhóm <b>⚙️ Quản trị</b> và chỉ quản trị viên thấy.</p>
+
+      <article class="guide" id="h1" data-t="H1 người dùng tài khoản tạo đặt lại mật khẩu xoá vai trò">
+        <div class="guide-head"><span class="gid">H1</span><h3>Người dùng</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li>Tạo tài khoản mới với vai trò <strong>cán bộ</strong> hoặc <strong>quản trị viên</strong>.</li>
+            <li>Đặt lại mật khẩu — tài khoản đó sẽ bị buộc đổi mật khẩu ở lần đăng nhập kế tiếp.</li>
+            <li>Xoá tài khoản. <strong>Không tự xoá được chính mình.</strong></li>
+          </ul></div>
+          <figure><span class="fig-tag">Quản trị → Người dùng</span><img src="26-quan-tri-nguoi-dung.png" alt="Trang quản trị người dùng"><figcaption>Danh sách tài khoản trong hệ thống.</figcaption></figure>
+        </div>
+      </article>
+
+      <article class="guide" id="h2" data-t="H2 phân công doanh nghiệp phân quyền phạm vi cán bộ scope">
+        <div class="guide-head"><span class="gid">H2</span><h3>Phân công doanh nghiệp</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li>Tick các <strong>doanh nghiệp</strong> cán bộ được phép xem.</li>
+            <li>Bấm <strong>Lưu phân công</strong>.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Phân công doanh nghiệp</span><img src="27-phan-cong-doanh-nghiep.png" alt="Màn hình phân công doanh nghiệp"><figcaption>Đây là cơ chế phân quyền cốt lõi của hệ thống.</figcaption></figure>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Doanh nghiệp không được tick sẽ <b>ẩn hoàn toàn</b> với cán bộ đó, kể cả khi hỏi qua trợ lý AI. Phân công cho tài khoản quản trị viên không có tác dụng, vì quản trị viên luôn thấy tất cả.</div></div>
+      </article>
+
+      <article class="guide" id="h3" data-t="H3 ngưỡng hạng rủi ro năm mức cảnh báo tính lại">
+        <div class="guide-head"><span class="gid">H3</span><h3>Ngưỡng hạng rủi ro</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li>Điều chỉnh ngưỡng phân chia <strong>năm mức cảnh báo</strong>.</li>
+            <li>Khi lưu, mức cảnh báo của các doanh nghiệp bị ảnh hưởng được tính lại.</li>
+            <li>Ngưỡng chỉ đổi cách <strong>xếp mức</strong>, không đổi <strong>điểm</strong>.</li>
+          </ul></div>
+          <figure><span class="fig-tag">Quản trị → Ngưỡng hạng rủi ro</span><img src="28-nguong-hang-rui-ro.png" alt="Cấu hình ngưỡng hạng rủi ro"><figcaption>Ngưỡng mặc định: 0–50 · 51–100 · 101–300 · 301–600 · 601–1000.</figcaption></figure>
+        </div>
+      </article>
+
+      <article class="guide" id="h4" data-t="H4 đơn vị tính quy đổi alias cái chiếc pcs chuẩn hoá">
+        <div class="guide-head"><span class="gid">H4</span><h3>Đơn vị tính</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li>Quản lý bảng <strong>đơn vị tính chuẩn</strong>.</li>
+            <li>Khai báo các <strong>tên gọi quy đổi</strong> cùng chỉ một đơn vị, ví dụ “cái”, “chiếc”, “pcs”.</li>
+            <li>Việc này giúp các bài kiểm tra so sánh số lượng chính xác khi doanh nghiệp dùng đơn vị khác nhau giữa Mẫu 15 và tờ khai.</li>
+          </ul></div>
+          <figure><span class="fig-tag">Quản trị → Đơn vị tính</span><img src="29-don-vi-tinh.png" alt="Quản lý đơn vị tính"><figcaption>Đơn vị chuẩn và các tên gọi quy đổi.</figcaption></figure>
+        </div>
+      </article>
+
+      <article class="guide" id="h5" data-t="H5 cấu hình AI model ngân sách giới hạn kết nối openrouter chi phí token">
+        <div class="guide-head"><span class="gid">H5</span><h3>Cấu hình AI</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>Địa chỉ máy chủ</strong> của nhà cung cấp mô hình.</li>
+            <li><strong>Mã API</strong> — để trống khi lưu nghĩa là giữ mã cũ.</li>
+            <li><strong>Thử kết nối</strong> — kiểm tra trước khi lưu.</li>
+            <li><strong>Ba slot mô hình</strong>: mặc định cho trò chuyện, nhanh cho tổng quan và tóm tắt, sâu cho suy luận có kiểm soát.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Quản trị → Cấu hình AI</span><img src="30-cau-hinh-ai.png" alt="Trang cấu hình AI"><figcaption>Cấu hình có hiệu lực ngay, không cần triển khai lại.</figcaption></figure>
+        </div>
+        <div class="guide-body wide" style="padding-top:0">
+          <div class="steps"><ul class="plain-list">
+            <li>Phần dưới trang còn có: nhà cung cấp <strong>dự phòng</strong>, tham số sinh, <strong>giới hạn số lượt mỗi giờ</strong> và <strong>ngân sách theo ngày</strong>, bật/tắt từng nhóm năng lực của trợ lý.</li>
+            <li>Bảng theo dõi <strong>chi phí và lượng token</strong>, tách theo trò chuyện và sinh tổng quan.</li>
+          </ul></div>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Khi chạm trần ngân sách ngày, lượt sinh tổng quan <b>dừng lại và ghi rõ lý do</b> thay vì báo lỗi.</div></div>
+      </article>
+
+      <article class="guide" id="h6" data-t="H6 nhật ký truy cập audit tải file xuất báo cáo chạy kiểm tra">
+        <div class="guide-head"><span class="gid">H6</span><h3>Nhật ký truy cập</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ul class="plain-list">
+            <li>Ghi nhận <strong>tải file</strong>, <strong>xuất báo cáo</strong>, <strong>chạy kiểm tra</strong> và <strong>sinh tổng quan AI</strong>.</li>
+            <li>Mỗi dòng kèm thời điểm, người thực hiện, doanh nghiệp và tham số.</li>
+            <li>Lọc theo mã doanh nghiệp hoặc loại hành động.</li>
+          </ul></div>
+          <figure><span class="fig-tag">Quản trị → Nhật ký truy cập</span><img src="31-nhat-ky-truy-cap.png" alt="Nhật ký truy cập"><figcaption>Dùng để đối soát khi cần biết ai đã tải hoặc chạy gì.</figcaption></figure>
+        </div>
+      </article>
+
+      <article class="guide" id="h7" data-t="H7 kiểm tra mở rộng X nháp công bố tắt phát hiện kết hợp combo">
+        <div class="guide-head"><span class="gid">H7</span><h3>Kiểm tra mở rộng</h3></div>
+        <div class="guide-body">
+          <div class="steps"><ol>
+            <li><strong>+ Tạo kiểm tra mới</strong> — soạn bài kiểm tra ngoài danh mục chính thức, chạy thử trước khi công bố.</li>
+            <li><strong>Phát hiện kết hợp</strong> — công tắc gộp nhiều bài kiểm tra cùng kích hoạt trên một mã hàng thành một phát hiện riêng.</li>
+            <li><strong>Trạng thái</strong> của từng kiểm tra mở rộng.</li>
+          </ol></div>
+          <figure><span class="fig-tag">Quản trị → Kiểm tra mở rộng</span><img src="32-kiem-tra-mo-rong.png" alt="Trang kiểm tra mở rộng"><figcaption>Kiểm tra mở rộng mang mã bắt đầu bằng <span class="k">X.</span> để phân biệt với danh mục chính thức <span class="k">C1.*</span>…<span class="k">C6.*</span>.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Trạng thái</th><th>Ý nghĩa</th></tr></thead>
+          <tbody>
+            <tr><td><b>Nháp</b></td><td>Đã lưu, chưa chạy. Còn sửa và xem trước được.</td></tr>
+            <tr><td><b>Đã công bố</b></td><td>Chạy tự động trong lần <b>Chạy kiểm tra</b> kế tiếp.</td></tr>
+            <tr><td><b>Đã tắt</b></td><td>Tạm dừng, không xoá, bật lại được.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Đây là chức năng nâng cao. Thay đổi công tắc phát hiện kết hợp áp dụng cho mỗi cặp (doanh nghiệp, kỳ) <b>từ lần chạy kiểm tra kế tiếp</b>.</div></div>
+      </article>
+    </section>
+  </div>
+</main>
+
+<div class="lb" id="lb"><span class="cls">×</span><img id="lbimg" alt=""></div>
+<button class="themebtn" id="themebtn" aria-label="Đổi nền sáng/tối">◑</button>
+
+<script>
+  const secMeta = {
+    start:{n:'A',c:'var(--start)',t:'Bắt đầu'},
+    data:{n:'B',c:'var(--data)',t:'Doanh nghiệp & dữ liệu'},
+    run:{n:'C',c:'var(--run)',t:'Chạy kiểm tra'},
+    read:{n:'D',c:'var(--read)',t:'Đọc kết quả'},
+    act:{n:'E',c:'var(--act)',t:'Xử lý & kết xuất'},
+    ai:{n:'F',c:'var(--ai)',t:'Trợ lý AI'},
+    ref:{n:'G',c:'var(--start)',t:'Danh mục & tài liệu'},
+    adm:{n:'H',c:'var(--adm)',t:'Quản trị'},
+  };
+  const toc = document.getElementById('toc');
+  document.querySelectorAll('section.block').forEach(sec=>{
+    const m = secMeta[sec.id]; if(!m) return;
+    const box = document.createElement('div'); box.className='sec';
+    box.innerHTML = `<div class="sec-h"><span class="pin" style="background:${m.c}"></span>${m.n}. ${m.t}</div>`;
+    sec.querySelectorAll('article.guide').forEach(g=>{
+      const gid = g.querySelector('.gid').textContent;
+      const title = g.querySelector('h3').textContent;
+      const a = document.createElement('a'); a.href='#'+g.id; a.dataset.for=g.id;
+      a.innerHTML = `<span class="n">${gid}</span>${title}`;
+      box.appendChild(a);
+    });
+    toc.appendChild(box);
+  });
+  const guides = [...document.querySelectorAll('article.guide')];
+  document.getElementById('cnt').textContent = guides.length + ' hướng dẫn';
+
+  const q = document.getElementById('q');
+  const noresult = document.getElementById('noresult');
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/đ/g,'d');
+  q.addEventListener('input', ()=>{
+    const term = norm(q.value.trim());
+    let shown = 0;
+    guides.forEach(g=>{
+      const hay = norm((g.dataset.t||'') + ' ' + g.textContent);
+      const hit = !term || hay.includes(term);
+      g.style.display = hit ? '' : 'none';
+      const link = toc.querySelector(`a[data-for="${g.id}"]`);
+      if(link) link.style.display = hit ? '' : 'none';
+      if(hit) shown++;
+    });
+    document.querySelectorAll('section.block').forEach(sec=>{
+      const any = [...sec.querySelectorAll('article.guide')].some(g=>g.style.display!=='none');
+      sec.style.display = any ? '' : 'none';
+    });
+    document.querySelectorAll('nav.toc .sec').forEach(secBox=>{
+      const any = [...secBox.querySelectorAll('a')].some(a=>a.style.display!=='none');
+      secBox.style.display = any ? '' : 'none';
+    });
+    noresult.classList.toggle('show', shown===0);
+  });
+
+  const links = [...toc.querySelectorAll('a')];
+  const byId = Object.fromEntries(links.map(a=>[a.dataset.for,a]));
+  const io = new IntersectionObserver((ents)=>{
+    ents.forEach(e=>{
+      if(e.isIntersecting){
+        links.forEach(l=>l.classList.remove('active'));
+        const a = byId[e.target.id];
+        if(a){ a.classList.add('active'); a.scrollIntoView({block:'nearest'}); }
+      }
+    });
+  },{rootMargin:'-20% 0px -70% 0px'});
+  guides.forEach(g=>io.observe(g));
+
+  const body = document.body;
+  document.getElementById('burger').onclick = ()=>body.classList.toggle('nav-open');
+  document.getElementById('scrim').onclick = ()=>body.classList.remove('nav-open');
+  toc.addEventListener('click', e=>{ if(e.target.closest('a')) body.classList.remove('nav-open'); });
+
+  const lb = document.getElementById('lb'), lbimg = document.getElementById('lbimg');
+  document.getElementById('content').addEventListener('click', e=>{
+    const img = e.target.closest('figure img');
+    if(img){ lbimg.src = img.src; lb.classList.add('show'); }
+  });
+  lb.onclick = ()=>lb.classList.remove('show');
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') lb.classList.remove('show'); });
+
+  const themebtn = document.getElementById('themebtn');
+  const saved = localStorage.getItem('ahq-guide-theme');
+  if(saved) document.documentElement.dataset.theme = saved;
+  themebtn.onclick = ()=>{
+    const cur = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = cur;
+    localStorage.setItem('ahq-guide-theme', cur);
+  };
+</script>
+</body>
+</html>
