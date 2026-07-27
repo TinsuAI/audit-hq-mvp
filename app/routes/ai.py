@@ -15,6 +15,7 @@ import json
 import logging
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -31,6 +32,11 @@ from app.ai.client import (
     make_fallback_client,
 )
 from app.ai.config import get_setting
+from app.ai.conversation_scope import (
+    late_assign_company,
+    resolve_company_for_new_conversation,
+    visible_company_by_ident,
+)
 from app.ai.cost import estimate_cost
 from app.ai.guardrails import apply_guardrails
 from app.ai.limits import check_daily_budget, check_rate_limit
@@ -43,7 +49,7 @@ from app.database import get_db
 from app.jobs import enqueue_job
 from app.models import AiConversation, AiMessage, Company, Finding
 from app.models.job import JobKind
-from app.scoping import allowed_company_codes, get_company_or_404
+from app.scoping import allowed_company_codes, can_access_company_id, get_company_or_404
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +93,70 @@ def _resolve_mentions(
                 continue
             out.append({"type": "finding", "id": f.id, "title": f.title, "company_code": comp.code})
     return out
+
+
+def _conversation_lock(db: Session, conv: AiConversation, user: SessionUser) -> str | None:
+    """Lý do cuộc bị khoá gửi, hoặc None nếu gửi được (ADR #20).
+
+    Cuộc gắn DN mà cán bộ không còn được phân công: transcript vẫn ĐỌC được
+    (quyền đọc theo sở hữu cuộc, không đổi), nhưng không gửi thêm. Thay cho cảnh
+    hỏi được mà câu nào cũng bị tool từ chối, không nói vì sao.
+    """
+    if conv.company_id is None or can_access_company_id(db, user, conv.company_id):
+        return None
+    company = db.get(Company, conv.company_id)
+    name = company.name if company else f"#{conv.company_id}"
+    return (
+        f"Cuộc trò chuyện này gắn với doanh nghiệp {name}, hiện bạn không còn được phân công "
+        "doanh nghiệp đó nên không gửi thêm được. Nội dung cũ vẫn đọc được. "
+        "Liên hệ quản trị nếu cần phân công lại."
+    )
+
+
+def _conversation_company(db: Session, conv: AiConversation) -> dict | None:
+    """`{code, name}` của DN gắn cuộc — nạp vào system prompt làm chủ đề."""
+    if conv.company_id is None:
+        return None
+    label = _company_labels(db, {conv.company_id}).get(conv.company_id)
+    return {"code": label["code"], "name": label["name"]} if label else None
+
+
+def _resume_or_create_conversation(
+    db: Session,
+    user: SessionUser,
+    conv_id: int | None,
+    *,
+    page_context: dict,
+    mentions: list[dict],
+    user_message: str,
+) -> AiConversation:
+    """Resume cuộc cũ (kiểm sở hữu) hoặc tạo cuộc mới đã gắn DN (ADR #20).
+
+    Dùng chung cho `/api/chat` và `/api/chat/stream` — nhận diện DN phải giống
+    hệt nhau ở hai đường, nếu không nhãn sẽ phụ thuộc vào việc client có stream
+    hay không.
+    """
+    if conv_id:
+        conv = db.get(AiConversation, conv_id)
+        if conv is None or conv.user != user.name:
+            raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+        locked = _conversation_lock(db, conv, user)
+        if locked:
+            raise HTTPException(status_code=403, detail=locked)
+        # Cuộc còn trống → nhắc đúng một @DN thì gắn rồi cố định.
+        late_assign_company(db, conv, mentions, user)
+        return conv
+    conv = AiConversation(
+        user=user.name,
+        page_url_seed=page_context.get("url"),
+        title=user_message[:80],
+        company_id=resolve_company_for_new_conversation(db, user, page_context),
+    )
+    db.add(conv)
+    db.flush()
+    # Cuộc mới không nhận được tín hiệu nào từ trang → mention của chính lượt này.
+    late_assign_company(db, conv, mentions, user)
+    return conv
 
 
 def _clean_tool_args(raw: str) -> str:
@@ -211,18 +281,10 @@ async def chat(
         raise HTTPException(status_code=400, detail="Message không được trống.")
 
     # Resume hay tạo mới conversation
-    if conv_id:
-        conv = db.get(AiConversation, conv_id)
-        if conv is None or conv.user != user.name:
-            raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
-    else:
-        conv = AiConversation(
-            user=user.name,
-            page_url_seed=page_context.get("url"),
-            title=user_message[:80],
-        )
-        db.add(conv)
-        db.flush()
+    conv = _resume_or_create_conversation(
+        db, user, conv_id,
+        page_context=page_context, mentions=mentions, user_message=user_message,
+    )
 
     # Save user message
     _save_msg(db, conv.id, "user", user_message)
@@ -232,6 +294,7 @@ async def chat(
     system_msgs = build_messages_system(
         page_context=page_context,
         enable_cache=get_setting("prompt_cache_enabled") and cache_supports_anthropic(),
+        conversation_company=_conversation_company(db, conv),
     )
     history = _load_history(db, conv.id)
     messages = system_msgs + history
@@ -373,42 +436,223 @@ async def chat(
     }
 
 
+def _company_labels(db: Session, company_ids: set[int | None]) -> dict[int, dict]:
+    """Nạp mã/slug/tên cho tập company_id trong MỘT câu — tránh N+1 khi render list."""
+    ids = {i for i in company_ids if i is not None}
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(Company.id, Company.code, Company.slug, Company.name).where(Company.id.in_(ids))
+    ).all()
+    return {r.id: {"code": r.code, "slug": r.slug, "name": r.name} for r in rows}
+
+
+UNASSIGNED = "none"  # giá trị `company_id` cho nhóm "Chưa gán doanh nghiệp"
+
+
+def _visible_conversations(user: SessionUser, mine: bool):
+    """Ràng buộc "cuộc nào user này được thấy" — dùng chung cho list và nhóm.
+
+    Officer: chỉ cuộc của chính mình (không có công tắc). Admin: mặc định cũng
+    chỉ của mình ("Chỉ của tôi" BẬT sẵn) — giám sát cuộc người khác là thao tác
+    phải bấm, không phải mặc định.
+    """
+    stmt = select(AiConversation)
+    if mine or not user.is_admin:
+        stmt = stmt.where(AiConversation.user == user.name)
+    return stmt
+
+
+def _search_clause(q: str):
+    """Lọc theo tiêu đề cuộc HOẶC mã/tên DN — cùng nhãn với chip trên mỗi dòng."""
+    like = f"%{q}%"
+    return or_(
+        AiConversation.title.ilike(like),
+        AiConversation.company_id.in_(
+            select(Company.id).where(or_(Company.code.ilike(like), Company.name.ilike(like)))
+        ),
+    )
+
+
+def _last_activity_at(db: Session, conv_ids: list[int]) -> dict[int, datetime]:
+    """Mốc tin nhắn cuối của mỗi cuộc — dùng cho quy tắc nối lại 24h."""
+    if not conv_ids:
+        return {}
+    return {
+        cid: ts
+        for cid, ts in db.execute(
+            select(AiMessage.conversation_id, func.max(AiMessage.created_at))
+            .where(AiMessage.conversation_id.in_(conv_ids))
+            .group_by(AiMessage.conversation_id)
+        ).all()
+    }
+
+
+def _message_stats(db: Session, conv_ids: list[int]) -> tuple[dict[int, int], dict[int, str]]:
+    """(số tin nhắn, tin nhắn user đầu tiên) cho nhiều cuộc — 2 câu, không N+1."""
+    if not conv_ids:
+        return {}, {}
+    counts = {
+        cid: n
+        for cid, n in db.execute(
+            select(AiMessage.conversation_id, func.count())
+            .where(AiMessage.conversation_id.in_(conv_ids))
+            .group_by(AiMessage.conversation_id)
+        ).all()
+    }
+    first_ids = select(func.min(AiMessage.id)).where(
+        AiMessage.conversation_id.in_(conv_ids), AiMessage.role == "user"
+    ).group_by(AiMessage.conversation_id).scalar_subquery()
+    firsts = {
+        cid: content
+        for cid, content in db.execute(
+            select(AiMessage.conversation_id, AiMessage.content).where(AiMessage.id.in_(first_ids))
+        ).all()
+    }
+    return counts, firsts
+
+
 @router.get("/chat/conversations")
 def list_conversations(
+    company_id: str | None = Query(default=None, description="id DN, hoặc 'none' = chưa gán"),
+    q: str = Query(default=""),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=30, ge=1, le=200),
+    mine: bool = Query(default=True),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """List conversation — 30 cái gần nhất. Admin thấy của mọi user (giám sát);
-    officer chỉ của chính mình."""
-    stmt = select(AiConversation).order_by(AiConversation.id.desc()).limit(30)
-    if not user.is_admin:
-        stmt = stmt.where(AiConversation.user == user.name)
-    convs = db.scalars(stmt).all()
+    """Danh sách cuộc trò chuyện, phân trang TRONG một nhóm doanh nghiệp.
+
+    `company_id` bỏ trống = mọi nhóm (sidebar dùng danh sách phẳng). Trang `/chat`
+    gọi một lần cho mỗi section nên bỏ được cap 30 toàn cục cũ.
+    """
+    stmt = _visible_conversations(user, mine)
+    if company_id == UNASSIGNED:
+        stmt = stmt.where(AiConversation.company_id.is_(None))
+    elif company_id:
+        try:
+            stmt = stmt.where(AiConversation.company_id == int(company_id))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="company_id không hợp lệ.") from e
+    if q.strip():
+        stmt = stmt.where(_search_clause(q.strip()))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    convs = db.scalars(
+        stmt.order_by(AiConversation.id.desc()).offset(offset).limit(limit)
+    ).all()
+
+    companies = _company_labels(db, {c.company_id for c in convs})
+    counts, firsts = _message_stats(db, [c.id for c in convs])
+    last_seen = _last_activity_at(db, [c.id for c in convs])
     out = []
     for c in convs:
-        # Count messages
-        msg_count = db.scalar(
-            select(func.count())
-            .select_from(AiMessage)
-            .where(AiMessage.conversation_id == c.id)
-        ) or 0
-        # First user msg để làm preview/title fallback
-        first_user_msg = db.scalar(
-            select(AiMessage)
-            .where(AiMessage.conversation_id == c.id, AiMessage.role == "user")
-            .order_by(AiMessage.id)
-            .limit(1)
-        )
-        title = c.title or (first_user_msg.content[:80] if first_user_msg else "(trống)")
+        first = firsts.get(c.id)
+        title = c.title or (first[:80] if first else "(trống)")
+        label = companies.get(c.company_id) or {}
+        last_at = last_seen.get(c.id) or c.started_at
         out.append({
             "id": c.id,
             "title": title,
             "started_at": c.started_at.isoformat() if c.started_at else None,
-            "msg_count": msg_count,
+            "last_message_at": last_at.isoformat() if last_at else None,
+            "msg_count": counts.get(c.id, 0),
             "page_url_seed": c.page_url_seed,
             "owner": c.user,  # admin xem list của nhiều user → FE hiện chủ + ẩn nút xoá cuộc người khác
+            # Nhãn DN đọc từ dòng cuộc — FE KHÔNG suy từ page_url_seed nữa.
+            "company_id": c.company_id,
+            "company_code": label.get("code"),
+            "company_slug": label.get("slug"),
+            "company_name": label.get("name"),
         })
-    return {"conversations": out}
+    return {"conversations": out, "total": total, "has_more": offset + len(out) < total}
+
+
+@router.get("/chat/conversation-groups")
+def list_conversation_groups(
+    q: str = Query(default=""),
+    mine: bool = Query(default=True),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Header section của trang `/chat`: mỗi doanh nghiệp + số cuộc.
+
+    Sắp theo tên doanh nghiệp; nhóm chưa gán xếp CUỐI. Header section chính là
+    doanh nghiệp — không có tầng "thư mục" nào ở giữa.
+    """
+    stmt = _visible_conversations(user, mine)
+    if q.strip():
+        stmt = stmt.where(_search_clause(q.strip()))
+    sub = stmt.subquery()
+    rows = db.execute(
+        select(sub.c.company_id, func.count()).group_by(sub.c.company_id)
+    ).all()
+
+    labels = _company_labels(db, {cid for cid, _ in rows})
+    groups = []
+    unassigned = 0
+    for cid, n in rows:
+        if cid is None:
+            unassigned = n
+            continue
+        label = labels.get(cid) or {}
+        groups.append({
+            "company_id": cid,
+            "company_code": label.get("code"),
+            "company_slug": label.get("slug"),
+            "company_name": label.get("name") or label.get("code") or f"#{cid}",
+            "count": n,
+        })
+    groups.sort(key=lambda g: g["company_name"].lower())
+    if unassigned:
+        groups.append({
+            "company_id": None,
+            "company_code": None,
+            "company_slug": None,
+            "company_name": "Chưa gán doanh nghiệp",
+            "count": unassigned,
+        })
+    return {"groups": groups}
+
+
+@router.patch("/chat/conversations/{conv_id}")
+async def update_conversation_company(
+    conv_id: int,
+    request: Request,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Đổi doanh nghiệp của một cuộc. `{"company_code": null}` = gỡ nhãn.
+
+    Chủ cuộc sửa cuộc của mình; quản trị sửa mọi cuộc. Officer chỉ chọn được DN
+    mình có quyền — chặn ở ĐÂY, không chỉ ở danh sách đổ vào ô chọn.
+    """
+    conv = db.get(AiConversation, conv_id)
+    if conv is None or (conv.user != user.name and not user.is_admin):
+        raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+
+    code = body.get("company_code")
+    if code in (None, ""):
+        conv.company_id = None
+    else:
+        # get_company_or_404 áp đúng ranh giới ADR #14 (404 cho DN ngoài phạm vi).
+        conv.company_id = get_company_or_404(db, str(code), user).id
+    db.commit()
+
+    label = _company_labels(db, {conv.company_id}).get(conv.company_id) or {}
+    return {
+        "id": conv.id,
+        "company_id": conv.company_id,
+        "company_code": label.get("code"),
+        "company_slug": label.get("slug"),
+        "company_name": label.get("name"),
+    }
 
 
 @router.get("/chat/conversations/{conv_id}/messages")
@@ -426,10 +670,22 @@ def get_conversation_messages(
         .where(AiMessage.conversation_id == conv.id)
         .order_by(AiMessage.id)
     ).all()
+    label = _company_labels(db, {conv.company_id}).get(conv.company_id) or {}
+    # Admin đọc cuộc người khác: chỉ để giám sát, không gửi tiếp vào cuộc đó.
+    lock = (
+        "Đây là cuộc trò chuyện của cán bộ khác — chỉ xem, không gửi thêm."
+        if conv.user != user.name else _conversation_lock(db, conv, user)
+    )
     return {
         "conversation_id": conv.id,
         "title": conv.title,
         "started_at": conv.started_at.isoformat() if conv.started_at else None,
+        "can_send": lock is None,
+        "lock_reason": lock,
+        "company_id": conv.company_id,
+        "company_code": label.get("code"),
+        "company_slug": label.get("slug"),
+        "company_name": label.get("name"),
         "messages": [
             {
                 "role": m.role,
@@ -457,6 +713,87 @@ def delete_conversation(
     db.delete(conv)  # cascade xoá messages
     db.commit()
     return {"deleted": conv_id}
+
+
+RESUME_WINDOW_HOURS = 24
+
+
+@router.get("/chat/resume")
+def resume_conversation(
+    company_code: str | None = Query(default=None),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Cuộc gần nhất CÙNG doanh nghiệp còn trong cửa sổ 24 giờ, hoặc không có.
+
+    Sidebar gọi khi mở panel: có thì nối lại và báo rõ đang tiếp tục cuộc nào,
+    không thì mở cuộc mới trong phạm vi đó. Quy tắc 24h ở SERVER (một chỗ, test
+    được) chứ không rải trong JS.
+
+    Mốc đo là tin nhắn CUỐI, không phải lúc mở cuộc: "gần nhất" theo nghĩa cán
+    bộ vừa dùng. Cửa sổ tồn tại vì resume nạp lại 20 message vào MỌI prompt sau
+    đó — cuộc để lâu neo câu trả lời vào dữ liệu có thể đã nạp lại từ lúc ấy.
+    """
+    company = visible_company_by_ident(db, company_code, user)
+    if company_code and company is None:
+        return {"conversation_id": None}
+
+    # Sắp theo hoạt động cuối trong SQL, không nạp N dòng rồi lọc trong Python:
+    # một cuộc cũ nhưng vừa dùng lại phải thắng, kể cả khi nó nằm sâu trong danh
+    # sách theo thứ tự tạo.
+    last_msg = (
+        select(
+            AiMessage.conversation_id.label("cid"),
+            func.max(AiMessage.created_at).label("last_at"),
+        )
+        .group_by(AiMessage.conversation_id)
+        .subquery()
+    )
+    activity = func.coalesce(last_msg.c.last_at, AiConversation.started_at)
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=RESUME_WINDOW_HOURS)
+    row = db.execute(
+        select(AiConversation, activity.label("at"))
+        .outerjoin(last_msg, last_msg.c.cid == AiConversation.id)
+        .where(
+            AiConversation.user == user.name,
+            AiConversation.company_id == company.id if company is not None
+            else AiConversation.company_id.is_(None),
+            activity >= cutoff,
+        )
+        .order_by(activity.desc())
+        .limit(1)
+    ).first()
+    if row is None:
+        return {"conversation_id": None}
+    best, best_at = row[0], row[1]
+
+    label = _company_labels(db, {best.company_id}).get(best.company_id) or {}
+    return {
+        "conversation_id": best.id,
+        "title": best.title,
+        "company_id": best.company_id,
+        "company_code": label.get("code"),
+        "company_name": label.get("name"),
+        "last_message_at": best_at.isoformat() if best_at else None,
+    }
+
+
+@router.get("/chat/companies")
+def chat_companies(
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """DN cán bộ được phép chọn — đổ vào ô chọn khi gán/đổi DN của cuộc."""
+    stmt = select(Company).order_by(Company.name)
+    allowed = allowed_company_codes(db, user)
+    if allowed is not None:
+        stmt = stmt.where(Company.code.in_(allowed))
+    return {
+        "companies": [
+            {"id": c.id, "code": c.code, "slug": c.slug, "name": c.name}
+            for c in db.scalars(stmt).all()
+        ]
+    }
 
 
 @router.get("/chat/mentions")
@@ -663,18 +1000,10 @@ async def chat_stream(
     if not user_message:
         raise HTTPException(status_code=400, detail="Message không được trống.")
 
-    if conv_id:
-        conv = db.get(AiConversation, conv_id)
-        if conv is None or conv.user != user.name:
-            raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
-    else:
-        conv = AiConversation(
-            user=user.name,
-            page_url_seed=page_context.get("url"),
-            title=user_message[:80],
-        )
-        db.add(conv)
-        db.flush()
+    conv = _resume_or_create_conversation(
+        db, user, conv_id,
+        page_context=page_context, mentions=mentions, user_message=user_message,
+    )
 
     _save_msg(db, conv.id, "user", user_message)
     db.commit()
@@ -683,6 +1012,7 @@ async def chat_stream(
     system_msgs = build_messages_system(
         page_context=page_context,
         enable_cache=get_setting("prompt_cache_enabled") and cache_supports_anthropic(),
+        conversation_company=_conversation_company(db, conv),
     )
     history = _load_history(db, conv.id)
     messages = system_msgs + history

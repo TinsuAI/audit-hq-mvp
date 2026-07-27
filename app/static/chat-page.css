@@ -70,6 +70,104 @@
 }
 .chat-main-col .ai-msg { max-width: 80%; }
 
+/* ── Nhóm theo doanh nghiệp (CHAT-2) ── */
+.chat-mine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px 8px;
+  font-size: 12px;
+  color: var(--c-text-muted, #6b7280);
+  border-bottom: 1px solid var(--c-border, #e5e7eb);
+}
+.chat-mine input { accent-color: var(--c-brand-600, #1e40af); }
+
+.chat-group { border-bottom: 1px solid var(--c-border, #e5e7eb); }
+.chat-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--c-surface-alt, #f9fafb);
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--c-text, #111827);
+}
+.chat-group-head:hover { background: var(--c-brand-50, #eff6ff); }
+.chat-group-head:focus-visible { outline: 2px solid var(--c-brand-600, #1e40af); outline-offset: -2px; }
+.chat-group .cg-caret { width: 12px; color: var(--c-text-muted, #6b7280); }
+.chat-group .cg-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-group .cg-count {
+  flex: none;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--c-border, #e5e7eb);
+  color: var(--c-text-muted, #4b5563);
+  font-size: 11px;
+  text-align: center;
+}
+.chat-group-body { padding: 4px 0; }
+.chat-group-more {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 4px 10px 8px;
+  padding: 6px;
+  border: 1px dashed var(--c-border, #d1d5db);
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--c-text-muted, #6b7280);
+}
+.chat-group-more:hover { background: var(--c-surface-alt, #f9fafb); }
+
+/* ── Hộp thoại đổi doanh nghiệp ── */
+.chat-move-dialog {
+  border: 1px solid var(--c-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 0;
+  min-width: 320px;
+  max-width: 92vw;
+}
+.chat-move-dialog::backdrop { background: rgba(17, 24, 39, .45); }
+.chat-move-dialog form { padding: 18px 20px 14px; }
+.chat-move-dialog h2 { margin: 0; font-size: 15px; }
+.chat-move-dialog .cmd-sub {
+  margin: 4px 0 14px;
+  font-size: 12px;
+  color: var(--c-text-muted, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-move-dialog label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.chat-move-dialog select {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--c-border, #d1d5db);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+.chat-move-dialog .cmd-error { margin: 8px 0 0; font-size: 12px; color: #b91c1c; }
+.chat-move-dialog .cmd-error:empty { display: none; }
+.chat-move-dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 16px 0 0; padding: 0; }
+.chat-move-dialog menu button {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.chat-move-dialog .cmd-cancel { border: 1px solid var(--c-border, #d1d5db); background: #fff; }
+.chat-move-dialog .cmd-save { border: none; background: var(--c-brand-600, #1e40af); color: #fff; font-weight: 600; }
+
 @media (max-width: 760px) {
   .chat-page { flex-direction: column; height: auto; }
   .chat-list-col { flex: none; width: 100%; height: 220px; }

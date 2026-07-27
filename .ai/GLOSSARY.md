@@ -77,9 +77,9 @@ mà KHÔNG chạy check → `ran_at` không dời → điểm mù nếu chỉ d�
 **Check overview** — tổng quan AI tiếng Việt CÓ TRUY NGUỒN của một check cho (DN, năm). Bảng
 `check_overviews`, overwrite-upsert một dòng mỗi `(company_id, period_year, check_code)`; mang telemetry
 riêng (`model`/`tokens_in`/`tokens_out`/`cost_usd`/`latency_ms`) → tự truy nguồn chi phí, không cần
-history hay `ai_conversation` giả. Sinh ON-DEMAND (cán bộ bấm), ĐỒNG BỘ trong request (endpoint `def`
-thuần → threadpool, KHÔNG qua job worker 1-thread). Prompt nạp ĐẾM severity + top-N `subject_key`,
-KHÔNG nạp dòng. Chỉ mặt trên GROUP đã render (check ≥1 finding).
+history hay `ai_conversation` giả. Sinh ON-DEMAND (cán bộ bấm) — ADR #21 chuyển sang ASYNC qua job
+`AI_OVERVIEW` (worker riêng theo kind), SỬA "đồng bộ trong request" của ADR #18; **chưa cài**. Prompt
+nạp ĐẾM severity + top-N `subject_key`, KHÔNG nạp dòng. Chỉ mặt trên GROUP đã render (check ≥1 finding).
 
 **Staleness (overview)** — overview cũ khi trạng thái nền đã tiến. **Stale ⇔ `check_runs.ran_at` dời
 (check chạy lại) HOẶC `CompanyPeriod.data_version` dời (dữ liệu nạp lại)** so với `based_on_run_at` /
@@ -123,3 +123,44 @@ sổ → liên sổ, chưa/không quy về sổ nào; (b) một sổ → trục 
 một loại thứ ba khi pháp nhân nhiều sổ, TÁCH khỏi "Tất cả" (= hợp EPE ∪ GC ∪ Liên sổ). KHÔNG gộp "Liên
 sổ" vào một sổ khi lọc theo sổ — check chưa quy kết sổ nào thì UI không được khẳng định thay (kỷ luật
 truy nguồn, không hộp đen). 004/2025: EPE 34 · GC 0 · Liên sổ 40.
+
+## Chat gắn doanh nghiệp (ADR #20 — chưa cài)
+
+**Doanh nghiệp gắn với cuộc trò chuyện** — MỘT doanh nghiệp của một cuộc trò chuyện, lưu ở
+`ai_conversations.company_id` (null được). Tự nhận diện lúc TẠO từ tín hiệu tường minh (DN cán bộ chọn
+→ DN của trang → DN của finding đang xem), gán muộn chỉ từ mention `@DN` khi lượt đó có đúng một DN;
+cán bộ sửa được sau. Là NHÃN LƯU, không suy lúc đọc. Vừa dựng nhóm hiển thị, vừa vào system prompt làm
+CHỦ ĐỀ cuộc — KHÔNG thu hẹp quyền truy cập của tool (biên quyền vẫn là `allowed_company_codes`, ADR #14).
+KHÔNG gọi là "thư mục": header nhóm chính là DN.
+
+**Chưa gán doanh nghiệp** — cuộc trò chuyện `company_id = NULL`: mở từ trang không thuộc DN nào
+(`/chat`, `/jobs`, trang quản trị) và chưa có mention nào quy về một DN. Là một nhóm hiển thị như DN,
+xếp cuối. KHÔNG đồng nghĩa "không liên quan DN nào" — chỉ là chưa quy kết.
+
+**Lệch phạm vi (cuộc ↔ trang)** — trạng thái cuộc trò chuyện gắn DN A trong khi cán bộ đang xem trang
+DN B; mỗi lượt gửi ngữ cảnh trang HIỆN TẠI nên nội dung sẽ trộn hai DN. Xử lý: HIỆN thông báo + nút mở
+cuộc mới cho B; không tự tách cuộc, không tự đổi nhãn.
+
+**Tiếp tục cuộc gần nhất** — hành vi khi mở trợ lý: nối lại cuộc trò chuyện gần nhất CÙNG DN nếu dưới
+24 giờ, ngược lại mở cuộc mới trong phạm vi đó. Mốc 24h vì mỗi lượt nạp lại 20 message cuối vào prompt.
+
+## Tổng quan AI v2 (ADR #21 — chưa cài)
+
+**Bảng số liệu tổng quan** — nửa TÍNH ĐƯỢC của một check overview: tập trung (số mã distinct, tỉ trọng
+top-5, số mã phủ 80%), phân vị các trường số trong `details`, chiều lệch, tách theo sổ, so với năm
+trước. Tính bằng Python, lưu `check_overviews.aggregate_json`, template render. ĐÓNG BĂNG theo snapshot
+lúc sinh (không tính lại lúc load). KHÔNG chứa tổng tuyệt đối chéo đơn vị.
+
+**Nhận định** — nửa do LLM viết: `nhan_dinh` · `phan_bo` · `diem_nong` · `de_xuat`, trả JSON, render
+theo mục cố định. Chỉ ĐỌC bảng số liệu; mọi con số phải copy nguyên chuỗi đã cho.
+
+**Cần đối chiếu (cờ)** — trạng thái một nhận định có con số không khớp chuỗi nào trong bảng số liệu
+(hậu kiểm so khớp chuỗi). Hiện badge, KHÔNG publish âm thầm.
+
+**Điểm nóng** — mục `diem_nong` của nhận định: ≤5 `subject_key` nổi bật kèm nhận xét, render thành link
+sang trang chi tiết mã (truy nguồn).
+
+**Sổ chi phí AI (`ai_usage`)** — bảng append-only một dòng mỗi lời gọi LLM tính tiền (`kind` chat |
+overview, `ref`, model, tokens, `cost_usd`, user, thời điểm). Là NGUỒN của trần chi phí ngày và thống
+kê `/admin/ai`. Cần vì `check_overviews` upsert nên không giữ được lịch sử chi tiêu: sinh lại cùng một
+overview 3 lần trong ngày chỉ còn chi phí lần cuối.

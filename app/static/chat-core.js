@@ -154,9 +154,13 @@
     return 'Cũ hơn';
   }
 
+  // Nhãn DN của cuộc — đọc từ dòng cuộc (server gắn lúc tạo, ADR #20). Cuộc mở
+  // từ trang phát hiện có nhãn đúng; không còn suy từ page_url_seed.
   function convDnCode(c) {
-    const m = (c.page_url_seed || '').match(/\/companies\/([A-Za-z0-9_-]+)/);
-    return m ? m[1] : null;
+    return c.company_code || null;
+  }
+  function convDnLabel(c) {
+    return c.company_name || c.company_code || null;
   }
 
   // ═══════════════ API helpers ═══════════════
@@ -165,10 +169,40 @@
     if (!r.ok) throw new Error('meta ' + r.status);
     return r.json();
   }
-  async function apiList() {
-    const r = await fetch('/api/chat/conversations', { credentials: 'same-origin' });
+  // params: {company_id, q, offset, limit, mine} — bỏ trống = danh sách phẳng 30 cuộc.
+  async function apiListPage(params = {}) {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+    }
+    const r = await fetch('/api/chat/conversations?' + qs.toString(), { credentials: 'same-origin' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    return (await r.json()).conversations || [];
+    return r.json();
+  }
+  async function apiList(params = {}) {
+    return (await apiListPage(params)).conversations || [];
+  }
+  async function apiGroups(params = {}) {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+    }
+    const r = await fetch('/api/chat/conversation-groups?' + qs.toString(), { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return (await r.json()).groups || [];
+  }
+  async function apiCompanies() {
+    const r = await fetch('/api/chat/companies', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return (await r.json()).companies || [];
+  }
+  function apiSetCompany(id, companyCode) {
+    return fetch(`/api/chat/conversations/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_code: companyCode }),
+      credentials: 'same-origin',
+    });
   }
   function apiMessages(id) {
     return fetch(`/api/chat/conversations/${id}/messages`, { credentials: 'same-origin' });
@@ -178,12 +212,54 @@
   }
 
   // ═══════════════ Danh sách cuộc trò chuyện (dùng chung) ═══════════════
+  // Một dòng cuộc. opts: {activeId, currentUser, showDn, onPick, onDelete, onChangeCompany}
+  function renderConversationRow(c, opts = {}) {
+    const item = el('div', {
+      class: 'ai-history-item' + (c.id === opts.activeId ? ' active' : ''),
+      'data-conv-id': String(c.id),
+    });
+    item.appendChild(el('div', { class: 'h-title', text: c.title }));
+    const meta = el('div', { class: 'h-meta' });
+    const dn = convDnLabel(c);
+    if (opts.showDn !== false && dn) {
+      meta.appendChild(el('span', { class: 'h-dn', text: dn, title: c.company_code || dn }));
+    }
+    // Cuộc của user khác (admin đang giám sát) → hiện chủ, không cho xoá.
+    const isOther = c.owner && opts.currentUser && c.owner !== opts.currentUser;
+    if (isOther) meta.appendChild(el('span', { class: 'h-owner', text: '👤 ' + c.owner }));
+    const date = c.started_at
+      ? new Date(c.started_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })
+      : '';
+    meta.appendChild(document.createTextNode(`${c.msg_count} tin nhắn · ${date}`));
+    item.appendChild(meta);
+
+    const actions = el('div', { class: 'h-actions' });
+    if (opts.onChangeCompany) {
+      const label = c.company_id ? 'Đổi doanh nghiệp' : 'Gán doanh nghiệp';
+      const move = el('button', {
+        class: 'h-move', type: 'button', 'aria-label': label, title: label, text: '🏢',
+      });
+      move.addEventListener('click', (e) => { e.stopPropagation(); opts.onChangeCompany(c); });
+      actions.appendChild(move);
+    }
+    if (!isOther && opts.onDelete) {
+      const del = el('button', {
+        class: 'h-delete', type: 'button', 'aria-label': 'Xoá', title: 'Xoá', text: '🗑',
+      });
+      del.addEventListener('click', (e) => { e.stopPropagation(); opts.onDelete(c.id); });
+      actions.appendChild(del);
+    }
+    if (actions.childNodes.length) item.appendChild(actions);
+    item.addEventListener('click', () => { if (opts.onPick) opts.onPick(c.id); });
+    return item;
+  }
+
   // listEl: container; convs: mảng từ apiList(); opts: {activeId, filter, onPick, onDelete}
   function renderConversationList(listEl, convs, opts = {}) {
     const f = (opts.filter || '').trim().toLowerCase();
     const items = convs.filter((c) => {
       if (!f) return true;
-      const dn = (convDnCode(c) || '').toLowerCase();
+      const dn = ((c.company_code || '') + ' ' + (c.company_name || '')).toLowerCase();
       return (c.title || '').toLowerCase().includes(f) || dn.includes(f);
     });
     if (items.length === 0) {
@@ -200,28 +276,7 @@
         listEl.appendChild(el('div', { class: 'ai-history-group', text: bucket }));
         lastBucket = bucket;
       }
-      const item = el('div', {
-        class: 'ai-history-item' + (c.id === opts.activeId ? ' active' : ''),
-        'data-conv-id': String(c.id),
-      });
-      const title = el('div', { class: 'h-title', text: c.title });
-      const meta = el('div', { class: 'h-meta' });
-      const dn = convDnCode(c);
-      if (dn) meta.appendChild(el('span', { class: 'h-dn', text: dn }));
-      // Cuộc của user khác (admin đang giám sát) → hiện chủ, không cho xoá.
-      const isOther = c.owner && opts.currentUser && c.owner !== opts.currentUser;
-      if (isOther) meta.appendChild(el('span', { class: 'h-owner', text: '👤 ' + c.owner }));
-      const date = c.started_at ? new Date(c.started_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '';
-      meta.appendChild(document.createTextNode(`${c.msg_count} tin nhắn · ${date}`));
-      item.appendChild(title);
-      item.appendChild(meta);
-      if (!isOther) {
-        const del = el('button', { class: 'h-delete', type: 'button', 'aria-label': 'Xoá', title: 'Xoá', text: '🗑' });
-        del.addEventListener('click', (e) => { e.stopPropagation(); if (opts.onDelete) opts.onDelete(c.id); });
-        item.appendChild(del);
-      }
-      item.addEventListener('click', () => { if (opts.onPick) opts.onPick(c.id); });
-      listEl.appendChild(item);
+      listEl.appendChild(renderConversationRow(c, opts));
     }
   }
 
@@ -236,6 +291,8 @@
     const onConvChange = cfg.onConversationChange || function () {};
 
     let convId = null;
+    let lockReason = null;         // cuộc không gửi thêm được → lý do hiện dưới khung
+    const basePlaceholder = inputEl ? inputEl.placeholder : '';
     let isStreaming = false;
     let currentToolStrip = null;   // {root, pills, detail} của lượt hiện tại
     let pendingToolPill = null;    // pill 'running' đang chờ tool_result khớp
@@ -412,8 +469,26 @@
       }
     }
 
+    // Khoá ô nhập kèm LÝ DO khi cuộc không gửi thêm được (mất quyền DN, hoặc
+    // admin đang xem cuộc của cán bộ khác). Transcript vẫn đọc bình thường.
+    function setLock(reason) {
+      lockReason = reason || null;
+      const locked = !!lockReason;
+      inputEl.disabled = locked;
+      submitEl.disabled = locked;
+      inputEl.placeholder = locked ? 'Không gửi thêm được' : basePlaceholder;
+      let note = messagesEl.parentElement
+        ? messagesEl.parentElement.querySelector('.ai-lock-note') : null;
+      if (!locked) { if (note) note.remove(); return; }
+      if (!note) {
+        note = el('div', { class: 'ai-lock-note', role: 'status' });
+        messagesEl.parentElement.insertBefore(note, messagesEl.nextSibling);
+      }
+      note.textContent = '🔒 ' + lockReason;
+    }
+
     async function sendMessage(text, _retry = false) {
-      if (isStreaming || !text.trim()) return;
+      if (lockReason || isStreaming || !text.trim()) return;
       isStreaming = true;
       clearEmpty();
       if (!_retry) addMessage('user', text);
@@ -488,10 +563,10 @@
       } finally {
         assistantNode.classList.remove('streaming');
         isStreaming = false;
-        submitEl.disabled = false;
-        inputEl.disabled = false;
+        submitEl.disabled = !!lockReason;
+        inputEl.disabled = !!lockReason;
         inputEl.value = '';
-        inputEl.focus();
+        if (!lockReason) inputEl.focus();
         pendingMentions = [];
       }
     }
@@ -513,6 +588,7 @@
     function clearMessages() {
       messagesEl.innerHTML = '';
       resetToolStrip();
+      setLock(null);   // cuộc mới luôn gửi được
     }
 
     async function loadConversation(id) {
@@ -522,6 +598,7 @@
         const data = await r.json();
         setConvId(data.conversation_id);
         clearMessages();
+        setLock(data.can_send === false ? data.lock_reason : null);
         for (const m of data.messages) {
           if (m.role === 'user') {
             resetToolStrip();
@@ -636,7 +713,9 @@
     create,
     util: {
       el, escapeHtml, getPageContext, getSuggestions, renderMarkdown, parseCitations,
-      dateBucket, convDnCode, apiMeta, apiList, apiMessages, apiDelete, renderConversationList,
+      dateBucket, convDnCode, convDnLabel, apiMeta, apiList, apiListPage, apiGroups,
+      apiCompanies, apiSetCompany, apiMessages, apiDelete,
+      renderConversationList, renderConversationRow,
     },
   };
 })();

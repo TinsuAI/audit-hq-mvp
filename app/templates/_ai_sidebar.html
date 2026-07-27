@@ -17,17 +17,31 @@
     </div>
   </header>
 
+  {# Chip phạm vi: doanh nghiệp mà cuộc TRỐNG kế tiếp sẽ gắn. Đổi chip không đụng
+     cuộc đang mở — chuyển cuộc là thao tác riêng ở danh sách. #}
+  <div id="ai-scope-bar" class="ai-scope-bar" hidden>
+    <label for="ai-scope" class="ai-scope-label">Cuộc mới gắn:</label>
+    <select id="ai-scope" class="ai-scope-select" aria-label="Doanh nghiệp cho cuộc trò chuyện mới"></select>
+  </div>
+
   <div id="ai-history-panel" class="ai-history-panel" hidden>
     <div class="ai-history-head">
       <span>📜 Lịch sử trò chuyện</span>
       <button id="ai-history-close" type="button" aria-label="Đóng lịch sử">×</button>
     </div>
     <input id="ai-history-search" class="ai-history-search" type="search"
-           placeholder="Tìm theo nội dung hoặc mã DN..." aria-label="Tìm lịch sử">
+           placeholder="Tìm theo nội dung hoặc tên doanh nghiệp..." aria-label="Tìm lịch sử">
+    <select id="ai-history-company" class="ai-history-filter"
+            aria-label="Lọc theo doanh nghiệp"></select>
     <div id="ai-history-list" class="ai-history-list"></div>
   </div>
   <div class="ai-warn" role="note">
     ⚠️ Trợ lý AI có thể tạo thông tin sai (hallucination). Mọi số liệu phải đối chiếu nguồn gốc trước khi sử dụng. Quyết định cuối thuộc cán bộ Hải quan.
+  </div>
+  {# Lệch phạm vi: cuộc đang mở gắn DN khác trang đang xem. #}
+  <div id="ai-scope-mismatch" class="ai-scope-mismatch" role="status" hidden>
+    <span id="ai-scope-mismatch-text"></span>
+    <button id="ai-scope-mismatch-new" type="button">Mở cuộc trò chuyện mới</button>
   </div>
   <div id="ai-messages" class="ai-messages">
     <div class="ai-empty">

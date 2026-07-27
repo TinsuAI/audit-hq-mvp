@@ -1,9 +1,40 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-07-27 — PUNCH-LIST 6: TEST HỒI QUY NGỮ NGHĨA SỔ + CHẶN GÁN SỔ NỬA VỜI — nhánh `fix/book-tags-all-or-nothing` CHƯA MERGE):**
-> Chạy `/tdd` cho mục 6 punch-list của audit 004 (thiếu test hồi quy). **730 test pass** (mốc trước 721),
-> ruff sạch. **3 commit trên nhánh `fix/book-tags-all-or-nothing`, tách từ `main` tại `33c078f` — CHƯA push,
-> CHƯA PR, CHƯA deploy.** `main` vẫn `33c078f`, prod vẫn `dd763d4`.
+> **Trạng thái (2026-07-27 — CHẠY LẠI CHECK 004 TRÊN PROD: 74 → 65, hết 3 CRITICAL sai — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `03d5031`):**
+> Owner chốt chạy lại. Chạy **scoped 17 check built-in** cho `PILOT_004`/2025 trong container prod
+> (`python -m app.pipeline.run_checks --company PILOT_004 --year 2025 --check C1.1 … --check C6.1`).
+> **74 → 65 finding: 9 dòng bị xoá, 0 dòng thêm mới.** 3 CRITICAL sai đã biến mất (+99900% ở
+> `6067385-08B`/`6067385-09B`, −98% ở `NO 153-BLACK`); 6 dòng còn lại là bản trùng đơn vị thứ hai
+> (C1.1 ×2, C1.3 ×2, C3.3 ×2). Theo check: **C1.1 33→28 · C1.3 15→13 · C3.3 4→2**, mười check kia không đổi.
+> Severity: critical 61→52, warning 7, info 6 (không đổi). Tổng finding prod **14.998 → 14.989**.
+> **002/006 KHÔNG đụng** (48 và 14.876 y nguyên, `COMBO_HS_GAMING` 28 dòng của 006 còn đủ); `X.*` vẫn 0 finding.
+> **Điểm năm 004: 30 → 25**, tier giữ "Dữ liệu nhất quán". `companies.risk_score` vẫn **30** — `run_checks:188`
+> đọc `CompanyYearScore` trên session `autoflush=False` (`database.py:12`) nên cache chỉ tăng, không giảm.
+> **KHÔNG hiện sai trên UI**: `companies.py:190` cố ý đọc `max(company_year_scores)`, không đọc cache.
+> **`check_runs`: company 9 từ 0 → 17 dòng** (`data_version=0`) → staleness WS3 của 004 tính từ mốc này.
+> **Nhãn sổ nguyên vẹn:** nvl EPE 104/GC 37 · sp 43/2 · norms 664/216; finding `book` = NULL 35 / EPE 30
+> (GC 0, như trước). Mọi finding còn `evidence_refs` (0 dòng rỗng). `/healthz` 200, `/showcase` 200.
+> **Cách làm (an toàn 2 lớp):** backup WAL-safe bằng `sqlite3.Connection.backup()` →
+> `db-data/audit_hq.sqlite.bak-pre-004-recheck-20260727-012604` (`integrity_check: ok`), rồi **dry-run trên
+> BẢN COPY** với `DATABASE_URL` trỏ file copy, diff finding cũ/mới (74 vs 65, 9 removed / 0 added) → khớp mới
+> chạy live. Bản copy đã xoá (cả `-wal`/`-shm`). **Rollback:** `docker stop audit-hq-mvp` → `cp` bản bak đè
+> `audit_hq.sqlite` → `rm -f *-wal *-shm` → `docker start`.
+> **CỐ Ý chạy scoped, không full:** `X.1` đang `published` trên prod (bản `cross_table_match` trùng nghiệp vụ
+> với C1.1). Chạy full sẽ sinh finding `X.1` **chỉ cho 004** trong khi 002/006 không có → lệch giữa các DN trên
+> demo. Truyền `only=` cũng bỏ luôn nhánh xoá orphan `X.*` nên không đụng gì khác.
+> **Disk server 96% (12G trống).** Backup cũ tháng 6 (`bak-pre-c24`, `bak-pre-cleanup`, ~26MB mỗi cái) vẫn còn — chưa xoá.
+> **Next:** (1) punch-list 7 (lệch GLOSSARY/ADR #19: mục "Pháp nhân" còn mô tả mô hình 2 row; C3.1 chưa được
+> xếp lại; "104 mã" là số DÒNG, đúng là 98 mã) và 8 (`X.*` luôn `book=NULL`, `sql_runner.py:217-227`) vẫn mở;
+> (2) ADR "nhãn sổ sống ở đâu cho bền" — gồm cả đường quay từ nhiều sổ về một sổ (hiện bị từ chối);
+> (3) issue GitHub #4–#15 (WS1/WS2/WS3) đã ship nhưng vẫn OPEN — nên đóng.
+
+> **Trạng thái (2026-07-27 — PUNCH-LIST 6: TEST HỒI QUY NGỮ NGHĨA SỔ + CHẶN GÁN SỔ NỬA VỜI — ĐÃ MERGE PR #27 + DEPLOY, main=prod=`03d5031`):**
+> Chạy `/tdd` cho mục 6 punch-list của audit 004 (thiếu test hồi quy), rồi `/rev` → sửa 2 lỗi → PR #27 merge
+> `03d5031`. **732 test pass** (mốc trước 721 → 730 sau /tdd → 732 sau /rev), ruff sạch (`app tests scripts`).
+> **5 commit** (tách từ `main` tại `33c078f`): `61706af` test tầng check · `e219154` fix ingest + test ingest ·
+> `0c0a181` text màn review · `c8ef81a` route trả 303 thay 500 · `5fc2711` sửa lại text màn review.
+> **ĐÃ DEPLOY:** CI run `30214242113` XANH, prod `/healthz` 200 `build_sha=03d5031` (build_time
+> 2026-07-26T18:16:40Z theo đồng hồ server). **KHÔNG có migration** → head prod vẫn `d0e1f2a3b4c5`.
 > **9 test mới, 2 test cũ được siết.** Mọi test kiểm bằng MUTATION (sửa hỏng đúng dòng nó bảo vệ, xác nhận
 > đỏ, hoàn nguyên) — bảng mutant đầy đủ ở session log. Nội dung: C1.2 trừ tập mã M15 của MỌI sổ (bản vá union
 > 99→4); C1.1/C1.2/C1.4/C3.1/C3.2 để `book` trống vì vế đối chiếu là luồng tờ khai toàn pháp nhân; C1.3 chấp
@@ -16,14 +47,25 @@
 > ở pháp nhân nhiều sổ ĐÃ mang nghĩa "liên sổ", nên dòng của file chưa gán rơi vào nhóm liên sổ và
 > C4.1/C4.3/C6.1 gom `None` thành SỔ THỨ BA rồi đối chiếu định mức/tồn kho bên trong sổ không tồn tại đó.
 > Đặt SAU nhánh return sớm "không file nào có nhãn" → đường CLI + 002/006 KHÔNG đổi (2 test cũ vẫn xanh).
-> Text hướng dẫn `document_review.html:95` đã sửa theo (cũ ghi "để trống = 1 sổ", chỉ đúng khi MỌI file để trống).
+> **`/rev` bắt 2 lỗi thực, đã sửa trong PR:**
+> (1) **`IngestPlanError` tới cán bộ dưới dạng HTTP 500 (JSON thô)** ở CẢ BA route gọi `run_ingest`
+> (`upload_data`, `documents_confirm_review`, `documents_ingest_year`) — mà selector sổ là **per-file**, nên
+> gán sổ cho file ĐẦU của kỳ hai file LUÔN đi qua đúng trạng thái bị từ chối: 500 nằm trên đường chính dựng
+> pháp nhân hai sổ. Nay bắt `IngestPlanError` riêng → **303 về trang tài liệu + banner `?error=`**
+> (`company_documents.html:29` render sẵn). Sổ vừa gán đã commit trước đó nên cán bộ gán tiếp file sau; từ
+> chối xảy ra TRƯỚC lệnh xoá nên dòng của lượt nạp trước còn nguyên (kiểm bằng repro chạy endpoint thật).
+> (2) **Text hướng dẫn `document_review.html:95` hứa sai:** "để trống mọi file = 1 sổ" chỉ đúng với kỳ **CHƯA
+> từng nạp theo sổ** — kỳ đã có dòng EPE/GC thì bỏ hết nhãn bị `_books_already_stored` từ chối (guard PR #26),
+> **không có đường quay về một sổ qua UI**, chỉ gán lại nhãn từng file. Text đã nói đúng giới hạn đó.
+> (3) Minor: `test_two_books_tagged_via_browser_show_in_branch_a` không assert status 2 POST confirm → 500 ở
+> lượt đầu lọt CI; nay assert 303. **+2 test route** cho luồng bị từ chối (confirm-review + nạp lại).
 > **ĐỪNG tin lại:** chia BCCT thành 2 file theo sổ **KHÔNG** gán sổ được — `slot="bcct"` ngoài
 > `SETTLEMENT_SLOTS` nên selector không render và handler confirm không đọc `book`; sâu hơn là
 > `declaration_lines` không có cột `book`. Hai file vẫn nạp đủ nhưng bị trộn thành một luồng (`ingest.py:198`).
-> **Next:** (1) `/rev` rồi PR/merge/deploy nhánh này (`CLAUDE.md:44` đặt `/rev` là cổng trước merge — thay đổi
-> có sửa hành vi ingest); (2) punch-list 7 (lệch GLOSSARY/ADR #19) và 8 (`X.*` luôn `book=NULL`,
-> `sql_runner.py:217-227`) vẫn mở; (3) nhãn sổ nên sống ở đâu cho bền — cần ADR; (4) prod vẫn hiện 3 CRITICAL
-> sai của 004 tới khi chạy lại check — **cần owner quyết**.
+> **Next:** (1) punch-list 7 (lệch GLOSSARY/ADR #19) và 8 (`X.*` luôn `book=NULL`, `sql_runner.py:217-227`)
+> vẫn mở; (2) nhãn sổ nên sống ở đâu cho bền — cần ADR, và ADR này giờ phải trả lời cả "đổi từ nhiều sổ về
+> một sổ" (hiện bị từ chối, chỉ sửa được bằng gán lại nhãn); (3) prod vẫn hiện 3 CRITICAL sai của 004 tới khi
+> chạy lại check — **cần owner quyết**.
 > Session log: `.ai/sessions/2026-07-27-punchlist-6-book-tests.md`.
 
 > **Trạng thái (2026-07-26 — AUDIT 004 HAI SỔ → SỬA LỖI TRỤC ĐƠN VỊ + CHẶN MẤT SỔ KHI INGEST — main=`dd763d4`):**
@@ -341,13 +383,12 @@
 ## Current State
 
 ### Git / deploy
-- **ĐANG TREO: nhánh `fix/book-tags-all-or-nothing`** (3 commit từ `33c078f`: `61706af` test tầng check ·
-  `e219154` fix ingest + test ingest · `0c0a181` text màn review). **CHƯA push, CHƯA PR, CHƯA merge, CHƯA
-  deploy.** 730 test pass, ruff sạch. Cần `/rev` trước khi merge.
-- **`main` = `origin/main` = prod = `dd763d4`** (merge PR #25 multi-unit; PR #26 ingest-guard ở `bc9e887`), working
-  tree sạch (trừ `uv.lock` untracked). Merge kích hoạt CI push/main: 2 run `30208834738` + `30208836492` đều XANH,
-  prod `audit-hq-demo.tinsu.ai` `/healthz` 200 `build_sha=dd763d4` (verify 2026-07-26T15:53Z). Migration head
-  KHÔNG đổi (`d0e1f2a3b4c5`) — hai PR này không có migration.
+- **`main` = `origin/main` = prod = `03d5031`** (merge PR #27 `fix/book-tags-all-or-nothing`, nhánh đã xoá trên
+  origin), working tree sạch (trừ `uv.lock` untracked). CI run `30214242113` XANH, prod
+  `audit-hq-demo.tinsu.ai` `/healthz` 200 `build_sha=03d5031`. **732 test pass**, ruff sạch. Migration head
+  KHÔNG đổi (`d0e1f2a3b4c5`) — PR #27 không có migration.
+- Mốc trước: `dd763d4` (PR #25 multi-unit; PR #26 ingest-guard ở `bc9e887`), 2 run `30208834738` +
+  `30208836492` XANH.
 - **DB local ở alembic head `d0e1f2a3b4c5`** (hết drift, sửa 2026-07-26). Backup `bak-pre-schema-fix-20260726`.
 - Migration head prod = **`d0e1f2a3b4c5`** (`data_files.book`; qua `c9d0e1f2a3b4` book settlement/findings) — CI đã `alembic upgrade head`.
 - Prod data = **3 pháp nhân**: PILOT_002, PILOT_006, PILOT_004 (hai sổ EPE/GC, ẩn danh — nạp 2026-07-25, xem block đầu file).
@@ -359,7 +400,8 @@
 ### Prod ≠ local — ĐỌC KỸ trước khi đụng dữ liệu
 - **DB prod ở server** (`/home/tinsu/audit-hq-mvp-deploy/db-data/audit_hq.sqlite`, ~291 MB,
   truy cập qua `ssh tinsu` + `docker exec audit-hq-mvp`). **CẬP NHẬT 2026-07-25:** prod giờ có
-  **PILOT_002 + PILOT_006 + PILOT_004 (hai sổ, ẩn danh)** = 14.998 finding (xem block đầu file).
+  **PILOT_002 + PILOT_006 + PILOT_004 (hai sổ, ẩn danh)** = **14.989** finding sau khi chạy lại check 004
+  ngày 2026-07-27 (trước đó 14.998 — xem block đầu file).
   Rollback 004-load: `db-data/audit_hq.sqlite.{bak,raw}-pre-004-load-20260725-152615`.
   Backup DN cũ (2026-07-24): `db-data/audit_hq.sqlite.bak-pre-pilot-load-20260724-230046`.
 - **KHÔNG có file nguồn trên prod cho 002/006** (DB-only) → trang Tài liệu/preview/download trống cho 2 DN này.
