@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     DateTime,
     Float,
     ForeignKey,
@@ -53,6 +54,10 @@ class CheckOverview(Base):
     STATUS_RUNNING = "running"
     STATUS_DONE = "done"
     STATUS_FAILED = "failed"
+
+    # Bảng số liệu TÍNH ĐƯỢC, đóng băng theo mốc sinh (ADR #21 mục 1-2, 8).
+    # Hiện NGAY khi cán bộ bấm — không phải chờ LLM.
+    aggregate_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     status: Mapped[str] = mapped_column(String(16), nullable=False, default=STATUS_DONE)
     job_id: Mapped[int | None] = mapped_column(

@@ -26,6 +26,7 @@ from app.ai.client import (
 )
 from app.ai.config import get_setting
 from app.ai.cost import estimate_cost
+from app.ai.overview_stats import build_stats
 from app.ai.usage import overview_ref, record_usage
 from app.checks.registry import SEVERITY_LABEL_VI, SPECS
 from app.models import AiUsage, CheckOverview, CheckRun, Company, Finding
@@ -127,6 +128,12 @@ def generate_check_overview(
     """
     # ── Đọc snapshot nền (một transaction, TRƯỚC lời gọi LLM) ──
     aggregate = build_overview_aggregate(db, company.id, period_year, check_code)
+    # Tính LẠI bảng số liệu ngay trước lời gọi: một lần chạy kiểm tra chen vào
+    # giữa lúc xếp hàng và lúc sinh sẽ để nhận định mô tả bảng khác bảng đang
+    # hiện (ADR #21 mục 7).
+    stats = build_stats(
+        db, company_id=company.id, period_year=period_year, check_code=check_code
+    )
 
     run_row = db.scalar(
         select(CheckRun).where(
@@ -200,6 +207,7 @@ def generate_check_overview(
     ov.generated_at = generated_at
     ov.based_on_run_at = based_on_run_at
     ov.based_on_data_version = based_on_data_version
+    ov.aggregate_json = stats
     ov.status = CheckOverview.STATUS_DONE
     ov.error = None
     ov.model = used_model
@@ -276,6 +284,10 @@ def start_overview_job(
     ov.status = CheckOverview.STATUS_RUNNING
     ov.job_id = job.id
     ov.error = None
+    # Bảng số liệu hiện NGAY, không chờ LLM (ADR #21 mục 6).
+    ov.aggregate_json = build_stats(
+        db, company_id=company.id, period_year=period_year, check_code=check_code
+    )
     db.commit()
     return job.id, False
 

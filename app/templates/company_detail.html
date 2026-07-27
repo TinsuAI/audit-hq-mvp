@@ -310,6 +310,48 @@
             {% endif %}
           </span>
         </div>
+        {% set st = ov.aggregate_json %}
+        {% if st %}
+        {# ── Nửa TÍNH ĐƯỢC: render từ snapshot, hiện ngay, không chờ LLM ── #}
+        <div class="ov-stats">
+          <div class="ov-stat"><span class="ovs-label">Tổng phát hiện</span>
+            <span class="ovs-value">{{ st.total_findings }}</span>
+            <span class="ovs-sub">🔴 {{ st.severity_totals.critical }}
+              · 🟡 {{ st.severity_totals.warning }}
+              · 🔵 {{ st.severity_totals.info }}</span>
+          </div>
+          <div class="ov-stat"><span class="ovs-label">Số mã liên quan</span>
+            <span class="ovs-value">{{ st.concentration.distinct_subjects }}</span>
+            <span class="ovs-sub">5 mã lớn nhất chiếm {{ st.concentration.top5_share_pct }}%
+              · {{ st.concentration.subjects_covering_80pct }} mã phủ 80% số phát hiện</span>
+          </div>
+          {% for nf in st.numeric_fields %}
+          <div class="ov-stat"><span class="ovs-label">{{ nf.key }}{% if nf.is_pct %} (%){% endif %}</span>
+            <span class="ovs-value">giữa {{ nf.p50 }}{% if nf.is_pct %}%{% endif %}</span>
+            <span class="ovs-sub">n={{ nf.n }} · thấp nhất {{ nf.min }} · p90 {{ nf.p90 }} · cao nhất {{ nf.max }}</span>
+            <span class="ovs-sub">cao hơn {{ nf.higher }} mã · thấp hơn {{ nf.lower }} mã</span>
+          </div>
+          {% endfor %}
+          {% if st.by_book %}
+          <div class="ov-stat"><span class="ovs-label">Theo sổ quyết toán</span>
+            <span class="ovs-value">
+              {% for b in st.by_book %}{{ b.label }} {{ b.count }}{% if not loop.last %} · {% endif %}{% endfor %}
+            </span>
+          </div>
+          {% endif %}
+          <div class="ov-stat"><span class="ovs-label">So với kỳ trước</span>
+            {% if st.previous_year.available %}
+            <span class="ovs-value">{{ st.previous_year.total }} → {{ st.total_findings }}
+              ({{ '%+d' % st.previous_year.delta }})</span>
+            <span class="ovs-sub">{{ st.previous_year.new_subjects_count }} mã mới xuất hiện năm {{ st.year }}</span>
+            {% else %}
+            <span class="ovs-value text-subtle">Không có kỳ trước</span>
+            <span class="ovs-sub">Chưa có dữ liệu năm {{ st.previous_year.year }} để so sánh</span>
+            {% endif %}
+          </div>
+        </div>
+        <p class="ovs-note">Độ lớn báo bằng phần trăm và số ĐẾM; không cộng lượng tuyệt đối chéo đơn vị tính.</p>
+        {% endif %}
         {% if ov.status == 'running' %}
         {# Sinh chạy nền: chỗ nhận định hiện trạng thái + link job, tự thay bằng
            nội dung khi job xong (poller ở overview-poll.js). #}
