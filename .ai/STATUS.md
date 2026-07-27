@@ -1,5 +1,39 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-27 — SINH TỔNG QUAN AI CHO CẢ 3 PHÁP NHÂN TRÊN PROD — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `d7844b6`):**
+> Owner chốt chạy. Xếp 4 job `AI_OVERVIEW_BATCH` (#2–#5) qua đúng đường của nút "Tạo tổng quan còn thiếu"
+> (enqueue trong container, worker AI của app tự xử — KHÔNG mở tiến trình ghi thứ hai vào SQLite).
+> **35 tổng quan sinh mới, 0 lỗi:** 002/2025 = 5 · 004/2025 = 10 · 006/2024 = 10 · 006/2025 = 10.
+> Rồi 2 job `AI_OVERVIEW` lẻ (#6, #7) vá hai ca hỏng bên dưới. **`check_overviews` 2 → 36 dòng, cả 36 đều đủ
+> `aggregate_json` + `sections_json`.** **Finding KHÔNG đổi (14.989)** — thao tác này chỉ thêm dòng tổng quan.
+> **Chi phí $0,0137 / 37 lời gọi** (`model_fast` = `deepseek/deepseek-v4-flash`, trần ngày $100, trước đó tiêu $0).
+> Độ trễ 5–22 giây mỗi lời gọi, một ca 71 giây, một ca 817 giây (xem lỗi 1).
+> **Backup TRƯỚC khi ghi:** `db-data/audit_hq.sqlite.bak-pre-ai-overview-20260727` (`Connection.backup()` WAL-safe,
+> `integrity_check: ok`, chụp ở head `c5d6e7f8a9b0`). Rollback = `docker stop` → cp bak đè `audit_hq.sqlite`
+> → `rm -f *-wal *-shm` → `docker start`. `/healthz` 200 `build_sha=d7844b6`, `/showcase` 200.
+>
+> **HAI LỖI THẬT bắt được nhờ đợt chạy này (CHƯA SỬA, chưa có ticket):**
+> (1) **`request_timeout_s` KHÔNG được áp trên đường sinh tổng quan.** Cấu hình 120 giây, nhưng lời gọi
+> `PILOT_004/2025 C3.3` chạy **817 giây** rồi trả `content` RỖNG trong khi `status` vẫn ghi `done`, tiêu
+> 749+378 token. Dòng `done` mà rỗng thì giao diện render ô trống, không ai biết là hỏng. Sinh lại (job #6)
+> ra 755 ký tự bình thường → không tái hiện được, nhưng trần thời gian chờ vẫn không có tác dụng.
+> (2) **Luật cũ-mới bỏ sót dòng LỖI THỜI ĐỊNH DẠNG.** `checks_needing_overview` chỉ xét `ran_at` /
+> `data_version`, nên dòng WS3 cũ của `PILOT_006/2025 C1.1` (sinh 2026-07-24 bằng `deepseek-v4-pro`, không có
+> `aggregate_json`/`sections_json`) bị tính là "còn mới" vì 006 chưa chạy lại kiểm tra → batch bỏ qua, phải
+> xếp hàng tay (job #7). Dòng WS3 cũ của 004 thì bị ghi đè đúng, vì 004 đã chạy lại check hôm nay nên hoá cũ.
+> Còn dòng WS3 nào ở pháp nhân chưa re-run thì bẫy này lặp lại.
+>
+> **HAI TỔNG QUAN BỊ GẮN CỜ `needs_review`** — hậu kiểm số của ADR #21 chạy ĐÚNG, không phải lỗi hệ thống:
+> `PILOT_006/2024 C1.7` nhắc số **77,7** và `PILOT_006/2024 C3.2` nhắc số **80,1**, cả hai KHÔNG có trong bảng
+> số liệu → mô hình tự viết ra. **Cần người đọc lại hai nhận định đó trước khi đưa cho khách.**
+>
+> **LƯU Ý giao diện:** nhãn ô phân vị trên prod vẫn hiện khoá thô (`DIFF_PCT`, `M15_REPURPOSE`…) và trang
+> công việc vẫn in JSON thô, vì bản vá nằm ở **PR #43 chưa merge** (nhánh `fix/badge-wording`, 9 commit,
+> 873 test pass). Job #2–#5 cũng trả khoá kết quả tiếng Việt cũ (`da_tao`, `dung_vi`) vì prod chạy `d7844b6`.
+> **Đĩa server 97%, còn 9,0G** — `db-data` giờ có **7 backup**.
+> **Next:** (1) merge + deploy PR #43 thì giao diện tổng quan mới hiện đúng nhãn; (2) quyết định xử lý 2 lỗi
+> trên (trần thời gian chờ · luật cũ-mới theo định dạng); (3) đọc lại 2 nhận định bị gắn cờ.
+
 > **Trạng thái (2026-07-27 — CÀI TRỌN 9 VÉ ADR #20 + #21, MERGE + DEPLOY XONG — main=prod=`d7844b6`):**
 > Cài hết **CHAT-1..4** (#28–#31, ADR #20 chat gắn doanh nghiệp) + **TQ-1..5** (#32–#36, ADR #21 tổng
 > quan AI v2), test-first, `/rev` mỗi nhóm, 3 PR theo đúng thứ tự build ADR chốt + 2 PR sửa lỗi.
@@ -52,16 +86,13 @@
 > tính chất ADR #21: bảng số liệu hiện đủ trong khi nhận định còn "⏳ Đang viết…".
 > **Giới hạn bộ ảnh:** dữ liệu seed minh hoạ, nhận định là JSON dựng sẵn (KHÔNG gọi LLM thật) → chứng minh
 > render + hậu kiểm, không chứng minh chất lượng model.
-> **Next:** (1) **rà soát toàn bộ ngôn ngữ tiếng Việt trên UI** — owner chốt 2026-07-27, work-list ở
-> `.ai/BACKLOG.md` mục đầu file; **có sẵn nhánh `fix/badge-wording` (`d0e43cb`) CHƯA MERGE**, chứa bản sửa
-> badge tổng quan, gộp vào đợt này chứ không deploy riêng; (2) punch-list 7 (lệch GLOSSARY/ADR #19) và 8
-> (`X.*` luôn `book=NULL`) **vẫn mở**; (3) ADR "nhãn sổ sống ở đâu cho bền" vẫn chưa viết; (4) chưa có DN nào
-> trên prod có tổng quan AI mới (2 dòng `check_overviews` đều là bản WS3 cũ, `aggregate_json`/`sections_json`
-> NULL) → **giao diện TQ-3/TQ-4 chưa hiện gì trên prod**; muốn demo phải bấm "Tạo tổng quan còn thiếu"
-> = 36 lời gọi LLM thật (5 PILOT_002/2025 · 10 PILOT_004/2025 · 10 PILOT_006/2024 · 11 PILOT_006/2025),
-> slot `model_fast` = `deepseek/deepseek-v4-flash`, trần ngày $100; (5) `ai_conversations` = 0 dòng nên toàn
-> bộ giao diện ADR #20 đang rỗng trên prod; (6) **đĩa server 96%, còn 11G** — `docker system df` báo 68 GB
-> image reclaimable, `db-data` 1,5G với 6 backup; chưa dọn vì xoá không quay lại được.
+> **Next:** (1) rà soát ngôn ngữ tiếng Việt trên UI — **ĐÃ LÀM**, nhánh `fix/badge-wording` giờ ở PR #43
+> (9 commit, 873 test pass), CHƯA MERGE; work-list + kết quả ở `.ai/BACKLOG.md` mục đầu file; (2) punch-list 7
+> (lệch GLOSSARY/ADR #19) và 8 (`X.*` luôn `book=NULL`) **vẫn mở**; (3) ADR "nhãn sổ sống ở đâu cho bền" vẫn
+> chưa viết; (4) ~~chưa có DN nào trên prod có tổng quan AI mới~~ → **ĐÃ SINH ĐỦ 2026-07-27, xem khối trên
+> cùng** (36 dòng `check_overviews`, cả 3 pháp nhân); (5) `ai_conversations` = 0 dòng nên toàn bộ giao diện
+> ADR #20 **vẫn đang rỗng trên prod**; (6) **đĩa server 97%, còn 9,0G** — `docker system df` báo 68 GB
+> image reclaimable, `db-data` giờ 7 backup; chưa dọn vì xoá không quay lại được.
 
 > **Trạng thái (2026-07-27 — CHẠY LẠI CHECK 004 TRÊN PROD: 74 → 65, hết 3 CRITICAL sai — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `03d5031`):**
 > Owner chốt chạy lại. Chạy **scoped 17 check built-in** cho `PILOT_004`/2025 trong container prod
