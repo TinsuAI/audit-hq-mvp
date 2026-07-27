@@ -415,40 +415,100 @@ def _company_labels(db: Session, company_ids: set[int | None]) -> dict[int, dict
     return {r.id: {"code": r.code, "slug": r.slug, "name": r.name} for r in rows}
 
 
+UNASSIGNED = "none"  # giá trị `company_id` cho nhóm "Chưa gán doanh nghiệp"
+
+
+def _visible_conversations(user: SessionUser, mine: bool):
+    """Ràng buộc "cuộc nào user này được thấy" — dùng chung cho list và nhóm.
+
+    Officer: chỉ cuộc của chính mình (không có công tắc). Admin: mặc định cũng
+    chỉ của mình ("Chỉ của tôi" BẬT sẵn) — giám sát cuộc người khác là thao tác
+    phải bấm, không phải mặc định.
+    """
+    stmt = select(AiConversation)
+    if mine or not user.is_admin:
+        stmt = stmt.where(AiConversation.user == user.name)
+    return stmt
+
+
+def _search_clause(q: str):
+    """Lọc theo tiêu đề cuộc HOẶC mã/tên DN — cùng nhãn với chip trên mỗi dòng."""
+    like = f"%{q}%"
+    return or_(
+        AiConversation.title.ilike(like),
+        AiConversation.company_id.in_(
+            select(Company.id).where(or_(Company.code.ilike(like), Company.name.ilike(like)))
+        ),
+    )
+
+
+def _message_stats(db: Session, conv_ids: list[int]) -> tuple[dict[int, int], dict[int, str]]:
+    """(số tin nhắn, tin nhắn user đầu tiên) cho nhiều cuộc — 2 câu, không N+1."""
+    if not conv_ids:
+        return {}, {}
+    counts = {
+        cid: n
+        for cid, n in db.execute(
+            select(AiMessage.conversation_id, func.count())
+            .where(AiMessage.conversation_id.in_(conv_ids))
+            .group_by(AiMessage.conversation_id)
+        ).all()
+    }
+    first_ids = select(func.min(AiMessage.id)).where(
+        AiMessage.conversation_id.in_(conv_ids), AiMessage.role == "user"
+    ).group_by(AiMessage.conversation_id).scalar_subquery()
+    firsts = {
+        cid: content
+        for cid, content in db.execute(
+            select(AiMessage.conversation_id, AiMessage.content).where(AiMessage.id.in_(first_ids))
+        ).all()
+    }
+    return counts, firsts
+
+
 @router.get("/chat/conversations")
 def list_conversations(
+    company_id: str | None = Query(default=None, description="id DN, hoặc 'none' = chưa gán"),
+    q: str = Query(default=""),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=30, ge=1, le=200),
+    mine: bool = Query(default=True),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """List conversation — 30 cái gần nhất. Admin thấy của mọi user (giám sát);
-    officer chỉ của chính mình."""
-    stmt = select(AiConversation).order_by(AiConversation.id.desc()).limit(30)
-    if not user.is_admin:
-        stmt = stmt.where(AiConversation.user == user.name)
-    convs = db.scalars(stmt).all()
+    """Danh sách cuộc trò chuyện, phân trang TRONG một nhóm doanh nghiệp.
+
+    `company_id` bỏ trống = mọi nhóm (sidebar dùng danh sách phẳng). Trang `/chat`
+    gọi một lần cho mỗi section nên bỏ được cap 30 toàn cục cũ.
+    """
+    stmt = _visible_conversations(user, mine)
+    if company_id == UNASSIGNED:
+        stmt = stmt.where(AiConversation.company_id.is_(None))
+    elif company_id:
+        try:
+            stmt = stmt.where(AiConversation.company_id == int(company_id))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="company_id không hợp lệ.") from e
+    if q.strip():
+        stmt = stmt.where(_search_clause(q.strip()))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    convs = db.scalars(
+        stmt.order_by(AiConversation.id.desc()).offset(offset).limit(limit)
+    ).all()
+
     companies = _company_labels(db, {c.company_id for c in convs})
+    counts, firsts = _message_stats(db, [c.id for c in convs])
     out = []
     for c in convs:
-        # Count messages
-        msg_count = db.scalar(
-            select(func.count())
-            .select_from(AiMessage)
-            .where(AiMessage.conversation_id == c.id)
-        ) or 0
-        # First user msg để làm preview/title fallback
-        first_user_msg = db.scalar(
-            select(AiMessage)
-            .where(AiMessage.conversation_id == c.id, AiMessage.role == "user")
-            .order_by(AiMessage.id)
-            .limit(1)
-        )
-        title = c.title or (first_user_msg.content[:80] if first_user_msg else "(trống)")
+        first = firsts.get(c.id)
+        title = c.title or (first[:80] if first else "(trống)")
         label = companies.get(c.company_id) or {}
         out.append({
             "id": c.id,
             "title": title,
             "started_at": c.started_at.isoformat() if c.started_at else None,
-            "msg_count": msg_count,
+            "msg_count": counts.get(c.id, 0),
             "page_url_seed": c.page_url_seed,
             "owner": c.user,  # admin xem list của nhiều user → FE hiện chủ + ẩn nút xoá cuộc người khác
             # Nhãn DN đọc từ dòng cuộc — FE KHÔNG suy từ page_url_seed nữa.
@@ -457,7 +517,93 @@ def list_conversations(
             "company_slug": label.get("slug"),
             "company_name": label.get("name"),
         })
-    return {"conversations": out}
+    return {"conversations": out, "total": total, "has_more": offset + len(out) < total}
+
+
+@router.get("/chat/conversation-groups")
+def list_conversation_groups(
+    q: str = Query(default=""),
+    mine: bool = Query(default=True),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Header section của trang `/chat`: mỗi doanh nghiệp + số cuộc.
+
+    Sắp theo tên doanh nghiệp; nhóm chưa gán xếp CUỐI. Header section chính là
+    doanh nghiệp — không có tầng "thư mục" nào ở giữa.
+    """
+    stmt = _visible_conversations(user, mine)
+    if q.strip():
+        stmt = stmt.where(_search_clause(q.strip()))
+    sub = stmt.subquery()
+    rows = db.execute(
+        select(sub.c.company_id, func.count()).group_by(sub.c.company_id)
+    ).all()
+
+    labels = _company_labels(db, {cid for cid, _ in rows})
+    groups = []
+    unassigned = 0
+    for cid, n in rows:
+        if cid is None:
+            unassigned = n
+            continue
+        label = labels.get(cid) or {}
+        groups.append({
+            "company_id": cid,
+            "company_code": label.get("code"),
+            "company_slug": label.get("slug"),
+            "company_name": label.get("name") or label.get("code") or f"#{cid}",
+            "count": n,
+        })
+    groups.sort(key=lambda g: g["company_name"].lower())
+    if unassigned:
+        groups.append({
+            "company_id": None,
+            "company_code": None,
+            "company_slug": None,
+            "company_name": "Chưa gán doanh nghiệp",
+            "count": unassigned,
+        })
+    return {"groups": groups}
+
+
+@router.patch("/chat/conversations/{conv_id}")
+async def update_conversation_company(
+    conv_id: int,
+    request: Request,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Đổi doanh nghiệp của một cuộc. `{"company_code": null}` = gỡ nhãn.
+
+    Chủ cuộc sửa cuộc của mình; quản trị sửa mọi cuộc. Officer chỉ chọn được DN
+    mình có quyền — chặn ở ĐÂY, không chỉ ở danh sách đổ vào ô chọn.
+    """
+    conv = db.get(AiConversation, conv_id)
+    if conv is None or (conv.user != user.name and not user.is_admin):
+        raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+
+    code = body.get("company_code")
+    if code in (None, ""):
+        conv.company_id = None
+    else:
+        # get_company_or_404 áp đúng ranh giới ADR #14 (404 cho DN ngoài phạm vi).
+        conv.company_id = get_company_or_404(db, str(code), user).id
+    db.commit()
+
+    label = _company_labels(db, {conv.company_id}).get(conv.company_id) or {}
+    return {
+        "id": conv.id,
+        "company_id": conv.company_id,
+        "company_code": label.get("code"),
+        "company_slug": label.get("slug"),
+        "company_name": label.get("name"),
+    }
 
 
 @router.get("/chat/conversations/{conv_id}/messages")
@@ -511,6 +657,24 @@ def delete_conversation(
     db.delete(conv)  # cascade xoá messages
     db.commit()
     return {"deleted": conv_id}
+
+
+@router.get("/chat/companies")
+def chat_companies(
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """DN cán bộ được phép chọn — đổ vào ô chọn khi gán/đổi DN của cuộc."""
+    stmt = select(Company).order_by(Company.name)
+    allowed = allowed_company_codes(db, user)
+    if allowed is not None:
+        stmt = stmt.where(Company.code.in_(allowed))
+    return {
+        "companies": [
+            {"id": c.id, "code": c.code, "slug": c.slug, "name": c.name}
+            for c in db.scalars(stmt).all()
+        ]
+    }
 
 
 @router.get("/chat/mentions")

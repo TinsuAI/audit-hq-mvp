@@ -9,7 +9,10 @@
       <button type="button" id="chat-new" class="chat-new-btn" title="Cuộc trò chuyện mới">+ Mới</button>
     </div>
     <input id="chat-search" class="ai-history-search" type="search"
-           placeholder="Tìm theo nội dung hoặc mã DN..." aria-label="Tìm cuộc trò chuyện">
+           placeholder="Tìm theo nội dung hoặc tên doanh nghiệp..." aria-label="Tìm cuộc trò chuyện">
+    <label id="chat-mine-wrap" class="chat-mine" hidden>
+      <input type="checkbox" id="chat-mine" checked> Chỉ của tôi
+    </label>
     <div id="chat-list" class="ai-history-list"></div>
   </aside>
 
@@ -28,6 +31,20 @@
     </form>
   </section>
 </div>
+
+<dialog id="chat-move-dialog" class="chat-move-dialog" aria-labelledby="chat-move-heading">
+  <form method="dialog">
+    <h2 id="chat-move-heading">Doanh nghiệp của cuộc trò chuyện</h2>
+    <p class="cmd-sub" id="chat-move-title"></p>
+    <label for="chat-move-select">Chọn doanh nghiệp</label>
+    <select id="chat-move-select"></select>
+    <p class="cmd-error" id="chat-move-error" role="alert"></p>
+    <menu>
+      <button value="cancel" class="cmd-cancel">Huỷ</button>
+      <button value="save" class="cmd-save">Lưu</button>
+    </menu>
+  </form>
+</dialog>
 
 <link rel="stylesheet" href="/static/sidebar.css?v={{ app_version_string | urlencode }}">
 <link rel="stylesheet" href="/static/chat-page.css?v={{ app_version_string | urlencode }}">

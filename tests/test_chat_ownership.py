@@ -125,7 +125,8 @@ def test_chat_page_route_enforces_ownership():
 
 
 def test_admin_can_read_any_conversation():
-    # Admin giám sát: đọc được cuộc của mọi user (API + trang) + list thấy hết.
+    # Admin giám sát: đọc được cuộc của mọi user (API + trang) + list thấy hết
+    # khi TẮT "Chỉ của tôi" (mine=0). Mặc định mine=1 — xem test dưới.
     new_engine, _, ids = _setup_db()
     try:
         client = TestClient(app)
@@ -133,12 +134,25 @@ def test_admin_can_read_any_conversation():
         assert client.get(f"/api/chat/conversations/{ids['c_off1']}/messages").status_code == 200
         assert client.get(f"/api/chat/conversations/{ids['c_off2']}/messages").status_code == 200
         assert client.get(f"/chat/{ids['c_off1']}").status_code == 200
-        r = client.get("/api/chat/conversations")
+        r = client.get("/api/chat/conversations?mine=0")
         seen = {c["id"] for c in r.json()["conversations"]}
         assert {ids["c_off1"], ids["c_off2"]} <= seen
         # owner đính kèm để FE phân biệt + ẩn nút xoá cuộc người khác.
         owners = {c["id"]: c["owner"] for c in r.json()["conversations"]}
         assert owners[ids["c_off1"]] == "off1"
+    finally:
+        _teardown(new_engine)
+
+
+def test_admin_list_defaults_to_own_conversations_only():
+    """"Chỉ của tôi" BẬT mặc định — giám sát cuộc người khác phải bấm tắt."""
+    new_engine, _, ids = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client, "admin", "admin")
+        seen = {c["id"] for c in client.get("/api/chat/conversations").json()["conversations"]}
+        assert ids["c_off1"] not in seen
+        assert ids["c_off2"] not in seen
     finally:
         _teardown(new_engine)
 
