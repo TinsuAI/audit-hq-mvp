@@ -308,7 +308,7 @@
           <strong style="font-size:var(--fs-sm)">✨ Tổng quan AI</strong>
           <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             {% if ov_entry.stale %}<span class="badge warning" style="font-size:var(--fs-xs)" title="Đã chạy lại kiểm tra hoặc nạp lại dữ liệu kể từ khi sinh tổng quan này">⚠️ Tổng quan đã cũ — dựa trên lần chạy trước</span>{% endif %}
-            {% if ov.needs_review %}<span class="badge critical" style="font-size:var(--fs-xs)" title="Có con số trong nhận định không khớp bảng số liệu: {{ ov.unsupported_numbers }}">⚠️ Cần đối chiếu số liệu</span>{% endif %}
+            {% if ov.needs_review %}<span class="badge critical" style="font-size:var(--fs-xs)" title="Nhận định nhắc tới con số không có trong bảng số liệu: {{ ov.unsupported_numbers }}. Con số đó do AI tự viết, không lấy từ dữ liệu.">⚠️ Có số không khớp bảng</span>{% endif %}
             {% if ov_entry.stale and ov.based_on_run_at %}<span class="text-subtle" style="font-size:var(--fs-xs)">dựa trên lần chạy {{ ov.based_on_run_at.strftime('%d/%m/%Y %H:%M') }}</span>{% endif %}
             {% if ov.generated_at %}<span class="text-subtle" style="font-size:var(--fs-xs)">Sinh lúc {{ ov.generated_at.strftime('%d/%m/%Y %H:%M') }}</span>{% endif %}
             {% if ai_enabled %}
