@@ -33,7 +33,7 @@ def _lookup_company(db: Session, ident: str | None) -> Company | None:
     return company
 
 
-def _visible_company_by_ident(db: Session, ident: str | None, user: SessionUser) -> Company | None:
+def visible_company_by_ident(db: Session, ident: str | None, user: SessionUser) -> Company | None:
     """Như `_lookup_company` nhưng trả None khi DN nằm ngoài phạm vi phân công."""
     company = _lookup_company(db, ident)
     if company is None or not can_access_company_id(db, user, company.id):
@@ -95,7 +95,7 @@ def late_assign_company(
     codes = {m.get("code") for m in (mentions or []) if m.get("type") == "company" and m.get("code")}
     if len(codes) != 1:
         return False
-    company = _visible_company_by_ident(db, next(iter(codes)), user)
+    company = visible_company_by_ident(db, next(iter(codes)), user)
     if company is None:
         return False
     conv.company_id = company.id

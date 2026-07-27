@@ -15,6 +15,7 @@ import json
 import logging
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -34,6 +35,7 @@ from app.ai.config import get_setting
 from app.ai.conversation_scope import (
     late_assign_company,
     resolve_company_for_new_conversation,
+    visible_company_by_ident,
 )
 from app.ai.cost import estimate_cost
 from app.ai.guardrails import apply_guardrails
@@ -442,6 +444,20 @@ def _search_clause(q: str):
     )
 
 
+def _last_activity_at(db: Session, conv_ids: list[int]) -> dict[int, datetime]:
+    """Mốc tin nhắn cuối của mỗi cuộc — dùng cho quy tắc nối lại 24h."""
+    if not conv_ids:
+        return {}
+    return {
+        cid: ts
+        for cid, ts in db.execute(
+            select(AiMessage.conversation_id, func.max(AiMessage.created_at))
+            .where(AiMessage.conversation_id.in_(conv_ids))
+            .group_by(AiMessage.conversation_id)
+        ).all()
+    }
+
+
 def _message_stats(db: Session, conv_ids: list[int]) -> tuple[dict[int, int], dict[int, str]]:
     """(số tin nhắn, tin nhắn user đầu tiên) cho nhiều cuộc — 2 câu, không N+1."""
     if not conv_ids:
@@ -499,15 +515,18 @@ def list_conversations(
 
     companies = _company_labels(db, {c.company_id for c in convs})
     counts, firsts = _message_stats(db, [c.id for c in convs])
+    last_seen = _last_activity_at(db, [c.id for c in convs])
     out = []
     for c in convs:
         first = firsts.get(c.id)
         title = c.title or (first[:80] if first else "(trống)")
         label = companies.get(c.company_id) or {}
+        last_at = last_seen.get(c.id) or c.started_at
         out.append({
             "id": c.id,
             "title": title,
             "started_at": c.started_at.isoformat() if c.started_at else None,
+            "last_message_at": last_at.isoformat() if last_at else None,
             "msg_count": counts.get(c.id, 0),
             "page_url_seed": c.page_url_seed,
             "owner": c.user,  # admin xem list của nhiều user → FE hiện chủ + ẩn nút xoá cuộc người khác
@@ -657,6 +676,62 @@ def delete_conversation(
     db.delete(conv)  # cascade xoá messages
     db.commit()
     return {"deleted": conv_id}
+
+
+RESUME_WINDOW_HOURS = 24
+
+
+@router.get("/chat/resume")
+def resume_conversation(
+    company_code: str | None = Query(default=None),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Cuộc gần nhất CÙNG doanh nghiệp còn trong cửa sổ 24 giờ, hoặc không có.
+
+    Sidebar gọi khi mở panel: có thì nối lại và báo rõ đang tiếp tục cuộc nào,
+    không thì mở cuộc mới trong phạm vi đó. Quy tắc 24h ở SERVER (một chỗ, test
+    được) chứ không rải trong JS.
+
+    Mốc đo là tin nhắn CUỐI, không phải lúc mở cuộc: "gần nhất" theo nghĩa cán
+    bộ vừa dùng. Cửa sổ tồn tại vì resume nạp lại 20 message vào MỌI prompt sau
+    đó — cuộc để lâu neo câu trả lời vào dữ liệu có thể đã nạp lại từ lúc ấy.
+    """
+    company = visible_company_by_ident(db, company_code, user)
+    if company_code and company is None:
+        return {"conversation_id": None}
+
+    stmt = select(AiConversation).where(AiConversation.user == user.name)
+    stmt = stmt.where(
+        AiConversation.company_id == company.id if company is not None
+        else AiConversation.company_id.is_(None)
+    )
+    convs = db.scalars(stmt.order_by(AiConversation.id.desc()).limit(50)).all()
+    if not convs:
+        return {"conversation_id": None}
+
+    last_seen = _last_activity_at(db, [c.id for c in convs])
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=RESUME_WINDOW_HOURS)
+    best = None
+    best_at = None
+    for c in convs:
+        at = last_seen.get(c.id) or c.started_at
+        if at is None or at < cutoff:
+            continue
+        if best_at is None or at > best_at:
+            best, best_at = c, at
+    if best is None:
+        return {"conversation_id": None}
+
+    label = _company_labels(db, {best.company_id}).get(best.company_id) or {}
+    return {
+        "conversation_id": best.id,
+        "title": best.title,
+        "company_id": best.company_id,
+        "company_code": label.get("code"),
+        "company_name": label.get("name"),
+        "last_message_at": best_at.isoformat() if best_at else None,
+    }
 
 
 @router.get("/chat/companies")

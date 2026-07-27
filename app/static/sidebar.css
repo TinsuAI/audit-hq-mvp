@@ -523,3 +523,73 @@
 .ai-action-confirm .aac-run:disabled { opacity: 0.6; cursor: not-allowed; }
 .ai-action-confirm .aac-status { font-size: 12px; color: #334155; }
 .ai-action-confirm .aac-status a { color: var(--c-brand-600, #1e40af); }
+
+/* ── Phạm vi doanh nghiệp của cuộc trò chuyện (CHAT-3, ADR #20) ── */
+.ai-scope-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--c-border, #e5e7eb);
+  background: var(--c-surface-alt, #f9fafb);
+}
+.ai-scope-label { font-size: 11px; font-weight: 600; color: var(--c-text-muted, #6b7280); flex: none; }
+.ai-scope-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--c-border, #e5e7eb);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  background: #fff;
+}
+.ai-scope-select:focus-visible { outline: 2px solid var(--c-brand-600, #1e40af); outline-offset: 1px; }
+
+.ai-history-filter {
+  margin: 6px 10px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--c-border, #e5e7eb);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  background: #fff;
+}
+
+.ai-scope-mismatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 10px 6px;
+  padding: 8px 10px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  font-size: 12px;
+  color: #78350f;
+}
+.ai-scope-mismatch button {
+  border: 1px solid #f59e0b;
+  background: #fff;
+  color: #92400e;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ai-scope-mismatch button:hover { background: #fef3c7; }
+
+.ai-resume-note {
+  align-self: stretch;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--c-surface-alt, #f3f4f6);
+  color: var(--c-text-muted, #6b7280);
+  font-size: 11px;
+  text-align: center;
+}
+.ai-scope-note { font-size: 11px; color: var(--c-brand-700, #1d4ed8); margin-top: 4px; }
