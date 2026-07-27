@@ -306,12 +306,17 @@
   {% endif %}
   <div class="stat-grid" style="margin-bottom:var(--space-3)">
     {% if show_cost %}
+    {# Chi phí đọc từ sổ `ai_usage` — gồm CẢ chat lẫn sinh tổng quan (ADR #21). #}
     <div class="stat">
       <span class="stat-label">💰 Chi phí</span>
       <span class="stat-value">${{ "%.4f" | format(usage.cost_usd) }}</span>
       {% if usage.budget_usd > 0 %}
         <span class="text-subtle" style="font-size:var(--fs-xs)">/ ${{ "%.2f" | format(usage.budget_usd) }} ({{ "%.1f" | format(budget_pct) }}%)</span>
       {% endif %}
+      <span class="text-subtle" style="font-size:var(--fs-xs)">
+        trò chuyện ${{ "%.4f" | format(usage.by_kind.chat.cost_usd) }}
+        · tổng quan ${{ "%.4f" | format(usage.by_kind.overview.cost_usd) }}
+      </span>
     </div>
     {% endif %}
     <div class="stat">
@@ -325,6 +330,13 @@
     <div class="stat">
       <span class="stat-label">💬 Tin nhắn</span>
       <span class="stat-value">{{ usage.messages }}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">🤖 Lời gọi AI</span>
+      <span class="stat-value">{{ usage.calls }}</span>
+      <span class="text-subtle" style="font-size:var(--fs-xs)">
+        trò chuyện {{ usage.by_kind.chat.calls }} · tổng quan {{ usage.by_kind.overview.calls }}
+      </span>
     </div>
     <div class="stat">
       <span class="stat-label">👤 Người dùng</span>

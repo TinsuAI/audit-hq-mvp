@@ -24,7 +24,7 @@ from app.database import SessionLocal, get_db
 from app.jobs import register_handler
 from app.jobs.handlers import run_batch_handler, run_checks_handler
 from app.jobs.worker import JobWorker, recover_zombie_jobs
-from app.models.job import JobKind
+from app.models.job import AI_JOB_KINDS, JobKind
 from app.routes.admin import router as admin_router
 from app.routes.admin_ai import router as admin_ai_router
 from app.routes.admin_audit import router as admin_audit_router
@@ -88,17 +88,32 @@ async def lifespan(app: FastAPI):
     except ValueError:
         pass
     try:
+        from app.ai.overview import run_overview_job
+
+        register_handler(JobKind.AI_OVERVIEW, run_overview_job)
+    except ValueError:
+        pass
+    try:
         with SessionLocal() as db:
             n = recover_zombie_jobs(db)
             if n:
                 log.warning("Recovered %d zombie job(s) at startup", n)
     except Exception:
         log.exception("Zombie recovery failed (continuing)")
-    job_worker = JobWorker(SessionLocal)
+    # Hai worker chia theo LOẠI job (ADR #21 mục 5): worker kiểm tra loại trừ job
+    # AI, worker AI chỉ nhận job AI → một lời gọi LLM không nằm chặn hàng đợi
+    # kiểm tra. Cả hai cùng poll SQLite: ghi ngắn, WAL bật, và transaction ghi
+    # của overview chỉ mở SAU khi LLM trả.
+    job_worker = JobWorker(SessionLocal, exclude_kinds=AI_JOB_KINDS)
     job_worker.start()
+    ai_worker = JobWorker(
+        SessionLocal, name="audit-hq-ai-worker", kinds=AI_JOB_KINDS,
+    )
+    ai_worker.start()
 
     yield
 
+    ai_worker.stop()
     job_worker.stop()
     retention_task.cancel()
     try:

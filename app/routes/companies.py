@@ -1462,13 +1462,22 @@ def generate_overview(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    """Sinh AI tổng quan cho 1 kiểm tra (DN, năm). Endpoint `def` THUẦN — chạy trong
-    threadpool FastAPI, KHÔNG qua job worker 1-thread (gọi LLM 5s sẽ chặn hàng đợi
-    check). On-demand, đồng bộ trong request (ADR #18 Revision — WS3)."""
+    """Xếp hàng sinh AI tổng quan cho 1 kiểm tra (DN, năm) — CHẠY NỀN (ADR #21 mục 5-6).
+
+    SỬA quyết định "sinh đồng bộ trong request" của ADR #18 Rev WS3: job giờ đi
+    vào worker RIÊNG chỉ nhận kind AI, nên hàng đợi kiểm tra vẫn không phải chờ
+    lời gọi LLM — tính chất mà ADR #18 bảo vệ — mà vẫn có job row (traceback, ai
+    tiêu token, trang công việc, thu hồi job treo).
+
+    Trả 303 về ĐÚNG chỗ cán bộ đang đọc, KHÔNG chuyển sang `/jobs/{id}` như chạy
+    kiểm tra: tổng quan là một đoạn nằm trong nhóm đang mở, mà trang doanh nghiệp
+    không khôi phục vị trí cuộn lẫn nhóm đang mở.
+    """
     from app.ai.config import get_setting
-    from app.ai.limits import check_daily_budget, check_rate_limit
-    from app.ai.overview import generate_check_overview
+    from app.ai.limits import check_daily_budget
+    from app.ai.overview import start_overview_job
     from app.audit import ACTION_AI_OVERVIEW
+    from app.auth_users import get_user_by_username
 
     company = get_company_or_404(db, code, user)
 
@@ -1485,23 +1494,79 @@ def generate_overview(
         return _back(error="AI assistant đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
         return _back(error="Chưa cấu hình API key AI. Cấu hình ở /admin/ai.")
+    # Trần ngày chặn TRƯỚC khi xếp hàng. Giới hạn tin nhắn/giờ KHÔNG áp: nó là
+    # guard của trợ lý chat, một lượt sinh tổng quan không được khoá trợ lý của
+    # cán bộ một tiếng (ADR #21 mục 11).
     try:
-        check_rate_limit(user.name, db)
         check_daily_budget(db)
     except HTTPException as e:
         return _back(error=str(e.detail))
 
+    user_row = get_user_by_username(db, user.name)
+    if user_row is None:
+        return _back(error="Session user không tồn tại.")
+
     try:
-        generate_check_overview(
-            db, company=company, period_year=year, check_code=check
+        job_id, existing = start_overview_job(
+            db, company=company, period_year=year, check_code=check,
+            created_by=user_row.id, username=user.name,
         )
-    except Exception as e:  # noqa: BLE001 — show LLM/provider errors back to user
+    except Exception as e:  # noqa: BLE001 — báo lỗi xếp hàng ngay tại chỗ
         db.rollback()
-        return _back(error=f"Sinh tổng quan lỗi: {type(e).__name__}: {str(e)[:200]}")
+        return _back(error=f"Không xếp hàng được: {type(e).__name__}: {str(e)[:200]}")
 
     log_access(db, username=user.name, action=ACTION_AI_OVERVIEW,
-               company_code=company.code, detail=f"year={year} check={check}")
-    return _back(msg=f"Đã tạo tổng quan {check} năm {year}")
+               company_code=company.code, detail=f"year={year} check={check} job={job_id}")
+    if existing:
+        return _back(msg=f"Tổng quan {check} đang được viết (công việc #{job_id}).")
+    return _back(msg=f"Đã xếp hàng viết tổng quan {check} năm {year} (công việc #{job_id}).")
+
+
+@router.get("/companies/{code}/overview.json")
+def overview_status(
+    code: str,
+    year: int = Query(...),
+    check: str = Query(...),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Trạng thái sinh tổng quan — poller thay text tại chỗ khi job xong.
+
+    KHÔNG trả chi phí/token/model: khối tổng quan trên trang doanh nghiệp chỉ
+    hiện mốc sinh, cờ cũ và trạng thái đang chạy (ADR #21 mục 10).
+    """
+    from app.models import CheckOverview
+
+    company = get_company_or_404(db, code, user)
+    ov = db.scalar(
+        select(CheckOverview).where(
+            CheckOverview.company_id == company.id,
+            CheckOverview.period_year == year,
+            CheckOverview.check_code == check,
+        )
+    )
+    if ov is None:
+        return {"status": None}
+
+    status, error = ov.status, ov.error
+    # Job chết giữa chừng (server restart → thu hồi job treo) không kịp cập nhật
+    # dòng tổng quan, nên dòng đứng nguyên `running`. Đọc trạng thái job để cán
+    # bộ thấy lỗi thay vì một vòng xoay không bao giờ dừng.
+    if status == CheckOverview.STATUS_RUNNING and ov.job_id is not None:
+        from app.models.job import Job, JobStatus
+
+        job = db.get(Job, ov.job_id)
+        if job is None or job.status == JobStatus.FAILED.value:
+            status = CheckOverview.STATUS_FAILED
+            error = (job.error if job is not None and job.error
+                     else "Công việc sinh tổng quan đã dừng.")
+    return {
+        "status": status,
+        "content": ov.content or "",
+        "error": error,
+        "job_id": ov.job_id,
+        "generated_at": ov.generated_at.isoformat() if ov.generated_at else None,
+    }
 
 
 @router.get("/companies/{code}", response_class=HTMLResponse)

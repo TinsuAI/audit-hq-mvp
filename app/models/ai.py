@@ -63,6 +63,42 @@ class AiConversation(Base):
     )
 
 
+class AiUsage(Base):
+    """Sổ chi phí AI — APPEND-ONLY, một dòng mỗi lời gọi LLM tính tiền (ADR #21).
+
+    Tồn tại vì trần ngày cần đếm ĐỦ mọi loại lời gọi. Trước đó trần chỉ cộng
+    `ai_messages.cost_usd`, còn chi phí sinh tổng quan nằm trên `check_overviews`
+    — mà bảng đó upsert MỘT dòng mỗi (DN, năm, mã kiểm tra), nên sinh lại ba lần
+    trong ngày chỉ còn chi phí lần cuối: đếm thiếu đúng lúc chi tiêu cao nhất.
+
+    Telemetry trên `ai_messages`/`check_overviews` giữ nguyên (chi phí của chính
+    dòng đó). Sổ này là thứ LƯU + CHẶN, không phải thứ hiển thị: nơi duy nhất
+    đọc ra tiền vẫn là `/admin/ai` sau cờ `show_cost`.
+    """
+
+    __tablename__ = "ai_usage"
+
+    KIND_CHAT = "chat"
+    KIND_OVERVIEW = "overview"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # chat | overview
+    # Tham chiếu tới thứ sinh ra chi phí: `conv:{id}` hoặc `overview:{dn}:{năm}:{mã}`.
+    ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    user: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.current_timestamp(), index=True
+    )
+
+    __table_args__ = (
+        Index("ix_ai_usage_created_kind", "created_at", "kind"),
+    )
+
+
 class AiMessage(Base):
     """1 turn trong conversation. Role: user / assistant / tool."""
 
