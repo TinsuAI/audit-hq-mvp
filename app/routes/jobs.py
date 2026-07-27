@@ -46,7 +46,10 @@ def _now() -> datetime:
 def _current_user_id(db: Session, user: SessionUser) -> int:
     u = get_user_by_username(db, user.name)
     if u is None:
-        raise HTTPException(status_code=403, detail="Phiên đăng nhập trỏ tới tài khoản không còn tồn tại")
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.",
+        )
     return u.id
 
 

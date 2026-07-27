@@ -576,7 +576,7 @@ def upload_data(
     try:
         analyze_stats = run_ingest(company.code, year, raw_root=raw_path, dry_run=True)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=400, detail=f"Dò cấu trúc file lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Lỗi khi dò cấu trúc file: {e}") from e
     except Exception as e:  # noqa: BLE001 — show parser errors back to user
         raise HTTPException(status_code=500, detail=f"Phân tích file lỗi: {type(e).__name__}: {e}") from e
     record_parse_result(db, company, year, analyze_stats, diagnosis, committed=False)
@@ -1425,7 +1425,10 @@ def rerun_checks(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        raise HTTPException(status_code=403, detail="Phiên đăng nhập trỏ tới tài khoản không còn tồn tại")
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.",
+        )
 
     only = [c for c in check if c]
     if year is None:
@@ -1495,7 +1498,7 @@ def generate_overview(
     if not get_setting("enabled"):
         return _back(error="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
-        return _back(error="Chưa cấu hình mã API cho AI. Cấu hình ở /admin/ai.")
+        return _back(error="Chưa cấu hình mã API cho AI. Vào /admin/ai để thiết lập.")
     # Trần ngày chặn TRƯỚC khi xếp hàng. Giới hạn tin nhắn/giờ KHÔNG áp: nó là
     # guard của trợ lý chat, một lượt sinh tổng quan không được khoá trợ lý của
     # cán bộ một tiếng (ADR #21 mục 11).
@@ -1506,7 +1509,7 @@ def generate_overview(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        return _back(error="Phiên đăng nhập trỏ tới tài khoản không còn tồn tại.")
+        return _back(error="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.")
 
     try:
         job_id, existing = start_overview_job(
@@ -1557,7 +1560,7 @@ def generate_overview_batch(
     if not get_setting("enabled"):
         return _back(error="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
-        return _back(error="Chưa cấu hình mã API cho AI. Cấu hình ở /admin/ai.")
+        return _back(error="Chưa cấu hình mã API cho AI. Vào /admin/ai để thiết lập.")
     try:
         check_daily_budget(db)
     except HTTPException as e:
@@ -1569,7 +1572,7 @@ def generate_overview_batch(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        return _back(error="Phiên đăng nhập trỏ tới tài khoản không còn tồn tại.")
+        return _back(error="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.")
 
     job = enqueue_job(
         db, kind=JobKind.AI_OVERVIEW_BATCH,

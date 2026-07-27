@@ -12,8 +12,8 @@ JOB_KIND_LABEL_VI: dict[str, str] = {
     "run_checks": "Chạy kiểm tra",
     "ingest_and_run": "Nạp dữ liệu và chạy kiểm tra",
     "batch_run": "Chạy kiểm tra mọi năm",
-    "ai_overview": "Sinh tổng quan AI",
-    "ai_overview_batch": "Sinh tổng quan AI hàng loạt",
+    "ai_overview": "Tạo tổng quan AI",
+    "ai_overview_batch": "Tạo tổng quan AI hàng loạt",
 }
 
 RESULT_LABEL_VI: dict[str, str] = {
@@ -27,7 +27,7 @@ RESULT_LABEL_VI: dict[str, str] = {
     "only": "Kiểm tra đã chọn",
     "total_findings": "Tổng số phát hiện",
     "findings_per_check": "Phát hiện theo kiểm tra",
-    "combos_fired": "Tổ hợp rủi ro kích hoạt",
+    "combos_fired": "Tổ hợp rủi ro đã kích hoạt",
     "risk_score": "Điểm rủi ro",
     "years_processed": "Các năm đã chạy",
     "per_year": "Chi tiết theo năm",
@@ -35,14 +35,14 @@ RESULT_LABEL_VI: dict[str, str] = {
     "check_code": "Mã kiểm tra",
     "chars": "Độ dài nhận định (ký tự)",
     # ai_overview_batch
-    "created": "Đã tạo tổng quan",
-    "skipped": "Bỏ qua",
-    "skipped_fresh": "Bỏ qua vì tổng quan còn mới",
-    "skipped_not_reached": "Bỏ qua vì chưa tới lượt",
+    "created": "Số kiểm tra đã tạo tổng quan",
+    "skipped": "Số kiểm tra bỏ qua",
+    "skipped_fresh": "Trong đó, bỏ qua vì tổng quan còn mới",
+    "skipped_not_reached": "Trong đó, bỏ qua vì chưa tới lượt",
     "failed": "Số kiểm tra lỗi",
-    "created_checks": "Kiểm tra đã tạo tổng quan",
-    "failed_checks": "Kiểm tra bị lỗi",
-    "stopped_reason": "Dừng vì",
+    "created_checks": "Danh sách kiểm tra đã tạo tổng quan",
+    "failed_checks": "Danh sách kiểm tra lỗi",
+    "stopped_reason": "Lý do dừng",
 }
 
 EMPTY = "—"

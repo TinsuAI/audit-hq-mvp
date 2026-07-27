@@ -49,7 +49,7 @@ PERCENTILE_LABEL_VI: dict[str, str] = {
     "ratio_pct": "Tỷ lệ chuyển mục đích sử dụng",
     "m15_repurpose": "Lượng chuyển mục đích sử dụng",
     "closing_qty": "Tồn cuối",
-    "divergence": "Mức khác nhau của mã HS",
+    "divergence": "Mức khác biệt mã HS",
     "theoretical_consumption": "Tiêu hao lý thuyết",
 }
 

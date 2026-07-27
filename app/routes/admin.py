@@ -100,9 +100,9 @@ def units_add_alias(
     if not alias_norm:
         raise HTTPException(status_code=400, detail="Bí danh không được trống")
     if db.scalar(select(UomCanonical).where(UomCanonical.code == code_norm)) is None:
-        raise HTTPException(status_code=400, detail=f"Đơn vị chuẩn {code_norm!r} không tồn tại")
+        raise HTTPException(status_code=400, detail=f"Đơn vị chuẩn “{code_norm}” không tồn tại")
     if db.scalar(select(UomAlias).where(UomAlias.alias == alias_norm)) is not None:
-        raise HTTPException(status_code=400, detail=f"Bí danh {alias_norm!r} đã có")
+        raise HTTPException(status_code=400, detail=f"Bí danh “{alias_norm}” đã tồn tại")
 
     db.add(UomAlias(alias=alias_norm, canonical_code=code_norm, note=note.strip() or None))
     try:
@@ -144,9 +144,9 @@ def units_add_canonical(
     if not code_norm:
         raise HTTPException(status_code=400, detail="Mã đơn vị không được trống")
     if family not in _FAMILIES:
-        raise HTTPException(status_code=400, detail=f"Nhóm đơn vị không hợp lệ: {family}")
+        raise HTTPException(status_code=400, detail=f"Nhóm đơn vị không hợp lệ: “{family}”")
     if db.scalar(select(UomCanonical).where(UomCanonical.code == code_norm)) is not None:
-        raise HTTPException(status_code=400, detail=f"Đơn vị chuẩn {code_norm!r} đã có")
+        raise HTTPException(status_code=400, detail=f"Đơn vị chuẩn “{code_norm}” đã tồn tại")
 
     db.add(UomCanonical(
         code=code_norm, family=family, base_factor=base_factor,

@@ -271,7 +271,7 @@ async def chat(
     if not get_setting("enabled"):
         raise HTTPException(status_code=503, detail="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
-        raise HTTPException(status_code=503, detail="Chưa cấu hình mã API. Cấu hình ở /admin/ai.")
+        raise HTTPException(status_code=503, detail="Chưa cấu hình mã API. Vào /admin/ai để thiết lập.")
     check_rate_limit(user.name, db)
     check_daily_budget(db)
 
@@ -926,7 +926,10 @@ async def chat_run_checks(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        raise HTTPException(status_code=403, detail="Phiên đăng nhập trỏ tới tài khoản không còn tồn tại.")
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.",
+        )
 
     if year is None:
         job = enqueue_job(

@@ -172,9 +172,9 @@ def save_models(
     user: SessionUser = Depends(require_admin),
 ) -> RedirectResponse:
     if not (0.0 <= temperature <= 2.0):
-        return _flash_redirect(error="Độ ngẫu nhiên phải trong [0.0, 2.0]")
+        return _flash_redirect(error="Độ ngẫu nhiên phải từ 0.0 đến 2.0")
     if not (16 <= max_tokens <= 16384):
-        return _flash_redirect(error="Tối đa token phải trong [16, 16384]")
+        return _flash_redirect(error="Số token tối đa phải từ 16 đến 16384")
     for m in (model_default, model_fast, model_deep):
         if not m.strip():
             return _flash_redirect(error="Tên mô hình không được trống")
@@ -199,15 +199,15 @@ def save_limits(
     user: SessionUser = Depends(require_admin),
 ) -> RedirectResponse:
     if daily_budget_usd < 0 or daily_budget_usd > 10000:
-        return _flash_redirect(error="Hạn mức theo ngày phải trong [0, 10000] USD.")
+        return _flash_redirect(error="Hạn mức theo ngày phải từ 0 đến 10000 USD.")
     if rate_limit_per_hour < 0 or rate_limit_per_hour > 10000:
-        return _flash_redirect(error="Giới hạn tần suất phải trong [0, 10000].")
+        return _flash_redirect(error="Giới hạn tần suất phải từ 0 đến 10000.")
     if request_timeout_s < 5 or request_timeout_s > 600:
-        return _flash_redirect(error="Thời gian chờ phản hồi phải trong [5, 600] giây.")
+        return _flash_redirect(error="Thời gian chờ phản hồi phải từ 5 đến 600 giây.")
     if tool_call_cap < 1 or tool_call_cap > 50:
-        return _flash_redirect(error="Giới hạn lệnh gọi công cụ phải trong [1, 50].")
+        return _flash_redirect(error="Giới hạn lệnh gọi công cụ phải từ 1 đến 50.")
     if history_retention_days < 1 or audit_retention_days < 1:
-        return _flash_redirect(error="Thời gian lưu giữ phải >= 1 ngày.")
+        return _flash_redirect(error="Thời gian lưu giữ phải từ 1 ngày trở lên.")
 
     set_setting("daily_budget_usd", daily_budget_usd, user.name)
     set_setting("rate_limit_per_hour", rate_limit_per_hour, user.name)

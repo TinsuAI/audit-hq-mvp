@@ -120,9 +120,9 @@ def _plan_settlement_files(
         prior = _books_already_stored(session, company_id, year)
         if prior:
             raise IngestPlanError(
-                f"DN đang có sổ {sorted(prior)} trong kỳ {year} nhưng không file nào còn "
-                f"nhãn sổ — nạp tiếp sẽ gộp tất cả thành một sổ. Hãy đồng bộ lại "
-                f"danh sách file rồi gán nhãn sổ cho từng file quyết toán và nạp lại."
+                f"DN đang có sổ {', '.join(sorted(prior))} trong kỳ {year} nhưng không "
+                f"file nào còn nhãn sổ — nạp tiếp sẽ gộp tất cả thành một sổ. Hãy đồng "
+                f"bộ lại danh sách file rồi gán nhãn sổ cho từng file quyết toán và nạp lại."
             )
         # Single-book / CLI: file discover đã parse sẵn, book=NULL (hành vi cũ).
         return {slot: ([(obj, None)] if obj else []) for slot, obj in discovered_parsed.items()}
@@ -152,7 +152,7 @@ def _plan_settlement_files(
         except SheetNotFound:
             # File không phục vụ slot đã đăng ký (sync phân loại nhầm). Không nuốt lỗi
             # khác (bug parser phải nổ ra).
-            unusable.append(f"{label} (không đọc được bảng tính)")
+            unusable.append(f"{label} (không đọc được trang tính)")
             continue
         plan[r.slot].append((parsed, r.book))
 

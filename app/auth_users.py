@@ -89,9 +89,9 @@ def create_user(
     if not username:
         raise ValueError("Tên đăng nhập không được trống")
     if role not in VALID_ROLES:
-        raise ValueError(f"Vai trò không hợp lệ: {role!r} (chọn từ {sorted(VALID_ROLES)})")
+        raise ValueError(f"Vai trò không hợp lệ: “{role}” (chọn một trong: {', '.join(sorted(VALID_ROLES))})")
     if get_user_by_username(db, username):
-        raise ValueError(f"Tên đăng nhập {username!r} đã tồn tại")
+        raise ValueError(f"Tên đăng nhập “{username}” đã tồn tại")
     user = User(
         username=username, password_hash=hash_password(password), role=role,
         must_change_password=must_change,
