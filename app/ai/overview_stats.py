@@ -40,6 +40,19 @@ PERCENTILE_KEYS: dict[str, tuple[tuple[str, bool], ...]] = {
     "C6.1": (("diff", False),),
 }
 
+# Nhãn tiếng Việt cho từng khoá phân vị. Khoá `details` là định danh nội bộ,
+# không được hiện thô trên màn hình. Template tự thêm "(%)" khi `is_pct` nên
+# nhãn ở đây không mang dấu phần trăm.
+PERCENTILE_LABEL_VI: dict[str, str] = {
+    "diff": "Chênh lệch",
+    "diff_pct": "Chênh lệch",
+    "ratio_pct": "Tỷ lệ chuyển mục đích sử dụng",
+    "m15_repurpose": "Lượng chuyển mục đích sử dụng",
+    "closing_qty": "Tồn cuối",
+    "divergence": "Mức khác nhau của mã HS",
+    "theoretical_consumption": "Tiêu hao lý thuyết",
+}
+
 TOP_N_CONCENTRATION = 5
 COVERAGE_TARGET = 0.8
 SEVERITIES = ("critical", "warning", "info")

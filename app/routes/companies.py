@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled
 from app.audit import (
     ACTION_DOWNLOAD,
@@ -78,6 +79,7 @@ templates.env.globals["SPECS"] = {code: spec for code, spec in SPECS.items()}
 templates.env.globals["COMBO_SPECS"] = COMBO_SPECS
 templates.env.globals["tier_css_for"] = tier_css_for
 templates.env.globals["tier_for"] = tier_for
+templates.env.globals["PERCENTILE_LABEL"] = PERCENTILE_LABEL_VI
 # Nhãn sổ quyết toán (book) — dùng ở company_detail (split line) + finding_detail (field).
 templates.env.globals["book_label"] = book_label
 
