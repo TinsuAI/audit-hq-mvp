@@ -155,6 +155,7 @@ def test_batch_stops_on_exhausted_budget_without_failing(factory, world, monkeyp
     assert result["dung_vi"] == "hết ngân sách ngày"
     assert result["da_tao"] == 2
     assert result["bo_qua"] == 1
+    assert result["bo_qua_chua_toi_luot"] == 1
     with factory() as db:
         # Phần đã sinh CÒN NGUYÊN — commit từng kiểm tra.
         assert len(db.scalars(select(CheckOverview)).all()) == 2
@@ -193,6 +194,26 @@ def test_one_failing_check_does_not_kill_the_batch(factory, world, monkeypatch):
     assert result["da_tao"] == 2
     assert result["loi"] == 1
     assert result["checks_loi"] == ["C1.4"]
+
+
+def test_batch_counts_checks_already_fresh_as_skipped(factory, world, monkeypatch):
+    """"Bỏ qua" phải gồm cả kiểm tra đã có tổng quan còn mới, không chỉ nhóm bị dừng."""
+    import app.ai.overview as ov
+
+    monkeypatch.setattr(ov, "generate_check_overview", _fake_generate())
+    with factory() as db:
+        db.add(CheckOverview(
+            company_id=world["company_id"], period_year=2025, check_code="C1.1",
+            content="đã có", based_on_data_version=0, status=CheckOverview.STATUS_DONE,
+        ))
+        db.commit()
+        result = ov.run_overview_batch_job(
+            {"company_code": "DN_B", "year": 2025, "username": "off"}, db
+        )
+    assert result["da_tao"] == 2
+    assert result["bo_qua"] == 1
+    assert result["bo_qua_con_moi"] == 1
+    assert result["bo_qua_chua_toi_luot"] == 0
 
 
 def test_batch_on_company_with_no_findings_is_a_no_op(factory, world, monkeypatch):

@@ -399,6 +399,17 @@ def run_overview_batch_job(payload: dict, db: Session) -> dict:
         raise ValueError(f"Không tìm thấy doanh nghiệp {code}")
 
     targets = checks_needing_overview(db, company.id, year)
+    # Kiểm tra đã có tổng quan còn mới — bỏ qua TRƯỚC vòng lặp. Đếm riêng để kết
+    # quả nói đủ: "bỏ qua" trong báo cáo gồm cả nhóm này lẫn nhóm chưa tới lượt.
+    all_codes = [
+        c for (c,) in db.execute(
+            select(Finding.check_code).where(
+                Finding.company_id == company.id, Finding.period_year == year
+            ).group_by(Finding.check_code)
+        ).all()
+        if c and not c.startswith("COMBO_")
+    ]
+    already_fresh = len(all_codes) - len(targets)
     budget = float(get_setting("daily_budget_usd", db=db))
 
     created: list[str] = []
@@ -419,12 +430,14 @@ def run_overview_batch_job(payload: dict, db: Session) -> dict:
             log.warning("Overview batch: %s lỗi: %s", check_code, e)
             failed.append(check_code)
 
-    skipped = len(targets) - len(created) - len(failed)
+    not_reached = len(targets) - len(created) - len(failed)
     return {
         "company_code": code,
         "year": year,
         "da_tao": len(created),
-        "bo_qua": skipped,
+        "bo_qua": already_fresh + not_reached,
+        "bo_qua_con_moi": already_fresh,
+        "bo_qua_chua_toi_luot": not_reached,
         "loi": len(failed),
         "checks_da_tao": created,
         "checks_loi": failed,
