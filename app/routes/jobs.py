@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.auth import SessionUser, require_user
 from app.auth_users import get_user_by_username
 from app.database import get_db
+from app.jobs.result_labels import JOB_KIND_LABEL_VI, describe_result
 from app.models.job import Job, JobStatus
 from app.version import VERSION, version_string
 
@@ -35,6 +36,7 @@ JOB_STATUS_LABEL_VI = {
     JobStatus.FAILED.value: "Thất bại",
 }
 templates.env.globals["JOB_STATUS_LABEL"] = JOB_STATUS_LABEL_VI
+templates.env.globals["JOB_KIND_LABEL"] = JOB_KIND_LABEL_VI
 
 
 def _now() -> datetime:
@@ -129,6 +131,7 @@ def job_detail(
         {
             "user": user,
             "job": job,
+            "result_rows": describe_result(job.result),
             "auto_refresh": job.status in (JobStatus.QUEUED.value, JobStatus.RUNNING.value),
         },
     )
