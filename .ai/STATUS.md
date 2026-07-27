@@ -1,5 +1,62 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-07-27 — CÀI TRỌN 9 VÉ ADR #20 + #21, MERGE + DEPLOY XONG — main=prod=`d7844b6`):**
+> Cài hết **CHAT-1..4** (#28–#31, ADR #20 chat gắn doanh nghiệp) + **TQ-1..5** (#32–#36, ADR #21 tổng
+> quan AI v2), test-first, `/rev` mỗi nhóm, 3 PR theo đúng thứ tự build ADR chốt + 2 PR sửa lỗi.
+> **850 test pass** (mốc trước 732 → +118), ruff sạch, **5 migration** up→down→up sạch trên DB dựng từ đầu.
+> **PR:** #37 CHAT-1..4 (`6a38230`) · #41 TQ-1+TQ-2 (`ed69a0f`, thay #38 bị GitHub tự đóng khi nhánh base
+> bị xoá) · #39 TQ-3..5 (`141b600`) · #40 + #42 hai fix (`d7844b6`). Issue #28–#36 đã đóng.
+> **Migration head prod giờ `c5d6e7f8a9b0`** (qua `e1f2a3b4c5d6` → `f2a3b4c5d6e7` → `a3b4c5d6e7f8` →
+> `b4c5d6e7f8a9`). Prod verify: `/healthz` 200 `build_sha=d7844b6`, **14.989 finding / 3 pháp nhân KHÔNG đổi**,
+> `/showcase` 200. **Backup TRƯỚC migration:** `db-data/audit_hq.sqlite.bak-pre-adr2021-20260727`
+> (`Connection.backup()` WAL-safe, `integrity_check: ok`, chụp ở head `d0e1f2a3b4c5`).
+> Rollback = `docker stop` → cp bak đè `audit_hq.sqlite` → `rm -f *-wal *-shm` → `docker start`.
+>
+> **ADR #20 (chat):** cột `ai_conversations.company_id` — nhãn **LƯU** trên dòng, thôi suy bằng regex
+> `page_url_seed` lúc đọc (hỏng với seed `/findings/{id}` và với finding id không sống qua re-run).
+> Nhận diện lúc TẠO dừng ở khớp đầu: DN chọn trên UI → DN của trang → DN của phát hiện → không gắn;
+> tín hiệu trỏ tới DN **không tồn tại** thì đi tiếp, trỏ tới DN **có tồn tại nhưng ngoài quyền** thì DỪNG
+> hẳn. Gán muộn chỉ từ ĐÚNG một mention `@DN`. `/chat` nhóm theo DN (30 cuộc/section + tải thêm, bỏ cap 30
+> toàn cục), `PATCH /api/chat/conversations/{id}` đổi DN chặn ở API. **ĐỔI HÀNH VI:** danh sách của quản trị
+> mặc định chỉ hiện cuộc của chính mình (`mine=1`); `mine=0` KHÔNG phải cửa hậu cho officer.
+> `GET /api/chat/resume?company_code=` giữ quy tắc 24h ở SERVER, sắp theo **hoạt động cuối** trong SQL.
+> DN của cuộc vào system prompt làm CHỦ ĐỀ, **không** thu hẹp quyền tool. Mất quyền DN → transcript đọc
+> được, `/api/chat` + `/api/chat/stream` trả **403 kèm lý do**, ô nhập khoá.
+>
+> **ADR #21 (tổng quan):** bảng `ai_usage` append-only đứng sau trần ngày — trước đó trần cộng
+> `ai_messages.cost_usd` nên **chi phí sinh tổng quan chưa bao giờ được đếm**, và không mở rộng query sang
+> `check_overviews` được vì bảng đó upsert một dòng mỗi bộ ba. `JobKind.AI_OVERVIEW` + `AI_JOB_KINDS`:
+> worker kiểm tra **loại trừ** kind AI, worker thứ hai **chỉ** nhận kind AI → **SỬA** quyết định "sinh đồng
+> bộ trong request" của ADR #18 Rev WS3 mà vẫn giữ tính chất nó bảo vệ. Bấm lại khi job còn chờ → trả job
+> cũ. `job.result` KHÔNG chứa tiền/token (`/jobs/{id}` in nguyên result cho mọi cán bộ).
+> Bảng số liệu tính bằng Python lưu `aggregate_json`, **hiện ngay khi bấm**; nhận định LLM trả JSON bốn mục
+> (`sections_json`), số phải copy nguyên văn, hậu kiểm so **token số** (không parse — vấp làm tròn 61,8→62%,
+> năm, mã C1.6, mã hàng có chữ số) → lệch thì gắn cờ `needs_review` + badge. Slot model **`model_fast`**.
+> `AI_OVERVIEW_BATCH` commit từng kiểm tra, hết ngân sách → job `done` kèm lý do, KHÔNG `failed`.
+>
+> **BỐN LỖI THẬT bắt được ngoài test viết cùng lúc:**
+> (1) `/rev` — hộp thoại đổi DN mất handler sau lượt lưu hỏng, bấm Lưu lần hai đóng hộp thoại mà **không gọi
+> API**, thay đổi mất im lặng (đường tới lỗi có thật: officer chọn DN ngoài quyền → 404).
+> (2) `/rev` — `test_overview_route_generates_and_redirects` stub `generate_check_overview`, hàm mà route
+> KHÔNG còn gọi sau TQ-2 → xanh mà không kiểm gì; viết lại để khẳng định job.
+> (3) **CI** — `test_send_refused_with_reason` xanh trên máy dev (DB thật đã bật AI) nhưng 503 trên CI:
+> `app/ai/config.py:21` bind `SessionLocal` **lúc import**, nên `get_setting` không kèm `db` đọc **DB MẶC
+> ĐỊNH**, không phải DB của test. Đây là lý do main đỏ một nhịp — **deploy không chạy, prod không bị đụng**.
+> Từ đó mỗi lần merge đều chạy lại suite với `DATABASE_URL` trỏ **file rỗng** để tái hiện điều kiện CI.
+> (4) **Ảnh E2E** — `.ai-scope-bar`/`.ai-scope-mismatch` khai `display:flex`, cùng specificity với `[hidden]`
+> và khai báo SAU nên thắng → hộp vàng **RỖNG hiện trên mọi trang**; đã live ở `141b600`, sửa ở `d7844b6`.
+> Đúng loại lỗi codebase đã ghi chú sẵn cho `.ai-history-panel`.
+>
+> **E2E proof:** `.ai/features/2026-07-27-chat-scope-overview-v2/` (brief + `ui_smoke.py` + 8 ảnh) — server
+> throwaway 8327 + DB riêng, tự dọn seed, **kill theo PID** (không `pkill uvicorn`). Ảnh 06 chứng minh đúng
+> tính chất ADR #21: bảng số liệu hiện đủ trong khi nhận định còn "⏳ Đang viết…".
+> **Giới hạn bộ ảnh:** dữ liệu seed minh hoạ, nhận định là JSON dựng sẵn (KHÔNG gọi LLM thật) → chứng minh
+> render + hậu kiểm, không chứng minh chất lượng model.
+> **Next:** (1) punch-list 7 (lệch GLOSSARY/ADR #19) và 8 (`X.*` luôn `book=NULL`) **vẫn mở**; (2) ADR "nhãn
+> sổ sống ở đâu cho bền" vẫn chưa viết; (3) ô phân vị hiện tên trường thô (`M15_REPURPOSE`) — chưa có nhãn
+> tiếng Việt; (4) chưa có DN nào trên prod có tổng quan AI mới — muốn demo thì bấm "Tạo tổng quan còn thiếu"
+> (tốn tiền thật, trần ngày đang áp).
+
 > **Trạng thái (2026-07-27 — CHẠY LẠI CHECK 004 TRÊN PROD: 74 → 65, hết 3 CRITICAL sai — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `03d5031`):**
 > Owner chốt chạy lại. Chạy **scoped 17 check built-in** cho `PILOT_004`/2025 trong container prod
 > (`python -m app.pipeline.run_checks --company PILOT_004 --year 2025 --check C1.1 … --check C6.1`).
@@ -383,14 +440,21 @@
 ## Current State
 
 ### Git / deploy
-- **`main` = `origin/main` = prod = `03d5031`** (merge PR #27 `fix/book-tags-all-or-nothing`, nhánh đã xoá trên
-  origin), working tree sạch (trừ `uv.lock` untracked). CI run `30214242113` XANH, prod
-  `audit-hq-demo.tinsu.ai` `/healthz` 200 `build_sha=03d5031`. **732 test pass**, ruff sạch. Migration head
-  KHÔNG đổi (`d0e1f2a3b4c5`) — PR #27 không có migration.
-- Mốc trước: `dd763d4` (PR #25 multi-unit; PR #26 ingest-guard ở `bc9e887`), 2 run `30208834738` +
-  `30208836492` XANH.
-- **DB local ở alembic head `d0e1f2a3b4c5`** (hết drift, sửa 2026-07-26). Backup `bak-pre-schema-fix-20260726`.
-- Migration head prod = **`d0e1f2a3b4c5`** (`data_files.book`; qua `c9d0e1f2a3b4` book settlement/findings) — CI đã `alembic upgrade head`.
+- **`main` = `origin/main` = prod = `d7844b6`** (merge PR #42), working tree sạch (trừ `uv.lock` untracked).
+  Prod `audit-hq-demo.tinsu.ai` `/healthz` 200 `build_sha=d7844b6`. **850 test pass**, ruff sạch.
+- Mốc phiên này: `6a38230` (PR #37 CHAT-1..4) → `ed69a0f` (PR #41 TQ-1+2) → `141b600` (PR #39 TQ-3..5)
+  → `d7844b6` (PR #42 fix CSS + E2E proof). Trước phiên: `03d5031` (PR #27).
+- **DB local ở alembic head `c5d6e7f8a9b0`**. Backup cũ `bak-pre-schema-fix-20260726`.
+- Migration head prod = **`c5d6e7f8a9b0`** — 5 migration phiên này: `e1f2a3b4c5d6` (`ai_conversations.company_id`)
+  → `f2a3b4c5d6e7` (bảng `ai_usage`) → `a3b4c5d6e7f8` (`check_overviews.status/job_id/error`)
+  → `b4c5d6e7f8a9` (`aggregate_json`) → `c5d6e7f8a9b0` (`sections_json`/`needs_review`/`unsupported_numbers`).
+  Backup trước khi áp: `db-data/audit_hq.sqlite.bak-pre-adr2021-20260727`.
+- **LƯU Ý CI:** `gh pr checks` KHÔNG bao giờ có gì — workflow chỉ chạy `on: push branches:[main]`, tức CI
+  chạy SAU khi merge. Test PHẢI chạy đủ ở local trước khi merge, và chạy với `DATABASE_URL` trỏ **file rỗng**
+  (xem lỗi (3) ở block đầu file — DB dev có sẵn cấu hình làm test xanh giả).
+- **LƯU Ý PR xếp chồng:** merge PR base kèm `--delete-branch` khiến GitHub **tự ĐÓNG** PR con trỏ vào nhánh
+  đó (không retarget, và không reopen được). Đổi base sang `main` TRƯỚC khi merge PR cha, hoặc merge không
+  xoá nhánh. PR #38 mất theo cách này, phải tạo lại thành #41.
 - Prod data = **3 pháp nhân**: PILOT_002, PILOT_006, PILOT_004 (hai sổ EPE/GC, ẩn danh — nạp 2026-07-25, xem block đầu file).
 - Deploy = push `main` → CI "Test & Deploy to Tinsu" (self-hosted `tinsu-prod`): test+lint →
   docker build → restart → `alembic upgrade head` → healthcheck. Watch: `gh run watch <id> --exit-status`.
