@@ -533,6 +533,10 @@
   border-bottom: 1px solid var(--c-border, #e5e7eb);
   background: var(--c-surface-alt, #f9fafb);
 }
+/* `display:flex` cùng specificity với `[hidden]` và khai báo sau nên THẮNG —
+   không có dòng này thì thanh phạm vi hiện cả khi JS đã ẩn (cùng lỗi đã ghi ở
+   `.ai-history-panel` phía trên). */
+.ai-scope-bar[hidden] { display: none; }
 .ai-scope-label { font-size: 11px; font-weight: 600; color: var(--c-text-muted, #6b7280); flex: none; }
 .ai-scope-select {
   flex: 1 1 auto;
@@ -569,6 +573,7 @@
   font-size: 12px;
   color: #78350f;
 }
+.ai-scope-mismatch[hidden] { display: none; }
 .ai-scope-mismatch button {
   border: 1px solid #f59e0b;
   background: #fff;
