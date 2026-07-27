@@ -88,9 +88,10 @@ async def lifespan(app: FastAPI):
     except ValueError:
         pass
     try:
-        from app.ai.overview import run_overview_job
+        from app.ai.overview import run_overview_batch_job, run_overview_job
 
         register_handler(JobKind.AI_OVERVIEW, run_overview_job)
+        register_handler(JobKind.AI_OVERVIEW_BATCH, run_overview_batch_job)
     except ValueError:
         pass
     try:

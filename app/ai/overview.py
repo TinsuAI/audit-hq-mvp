@@ -11,6 +11,7 @@ nạp dòng (một DN-năm sinh tới 11.003 finding). Xem ADR #18 Revision — 
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import UTC, datetime
 
@@ -38,6 +39,8 @@ from app.ai.usage import overview_ref, record_usage
 from app.checks.registry import SEVERITY_LABEL_VI, SPECS
 from app.models import AiUsage, CheckOverview, CheckRun, Company, Finding
 from app.pipeline.period import current_data_version
+
+log = logging.getLogger(__name__)
 
 _TOP_N = 15
 
@@ -343,6 +346,89 @@ def run_overview_job(payload: dict, db: Session) -> dict:
         "year": year,
         "check_code": check_code,
         "chars": len(ov.content or ""),
+    }
+
+
+def checks_needing_overview(db: Session, company_id: int, period_year: int) -> list[str]:
+    """Mã kiểm tra có ≥1 phát hiện mà tổng quan chưa có HOẶC đã cũ.
+
+    Bỏ qua meta-finding tổ hợp (`COMBO_*`) — chúng không phải một bài kiểm tra.
+    """
+    codes = [
+        c for (c,) in db.execute(
+            select(Finding.check_code).where(
+                Finding.company_id == company_id,
+                Finding.period_year == period_year,
+            ).group_by(Finding.check_code).order_by(Finding.check_code)
+        ).all()
+        if c and not c.startswith("COMBO_")
+    ]
+    if not codes:
+        return []
+
+    existing = load_overviews_with_staleness(db, company_id, period_year, codes)
+    out = []
+    for code in codes:
+        entry = existing.get(code)
+        if entry is None:
+            out.append(code)
+            continue
+        ov = entry["overview"]
+        if entry["stale"] or ov.status != CheckOverview.STATUS_DONE:
+            out.append(code)
+    return out
+
+
+def run_overview_batch_job(payload: dict, db: Session) -> dict:
+    """Handler `ai_overview_batch` — duyệt kiểm tra chưa có / đã cũ (ADR #21 mục 9).
+
+    Commit TỪNG kiểm tra: job dừng giữa chừng vẫn giữ phần đã sinh.
+
+    Hết ngân sách ngày → DỪNG và kết thúc ở trạng thái hoàn tất, KHÔNG `failed`:
+    những tổng quan đã sinh vẫn đúng, còn `failed` mời cán bộ bấm lại một nút
+    chắc chắn không làm gì.
+    """
+    from app.ai.config import get_setting
+    from app.ai.limits import spent_today
+
+    code = payload["company_code"]
+    year = int(payload["year"])
+    username = payload.get("username")
+    company = db.scalar(select(Company).where(Company.code == code))
+    if company is None:
+        raise ValueError(f"Không tìm thấy doanh nghiệp {code}")
+
+    targets = checks_needing_overview(db, company.id, year)
+    budget = float(get_setting("daily_budget_usd", db=db))
+
+    created: list[str] = []
+    failed: list[str] = []
+    stopped: str | None = None
+    for check_code in targets:
+        if budget > 0 and spent_today(db) >= budget:
+            stopped = "hết ngân sách ngày"
+            break
+        try:
+            generate_check_overview(
+                db, company=company, period_year=year, check_code=check_code,
+                created_by=username,
+            )
+            created.append(check_code)
+        except Exception as e:  # noqa: BLE001 — một kiểm tra hỏng không giết cả lượt
+            db.rollback()
+            log.warning("Overview batch: %s lỗi: %s", check_code, e)
+            failed.append(check_code)
+
+    skipped = len(targets) - len(created) - len(failed)
+    return {
+        "company_code": code,
+        "year": year,
+        "da_tao": len(created),
+        "bo_qua": skipped,
+        "loi": len(failed),
+        "checks_da_tao": created,
+        "checks_loi": failed,
+        "dung_vi": stopped,
     }
 
 
