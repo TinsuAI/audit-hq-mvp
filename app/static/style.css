@@ -2118,3 +2118,25 @@ p { margin: 0 0 var(--space-3); }
   color: var(--text-muted, #6b7280);
   font-style: italic;
 }
+
+/* ── Nhận định AI theo mục (TQ-4, ADR #21) ── */
+.ov-sections { font-size: var(--fs-sm); }
+.ov-sections .ovc-lead { margin: 0 0 6px; font-weight: 600; }
+.ov-sections .ovc-para { margin: 0 0 6px; }
+.ov-sections .ovc-head {
+  margin: 8px 0 2px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--text-muted, #6b7280);
+}
+.ov-sections .ovc-list { margin: 0 0 4px; padding-left: 18px; }
+.ov-sections .ovc-list li { margin-bottom: 2px; }
+.ovc-disclaimer {
+  margin: 8px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted, #6b7280);
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}

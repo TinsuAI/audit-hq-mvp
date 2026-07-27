@@ -11,7 +11,6 @@ nạp dòng (một DN-năm sinh tới 11.003 finding). Xem ADR #18 Revision — 
 
 from __future__ import annotations
 
-import json
 import time
 from datetime import UTC, datetime
 
@@ -26,6 +25,14 @@ from app.ai.client import (
 )
 from app.ai.config import get_setting
 from app.ai.cost import estimate_cost
+from app.ai.overview_content import (
+    SYSTEM_PROMPT as CONTENT_SYSTEM_PROMPT,
+)
+from app.ai.overview_content import (
+    build_prompt_payload,
+    finalize_sections,
+    parse_sections,
+)
 from app.ai.overview_stats import build_stats
 from app.ai.usage import overview_ref, record_usage
 from app.checks.registry import SEVERITY_LABEL_VI, SPECS
@@ -48,7 +55,11 @@ _SYSTEM_PROMPT = (
 def build_overview_aggregate(
     db: Session, company_id: int, period_year: int, check_code: str, top_n: int = _TOP_N
 ) -> dict:
-    """Tổng hợp finding cho (DN, năm, mã) — ĐẾM + top-N, KHÔNG nạp dòng."""
+    """Tổng hợp finding cho (DN, năm, mã) — ĐẾM + top-N, KHÔNG nạp dòng.
+
+    Bản WS3. Từ TQ-3 prompt dùng `overview_stats.build_stats` (bảng số liệu đầy
+    đủ, có lưu); hàm này còn lại cho consumer nào cần đúng hình đếm gọn đó.
+    """
     spec = SPECS.get(check_code)
     _filt = (
         Finding.company_id == company_id,
@@ -127,7 +138,6 @@ def generate_check_overview(
     kiểm — tách để test được logic sinh mà không cần cấu hình AI đầy đủ.
     """
     # ── Đọc snapshot nền (một transaction, TRƯỚC lời gọi LLM) ──
-    aggregate = build_overview_aggregate(db, company.id, period_year, check_code)
     # Tính LẠI bảng số liệu ngay trước lời gọi: một lần chạy kiểm tra chen vào
     # giữa lúc xếp hàng và lúc sinh sẽ để nhận định mô tả bảng khác bảng đang
     # hiện (ADR #21 mục 7).
@@ -147,26 +157,25 @@ def generate_check_overview(
     based_on_data_version = current_data_version(db, company.id, period_year)
 
     # ── Gọi LLM ──
-    user_payload = {
-        "company": {"code": company.code, "name": company.name},
-        **aggregate,
-    }
+    # Model chỉ ĐỌC bảng số liệu đã tính và trả bốn trường ngắn với số copy
+    # nguyên văn, nên dùng slot model RẺ (`model_fast`) — slot khai sẵn cho
+    # summarize/explain, đổi ở /admin/ai không cần redeploy (ADR #21 mục 12).
+    prompt_block, allowed_strings = build_prompt_payload(stats, company.name or company.code)
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": CONTENT_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
-                "Số liệu tổng hợp (JSON):\n"
-                + json.dumps(user_payload, ensure_ascii=False)
-                + "\n\nViết đoạn tổng quan cho kiểm tra này."
+                "BẢNG SỐ LIỆU:\n" + prompt_block
+                + "\n\nViết nhận định theo đúng cấu trúc JSON đã nêu."
             ),
         },
     ]
 
     client = make_client()
     fb_client = make_fallback_client()
-    model = get_setting("model_default")
-    fb_model = fallback_model_for("default")
+    model = get_setting("model_fast")
+    fb_model = fallback_model_for("fast")
     temperature = float(get_setting("temperature"))
     max_tokens = int(get_setting("max_tokens"))
 
@@ -203,7 +212,13 @@ def generate_check_overview(
             company_id=company.id, period_year=period_year, check_code=check_code,
         )
         db.add(ov)
+    sections, unsupported = finalize_sections(
+        parse_sections(content), stats, allowed_strings
+    )
     ov.content = content
+    ov.sections_json = sections
+    ov.needs_review = bool(unsupported)
+    ov.unsupported_numbers = ", ".join(unsupported) if unsupported else None
     ov.generated_at = generated_at
     ov.based_on_run_at = based_on_run_at
     ov.based_on_data_version = based_on_data_version

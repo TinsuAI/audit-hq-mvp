@@ -299,6 +299,7 @@
           <strong style="font-size:var(--fs-sm)">✨ Tổng quan AI</strong>
           <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             {% if ov_entry.stale %}<span class="badge warning" style="font-size:var(--fs-xs)" title="Đã chạy lại kiểm tra hoặc nạp lại dữ liệu kể từ khi sinh tổng quan này">⚠️ Tổng quan đã cũ — dựa trên lần chạy trước</span>{% endif %}
+            {% if ov.needs_review %}<span class="badge critical" style="font-size:var(--fs-xs)" title="Có con số trong nhận định không khớp bảng số liệu: {{ ov.unsupported_numbers }}">⚠️ Cần đối chiếu số liệu</span>{% endif %}
             {% if ov_entry.stale and ov.based_on_run_at %}<span class="text-subtle" style="font-size:var(--fs-xs)">dựa trên lần chạy {{ ov.based_on_run_at.strftime('%d/%m/%Y %H:%M') }}</span>{% endif %}
             {% if ov.generated_at %}<span class="text-subtle" style="font-size:var(--fs-xs)">Sinh lúc {{ ov.generated_at.strftime('%d/%m/%Y %H:%M') }}</span>{% endif %}
             {% if ai_enabled %}
@@ -365,8 +366,42 @@
           ❌ Không viết được nhận định: {{ ov.error }}
           {% if ov.job_id %}— <a href="/jobs/{{ ov.job_id }}">xem công việc #{{ ov.job_id }}</a>{% endif %}
         </p>
+        {% elif ov.sections_json %}
+        {# ── Nửa do LLM viết: bốn mục cố định, không phải một khối văn xuôi ── #}
+        {% set sec = ov.sections_json %}
+        <div class="ov-sections {% if ov_entry.stale %}text-muted{% endif %}">
+          {% if sec.nhan_dinh %}
+          <p class="ovc-lead">{{ sec.nhan_dinh }}</p>
+          {% endif %}
+          {% if sec.phan_bo %}
+          <p class="ovc-para"><strong>Phân bố.</strong> {{ sec.phan_bo }}</p>
+          {% endif %}
+          {% if sec.diem_nong %}
+          <p class="ovc-head">Điểm nóng</p>
+          <ul class="ovc-list">
+            {% for h in sec.diem_nong %}
+            <li>
+              <a href="/companies/{{ company.slug or company.code }}/items/{{ h.subject_key | urlencode }}?year={{ selected_year }}">{{ h.subject_key }}</a>
+              — {{ h.nhan_xet }}
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          {% if sec.de_xuat %}
+          <p class="ovc-head">Đề xuất rà soát</p>
+          <ul class="ovc-list">
+            {% for s in sec.de_xuat %}<li>{{ s }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+        </div>
         {% else %}
+        {# JSON hỏng → xuống cấp về đoạn văn thô, trang không vỡ. #}
         <p class="{% if ov_entry.stale %}text-muted{% endif %}" style="margin:0;white-space:pre-wrap;font-size:var(--fs-sm)">{{ ov.content }}</p>
+        {% endif %}
+        {% if ov.status != 'running' %}
+        {# Miễn trừ trách nhiệm là TEXT TĨNH của giao diện, không phải output LLM. #}
+        <p class="ovc-disclaimer">Đây là chỉ số rủi ro dữ liệu, không phải kết luận vi phạm.
+          Nhận định do AI viết — cán bộ đối chiếu số liệu trước khi sử dụng.</p>
         {% endif %}
       </div>
       {% endif %}

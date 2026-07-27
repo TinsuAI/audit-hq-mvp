@@ -16,6 +16,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -58,6 +59,13 @@ class CheckOverview(Base):
     # Bảng số liệu TÍNH ĐƯỢC, đóng băng theo mốc sinh (ADR #21 mục 1-2, 8).
     # Hiện NGAY khi cán bộ bấm — không phải chờ LLM.
     aggregate_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Nhận định do LLM viết, bốn mục cố định (ADR #21 mục 3). NULL = JSON hỏng
+    # → template xuống cấp về `content` dạng văn xuôi thô.
+    sections_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Có con số trong nhận định không khớp chuỗi nào của bảng số liệu (mục 4).
+    needs_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    unsupported_numbers: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(String(16), nullable=False, default=STATUS_DONE)
     job_id: Mapped[int | None] = mapped_column(
