@@ -670,3 +670,144 @@ ingest incremental wipe theo book.
 selector review WS1 · viết lại ingest (data_files-driven, gom theo book, full reprocess, bỏ guard).
 
 Xem [[pilot-004-epe-gc-merge]] · glossary `Pháp nhân nhiều sổ` · `Chung (phát hiện liên sổ)`.
+
+---
+
+### 20. Cuộc trò chuyện AI gắn MỘT doanh nghiệp — nhãn LƯU trên dòng, tự nhận diện lúc tạo, sửa được (2026-07-27, grill-with-docs)
+
+**Bối cảnh:** `ai_conversations` không có cột DN. Nhãn DN hiện SUY ở client bằng regex `page_url_seed`
+(`chat-core.js:157`) → hỏng hai đường: (a) trang không phải `/companies/...` — cuộc #1 local mở từ
+`/findings/36330`, toàn bộ nội dung về một DN, hiện KHÔNG nhãn; (b) id không sống qua re-run —
+`36330` đã bị xoá khi chạy lại 004. Lịch sử một mức, cap 30 toàn cục. FAB chỉ resume theo
+`sessionStorage` (`sidebar.js:135`) → tab mới = cuộc mới, và cuộc resume có thể thuộc DN khác trang
+đang xem, trong khi mỗi lượt gửi ngữ cảnh trang HIỆN TẠI (`chat-core.js:433`).
+
+**Quyết định:**
+- **Cột `ai_conversations.company_id`** NULL-able + index `(user, company_id, started_at)`. Nhãn LƯU,
+  không suy lúc đọc.
+- **Tự nhận diện lúc tạo**, chuỗi ưu tiên dừng ở khớp đầu: DN cán bộ chọn trên UI → `page_context.dn_code`
+  → `findings.company_id` của `page_context.finding_id` → NULL. Xác thực lại theo `allowed_company_codes`
+  (ADR #14).
+- **Gán muộn CHỈ từ mention `@DN` tường minh**, khi cuộc còn NULL và lượt đó có ĐÚNG một DN; ≥2 DN →
+  giữ NULL. KHÔNG gán từ tool call (vô hình với cán bộ; câu hỏi so sánh sẽ rơi vào DN model tra trước).
+- **Sửa được sau:** `PATCH /api/chat/conversations/{id}` `{company_code|null}`. Chủ cuộc sửa cuộc mình,
+  admin sửa mọi cuộc.
+- **Nhãn vào system prompt làm CHỦ ĐỀ cuộc** → câu hỏi trống ngữ cảnh ("năm 2025 có gì đáng chú ý?")
+  resolve về DN đó. KHÔNG ràng buộc tool theo nhãn: ranh giới quyền ADR #14 vẫn là biên duy nhất, và
+  "so sánh với DN khác" là câu hỏi kiểm toán hợp lệ.
+- **Hiển thị:** `/chat` nhóm theo DN (section gập, section của DN đang xem mở sẵn, `Chưa gán doanh
+  nghiệp` cuối); sidebar giữ danh sách phẳng + chip DN mỗi dòng + bộ lọc (panel ngắn, header/section ăn
+  hết chỗ). Cùng một `company_id` → chuyển ở đâu cũng chuyển ở kia.
+- **Mở FAB:** tiếp tục cuộc gần nhất CÙNG DN nếu < **24h**, ngược lại mở cuộc mới trong phạm vi đó; báo
+  rõ "Đang tiếp tục cuộc trò chuyện gần nhất của …". Mốc 24h vì resume nạp lại 20 message vào MỌI prompt
+  (`HISTORY_TURN_LIMIT`, `ai.py:52`) — cuộc hai tuần trước neo câu trả lời vào dữ liệu có thể đã nạp lại.
+  `sessionStorage` vẫn override trong cùng tab.
+- **Lệch phạm vi** (cuộc thuộc DN A, trang đang xem DN B): HIỆN thông báo + nút "Mở cuộc trò chuyện mới
+  cho B". KHÔNG tự tách cuộc (mất cuộc đang dở khi chỉ điều hướng), KHÔNG tự đổi nhãn.
+- **Admin:** `Chỉ của tôi` BẬT mặc định, toggle xem mọi user; 30 cuộc/section + "tải thêm" thay cap 30
+  toàn cục (`ai.py:383`).
+- **DN bị gỡ phân công:** cuộc vẫn ĐỌC được (giữ hành vi hiện tại — `get_conversation_messages` chỉ kiểm
+  sở hữu, `ai.py:421`), nhưng KHÔNG gửi thêm được; ô nhập khoá kèm lý do. Chống cảnh "hỏi được, câu nào
+  cũng bị tool từ chối, không nói vì sao".
+- **Backfill trong migration:** `page_url_seed` khớp `companies.code`/`slug` → gán; `/findings/{id}` mà
+  finding còn tồn tại → gán theo `findings.company_id`; còn lại NULL.
+
+**Loại:** suy nhãn lúc đọc (hỏng khi finding bị xoá; phải quét tool payload mỗi lần render) · một cuộc
+gắn nhiều DN (không dựng được nhóm) · ràng tool theo nhãn (chặn câu hỏi so sánh hợp lệ) · cấp con theo
+NĂM (đa số nhóm chỉ một cuộc) · ẩn cuộc của DN đã gỡ quyền (mất việc của chính cán bộ, không lý do).
+
+**Ngôn ngữ:** KHÔNG dùng "thư mục"/"folder" — header section CHÍNH LÀ doanh nghiệp, nên nhóm không cần
+danh từ riêng. "cuộc" không đứng một mình (luôn "cuộc trò chuyện"). Xem glossary mục *Chat gắn doanh
+nghiệp*.
+
+**Hệ quả:** nhãn thành load-bearing cho CÂU TRẢ LỜI (vào prompt), nên nhận diện sai đắt hơn nhãn trang
+trí — đó là lý do chuỗi nhận diện chỉ nhận tín hiệu tường minh. Chi phí token: một dòng system prompt.
+
+---
+
+### 21. Tổng quan AI v2 — tách BẢNG SỐ LIỆU (tính) khỏi NHẬN ĐỊNH (LLM); sinh ASYNC qua worker phân theo kind; sổ chi phí `ai_usage` (2026-07-27, grill-with-docs; SỬA ADR #18 Revision WS3)
+
+**Bối cảnh:** bản WS3 sinh MỘT đoạn văn xuôi 3–6 câu; mọi con số trong đoạn đó do model phát, và
+aggregate nạp prompt (đếm severity + top-15) bị vứt sau lời gọi. Với C1.6 = 7.446 finding (local),
+đoạn văn là TOÀN BỘ cái cán bộ thấy về phân bố. Nút chạy ĐỒNG BỘ trong request — ADR #18 chọn có chủ
+đích: worker 1 thread, một lời gọi LLM 5s trong hàng đợi sẽ chặn mọi lần chạy check đang chờ. Chi phí
+overview ghi ở `check_overviews.cost_usd` nhưng `check_daily_budget` chỉ cộng `AiMessage.cost_usd`
+(`limits.py:44`) → **chi tiêu overview KHÔNG vào trần ngày lẫn `/admin/ai`**.
+
+**Quyết định:**
+1. **Tách hai nửa.** Số liệu TÍNH bằng Python, lưu `check_overviews.aggregate_json`, template render;
+   LLM chỉ viết phần ĐỌC. Lý do theo thứ tự trọng số: số do model phát không đưa vào báo cáo khách được
+   (sinh lại có thể đổi số trong khi dữ liệu đứng yên); bảng số liệu vẫn hiện khi LLM lỗi/tắt/chậm;
+   nhận định ngắn và rẻ đi vì thôi kể lại con số đã cho.
+2. **Aggregate gồm:** tập trung (số mã distinct, tỉ trọng top-5, số mã phủ 80%) · phân vị các trường số
+   trong `details` (`n/min/p50/p90/max`; khoá khác nhau theo check: `diff_pct`, `ratio_pct`,
+   `m15_repurpose`, `theoretical_consumption`…) · chiều lệch (cao hơn / thấp hơn) · tách theo sổ ·
+   so với năm trước (tổng, delta, mã mới xuất hiện). **KHÔNG cộng tuyệt đối chéo đơn vị** — mỗi mã một
+   `unit` (Cái/Chiếc, Lon/Can, kg), tổng lệch chéo đơn vị là số vô nghĩa; độ lớn chỉ báo bằng phần trăm
+   + đếm, số tuyệt đối để nguyên trong mục điểm nóng theo từng mã.
+   *Loại:* tách theo `status` triage (re-run wipe + reset về `new` → bảng đọc thành "chưa ai xử lý" cho
+   check vừa triage xong) · so với DN khác cùng năm (vượt ranh giới quyền ADR #14; khác quy mô nên so
+   cũng lệch).
+3. **Nhận định trả JSON:** `nhan_dinh` (1–2 câu) · `phan_bo` (2–3 câu) · `diem_nong[{subject_key,
+   nhan_xet}]` ≤5 (render thành link `/companies/{slug}/items/{key}?year=` — truy nguồn) · `de_xuat` ≤3.
+   JSON hỏng → render text thô như hiện tại (xuống cấp, không vỡ trang). Miễn trừ trách nhiệm ("chỉ số
+   rủi ro dữ liệu, không phải kết luận vi phạm") là TEXT TĨNH của template, không phải output LLM.
+   Check <10 finding: bỏ `phan_bo` (đoạn phân bố cho 11 dòng là độn chữ).
+4. **Số trong nhận định phải COPY nguyên chuỗi** đã định dạng sẵn trong prompt; hậu kiểm bằng so khớp
+   chuỗi (không parse số — parse vấp làm tròn 61,8→62%, năm 2025, mã check C1.6, subject key có chữ số).
+   Lệch → gắn cờ `cần đối chiếu` + badge, KHÔNG publish âm thầm. Đây là bộ dò hallucination rẻ nhất hệ
+   thống chạy được, đặt đúng trên artifact ra trước mặt khách.
+5. **ASYNC:** `JobKind.AI_OVERVIEW` + `claim_next_job(kinds=…)`; worker hiện có LOẠI kind AI, worker thứ
+   hai CHỈ nhận kind AI. Giữ đúng tính chất ADR #18 bảo vệ (hàng đợi check không bao giờ chờ LLM) mà vẫn
+   có job row: traceback, `created_by` (ai tiêu token), `/jobs`, zombie recovery.
+   **SỬA "sinh đồng bộ trong request" của ADR #18 Revision WS3.**
+6. **UI:** POST → 303 về đúng anchor; **bảng số liệu hiện NGAY** (không cần LLM), chỗ nhận định hiện
+   "⏳ Đang viết nhận định… (công việc #N)", poller thay text khi xong hoặc hiện lỗi kèm link job.
+   KHÔNG redirect sang `/jobs/{id}` như run-checks: overview là một đoạn trong nhóm cán bộ đang đọc, mà
+   `/companies/{slug}` không khôi phục vị trí cuộn lẫn `<details>` đang mở. Bấm lại khi đang
+   `pending|running` → trả job CŨ (đóng luôn double-click double-spend ADR #18 để ngỏ).
+7. **Handler TÍNH LẠI aggregate ngay trước lời gọi LLM** và lưu bản đó — giữ quy tắc ADR #18: snapshot
+   đọc trong một transaction với lời gọi. Không có bước này, một lần chạy check chen giữa enqueue và
+   sinh sẽ để nhận định mô tả bảng số liệu khác bảng đang hiện.
+8. **Bảng số liệu ĐÓNG BĂNG theo snapshot, KHÔNG tính live.** Live nghĩa là parse `details` mỗi lần load
+   `company_detail` cho MỌI nhóm có overview (C1.6 = 7.446 dòng) — trên màn hình chính; và panel với
+   nhận định phải mô tả cùng một mốc, nếu không cán bộ đọc "8 mã" ở bảng và "12 mã" ở câu dưới, cả hai
+   đều đúng ở hai thời điểm khác nhau. Cờ stale (ADR #18) phủ cả hai nửa. KHÔNG auto-regenerate lúc load.
+9. **Nút gộp** "Tạo tổng quan cho các test chưa có / đã cũ" (`AI_OVERVIEW_BATCH`), duyệt check có ≥1
+   finding, bỏ qua check đã có overview còn mới, **commit từng check**. Hết ngân sách → dừng, job `done`
+   kèm `{đã tạo, bỏ qua, dừng: "hết ngân sách ngày"}` — KHÔNG `failed`: 7 overview đã sinh vẫn đúng, và
+   `failed` mời cán bộ bấm lại một nút chắc chắn không làm gì. ADR #18 bác sinh EAGER (tự động sau mỗi
+   `run_checks`), không bác nút tường minh.
+10. **Sổ chi phí `ai_usage`** (append-only: `kind` chat|overview, `ref`, `model`, tokens, `cost_usd`,
+    `user`, `created_at`). Trần ngày + `/admin/ai` đọc sổ này. KHÔNG chỉ mở rộng câu query sang
+    `check_overviews`: bảng đó upsert MỘT dòng mỗi bộ ba, sinh lại 3 lần trong ngày chỉ còn chi phí lần
+    cuối — đếm thiếu đúng lúc chi tiêu cao nhất. Telemetry trên dòng overview giữ nguyên (chi phí của
+    CHÍNH overview đó). Seed sổ từ `check_overviews` hiện có (theo `generated_at`) + `ai_messages` trong
+    ngày.
+    **Sổ là thứ LƯU + CHẶN, KHÔNG phải thứ hiển thị (owner chốt):** khối tổng quan ở `company_detail`
+    KHÔNG hiện chi phí / token / tên model — chỉ mốc sinh, cờ stale, cờ `cần đối chiếu`, trạng thái đang
+    chạy. `job.result` của `AI_OVERVIEW`/`AI_OVERVIEW_BATCH` KHÔNG chứa `cost_usd`/tokens: `/jobs/{id}`
+    in nguyên result ra màn hình cho mọi cán bộ (`job_detail.html:31`), mà vé TQ-2 lại link thẳng tới đó
+    khi job hỏng. Nơi DUY NHẤT đọc ra tiền vẫn là `/admin/ai`, sau cờ `show_cost` (hiện truyền `False`,
+    `admin_ai.py:117`/`:337`).
+11. **Rate limit giờ vẫn là guard của CHAT** (đếm `AiMessage`, `limits.py:19`), KHÔNG áp cho overview —
+    một lượt gộp 12 call không được khoá trợ lý của cán bộ một tiếng. Chỗ chặn chi tiêu là trần ngày,
+    nay đã thấy đủ mọi lời gọi.
+12. **Model: slot `model_fast`** (+ fallback slot `fast`) thay `model_default`. Slot này khai sẵn cho
+    "summarize/explain" (`config.py:51`); sau khi tách, việc của model là đọc aggregate gọn và trả 4
+    trường ngắn với số copy nguyên văn. Đổi ở `/admin/ai`, không redeploy — đúng mục đích `ai_settings`.
+13. **KHÔNG đưa nhận định vào Excel export / báo cáo.** Workbook là artifact rời khỏi hệ thống: không
+    mang miễn trừ trách nhiệm và đọc như kết luận của cơ quan. Muốn đưa ra sản phẩm cho khách thì thứ
+    còn thiếu là bước cán bộ SỬA + DUYỆT overview, không phải một checkbox. *Lưu ý tên trùng:* sheet
+    "Tổng quan" của export (`export.py:233`) là bảng tổng hợp finding — khác vật với "Tổng quan AI".
+
+**Thứ tự build (3 PR):** (1) chat gắn DN [ADR #20] → (2) hạ tầng: `ai_usage` + worker theo kind + async
+một check → (3) nội dung: aggregate + bảng số liệu + JSON nhận định + nút gộp. Tách (2) để `/rev` soi
+thay đổi HÀNG ĐỢI CHECK (thứ duy nhất ở đây chạm prod run) tách khỏi thay đổi template.
+
+**Hệ quả:** `/jobs` có thêm loại job AI (nhiễu nhẹ, đổi lại minh bạch chi phí). Hai worker thread cùng
+poll SQLite — chấp nhận được vì ghi ngắn, WAL bật, và transaction ghi chỉ mở SAU khi LLM trả (kỷ luật
+đã có trong `generate_check_overview`).
+
+Xem [[ws3-overview-staleness-model]] · [[so-lieu-phai-co-mau-so-va-nguon-doc-lap]] ·
+[[check-execution-async-via-jobs]].
