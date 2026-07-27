@@ -182,10 +182,10 @@ def test_every_evidence_source_and_field_has_a_vietnamese_label():
     không bao giờ chạy với dữ liệu thật.
     """
     from app.adapters.evidence import (
+        _RANK,
         FIELD_LABEL_VI,
         REVIEW_LABEL_VI,
         SOURCE_LABEL_VI,
-        _RANK,
     )
     from app.pipeline.data_files import _EVIDENCE_ORDER
 

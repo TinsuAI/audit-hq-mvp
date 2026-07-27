@@ -104,7 +104,7 @@
           return;
         }
         navigator.clipboard && navigator.clipboard.writeText(prompt);
-        btn.textContent = '📋 Đã copy prompt';
+        btn.textContent = '📋 Đã chép câu hỏi';
       });
     });
   }

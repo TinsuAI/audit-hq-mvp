@@ -46,7 +46,7 @@ def _now() -> datetime:
 def _current_user_id(db: Session, user: SessionUser) -> int:
     u = get_user_by_username(db, user.name)
     if u is None:
-        raise HTTPException(status_code=403, detail="Session user không tồn tại trong DB")
+        raise HTTPException(status_code=403, detail="Phiên đăng nhập trỏ tới tài khoản không còn tồn tại")
     return u.id
 
 
@@ -116,9 +116,9 @@ def job_detail(
     user_id = _current_user_id(db, user)
     job = db.get(Job, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy job {job_id}")
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy công việc {job_id}")
     if job.created_by != user_id and not user.is_admin:
-        raise HTTPException(status_code=403, detail="Bạn không có quyền xem job này")
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem công việc này")
 
     # Mark viewed nếu job đã xong và lần đầu xem.
     if job.viewed_at is None and job.status in (JobStatus.DONE.value, JobStatus.FAILED.value):

@@ -101,7 +101,7 @@
       if (kind === 'finding') {
         const single = val.trim();
         if (/^\d+$/.test(single)) {
-          return `<a href="/findings/${single}" class="cite" title="Mở finding">📎 finding ${single}</a>`;
+          return `<a href="/findings/${single}" class="cite" title="Mở phát hiện">📎 finding ${single}</a>`;
         }
         return `<span class="cite" title="Nhiều phát hiện">📎 finding ${safeVal}</span>`;
       }

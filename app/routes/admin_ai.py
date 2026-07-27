@@ -139,9 +139,9 @@ def save_connection(
 ) -> RedirectResponse:
     base_url = base_url.strip()
     if not base_url:
-        return _flash_redirect(error="Base URL không được trống")
+        return _flash_redirect(error="Địa chỉ máy chủ không được trống")
     if not base_url.startswith(("http://", "https://")):
-        return _flash_redirect(error="Base URL phải bắt đầu bằng http:// hoặc https://")
+        return _flash_redirect(error="Địa chỉ máy chủ phải bắt đầu bằng http:// hoặc https://")
 
     try:
         headers_dict = json.loads(extra_headers) if extra_headers.strip() else {}
@@ -151,7 +151,7 @@ def save_connection(
             if not isinstance(k, str) or not isinstance(v, str):
                 raise ValueError("khoá/giá trị phải là chuỗi")
     except (json.JSONDecodeError, ValueError) as e:
-        return _flash_redirect(error=f"Extra headers không hợp lệ: {e}")
+        return _flash_redirect(error=f"Tiêu đề HTTP bổ sung không hợp lệ: {e}")
 
     set_setting("base_url", base_url, user.name)
     set_setting("extra_headers", headers_dict, user.name)
@@ -172,12 +172,12 @@ def save_models(
     user: SessionUser = Depends(require_admin),
 ) -> RedirectResponse:
     if not (0.0 <= temperature <= 2.0):
-        return _flash_redirect(error="Temperature phải trong [0.0, 2.0]")
+        return _flash_redirect(error="Độ ngẫu nhiên phải trong [0.0, 2.0]")
     if not (16 <= max_tokens <= 16384):
-        return _flash_redirect(error="Max tokens phải trong [16, 16384]")
+        return _flash_redirect(error="Tối đa token phải trong [16, 16384]")
     for m in (model_default, model_fast, model_deep):
         if not m.strip():
-            return _flash_redirect(error="Tên model không được trống")
+            return _flash_redirect(error="Tên mô hình không được trống")
 
     set_setting("model_default", model_default.strip(), user.name)
     set_setting("model_fast", model_fast.strip(), user.name)
@@ -199,15 +199,15 @@ def save_limits(
     user: SessionUser = Depends(require_admin),
 ) -> RedirectResponse:
     if daily_budget_usd < 0 or daily_budget_usd > 10000:
-        return _flash_redirect(error="Daily budget phải trong [0, 10000] USD.")
+        return _flash_redirect(error="Hạn mức theo ngày phải trong [0, 10000] USD.")
     if rate_limit_per_hour < 0 or rate_limit_per_hour > 10000:
-        return _flash_redirect(error="Rate limit phải trong [0, 10000].")
+        return _flash_redirect(error="Giới hạn tần suất phải trong [0, 10000].")
     if request_timeout_s < 5 or request_timeout_s > 600:
-        return _flash_redirect(error="Timeout phải trong [5, 600] giây.")
+        return _flash_redirect(error="Thời gian chờ phản hồi phải trong [5, 600] giây.")
     if tool_call_cap < 1 or tool_call_cap > 50:
-        return _flash_redirect(error="Tool call cap phải trong [1, 50].")
+        return _flash_redirect(error="Giới hạn lệnh gọi công cụ phải trong [1, 50].")
     if history_retention_days < 1 or audit_retention_days < 1:
-        return _flash_redirect(error="Retention phải >= 1 ngày.")
+        return _flash_redirect(error="Thời gian lưu giữ phải >= 1 ngày.")
 
     set_setting("daily_budget_usd", daily_budget_usd, user.name)
     set_setting("rate_limit_per_hour", rate_limit_per_hour, user.name)
@@ -231,10 +231,10 @@ def save_fallback(
     enabled = fallback_enabled.lower() in ("on", "true", "1", "yes")
     base_url = fallback_base_url.strip()
     if enabled and not base_url.startswith(("http://", "https://")):
-        return _flash_redirect(error="Fallback base URL phải bắt đầu bằng http:// hoặc https://")
+        return _flash_redirect(error="Địa chỉ máy chủ phụ phải bắt đầu bằng http:// hoặc https://")
     for m in (fallback_model_default, fallback_model_fast, fallback_model_deep):
         if not m.strip():
-            return _flash_redirect(error="Tên fallback model không được trống")
+            return _flash_redirect(error="Tên mô hình phụ không được trống")
 
     set_setting("fallback_enabled", enabled, user.name)
     set_setting("fallback_base_url", base_url, user.name)
@@ -272,7 +272,7 @@ def admin_test_connection(
     base_url = base_url.strip()
     if not base_url.startswith(("http://", "https://")):
         return JSONResponse(
-            {"ok": False, "error": "Base URL phải bắt đầu bằng http:// hoặc https://"},
+            {"ok": False, "error": "Địa chỉ máy chủ phải bắt đầu bằng http:// hoặc https://"},
             status_code=400,
         )
 
@@ -288,7 +288,7 @@ def admin_test_connection(
         if not isinstance(headers_dict, dict):
             raise ValueError("phải là đối tượng JSON")
     except (json.JSONDecodeError, ValueError) as e:
-        return JSONResponse({"ok": False, "error": f"Extra headers lỗi: {e}"}, status_code=400)
+        return JSONResponse({"ok": False, "error": f"Tiêu đề HTTP bổ sung lỗi: {e}"}, status_code=400)
 
     result = test_connection(
         base_url=base_url,
@@ -315,7 +315,7 @@ def admin_conversation_detail(
     """Full transcript của 1 conversation — debug khi AI sai / user complain."""
     conv = db.get(AiConversation, conv_id)
     if conv is None:
-        raise HTTPException(status_code=404, detail="Conversation không tồn tại")
+        raise HTTPException(status_code=404, detail="Cuộc trò chuyện không tồn tại")
     msgs = db.scalars(
         select(AiMessage)
         .where(AiMessage.conversation_id == conv_id)

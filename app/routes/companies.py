@@ -629,7 +629,7 @@ def diagnose_ai(
     from app.ai.limits import check_daily_budget, check_rate_limit
 
     if not (get_setting("enabled") and get_setting("api_key")):
-        raise HTTPException(status_code=503, detail="AI assistant đang tắt. Bật trong /admin/ai.")
+        raise HTTPException(status_code=503, detail="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     check_rate_limit(user.name, db)
     check_daily_budget(db)
 
@@ -1425,7 +1425,7 @@ def rerun_checks(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        raise HTTPException(status_code=403, detail="Session user không tồn tại")
+        raise HTTPException(status_code=403, detail="Phiên đăng nhập trỏ tới tài khoản không còn tồn tại")
 
     only = [c for c in check if c]
     if year is None:
@@ -1493,7 +1493,7 @@ def generate_overview(
         )
 
     if not get_setting("enabled"):
-        return _back(error="AI assistant đang tắt. Bật trong /admin/ai.")
+        return _back(error="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
         return _back(error="Chưa cấu hình API key AI. Cấu hình ở /admin/ai.")
     # Trần ngày chặn TRƯỚC khi xếp hàng. Giới hạn tin nhắn/giờ KHÔNG áp: nó là
@@ -1555,7 +1555,7 @@ def generate_overview_batch(
         )
 
     if not get_setting("enabled"):
-        return _back(error="AI assistant đang tắt. Bật trong /admin/ai.")
+        return _back(error="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
         return _back(error="Chưa cấu hình API key AI. Cấu hình ở /admin/ai.")
     try:

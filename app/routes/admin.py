@@ -98,7 +98,7 @@ def units_add_alias(
     alias_norm = alias.strip().upper()
     code_norm = canonical_code.strip().upper()
     if not alias_norm:
-        raise HTTPException(status_code=400, detail="Alias không được trống")
+        raise HTTPException(status_code=400, detail="Bí danh không được trống")
     if db.scalar(select(UomCanonical).where(UomCanonical.code == code_norm)) is None:
         raise HTTPException(status_code=400, detail=f"Canonical {code_norm!r} không tồn tại")
     if db.scalar(select(UomAlias).where(UomAlias.alias == alias_norm)) is not None:
@@ -109,7 +109,7 @@ def units_add_alias(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Lỗi DB khi thêm alias") from None
+        raise HTTPException(status_code=400, detail="Lỗi cơ sở dữ liệu khi thêm bí danh") from None
 
     invalidate_cache()
     return RedirectResponse(url=f"/admin/units?q={alias_norm}", status_code=303)
@@ -123,7 +123,7 @@ def units_delete_alias(
 ) -> RedirectResponse:
     row = db.get(UomAlias, alias_id)
     if row is None:
-        raise HTTPException(status_code=404, detail="Alias không tồn tại")
+        raise HTTPException(status_code=404, detail="Bí danh không tồn tại")
     db.delete(row)
     db.commit()
     invalidate_cache()
@@ -142,7 +142,7 @@ def units_add_canonical(
 ) -> RedirectResponse:
     code_norm = code.strip().upper()
     if not code_norm:
-        raise HTTPException(status_code=400, detail="Code không được trống")
+        raise HTTPException(status_code=400, detail="Mã đơn vị không được trống")
     if family not in _FAMILIES:
         raise HTTPException(status_code=400, detail=f"Family không hợp lệ: {family}")
     if db.scalar(select(UomCanonical).where(UomCanonical.code == code_norm)) is not None:

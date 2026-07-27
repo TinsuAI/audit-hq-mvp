@@ -12,7 +12,7 @@
 
 <div class="page-header">
   <div class="page-title-group">
-    <h1>Cấu hình AI Assistant</h1>
+    <h1>Cấu hình trợ lý AI</h1>
     <p class="page-subtitle">
       API tương thích OpenAI (OpenRouter / OpenAI / Anthropic / tự dựng). Cấu hình áp dụng ngay không cần triển khai lại.
     </p>
@@ -39,7 +39,7 @@
 <form method="post" action="/admin/ai/connection" id="conn-form" class="card mt-3">
   <h3 class="card-title">1. Kết nối nhà cung cấp</h3>
   <p class="text-subtle" style="font-size:var(--fs-xs);margin-bottom:var(--space-3)">
-    Khuyến nghị OpenRouter: 1 mã API dùng được hầu hết model phổ biến,
+    Khuyến nghị OpenRouter: 1 mã API dùng được hầu hết mô hình phổ biến,
     có bảng điều khiển theo dõi sử dụng. Đăng ký tại <code>openrouter.ai</code>.
   </p>
 
@@ -78,13 +78,13 @@
   <div id="test-result" style="margin-top:var(--space-3);display:none"></div>
 </form>
 
-<!-- ───────────────── Phần 2: Models ───────────────── -->
+<!-- ───────────────── Phần 2: Mô hình ───────────────── -->
 <form method="post" action="/admin/ai/models" class="card mt-3">
   <h3 class="card-title">
-    2. Models
+    2. Mô hình
     {% if grouped_models %}
       <span class="text-subtle" style="font-weight:400;font-size:var(--fs-xs)">
-        — {{ models_count }} model phát hiện ·
+        — {{ models_count }} mô hình phát hiện ·
         <a href="/admin/ai?refresh_models=1" style="font-size:var(--fs-xs)">↻ Nạp lại</a>
       </span>
     {% endif %}
@@ -93,7 +93,7 @@
   {% if not grouped_models %}
   <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:var(--space-2) var(--space-3);margin-bottom:var(--space-3);border-radius:4px">
     <p style="margin:0;font-size:var(--fs-xs);color:#92400e">
-      ⚠️ Chưa tải được danh sách model (sai mã API / lỗi mạng / chưa cấu hình).
+      ⚠️ Chưa tải được danh sách mô hình (sai mã API / lỗi mạng / chưa cấu hình).
       Phần 1 nhập mã + "🔌 Thử kết nối" trước, rồi quay lại đây.
       Tạm thời nhập tên model bằng tay.
     </p>
@@ -154,7 +154,7 @@
   </div>
 
   <div style="margin-top:var(--space-3)">
-    <button type="submit" class="btn btn-primary">💾 Lưu model</button>
+    <button type="submit" class="btn btn-primary">💾 Lưu mô hình</button>
   </div>
 </form>
 
@@ -320,11 +320,11 @@
     </div>
     {% endif %}
     <div class="stat">
-      <span class="stat-label">📥 Token in</span>
+      <span class="stat-label">📥 Token vào</span>
       <span class="stat-value">{{ "{:,}".format(usage.tokens_in) }}</span>
     </div>
     <div class="stat">
-      <span class="stat-label">📤 Token out</span>
+      <span class="stat-label">📤 Token ra</span>
       <span class="stat-value">{{ "{:,}".format(usage.tokens_out) }}</span>
     </div>
     <div class="stat">

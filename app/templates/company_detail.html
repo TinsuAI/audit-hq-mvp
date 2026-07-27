@@ -31,7 +31,7 @@
       <button type="submit" class="btn {% if has_data and not checks_run %}btn-primary{% else %}btn-secondary{% endif %}" title="Chạy kiểm tra cho năm {{ selected_year }}">▶️ Chạy kiểm tra {{ selected_year }}</button>
     </form>
     {% if run_options %}
-    <button type="button" class="btn btn-secondary" data-open-modal="run-tests-modal" title="Chọn một số kiểm tra để chạy cho năm {{ selected_year }}">☑️ Chọn test chạy</button>
+    <button type="button" class="btn btn-secondary" data-open-modal="run-tests-modal" title="Chọn một số kiểm tra để chạy cho năm {{ selected_year }}">☑️ Chọn kiểm tra để chạy</button>
     {% endif %}
     {% endif %}
     <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks" style="display:inline;margin:0">
@@ -110,7 +110,7 @@
 <details class="scoring-explainer score-breakdown">
   <summary>
     <span class="se-title">Cách tính điểm {{ ys_score }}/1000 — năm {{ selected_year }}</span>
-    <span class="se-sub">rate-based · bấm để xem chi tiết</span>
+    <span class="se-sub">theo tỷ lệ · bấm để xem chi tiết</span>
     <span class="se-caret" aria-hidden="true">▾</span>
   </summary>
   <div class="se-body">
@@ -124,7 +124,7 @@
       ro (nếu có), rồi quy về thang <strong>0–1000</strong>.
     </p>
     <p class="se-formula">
-      <strong>{{ ys_score }}</strong> = round(1000 × <strong>{{ '%.2f' | format(bd.raw) }}</strong>
+      <strong>{{ ys_score }}</strong> = làm tròn(1000 × <strong>{{ '%.2f' | format(bd.raw) }}</strong>
       ÷ <strong>{{ bd.max_raw | int }}</strong>)
       <span class="se-muted">· tối đa = {{ ((bd.max_raw - 20) / 10) | int }} bài kiểm tra × 10 + 20 (tổ hợp)</span>
     </p>
@@ -148,7 +148,7 @@
           <td class="num">+{{ bd.combo_bonus or 0 }}</td>
         </tr>
         <tr class="bd-sum">
-          <td colspan="2"><strong>Tổng điểm thô (raw)</strong></td>
+          <td colspan="2"><strong>Tổng điểm thô</strong></td>
           <td class="num"><strong>{{ '%.2f' | format(bd.raw) }}</strong> <span class="se-muted">/ {{ bd.max_raw | int }}</span></td>
         </tr>
       </tbody>
@@ -291,12 +291,12 @@
           <input type="hidden" name="check" value="{{ code }}">
           <button type="submit" class="btn btn-sm btn-secondary" title="Chạy lại chỉ kiểm tra {{ code }} cho năm {{ selected_year }}">▶️ Chạy lại {{ code }}</button>
         </form>
-        <a href="/companies/{{ company.slug or company.code }}/export?year={{ selected_year }}&check={{ code }}" class="btn btn-sm btn-secondary" title="Xuất Excel chỉ kiểm tra {{ code }}">📊 Xuất test này</a>
+        <a href="/companies/{{ company.slug or company.code }}/export?year={{ selected_year }}&check={{ code }}" class="btn btn-sm btn-secondary" title="Xuất Excel chỉ kiểm tra {{ code }}">📊 Xuất kiểm tra này</a>
         {% if ai_enabled and code not in overviews %}
         <form method="post" action="/companies/{{ company.slug or company.code }}/overview" style="margin:0">
           <input type="hidden" name="year" value="{{ selected_year }}">
           <input type="hidden" name="check" value="{{ code }}">
-          <button type="submit" class="btn btn-sm btn-secondary" title="Sinh AI tổng quan cho kiểm tra {{ code }} (gọi LLM, chờ vài giây)">✨ Tạo tổng quan</button>
+          <button type="submit" class="btn btn-sm btn-secondary" title="Sinh AI tổng quan cho kiểm tra {{ code }} (gọi mô hình AI, chờ vài giây)">✨ Tạo tổng quan</button>
         </form>
         {% endif %}
       </div>
@@ -338,7 +338,7 @@
           {% for nf in st.numeric_fields %}
           <div class="ov-stat"><span class="ovs-label">{{ PERCENTILE_LABEL.get(nf.key, nf.key) }}{% if nf.is_pct %} (%){% endif %}</span>
             <span class="ovs-value">giữa {{ nf.p50 }}{% if nf.is_pct %}%{% endif %}</span>
-            <span class="ovs-sub">n={{ nf.n }} · thấp nhất {{ nf.min }} · p90 {{ nf.p90 }} · cao nhất {{ nf.max }}</span>
+            <span class="ovs-sub">{{ nf.n }} phát hiện · thấp nhất {{ nf.min }} · p90 {{ nf.p90 }} · cao nhất {{ nf.max }}</span>
             <span class="ovs-sub">cao hơn {{ nf.higher }} mã · thấp hơn {{ nf.lower }} mã</span>
           </div>
           {% endfor %}
@@ -492,7 +492,7 @@
       </div>
       <div class="modal-body">
         <input type="hidden" name="year" value="{{ selected_year }}">
-        <p>Bỏ trống = chạy toàn bộ. Tick các test cần chạy lại — cả hàng đều bấm được.</p>
+        <p>Bỏ trống = chạy toàn bộ. Chọn các kiểm tra cần chạy lại — cả hàng đều bấm được.</p>
         <div class="modal-tools">
           <button type="button" data-check-all="run-tests-modal">Chọn tất cả</button>
           <button type="button" data-check-none="run-tests-modal">Bỏ chọn</button>
@@ -530,7 +530,7 @@
       </div>
       <div class="modal-body">
         <input type="hidden" name="year" value="{{ selected_year }}">
-        <p>Bỏ trống = xuất toàn bộ phát hiện. Tick các test cần xuất — số bên phải là số phát hiện.</p>
+        <p>Bỏ trống = xuất toàn bộ phát hiện. Chọn các kiểm tra cần xuất — số bên phải là số phát hiện.</p>
         <div class="modal-tools">
           <button type="button" data-check-all="export-tests-modal">Chọn tất cả</button>
           <button type="button" data-check-none="export-tests-modal">Bỏ chọn</button>
@@ -576,11 +576,11 @@
       var emoji = mode === "export" ? "📊" : "▶️";
       if (countEl) {
         countEl.textContent = n
-          ? (n + "/" + boxes.length + " test đã chọn")
+          ? (n + "/" + boxes.length + " kiểm tra đã chọn")
           : ("Chưa chọn — sẽ " + verb.toLowerCase() + " tất cả");
       }
       if (submit) {
-        submit.textContent = n ? (emoji + " " + verb + " " + n + " test") : (emoji + " " + verb + " tất cả");
+        submit.textContent = n ? (emoji + " " + verb + " " + n + " kiểm tra") : (emoji + " " + verb + " tất cả");
       }
     }
     bind("[data-open-modal]", function () {
