@@ -63,7 +63,7 @@ def test_topic_survives_cache_segmentation():
 @pytest.fixture
 def world():
     import app.database as dbmod
-    from app.ai.config import bust_cache, set_setting
+    from app.ai.config import bust_cache
     from app.auth_users import create_user, seed_default_admin
 
     new_engine = dbmod.create_engine(
@@ -78,11 +78,7 @@ def world():
     ids = {}
     with new_session() as db:
         seed_default_admin(db, "admin", "admin")
-        # Bật AI + khoá API giả: nếu không, `/api/chat` trả 503 ở guard đầu và
-        # test khoá-gửi sẽ xanh vì lý do khác hẳn.
         bust_cache()
-        set_setting("enabled", True, "test", db=db)
-        set_setting("api_key", "sk-test", "test", db=db)
         a = Company(code="DN_AAA", slug="dn-aaa", name="Alfa", tax_id="1")
         b = Company(code="DN_BBB", slug="dn-bbb", name="Beta", tax_id="2")
         db.add_all([a, b])
@@ -124,7 +120,18 @@ def test_transcript_still_readable_after_losing_company(world):
     assert "Beta" in body["lock_reason"]
 
 
-def test_send_refused_with_reason(world):
+def test_send_refused_with_reason(world, monkeypatch):
+    # `app.routes.ai` bind `get_setting` lúc import, và `get_setting` không có
+    # `db` lại mở `SessionLocal` mà `app.ai.config` bind lúc import — tức DB MẶC
+    # ĐỊNH, không phải DB của test. Không chặn ở đây thì guard đầu handler trả
+    # 503 trên máy chưa bật AI (CI) và trả 403 trên máy đã bật (dev): test xanh
+    # vì lý do khác hẳn cái nó khẳng định.
+    import app.routes.ai as ai_routes
+
+    monkeypatch.setattr(
+        ai_routes, "get_setting",
+        lambda key, db=None: {"enabled": True, "api_key": "sk-test"}.get(key, ""),
+    )
     for path in ("/api/chat", "/api/chat/stream"):
         r = _client().post(path, json={
             "message": "hỏi tiếp", "conversation_id": world["lost"], "page_context": {},
