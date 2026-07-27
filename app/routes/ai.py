@@ -738,27 +738,34 @@ def resume_conversation(
     if company_code and company is None:
         return {"conversation_id": None}
 
-    stmt = select(AiConversation).where(AiConversation.user == user.name)
-    stmt = stmt.where(
-        AiConversation.company_id == company.id if company is not None
-        else AiConversation.company_id.is_(None)
+    # Sắp theo hoạt động cuối trong SQL, không nạp N dòng rồi lọc trong Python:
+    # một cuộc cũ nhưng vừa dùng lại phải thắng, kể cả khi nó nằm sâu trong danh
+    # sách theo thứ tự tạo.
+    last_msg = (
+        select(
+            AiMessage.conversation_id.label("cid"),
+            func.max(AiMessage.created_at).label("last_at"),
+        )
+        .group_by(AiMessage.conversation_id)
+        .subquery()
     )
-    convs = db.scalars(stmt.order_by(AiConversation.id.desc()).limit(50)).all()
-    if not convs:
-        return {"conversation_id": None}
-
-    last_seen = _last_activity_at(db, [c.id for c in convs])
+    activity = func.coalesce(last_msg.c.last_at, AiConversation.started_at)
     cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=RESUME_WINDOW_HOURS)
-    best = None
-    best_at = None
-    for c in convs:
-        at = last_seen.get(c.id) or c.started_at
-        if at is None or at < cutoff:
-            continue
-        if best_at is None or at > best_at:
-            best, best_at = c, at
-    if best is None:
+    row = db.execute(
+        select(AiConversation, activity.label("at"))
+        .outerjoin(last_msg, last_msg.c.cid == AiConversation.id)
+        .where(
+            AiConversation.user == user.name,
+            AiConversation.company_id == company.id if company is not None
+            else AiConversation.company_id.is_(None),
+            activity >= cutoff,
+        )
+        .order_by(activity.desc())
+        .limit(1)
+    ).first()
+    if row is None:
         return {"conversation_id": None}
+    best, best_at = row[0], row[1]
 
     label = _company_labels(db, {best.company_id}).get(best.company_id) or {}
     return {

@@ -175,30 +175,33 @@
     select.innerHTML = '';
     select.appendChild(util.el('option', { value: '', text: '— Chưa gán doanh nghiệp —' }));
     for (const c of companyOptions) {
-      const opt = util.el('option', { value: c.code, text: c.name });
-      if (c.id === conv.company_id) opt.setAttribute('selected', 'selected');
-      select.appendChild(opt);
+      select.appendChild(util.el('option', { value: c.code, text: c.name }));
     }
     select.value = conv.company_id
       ? (companyOptions.find((c) => c.id === conv.company_id) || {}).code || ''
       : '';
     $('chat-move-title').textContent = conv.title || 'Cuộc trò chuyện';
-    dlg.returnValue = '';
-    dlg.showModal();
 
-    const onClose = async () => {
-      dlg.removeEventListener('close', onClose);
+    // Gắn lại handler MỖI lần mở. Lượt lưu hỏng (vd officer chọn DN ngoài quyền
+    // → 404) mở lại hộp thoại, và nếu không gắn lại thì lần bấm Lưu sau đóng
+    // hộp thoại mà không gọi API — thay đổi của cán bộ mất im lặng.
+    const arm = () => {
+      dlg.returnValue = '';
+      dlg.addEventListener('close', onClose, { once: true });
+      dlg.showModal();
+    };
+    async function onClose() {
       if (dlg.returnValue !== 'save') return;
       const r = await util.apiSetCompany(conv.id, select.value || null);
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         err.textContent = j.detail || `Không đổi được (HTTP ${r.status}).`;
-        dlg.showModal();
+        arm();
         return;
       }
       await refreshList();
-    };
-    dlg.addEventListener('close', onClose);
+    }
+    arm();
   }
 
   function renderSuggestions() {
