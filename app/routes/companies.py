@@ -1522,6 +1522,65 @@ def generate_overview(
     return _back(msg=f"Đã xếp hàng viết tổng quan {check} năm {year} (công việc #{job_id}).")
 
 
+@router.post("/companies/{code}/overview-batch", response_model=None)
+def generate_overview_batch(
+    code: str,
+    year: int = Form(...),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Một nút cho cả năm: sinh tổng quan cho kiểm tra chưa có / đã cũ (ADR #21 mục 9).
+
+    ADR #18 bác sinh TỰ ĐỘNG sau mỗi lần chạy kiểm tra (hàng trăm lời gọi mỗi
+    lần chạy cả bộ, phần lớn không ai đọc). Đây là nút TƯỜNG MINH do cán bộ bấm.
+    """
+    from app.ai.config import get_setting
+    from app.ai.limits import check_daily_budget
+    from app.ai.overview import checks_needing_overview
+    from app.audit import ACTION_AI_OVERVIEW
+    from app.auth_users import get_user_by_username
+    from app.jobs import enqueue_job
+    from app.models.job import JobKind
+
+    company = get_company_or_404(db, code, user)
+
+    def _back(**params: str) -> RedirectResponse:
+        from urllib.parse import urlencode
+
+        return RedirectResponse(
+            url=f"/companies/{company.slug or company.code}?{urlencode({'year': year, **params})}",
+            status_code=303,
+        )
+
+    if not get_setting("enabled"):
+        return _back(error="AI assistant đang tắt. Bật trong /admin/ai.")
+    if not get_setting("api_key"):
+        return _back(error="Chưa cấu hình API key AI. Cấu hình ở /admin/ai.")
+    try:
+        check_daily_budget(db)
+    except HTTPException as e:
+        return _back(error=str(e.detail))
+
+    targets = checks_needing_overview(db, company.id, year)
+    if not targets:
+        return _back(msg="Mọi kiểm tra có phát hiện đều đã có tổng quan còn mới.")
+
+    user_row = get_user_by_username(db, user.name)
+    if user_row is None:
+        return _back(error="Session user không tồn tại.")
+
+    job = enqueue_job(
+        db, kind=JobKind.AI_OVERVIEW_BATCH,
+        payload={"company_code": company.code, "year": year, "username": user.name},
+        created_by=user_row.id, company_id=company.id, period_year=year,
+    )
+    log_access(db, username=user.name, action=ACTION_AI_OVERVIEW,
+               company_code=company.code, detail=f"batch year={year} n={len(targets)}")
+    return _back(
+        msg=f"Đã xếp hàng viết tổng quan cho {len(targets)} kiểm tra (công việc #{job.id})."
+    )
+
+
 @router.get("/companies/{code}/overview.json")
 def overview_status(
     code: str,

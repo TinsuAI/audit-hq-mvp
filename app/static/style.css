@@ -2086,3 +2086,57 @@ p { margin: 0 0 var(--space-3); }
 .book-pill.chung { background: var(--c-status-new-bg); color: var(--c-text-muted); border-color: var(--c-border); }
 .book-split { font-size: var(--fs-xs); color: var(--c-text-muted); margin: 0 0 var(--space-2); }
 .book-split .book-split-item { margin-right: var(--space-3); }
+
+/* ── Bảng số liệu tính được của tổng quan AI (TQ-3, ADR #21) ── */
+.ov-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 8px 0 6px;
+}
+.ov-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface, #fff);
+}
+.ov-stat .ovs-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.ov-stat .ovs-value { font-size: var(--fs-sm); font-weight: 600; }
+.ov-stat .ovs-sub { font-size: var(--fs-xs); color: var(--text-muted, #6b7280); }
+.ovs-note {
+  margin: 0 0 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted, #6b7280);
+  font-style: italic;
+}
+
+/* ── Nhận định AI theo mục (TQ-4, ADR #21) ── */
+.ov-sections { font-size: var(--fs-sm); }
+.ov-sections .ovc-lead { margin: 0 0 6px; font-weight: 600; }
+.ov-sections .ovc-para { margin: 0 0 6px; }
+.ov-sections .ovc-head {
+  margin: 8px 0 2px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--text-muted, #6b7280);
+}
+.ov-sections .ovc-list { margin: 0 0 4px; padding-left: 18px; }
+.ov-sections .ovc-list li { margin-bottom: 2px; }
+.ovc-disclaimer {
+  margin: 8px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted, #6b7280);
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
