@@ -265,7 +265,7 @@ def test_overview_route_generates_and_redirects(monkeypatch):
         _enable_ai(monkeypatch)
         import app.ai.overview as ov
 
-        def _stub_gen(db, *, company, period_year, check_code):
+        def _stub_gen(db, *, company, period_year, check_code, created_by=None):
             row = CheckOverview(
                 company_id=company.id, period_year=period_year, check_code=check_code,
                 content="stub overview", based_on_data_version=0,

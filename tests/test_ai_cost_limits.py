@@ -114,8 +114,16 @@ def test_check_rate_limit_isolates_by_user(session):
 
 # ─────────────────────────── budget ───────────────────────────
 
-def _add_cost_msg(session, cost: float, age_hours: int = 0, conv_id: int | None = None):
-    """Helper: thêm 1 assistant msg với cost."""
+def _add_cost_msg(session, cost: float, age_hours: int = 0, conv_id: int | None = None,
+                  tokens_in: int = 0, tokens_out: int = 0):
+    """Helper: 1 assistant msg + dòng sổ tương ứng.
+
+    Trần ngày và `/admin/ai` đọc `ai_usage` từ ADR #21, còn `AiMessage.cost_usd`
+    chỉ còn là telemetry của chính dòng đó — nên helper phải ghi CẢ HAI, đúng như
+    `_save_msg` làm trên đường thật.
+    """
+    from app.ai.usage import conversation_ref, record_usage
+
     if conv_id is None:
         conv = AiConversation(user="admin")
         session.add(conv)
@@ -124,9 +132,14 @@ def _add_cost_msg(session, cost: float, age_hours: int = 0, conv_id: int | None 
     ts = datetime.now(UTC) - timedelta(hours=age_hours)
     msg = AiMessage(
         conversation_id=conv_id, role="assistant", content="reply",
-        cost_usd=cost, created_at=ts,
+        cost_usd=cost, tokens_in=tokens_in, tokens_out=tokens_out, created_at=ts,
     )
     session.add(msg)
+    usage = record_usage(
+        session, kind="chat", ref=conversation_ref(conv_id), model="m",
+        tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost, user="admin",
+    )
+    usage.created_at = ts.replace(tzinfo=None)
     session.commit()
     return conv_id
 
@@ -170,12 +183,9 @@ def test_usage_today_aggregates(session):
     from app.ai.config import bust_cache
     bust_cache()
     conv_id = _add_cost_msg(session, cost=0.5)
-    # Add another msg same conv
-    session.add(AiMessage(
-        conversation_id=conv_id, role="assistant", content="b",
-        tokens_in=100, tokens_out=50, cost_usd=0.3,
-    ))
-    # User msg (no cost)
+    # Lượt tính tiền thứ hai trong cùng cuộc.
+    _add_cost_msg(session, cost=0.3, conv_id=conv_id, tokens_in=100, tokens_out=50)
+    # Tin nhắn của người dùng — không tính tiền, không vào sổ.
     session.add(AiMessage(
         conversation_id=conv_id, role="user", content="q",
     ))
@@ -185,3 +195,6 @@ def test_usage_today_aggregates(session):
     assert stats["messages"] == 3
     assert stats["tokens_in"] == 100
     assert stats["users"] == 1
+    # Cả 0.8 đều là chi phí chat; chưa sinh tổng quan nào.
+    assert stats["by_kind"]["chat"]["cost_usd"] == pytest.approx(0.8, abs=0.001)
+    assert stats["by_kind"]["overview"]["calls"] == 0

@@ -26,8 +26,9 @@ from app.ai.client import (
 )
 from app.ai.config import get_setting
 from app.ai.cost import estimate_cost
+from app.ai.usage import overview_ref, record_usage
 from app.checks.registry import SEVERITY_LABEL_VI, SPECS
-from app.models import CheckOverview, CheckRun, Company, Finding
+from app.models import AiUsage, CheckOverview, CheckRun, Company, Finding
 from app.pipeline.period import current_data_version
 
 _TOP_N = 15
@@ -116,7 +117,8 @@ def overview_is_stale(
 
 
 def generate_check_overview(
-    db: Session, *, company: Company, period_year: int, check_code: str
+    db: Session, *, company: Company, period_year: int, check_code: str,
+    created_by: str | None = None,
 ) -> CheckOverview:
     """Sinh + upsert overview cho (DN, năm, mã). Đọc snapshot nền, gọi LLM, ghi SAU.
 
@@ -203,6 +205,19 @@ def generate_check_overview(
     ov.tokens_out = tokens_out
     ov.cost_usd = cost_usd
     ov.latency_ms = latency_ms
+    # Ghi sổ chi phí (ADR #21 mục 10). Telemetry ở trên là chi phí của CHÍNH
+    # overview này và bị ghi đè mỗi lần sinh lại; dòng sổ thì cộng dồn, nên trần
+    # ngày thấy đủ cả ba lần sinh lại trong một ngày.
+    record_usage(
+        db,
+        kind=AiUsage.KIND_OVERVIEW,
+        ref=overview_ref(company.id, period_year, check_code),
+        model=used_model,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cost_usd=cost_usd,
+        user=created_by,
+    )
     db.commit()
     db.refresh(ov)
     return ov

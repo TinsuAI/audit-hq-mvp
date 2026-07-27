@@ -1493,7 +1493,7 @@ def generate_overview(
 
     try:
         generate_check_overview(
-            db, company=company, period_year=year, check_code=check
+            db, company=company, period_year=year, check_code=check, created_by=user.name
         )
     except Exception as e:  # noqa: BLE001 — show LLM/provider errors back to user
         db.rollback()

@@ -1,5 +1,5 @@
 from app.models.access_event import AccessEvent
-from app.models.ai import AiConversation, AiMessage, AiSetting
+from app.models.ai import AiConversation, AiMessage, AiSetting, AiUsage
 from app.models.app_setting import AppSetting
 from app.models.bcqt import Norm, NvlBalance, SpBalance
 from app.models.check_definition import CheckDefinition, CheckStatus
@@ -22,6 +22,7 @@ __all__ = [
     "AiConversation",
     "AiMessage",
     "AiSetting",
+    "AiUsage",
     "AppSetting",
     "CheckDefinition",
     "CheckOverview",

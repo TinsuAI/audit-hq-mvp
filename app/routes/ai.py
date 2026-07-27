@@ -42,12 +42,13 @@ from app.ai.guardrails import apply_guardrails
 from app.ai.limits import check_daily_budget, check_rate_limit
 from app.ai.system_prompt import build_messages_system
 from app.ai.tools import get_tool_schemas, run_tool
+from app.ai.usage import conversation_ref, record_usage
 from app.audit import ACTION_EXPORT_QUERY, ACTION_RUN_CHECKS, log_access
 from app.auth import SessionUser, require_user
 from app.auth_users import get_user_by_username
 from app.database import get_db
 from app.jobs import enqueue_job
-from app.models import AiConversation, AiMessage, Company, Finding
+from app.models import AiConversation, AiMessage, AiUsage, Company, Finding
 from app.models.job import JobKind
 from app.scoping import allowed_company_codes, can_access_company_id, get_company_or_404
 
@@ -229,6 +230,20 @@ def _save_msg(
     # Auto-estimate cost nếu chưa cung cấp (role=assistant + có model + tokens).
     if cost_usd is None and role == "assistant" and model and (tokens_in or tokens_out):
         cost_usd = estimate_cost(model, tokens_in or 0, tokens_out or 0).total_usd
+    # Mỗi assistant turn = MỘT lời gọi LLM tính tiền (vòng tool sinh nhiều turn,
+    # nên cũng nhiều dòng sổ — đúng ý "một dòng mỗi lời gọi").
+    if cost_usd is not None and role == "assistant":
+        conv = db.get(AiConversation, conv_id)
+        record_usage(
+            db,
+            kind=AiUsage.KIND_CHAT,
+            ref=conversation_ref(conv_id),
+            model=model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost_usd,
+            user=conv.user if conv is not None else None,
+        )
     msg = AiMessage(
         conversation_id=conv_id,
         role=role,
