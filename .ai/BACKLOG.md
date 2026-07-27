@@ -3,6 +3,59 @@
 > Tính năng / cải thiện chờ schedule. Không thay STATUS.md (state hiện tại) hay
 > sessions/ (history). Mục nào đi vào sprint → chuyển sang STATUS / session log.
 
+## Rà soát toàn bộ ngôn ngữ tiếng Việt trên giao diện
+
+> Chốt 2026-07-27 (owner). Khởi từ badge tổng quan AI ghi "Cần đối chiếu số liệu" —
+> nghe không ổn vì **lặp đúng câu của dòng miễn trừ trách nhiệm ngay dưới nó**
+> (`company_detail.html:413`), nên badge không nói thêm được gì.
+>
+> **⚠️ CÓ SẴN MỘT PHẦN, CHƯA MERGE:** nhánh `fix/badge-wording` (commit `d0e43cb`) đã
+> đổi badge sang **"Có số không khớp bảng"** + tooltip nêu rõ số nào và nói thẳng số đó
+> do AI tự viết. Owner chốt **KHÔNG deploy riêng**, gộp cùng đợt rà soát này (mỗi lần
+> deploy là một lần `docker restart` + thêm image layer, mà đĩa server đang 96%).
+> Bắt đầu đợt rà soát thì **rebase nhánh đó lên `main` rồi làm tiếp trên nó**, đừng sửa
+> lại badge từ đầu.
+
+**Nguyên tắc:** mọi chữ CÁN BỘ ĐỌC phải là tiếng Việt có nghĩa. Tên cột DB / khoá JSON
+nội bộ **giữ tiếng Anh** (`status`, `check_code`, `needs_review`) — đó là định danh, không
+dịch; nhưng **không được để lọt ra màn hình** dưới dạng thô.
+
+### Đã biết — theo mức độ lộ liễu
+
+1. **`job.result` in nguyên JSON cho mọi cán bộ** (`job_detail.html:31`,
+   `{{ job.result | tojson(indent=2) }}`). Nặng nhất vì giờ **lẫn hai thứ tiếng trong
+   cùng một khối**: handler cũ dùng khoá tiếng Anh (`combos_fired`, `years_processed`,
+   `findings_per_check`, `risk_score`), handler `AI_OVERVIEW_BATCH` mới dùng khoá tiếng
+   Việt (`da_tao`, `bo_qua`, `bo_qua_con_moi`, `bo_qua_chua_toi_luot`, `dung_vi`,
+   `checks_loi`). **Hướng sửa đề xuất:** trả khoá về tiếng Anh cho nhất quán với phần
+   còn lại, rồi render qua bảng nhãn tiếng Việt ở trang công việc thay vì dump JSON.
+2. **Ô phân vị hiện tên trường thô** — `company_detail.html:339` in `{{ nf.key }}`, ra màn
+   hình thành `M15_REPURPOSE`, `DIFF_PCT`, `RATIO_PCT`, `CLOSING_QTY`,
+   `THEORETICAL_CONSUMPTION`, `DIVERGENCE`. Cần bảng nhãn tiếng Việt cho 11 khoá khai ở
+   `app/ai/overview_stats.py:PERCENTILE_KEYS` (vd `m15_repurpose` → "Lượng chuyển mục
+   đích", `diff_pct` → "Chênh lệch (%)").
+3. **`evidence_label`** (`document_review.html:120`) — kiểm lại đủ nhãn tiếng Việt cho mọi
+   giá trị `evidence`, không rơi về chuỗi gốc.
+4. **Từ tiếng Anh còn dùng trong câu tiếng Việt:** `combo` (`admin_checks.html:26`
+   "Phát hiện kết hợp (combo)"), `file` (`upload_data.html` nhiều chỗ: "Kéo thả hoặc bấm
+   chọn file", "100MB/file", "chẩn đoán cấu trúc file"), `link`
+   (`edit_company.html:32` "không gãy link"). Quyết định giữ hay dịch từng từ — `file`
+   và `Excel` có thể là từ mượn đã quen, `link` thì nên đổi "đường dẫn".
+5. **`AI`** dùng khắp nơi ("Trợ lý AI", "Cấu hình AI", "Tổng quan AI"). Nhiều khả năng
+   GIỮ — nhưng cần chốt một lần cho nhất quán thay vì mỗi chỗ một kiểu.
+6. **Định dạng ngày kiểu ISO lọt ra UI** — `job_detail.html:24` dùng
+   `strftime("%Y-%m-%d %H:%M:%S")` trong khi phần còn lại dùng `%d/%m/%Y %H:%M`.
+
+### Cách làm
+
+Quét `app/templates/*.html` + chuỗi trong `app/routes/*.py` (thông báo lỗi, `msg=`,
+`error=`) + `app/static/*.js` (chuỗi hiện cho người dùng). Đối chiếu với
+[[vietnamese-ui-text-style]]: thuần Việt, chú ý sắc thái, **cấu hình runtime ≠ bug**.
+Mỗi chuỗi tự hỏi: cán bộ đọc có hiểu ngay không, và nó có nói thêm gì so với chữ ngay
+cạnh không.
+
+---
+
 ## Multi-user + role-based access
 
 ### Tài khoản riêng cho cán bộ HQ

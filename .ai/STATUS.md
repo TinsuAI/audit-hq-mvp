@@ -52,10 +52,16 @@
 > tính chất ADR #21: bảng số liệu hiện đủ trong khi nhận định còn "⏳ Đang viết…".
 > **Giới hạn bộ ảnh:** dữ liệu seed minh hoạ, nhận định là JSON dựng sẵn (KHÔNG gọi LLM thật) → chứng minh
 > render + hậu kiểm, không chứng minh chất lượng model.
-> **Next:** (1) punch-list 7 (lệch GLOSSARY/ADR #19) và 8 (`X.*` luôn `book=NULL`) **vẫn mở**; (2) ADR "nhãn
-> sổ sống ở đâu cho bền" vẫn chưa viết; (3) ô phân vị hiện tên trường thô (`M15_REPURPOSE`) — chưa có nhãn
-> tiếng Việt; (4) chưa có DN nào trên prod có tổng quan AI mới — muốn demo thì bấm "Tạo tổng quan còn thiếu"
-> (tốn tiền thật, trần ngày đang áp).
+> **Next:** (1) **rà soát toàn bộ ngôn ngữ tiếng Việt trên UI** — owner chốt 2026-07-27, work-list ở
+> `.ai/BACKLOG.md` mục đầu file; **có sẵn nhánh `fix/badge-wording` (`d0e43cb`) CHƯA MERGE**, chứa bản sửa
+> badge tổng quan, gộp vào đợt này chứ không deploy riêng; (2) punch-list 7 (lệch GLOSSARY/ADR #19) và 8
+> (`X.*` luôn `book=NULL`) **vẫn mở**; (3) ADR "nhãn sổ sống ở đâu cho bền" vẫn chưa viết; (4) chưa có DN nào
+> trên prod có tổng quan AI mới (2 dòng `check_overviews` đều là bản WS3 cũ, `aggregate_json`/`sections_json`
+> NULL) → **giao diện TQ-3/TQ-4 chưa hiện gì trên prod**; muốn demo phải bấm "Tạo tổng quan còn thiếu"
+> = 36 lời gọi LLM thật (5 PILOT_002/2025 · 10 PILOT_004/2025 · 10 PILOT_006/2024 · 11 PILOT_006/2025),
+> slot `model_fast` = `deepseek/deepseek-v4-flash`, trần ngày $100; (5) `ai_conversations` = 0 dòng nên toàn
+> bộ giao diện ADR #20 đang rỗng trên prod; (6) **đĩa server 96%, còn 11G** — `docker system df` báo 68 GB
+> image reclaimable, `db-data` 1,5G với 6 backup; chưa dọn vì xoá không quay lại được.
 
 > **Trạng thái (2026-07-27 — CHẠY LẠI CHECK 004 TRÊN PROD: 74 → 65, hết 3 CRITICAL sai — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `03d5031`):**
 > Owner chốt chạy lại. Chạy **scoped 17 check built-in** cho `PILOT_004`/2025 trong container prod

@@ -36,7 +36,7 @@ chạy nhiều lần không để lại rác.
 | 04 | `04_bao_lech_pham_vi.png` | Lệch phạm vi: cuộc gắn An Phát trong khi trang đang xem Bình Minh → báo rõ + nút "Mở cuộc trò chuyện mới cho Công ty CP Bình Minh (Demo)". Không tự tách cuộc, không tự đổi nhãn |
 | 05 | `05_bang_so_lieu_va_nhan_dinh.png` | Bảng số liệu 4 ô (tổng + mức · số mã + tỉ trọng top-5 + phủ 80% · phân vị & chiều lệch · so kỳ trước) và nhận định bốn mục với điểm nóng là LINK sang trang chi tiết mã. Nút "✨ Tạo tổng quan còn thiếu" ở thanh công cụ |
 | 06 | `06_dang_viet_nhan_dinh.png` | Sinh chạy nền: **bảng số liệu đã hiện đầy đủ** trong khi chỗ nhận định còn "⏳ Đang viết nhận định… (công việc #1)" kèm link job — đúng tính chất "bảng hiện ngay, không chờ LLM" |
-| 07 | `07_badge_can_doi_chieu.png` | Badge "⚠️ Cần đối chiếu số liệu" khi nhận định có con số (137) không khớp chuỗi nào trong bảng; kiểm tra 2 phát hiện (<10) nên mục phân bố bị bỏ; miễn trừ trách nhiệm là text tĩnh |
+| 07 | `07_badge_can_doi_chieu.png` | Badge cờ số không khớp khi nhận định có con số (137) không khớp chuỗi nào trong bảng; kiểm tra 2 phát hiện (<10) nên mục phân bố bị bỏ; miễn trừ trách nhiệm là text tĩnh. **Ảnh khớp bản đang chạy trên prod** (badge ghi "Cần đối chiếu số liệu"). Chữ badge sẽ đổi thành "Có số không khớp bảng" khi gộp nhánh `fix/badge-wording` — chụp lại ảnh này lúc đó |
 | 08 | `08_admin_ai_tach_theo_loai.png` | `/admin/ai` đọc sổ `ai_usage`: số lời gọi tách theo loại (trò chuyện / tổng quan) |
 
 ## Lỗi thật ảnh chụp bắt được
