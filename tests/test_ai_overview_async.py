@@ -196,6 +196,34 @@ def test_handler_marks_row_failed_and_reraises(factory, world, monkeypatch):
         assert "provider 500" in ov.error
 
 
+def test_status_endpoint_reports_failed_when_the_job_died(factory, world):
+    """Job bị thu hồi (server restart) không kịp sửa dòng → đọc trạng thái job.
+
+    Nếu không, khối tổng quan đứng ở "⏳ Đang viết nhận định…" vĩnh viễn.
+    """
+    from app.ai.overview import start_overview_job
+    from app.auth import SessionUser
+    from app.routes.companies import overview_status
+
+    with factory() as db:
+        company = db.get(Company, world["company_id"])
+        job_id, _ = start_overview_job(
+            db, company=company, period_year=2025, check_code="C1.1",
+            created_by=world["user_id"],
+        )
+        job = db.get(Job, job_id)
+        job.status = JobStatus.FAILED.value
+        job.error = "Job interrupted: server restart hoặc crash khi đang chạy."
+        db.commit()
+
+        body = overview_status(
+            "DN_OV", year=2025, check="C1.1",
+            user=SessionUser(name="admin", role="admin"), db=db,
+        )
+    assert body["status"] == "failed"
+    assert "server restart" in body["error"]
+
+
 def test_worker_iteration_runs_ai_job_through_registered_handler(factory, world, monkeypatch):
     import app.ai.overview as ov_mod
     from app.jobs import HANDLERS

@@ -1547,10 +1547,23 @@ def overview_status(
     )
     if ov is None:
         return {"status": None}
+
+    status, error = ov.status, ov.error
+    # Job chết giữa chừng (server restart → thu hồi job treo) không kịp cập nhật
+    # dòng tổng quan, nên dòng đứng nguyên `running`. Đọc trạng thái job để cán
+    # bộ thấy lỗi thay vì một vòng xoay không bao giờ dừng.
+    if status == CheckOverview.STATUS_RUNNING and ov.job_id is not None:
+        from app.models.job import Job, JobStatus
+
+        job = db.get(Job, ov.job_id)
+        if job is None or job.status == JobStatus.FAILED.value:
+            status = CheckOverview.STATUS_FAILED
+            error = (job.error if job is not None and job.error
+                     else "Công việc sinh tổng quan đã dừng.")
     return {
-        "status": ov.status,
+        "status": status,
         "content": ov.content or "",
-        "error": ov.error,
+        "error": error,
         "job_id": ov.job_id,
         "generated_at": ov.generated_at.isoformat() if ov.generated_at else None,
     }

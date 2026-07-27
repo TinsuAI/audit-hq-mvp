@@ -259,23 +259,17 @@ def _enable_ai(monkeypatch):
     monkeypatch.setattr(lim, "check_daily_budget", lambda *a, **k: None)
 
 
-def test_overview_route_generates_and_redirects(monkeypatch):
+def test_overview_route_enqueues_and_redirects_to_the_anchor(monkeypatch):
+    """TQ-2: route XẾP HÀNG job rồi quay về đúng chỗ đang đọc, không sinh tại chỗ.
+
+    (Trước TQ-2 route gọi `generate_check_overview` đồng bộ; test này từng stub
+    hàm đó. Nay stub sẽ không bao giờ được gọi, nên phải khẳng định job.)
+    """
+    from app.models.job import Job, JobKind, JobStatus
+
     new_engine, new_session = _setup_db()
     try:
         _enable_ai(monkeypatch)
-        import app.ai.overview as ov
-
-        def _stub_gen(db, *, company, period_year, check_code, created_by=None):
-            row = CheckOverview(
-                company_id=company.id, period_year=period_year, check_code=check_code,
-                content="stub overview", based_on_data_version=0,
-            )
-            db.add(row)
-            db.commit()
-            return row
-
-        monkeypatch.setattr(ov, "generate_check_overview", _stub_gen)
-
         client = TestClient(app)
         _login(client)
         r = client.post("/companies/DN_OV/overview",
@@ -283,11 +277,27 @@ def test_overview_route_generates_and_redirects(monkeypatch):
         assert r.status_code == 303
         assert "msg=" in r.headers["location"]
         assert "#group-C1.1" in r.headers["location"]
+        # KHÔNG chuyển sang /jobs/{id} — tổng quan nằm trong nhóm đang mở.
+        assert "/jobs/" not in r.headers["location"]
         with new_session() as db:
             c = db.scalar(select(Company).where(Company.code == "DN_OV"))
-            assert db.scalar(
+            job = db.scalar(select(Job))
+            assert job.kind == JobKind.AI_OVERVIEW.value
+            assert job.status == JobStatus.QUEUED.value
+            assert job.payload["check_code"] == "C1.1"
+            ov_row = db.scalar(
                 select(CheckOverview).where(CheckOverview.company_id == c.id)
-            ) is not None
+            )
+            # Dòng tồn tại NGAY, mang trạng thái đang chạy + job.
+            assert ov_row.status == CheckOverview.STATUS_RUNNING
+            assert ov_row.job_id == job.id
+
+        # Bấm lại khi job còn chờ → vẫn ĐÚNG một job.
+        r2 = client.post("/companies/DN_OV/overview",
+                         data={"year": "2024", "check": "C1.1"}, follow_redirects=False)
+        assert r2.status_code == 303
+        with new_session() as db:
+            assert len(db.scalars(select(Job)).all()) == 1
     finally:
         _teardown(new_engine)
 
