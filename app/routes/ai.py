@@ -31,6 +31,10 @@ from app.ai.client import (
     make_fallback_client,
 )
 from app.ai.config import get_setting
+from app.ai.conversation_scope import (
+    late_assign_company,
+    resolve_company_for_new_conversation,
+)
 from app.ai.cost import estimate_cost
 from app.ai.guardrails import apply_guardrails
 from app.ai.limits import check_daily_budget, check_rate_limit
@@ -87,6 +91,41 @@ def _resolve_mentions(
                 continue
             out.append({"type": "finding", "id": f.id, "title": f.title, "company_code": comp.code})
     return out
+
+
+def _resume_or_create_conversation(
+    db: Session,
+    user: SessionUser,
+    conv_id: int | None,
+    *,
+    page_context: dict,
+    mentions: list[dict],
+    user_message: str,
+) -> AiConversation:
+    """Resume cuộc cũ (kiểm sở hữu) hoặc tạo cuộc mới đã gắn DN (ADR #20).
+
+    Dùng chung cho `/api/chat` và `/api/chat/stream` — nhận diện DN phải giống
+    hệt nhau ở hai đường, nếu không nhãn sẽ phụ thuộc vào việc client có stream
+    hay không.
+    """
+    if conv_id:
+        conv = db.get(AiConversation, conv_id)
+        if conv is None or conv.user != user.name:
+            raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+        # Cuộc còn trống → nhắc đúng một @DN thì gắn rồi cố định.
+        late_assign_company(db, conv, mentions, user)
+        return conv
+    conv = AiConversation(
+        user=user.name,
+        page_url_seed=page_context.get("url"),
+        title=user_message[:80],
+        company_id=resolve_company_for_new_conversation(db, user, page_context),
+    )
+    db.add(conv)
+    db.flush()
+    # Cuộc mới không nhận được tín hiệu nào từ trang → mention của chính lượt này.
+    late_assign_company(db, conv, mentions, user)
+    return conv
 
 
 def _clean_tool_args(raw: str) -> str:
@@ -211,18 +250,10 @@ async def chat(
         raise HTTPException(status_code=400, detail="Message không được trống.")
 
     # Resume hay tạo mới conversation
-    if conv_id:
-        conv = db.get(AiConversation, conv_id)
-        if conv is None or conv.user != user.name:
-            raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
-    else:
-        conv = AiConversation(
-            user=user.name,
-            page_url_seed=page_context.get("url"),
-            title=user_message[:80],
-        )
-        db.add(conv)
-        db.flush()
+    conv = _resume_or_create_conversation(
+        db, user, conv_id,
+        page_context=page_context, mentions=mentions, user_message=user_message,
+    )
 
     # Save user message
     _save_msg(db, conv.id, "user", user_message)
@@ -373,6 +404,17 @@ async def chat(
     }
 
 
+def _company_labels(db: Session, company_ids: set[int | None]) -> dict[int, dict]:
+    """Nạp mã/slug/tên cho tập company_id trong MỘT câu — tránh N+1 khi render list."""
+    ids = {i for i in company_ids if i is not None}
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(Company.id, Company.code, Company.slug, Company.name).where(Company.id.in_(ids))
+    ).all()
+    return {r.id: {"code": r.code, "slug": r.slug, "name": r.name} for r in rows}
+
+
 @router.get("/chat/conversations")
 def list_conversations(
     user: SessionUser = Depends(require_user),
@@ -384,6 +426,7 @@ def list_conversations(
     if not user.is_admin:
         stmt = stmt.where(AiConversation.user == user.name)
     convs = db.scalars(stmt).all()
+    companies = _company_labels(db, {c.company_id for c in convs})
     out = []
     for c in convs:
         # Count messages
@@ -400,6 +443,7 @@ def list_conversations(
             .limit(1)
         )
         title = c.title or (first_user_msg.content[:80] if first_user_msg else "(trống)")
+        label = companies.get(c.company_id) or {}
         out.append({
             "id": c.id,
             "title": title,
@@ -407,6 +451,11 @@ def list_conversations(
             "msg_count": msg_count,
             "page_url_seed": c.page_url_seed,
             "owner": c.user,  # admin xem list của nhiều user → FE hiện chủ + ẩn nút xoá cuộc người khác
+            # Nhãn DN đọc từ dòng cuộc — FE KHÔNG suy từ page_url_seed nữa.
+            "company_id": c.company_id,
+            "company_code": label.get("code"),
+            "company_slug": label.get("slug"),
+            "company_name": label.get("name"),
         })
     return {"conversations": out}
 
@@ -426,10 +475,15 @@ def get_conversation_messages(
         .where(AiMessage.conversation_id == conv.id)
         .order_by(AiMessage.id)
     ).all()
+    label = _company_labels(db, {conv.company_id}).get(conv.company_id) or {}
     return {
         "conversation_id": conv.id,
         "title": conv.title,
         "started_at": conv.started_at.isoformat() if conv.started_at else None,
+        "company_id": conv.company_id,
+        "company_code": label.get("code"),
+        "company_slug": label.get("slug"),
+        "company_name": label.get("name"),
         "messages": [
             {
                 "role": m.role,
@@ -663,18 +717,10 @@ async def chat_stream(
     if not user_message:
         raise HTTPException(status_code=400, detail="Message không được trống.")
 
-    if conv_id:
-        conv = db.get(AiConversation, conv_id)
-        if conv is None or conv.user != user.name:
-            raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
-    else:
-        conv = AiConversation(
-            user=user.name,
-            page_url_seed=page_context.get("url"),
-            title=user_message[:80],
-        )
-        db.add(conv)
-        db.flush()
+    conv = _resume_or_create_conversation(
+        db, user, conv_id,
+        page_context=page_context, mentions=mentions, user_message=user_message,
+    )
 
     _save_msg(db, conv.id, "user", user_message)
     db.commit()

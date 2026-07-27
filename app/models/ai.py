@@ -38,7 +38,7 @@ class AiSetting(Base):
 
 
 class AiConversation(Base):
-    """Cuộc trò chuyện giữa 1 user và AI."""
+    """Cuộc trò chuyện giữa 1 user và AI — gắn TỐI ĐA 1 doanh nghiệp (ADR #20)."""
 
     __tablename__ = "ai_conversations"
 
@@ -51,9 +51,15 @@ class AiConversation(Base):
     page_url_seed: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # AI tự đặt sau ~3 turn để admin nhìn vào list hiểu nội dung.
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # DN gắn với cuộc — nhãn LƯU, không suy lúc đọc (ADR #20). NULL = chưa gắn.
+    # DN bị xoá → SET NULL: cuộc vẫn đọc được, chỉ mất nhãn.
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
+    )
 
     __table_args__ = (
         Index("ix_ai_conversations_user_started", "user", "started_at"),
+        Index("ix_ai_conversations_user_company_started", "user", "company_id", "started_at"),
     )
 
 

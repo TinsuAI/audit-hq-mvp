@@ -154,9 +154,13 @@
     return 'Cũ hơn';
   }
 
+  // Nhãn DN của cuộc — đọc từ dòng cuộc (server gắn lúc tạo, ADR #20). Cuộc mở
+  // từ trang phát hiện có nhãn đúng; không còn suy từ page_url_seed.
   function convDnCode(c) {
-    const m = (c.page_url_seed || '').match(/\/companies\/([A-Za-z0-9_-]+)/);
-    return m ? m[1] : null;
+    return c.company_code || null;
+  }
+  function convDnLabel(c) {
+    return c.company_name || c.company_code || null;
   }
 
   // ═══════════════ API helpers ═══════════════
@@ -183,7 +187,7 @@
     const f = (opts.filter || '').trim().toLowerCase();
     const items = convs.filter((c) => {
       if (!f) return true;
-      const dn = (convDnCode(c) || '').toLowerCase();
+      const dn = ((c.company_code || '') + ' ' + (c.company_name || '')).toLowerCase();
       return (c.title || '').toLowerCase().includes(f) || dn.includes(f);
     });
     if (items.length === 0) {
@@ -206,8 +210,8 @@
       });
       const title = el('div', { class: 'h-title', text: c.title });
       const meta = el('div', { class: 'h-meta' });
-      const dn = convDnCode(c);
-      if (dn) meta.appendChild(el('span', { class: 'h-dn', text: dn }));
+      const dn = convDnLabel(c);
+      if (dn) meta.appendChild(el('span', { class: 'h-dn', text: dn, title: c.company_code || dn }));
       // Cuộc của user khác (admin đang giám sát) → hiện chủ, không cho xoá.
       const isOther = c.owner && opts.currentUser && c.owner !== opts.currentUser;
       if (isOther) meta.appendChild(el('span', { class: 'h-owner', text: '👤 ' + c.owner }));
@@ -636,7 +640,8 @@
     create,
     util: {
       el, escapeHtml, getPageContext, getSuggestions, renderMarkdown, parseCitations,
-      dateBucket, convDnCode, apiMeta, apiList, apiMessages, apiDelete, renderConversationList,
+      dateBucket, convDnCode, convDnLabel, apiMeta, apiList, apiMessages, apiDelete,
+      renderConversationList,
     },
   };
 })();
