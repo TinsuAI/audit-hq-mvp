@@ -170,9 +170,34 @@ def build_page_context(
     )
 
 
+def build_conversation_topic(company_code: str | None, company_name: str | None) -> str:
+    """Khối "cuộc này nói về DN nào" (ADR #20).
+
+    Chủ đề khác ngữ cảnh trang: ngữ cảnh trang đổi theo trang cán bộ tình cờ
+    đang mở, chủ đề thì cố định suốt cuộc. Nhờ đó câu hỏi trống ngữ cảnh ("năm
+    2025 có gì đáng chú ý?") resolve về DN của cuộc.
+
+    KHÔNG thu hẹp quyền của tool: biên vẫn là ranh giới phân quyền DN (ADR #14),
+    nên "so sánh với DN khác" vẫn là câu hỏi kiểm toán hợp lệ.
+    """
+    if not company_code and not company_name:
+        return ""
+    who = f"`{company_name}` (mã `{company_code}`)" if company_name and company_code else (
+        f"`{company_code or company_name}`"
+    )
+    return (
+        "## Chủ đề cuộc trò chuyện\n"
+        f"- Cuộc trò chuyện này gắn với doanh nghiệp {who}.\n"
+        "- Câu hỏi KHÔNG nêu rõ doanh nghiệp thì hiểu là hỏi về doanh nghiệp này.\n"
+        "- Đây KHÔNG phải giới hạn truy cập: cán bộ vẫn hỏi được doanh nghiệp khác "
+        "(vd để so sánh) và bạn cứ tra bình thường."
+    )
+
+
 def build_messages_system(
     page_context: dict | None = None,
     enable_cache: bool = False,
+    conversation_company: dict | None = None,
 ) -> list[dict]:
     """Trả list system messages cho OpenAI API.
 
@@ -193,6 +218,16 @@ def build_messages_system(
             mentions=page_context.get("mentions"),
         )
 
+    topic_block = ""
+    if conversation_company:
+        topic_block = build_conversation_topic(
+            conversation_company.get("code"), conversation_company.get("name")
+        )
+
+    # Chủ đề đứng TRƯỚC ngữ cảnh trang: trang là cái đang xem, chủ đề là cái
+    # cuộc nói về — khi hai thứ lệch nhau, cái sau đọc như phần bổ sung.
+    tail = "\n\n".join(b for b in (topic_block, page_block) if b)
+
     catalog = cached_catalog()
     if enable_cache:
         # Anthropic-style: content là list of blocks, segment cache đánh dấu ephemeral.
@@ -201,9 +236,9 @@ def build_messages_system(
             "content": [
                 {"type": "text", "text": HEAD},
                 {"type": "text", "text": catalog, "cache_control": {"type": "ephemeral"}},
-                *([{"type": "text", "text": page_block}] if page_block else []),
+                *([{"type": "text", "text": tail}] if tail else []),
             ],
         }]
     # Provider không cache → gộp string đơn giản.
-    text = HEAD + "\n\n" + catalog + ("\n\n" + page_block if page_block else "")
+    text = HEAD + "\n\n" + catalog + ("\n\n" + tail if tail else "")
     return [{"role": "system", "content": text}]

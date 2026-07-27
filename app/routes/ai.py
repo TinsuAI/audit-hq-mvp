@@ -49,7 +49,7 @@ from app.database import get_db
 from app.jobs import enqueue_job
 from app.models import AiConversation, AiMessage, Company, Finding
 from app.models.job import JobKind
-from app.scoping import allowed_company_codes, get_company_or_404
+from app.scoping import allowed_company_codes, can_access_company_id, get_company_or_404
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +95,32 @@ def _resolve_mentions(
     return out
 
 
+def _conversation_lock(db: Session, conv: AiConversation, user: SessionUser) -> str | None:
+    """Lý do cuộc bị khoá gửi, hoặc None nếu gửi được (ADR #20).
+
+    Cuộc gắn DN mà cán bộ không còn được phân công: transcript vẫn ĐỌC được
+    (quyền đọc theo sở hữu cuộc, không đổi), nhưng không gửi thêm. Thay cho cảnh
+    hỏi được mà câu nào cũng bị tool từ chối, không nói vì sao.
+    """
+    if conv.company_id is None or can_access_company_id(db, user, conv.company_id):
+        return None
+    company = db.get(Company, conv.company_id)
+    name = company.name if company else f"#{conv.company_id}"
+    return (
+        f"Cuộc trò chuyện này gắn với doanh nghiệp {name}, hiện bạn không còn được phân công "
+        "doanh nghiệp đó nên không gửi thêm được. Nội dung cũ vẫn đọc được. "
+        "Liên hệ quản trị nếu cần phân công lại."
+    )
+
+
+def _conversation_company(db: Session, conv: AiConversation) -> dict | None:
+    """`{code, name}` của DN gắn cuộc — nạp vào system prompt làm chủ đề."""
+    if conv.company_id is None:
+        return None
+    label = _company_labels(db, {conv.company_id}).get(conv.company_id)
+    return {"code": label["code"], "name": label["name"]} if label else None
+
+
 def _resume_or_create_conversation(
     db: Session,
     user: SessionUser,
@@ -114,6 +140,9 @@ def _resume_or_create_conversation(
         conv = db.get(AiConversation, conv_id)
         if conv is None or conv.user != user.name:
             raise HTTPException(status_code=404, detail="Conversation không tồn tại.")
+        locked = _conversation_lock(db, conv, user)
+        if locked:
+            raise HTTPException(status_code=403, detail=locked)
         # Cuộc còn trống → nhắc đúng một @DN thì gắn rồi cố định.
         late_assign_company(db, conv, mentions, user)
         return conv
@@ -265,6 +294,7 @@ async def chat(
     system_msgs = build_messages_system(
         page_context=page_context,
         enable_cache=get_setting("prompt_cache_enabled") and cache_supports_anthropic(),
+        conversation_company=_conversation_company(db, conv),
     )
     history = _load_history(db, conv.id)
     messages = system_msgs + history
@@ -641,10 +671,17 @@ def get_conversation_messages(
         .order_by(AiMessage.id)
     ).all()
     label = _company_labels(db, {conv.company_id}).get(conv.company_id) or {}
+    # Admin đọc cuộc người khác: chỉ để giám sát, không gửi tiếp vào cuộc đó.
+    lock = (
+        "Đây là cuộc trò chuyện của cán bộ khác — chỉ xem, không gửi thêm."
+        if conv.user != user.name else _conversation_lock(db, conv, user)
+    )
     return {
         "conversation_id": conv.id,
         "title": conv.title,
         "started_at": conv.started_at.isoformat() if conv.started_at else None,
+        "can_send": lock is None,
+        "lock_reason": lock,
         "company_id": conv.company_id,
         "company_code": label.get("code"),
         "company_slug": label.get("slug"),
@@ -968,6 +1005,7 @@ async def chat_stream(
     system_msgs = build_messages_system(
         page_context=page_context,
         enable_cache=get_setting("prompt_cache_enabled") and cache_supports_anthropic(),
+        conversation_company=_conversation_company(db, conv),
     )
     history = _load_history(db, conv.id)
     messages = system_msgs + history

@@ -291,6 +291,8 @@
     const onConvChange = cfg.onConversationChange || function () {};
 
     let convId = null;
+    let lockReason = null;         // cuộc không gửi thêm được → lý do hiện dưới khung
+    const basePlaceholder = inputEl ? inputEl.placeholder : '';
     let isStreaming = false;
     let currentToolStrip = null;   // {root, pills, detail} của lượt hiện tại
     let pendingToolPill = null;    // pill 'running' đang chờ tool_result khớp
@@ -467,8 +469,26 @@
       }
     }
 
+    // Khoá ô nhập kèm LÝ DO khi cuộc không gửi thêm được (mất quyền DN, hoặc
+    // admin đang xem cuộc của cán bộ khác). Transcript vẫn đọc bình thường.
+    function setLock(reason) {
+      lockReason = reason || null;
+      const locked = !!lockReason;
+      inputEl.disabled = locked;
+      submitEl.disabled = locked;
+      inputEl.placeholder = locked ? 'Không gửi thêm được' : basePlaceholder;
+      let note = messagesEl.parentElement
+        ? messagesEl.parentElement.querySelector('.ai-lock-note') : null;
+      if (!locked) { if (note) note.remove(); return; }
+      if (!note) {
+        note = el('div', { class: 'ai-lock-note', role: 'status' });
+        messagesEl.parentElement.insertBefore(note, messagesEl.nextSibling);
+      }
+      note.textContent = '🔒 ' + lockReason;
+    }
+
     async function sendMessage(text, _retry = false) {
-      if (isStreaming || !text.trim()) return;
+      if (lockReason || isStreaming || !text.trim()) return;
       isStreaming = true;
       clearEmpty();
       if (!_retry) addMessage('user', text);
@@ -543,10 +563,10 @@
       } finally {
         assistantNode.classList.remove('streaming');
         isStreaming = false;
-        submitEl.disabled = false;
-        inputEl.disabled = false;
+        submitEl.disabled = !!lockReason;
+        inputEl.disabled = !!lockReason;
         inputEl.value = '';
-        inputEl.focus();
+        if (!lockReason) inputEl.focus();
         pendingMentions = [];
       }
     }
@@ -568,6 +588,7 @@
     function clearMessages() {
       messagesEl.innerHTML = '';
       resetToolStrip();
+      setLock(null);   // cuộc mới luôn gửi được
     }
 
     async function loadConversation(id) {
@@ -577,6 +598,7 @@
         const data = await r.json();
         setConvId(data.conversation_id);
         clearMessages();
+        setLock(data.can_send === false ? data.lock_reason : null);
         for (const m of data.messages) {
           if (m.role === 'user') {
             resetToolStrip();

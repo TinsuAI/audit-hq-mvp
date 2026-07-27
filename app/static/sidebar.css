@@ -593,3 +593,15 @@
   text-align: center;
 }
 .ai-scope-note { font-size: 11px; color: var(--c-brand-700, #1d4ed8); margin-top: 4px; }
+
+/* Cuộc không gửi thêm được (mất quyền DN / admin xem cuộc người khác) — CHAT-4. */
+.ai-lock-note {
+  margin: 0 12px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--c-border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--c-surface-alt, #f3f4f6);
+  color: var(--c-text-muted, #4b5563);
+  font-size: 12px;
+  line-height: 1.45;
+}
