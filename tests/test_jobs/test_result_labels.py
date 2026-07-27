@@ -97,6 +97,19 @@ def test_every_job_kind_has_a_label() -> None:
     assert {k.value for k in JobKind} <= set(JOB_KIND_LABEL_VI)
 
 
+def test_every_company_type_value_has_a_label() -> None:
+    """`company_type` là khoá duy nhất có GIÁ TRỊ enum ra màn hình (`GIA_CONG`)."""
+    from app.checks.company_type import CompanyType
+    from app.jobs.result_labels import RESULT_VALUE_LABEL_VI
+
+    assert {t.value for t in CompanyType} == set(RESULT_VALUE_LABEL_VI["company_type"])
+
+
+def test_company_type_value_is_translated_in_the_row() -> None:
+    rows = describe_result({"company_type": "GIA_CONG"})
+    assert rows == [{"label": "Loại hình", "value": "Gia công"}]
+
+
 @pytest.mark.parametrize(("value", "expected"), [
     (None, "—"),
     ([], "—"),

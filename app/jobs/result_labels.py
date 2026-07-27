@@ -45,6 +45,18 @@ RESULT_LABEL_VI: dict[str, str] = {
     "stopped_reason": "Lý do dừng",
 }
 
+# Vài khoá mang GIÁ TRỊ là định danh (enum), không chỉ nhãn cột. `CompanyType`
+# ra thẳng `GIA_CONG` / `UNKNOWN` trên bảng nếu không tra ở đây. `DNCX`/`SXXK`
+# giữ nguyên vì là chữ viết tắt nghiệp vụ cán bộ đọc hằng ngày.
+RESULT_VALUE_LABEL_VI: dict[str, dict[str, str]] = {
+    "company_type": {
+        "DNCX": "DNCX (doanh nghiệp chế xuất)",
+        "GIA_CONG": "Gia công",
+        "SXXK": "SXXK (sản xuất xuất khẩu)",
+        "UNKNOWN": "Chưa xác định",
+    },
+}
+
 EMPTY = "—"
 
 
@@ -78,7 +90,9 @@ def describe_result(result: dict | None) -> list[dict[str, str]]:
     """
     if not result:
         return []
-    return [
-        {"label": RESULT_LABEL_VI.get(key, key), "value": _format(value)}
-        for key, value in result.items()
-    ]
+    rows = []
+    for key, value in result.items():
+        values = RESULT_VALUE_LABEL_VI.get(key)
+        text = values.get(str(value), _format(value)) if values else _format(value)
+        rows.append({"label": RESULT_LABEL_VI.get(key, key), "value": text})
+    return rows
