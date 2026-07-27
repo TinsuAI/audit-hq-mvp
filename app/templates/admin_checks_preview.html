@@ -113,14 +113,14 @@
   <dl class="check-meta-grid">
     <dt>Loại</dt><dd><code>{{ kind_labels.get(r.kind, r.kind) }}</code></dd>
     <dt>Mức mặc định</dt><dd>{{ severity_labels.get(r.base_severity, r.base_severity) }}</dd>
-    <dt>Nhóm điểm (scope)</dt><dd>{{ scope_labels.get(r.scope, r.scope) }}</dd>
+    <dt>Nhóm điểm</dt><dd>{{ scope_labels.get(r.scope, r.scope) }}</dd>
     <dt>Truy nguồn</dt><dd><code>{{ r.subject_table or '—' }}</code>{% if r.subject_col %} · <code>{{ r.subject_col }}</code>{% endif %}</dd>
   </dl>
   <details class="mt-2">
     <summary class="card-title" style="cursor:pointer">Xem mã truy vấn ({{ kind_labels.get(r.kind, r.kind) }})</summary>
     <pre class="uc-code-block">{% if r.kind == 'python' %}{{ r.code_snippet }}{% else %}{{ r.sql_snippet }}{% if r.detail_query %}
 
--- Truy vấn dòng nguồn (preview):
+-- Truy vấn dòng nguồn (xem trước):
 {{ r.detail_query }}{% endif %}{% endif %}</pre>
   </details>
 </div>
