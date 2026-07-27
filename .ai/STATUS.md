@@ -501,46 +501,68 @@
 - **A3 ô hỏng** (`_common.py`): đếm ô lỗi Excel + liên kết workbook ngoài, cảnh báo không đổi số.
 - **B1 C4.3** (`c4_norm.py`): mỗi cặp BOM tính 1 lần thay vì 1 lần/khối lặp.
 
-## Recent Changes (2026-07-23)
-9 commit trên `main`, 4 lần deploy:
-1. `a7f685a` P-01 · `e8dbea3` A1+A2 · `8c69f0b` A1 m16/bcct + discover · `3d98e4f` A3 ·
-   `d6b1bf1` B1 · `2847724` ADR 15 · `665e315`+`216afd3` sửa 6 lỗi từ `/rev` → merge `65c88cf`.
-2. `f09116b` phân trang finding · `41794d7` fix trang tài liệu nhiều slot → merge `5b0de04`.
-3. `56c54bd` bố cục mở rộng Mẫu 15 (ADR 15) → merge `c82ffa9`.
+## Recent Changes (2026-07-27)
+9 vé ADR #20 + #21, 5 PR, 3 lần deploy prod (`6a38230` → `ed69a0f` → `141b600` → `d7844b6`):
+1. **PR #37** CHAT-1..4 — cuộc trò chuyện gắn DN (migration `e1f2a3b4c5d6`).
+2. **PR #40** fix test xanh giả vì DB dev (làm `main` đỏ một nhịp, deploy KHÔNG chạy).
+3. **PR #41** TQ-1+TQ-2 — sổ `ai_usage` + worker chia theo loại job
+   (migration `f2a3b4c5d6e7`, `a3b4c5d6e7f8`). *Vốn là #38, GitHub tự đóng khi nhánh base bị xoá.*
+4. **PR #39** TQ-3..5 — bảng số liệu, nhận định JSON bốn mục, nút gộp cả năm
+   (migration `b4c5d6e7f8a9`, `c5d6e7f8a9b0`).
+5. **PR #42** fix CSS khối phạm vi hiện rỗng + 8 ảnh E2E.
+
+Chi tiết: `.ai/sessions/2026-07-27-adr20-chat-scope-adr21-overview-v2.md`.
+Mốc trước (2026-07-23, 9 commit tầng parse): `.ai/sessions/2026-07-23-tier-a-parse-layer.md`.
 
 ## Next Steps (theo ưu tiên)
-0. **C1 — `period_from`/`period_to` — ✅ XONG + ĐÃ DEPLOY PROD (2026-07-24, ADR #16, đường RẺ).**
-   Bảng `company_periods` + migration `e4f5a6b7c8d9`; BCCT lọc theo cửa sổ `[from,to]`; `period_year`
-   = nhãn kỳ; frontend sửa được kỳ + nhãn năm tài chính. Full-stack + 22 test. Merge `f5d2c0c`,
-   CI + deploy xanh, prod verify OK. **Còn (tuỳ chọn, chưa làm):** cảnh báo cửa sổ sửa tay chồng
-   lấn chéo năm — giới hạn manual-only có chủ đích (ADR #16). Đường tự động an toàn (FY liền kề
-   không chồng). Ngoài ra: reload dữ liệu PILOT_002/004 lên prod để hưởng phục hồi dòng (prod
-   hiện không có file nguồn 002/004 → cần upload hoặc chạy lại từ file).
-1. **M15a mở rộng + cột M16 của 004 — ✅ XONG (2026-07-24, ADR #17, CHƯA COMMIT).** `resolve_m15a`
-   (đẳng thức + export theo nhãn + nhãn gộp), discovery dò mở rộng, M16 ĐM thực tế, badge có lưu.
-   Đo thật: EPE C4.3=8, GC C1.4=2. Harness whitelist 419→419 trung tính. 583 test pass.
-   **Còn (tuỳ chọn):** commit + deploy (prod chưa có file 002/004 → chỉ code lên, data cần upload);
-   reload 004 lên prod. C4.3 nhánh sản lượng M16 (hệ số nhân) vẫn CHẶN bởi đề án — xem #2.
-2. **Sửa đề án `../audit-hq/de-an-audit-hq.md:228` TRƯỚC** rồi mới làm B2 (đổi hệ số nhân C4.3
+1. **Rà soát toàn bộ ngôn ngữ tiếng Việt trên UI** — owner chốt 2026-07-27. Work-list 6 mục ở
+   `.ai/BACKLOG.md` **mục đầu file**. Có sẵn nhánh **`fix/badge-wording` (`ebff51c`) CHƯA MERGE**
+   (1 dòng, sửa badge tổng quan) — **rebase lên `main` rồi làm tiếp trên nó**, đừng sửa lại từ đầu.
+   Owner chốt làm ở **session mới**, đường `/grill-with-docs` → `/implement` (3/6 mục là quyết định
+   chứ không phải việc tay chân: `job.result` khoá Anh/Việt, các từ `combo`/`file`/`link`, chữ `AI`).
+   Xong phải **chụp lại ảnh 07** ở `.ai/features/2026-07-27-chat-scope-overview-v2/screenshots/`.
+2. **Punch-list 7 + 8 (mở từ 2026-07-26):** (7) lệch tài liệu — GLOSSARY mục "Pháp nhân" còn tả mô
+   hình 2 row đã bỏ, ADR #19 xếp nhầm C3.1/C3.2, "104 mã" thật ra là 104 DÒNG / 98 mã;
+   (8) check động `X.*` luôn emit `book=NULL` (`sql_runner.py:217-227`).
+3. **ADR "nhãn sổ sống ở đâu cho bền"** — chưa viết. Phải trả lời cả đường quay từ nhiều sổ về một
+   sổ (hiện bị từ chối, chỉ sửa được bằng gán lại nhãn từng file).
+4. **Dọn đĩa server** (96%, còn 11G) — `docker system df` báo 68 GB image reclaimable, `db-data`
+   1,5G / 6 backup. Cần owner chốt vì xoá không quay lại được.
+5. **Sửa đề án `../audit-hq/de-an-audit-hq.md:228` TRƯỚC** rồi mới làm B2 (đổi hệ số nhân C4.3
    sang lượng nhập kho SX), B4 (báo độ phủ C4.3), và hệ số nhân theo sản lượng Mẫu 16. Cả ba
    mâu thuẫn định nghĩa `Σ(định_mức × xuất_khẩu_M15a)` hiện tại — là "sửa catalog" theo AGENTS.md.
-3. **B3 đọc cột Ghi chú** — cần migration (thêm `note` vào NvlBalance/SpBalance).
-4. **Tầng C — chờ họp:** `period_from`/`period_to` (002/004 năm tài chính → ingest xoá 27-30%
-   dòng tờ khai), `NOT_EVALUABLE` (phân biệt "0 vì sạch" vs "0 vì thiếu dữ liệu"), trình bày
+6. **B3 đọc cột Ghi chú** — cần migration (thêm `note` vào NvlBalance/SpBalance).
+7. **Tầng C — chờ họp:** `NOT_EVALUABLE` (phân biệt "0 vì sạch" vs "0 vì thiếu dữ liệu"), trình bày
    quy mô lớn (đã làm phân trang, còn xếp hạng theo lượng + ngưỡng severity).
 
 ## Blockers
 - **B2/B4/hệ số nhân C4.3 chặn bởi đề án** — không được sửa mô tả check trước khi update
   `../audit-hq/`. Câu hỏi quy trình 3 repo, cần user chốt.
-- **Banner "dữ liệu mẫu"** đang phủ lên tên DN + MST THẬT ở local DB sau khi nạp pilot (banner
-  nói dữ liệu giả — sai). `anonymize.py` chỉ sửa DB, KHÔNG sửa nội dung file Excel (trang tài
-  liệu vẫn tải file gốc). Chưa xử lý — chặn việc đưa pilot data lên demo.
+- **~~Banner "dữ liệu mẫu" chặn đưa pilot lên demo~~ — KHÔNG CÒN CHẶN.** Prod đã nạp 002/006
+  (2026-07-24) rồi 004 (2026-07-25) qua đường ẩn danh §6.2, verify 0 rò. **Còn lại là vấn đề
+  LOCAL:** kiểm 2026-07-27 thấy DB local tên đã ẩn (`DEMO_002/004/006`) nhưng **`tax_id` vẫn là
+  MST THẬT** (`0901051747`…), trong khi banner nói "dữ liệu mẫu". Chỉ ảnh hưởng máy dev, không
+  ảnh hưởng prod. `anonymize.py` vẫn chỉ sửa DB, KHÔNG sửa nội dung file Excel.
 - **Tầng C chờ họp** (chưa có lịch).
 
 ## Notes for Next AI Session
-- **Dev server local đang chạy** ở `http://127.0.0.1:8200` (background). Local admin password
-  KHÔNG biết → đăng nhập bằng user throwaway seed qua `create_user` rồi purge (xem
-  [[ui-screenshots-convention]]). Screenshot scratch, KHÔNG commit.
+- **Dev server local KHÔNG còn chạy** (kiểm 2026-07-27: `:8200` không phản hồi — ghi chú cũ nói
+  "đang chạy" đã sai). Cần thì tự dựng. Local admin password KHÔNG biết → đăng nhập bằng user
+  throwaway seed qua `create_user` rồi purge (xem [[ui-screenshots-convention]]).
+- **Dựng server throwaway để chụp ảnh** — mẫu chạy được ở
+  `.ai/features/2026-07-27-chat-scope-overview-v2/brief.md`: `setsid` + DB riêng + cổng riêng
+  (8327), **kill theo PID**, TUYỆT ĐỐI không `pkill -f uvicorn` (giết luôn :8200 của user nếu
+  user đang chạy — xem [[dev-server-do-not-pkill]]).
+- **Chạy test PHẢI kèm `DATABASE_URL` trỏ file rỗng trước khi merge.** CI chỉ chạy
+  `on: push branches:[main]` nên **PR không có check nào** — CI chạy SAU khi merge. Suite chạy
+  mặc định đọc `audit_hq.sqlite` thật của máy dev và có thể xanh giả (xem
+  [[test-false-green-ambient-db]] — đã làm `main` đỏ một nhịp phiên này):
+  ```bash
+  DATABASE_URL="sqlite:///<file-rong>" .venv/bin/python -m pytest -q
+  ```
+- **PR xếp chồng:** merge PR cha kèm `--delete-branch` làm GitHub **tự đóng** PR con trỏ vào
+  nhánh đó, không retarget và **không reopen được**. Đổi base sang `main` TRƯỚC khi merge PR cha.
+- **`git add -A` nuốt `uv.lock`** — dự án cố ý để untracked. Add từng đường dẫn cụ thể.
 - **Harness verify** (scratchpad, session-specific, có thể mất): ingest+run_checks toàn bộ
   whitelist vào DB tạm, dump finding đã sort, diff trước/sau. **Mốc chuẩn hiện tại (2026-07-24):
   1.331 finding trên 12 cặp DN×năm** (đo lại code cũ = code mới sau C1 → C1 trung tính). Con số
