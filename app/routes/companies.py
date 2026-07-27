@@ -576,7 +576,7 @@ def upload_data(
     try:
         analyze_stats = run_ingest(company.code, year, raw_root=raw_path, dry_run=True)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=400, detail=f"Discover lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Dò cấu trúc file lỗi: {e}") from e
     except Exception as e:  # noqa: BLE001 — show parser errors back to user
         raise HTTPException(status_code=500, detail=f"Phân tích file lỗi: {type(e).__name__}: {e}") from e
     record_parse_result(db, company, year, analyze_stats, diagnosis, committed=False)
@@ -1182,7 +1182,7 @@ async def documents_confirm_review(
 
     if not form_signature or not base_map:
         return _redirect(
-            "error=" + quote_plus("File này không có thông tin map cột để xác nhận.")
+            "error=" + quote_plus("File này không có thông tin bố cục cột để xác nhận.")
         )
 
     # Map đầy đủ = cột officer sửa (field `needs_review`) chồng lên map đề xuất. Ô thiếu /
@@ -1236,7 +1236,7 @@ async def documents_confirm_review(
             IngestStats(company_code=company.code, period_year=year), diagnosis,
         )
         return _redirect(
-            "error=" + quote_plus("Đã lưu map nhưng nạp lỗi — xem chi tiết ở trang tải lên.")
+            "error=" + quote_plus("Đã lưu bố cục cột nhưng nạp lỗi — xem chi tiết ở trang tải lên.")
         )
     try:
         stats = run_ingest(company.code, year, raw_root=raw_root)
@@ -1300,7 +1300,7 @@ async def documents_confirm_review(
         run_checks(company.code, year, only=None if run_full else affected)
 
     return _redirect(
-        "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} & nạp dữ liệu")
+        "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} và nạp dữ liệu")
     )
 
 
@@ -1495,7 +1495,7 @@ def generate_overview(
     if not get_setting("enabled"):
         return _back(error="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
-        return _back(error="Chưa cấu hình API key AI. Cấu hình ở /admin/ai.")
+        return _back(error="Chưa cấu hình mã API cho AI. Cấu hình ở /admin/ai.")
     # Trần ngày chặn TRƯỚC khi xếp hàng. Giới hạn tin nhắn/giờ KHÔNG áp: nó là
     # guard của trợ lý chat, một lượt sinh tổng quan không được khoá trợ lý của
     # cán bộ một tiếng (ADR #21 mục 11).
@@ -1506,7 +1506,7 @@ def generate_overview(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        return _back(error="Session user không tồn tại.")
+        return _back(error="Phiên đăng nhập trỏ tới tài khoản không còn tồn tại.")
 
     try:
         job_id, existing = start_overview_job(
@@ -1557,7 +1557,7 @@ def generate_overview_batch(
     if not get_setting("enabled"):
         return _back(error="Trợ lý AI đang tắt. Bật trong /admin/ai.")
     if not get_setting("api_key"):
-        return _back(error="Chưa cấu hình API key AI. Cấu hình ở /admin/ai.")
+        return _back(error="Chưa cấu hình mã API cho AI. Cấu hình ở /admin/ai.")
     try:
         check_daily_budget(db)
     except HTTPException as e:
@@ -1569,7 +1569,7 @@ def generate_overview_batch(
 
     user_row = get_user_by_username(db, user.name)
     if user_row is None:
-        return _back(error="Session user không tồn tại.")
+        return _back(error="Phiên đăng nhập trỏ tới tài khoản không còn tồn tại.")
 
     job = enqueue_job(
         db, kind=JobKind.AI_OVERVIEW_BATCH,

@@ -281,7 +281,7 @@ async def chat(
     try:
         body = await request.json()
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Dữ liệu gửi lên không phải JSON hợp lệ: {e}") from e
 
     user_message: str = (body.get("message") or "").strip()
     conv_id: int | None = body.get("conversation_id")
@@ -347,7 +347,7 @@ async def chat(
             log.warning("LLM API status error: %s", e)
             raise HTTPException(
                 status_code=502,
-                detail=f"Provider lỗi {e.status_code}: {str(e)[:200]}",
+                detail=f"Nhà cung cấp AI báo lỗi {e.status_code}: {str(e)[:200]}",
             ) from e
         except APIError as e:
             log.warning("LLM API error: %s", e)
@@ -435,7 +435,7 @@ async def chat(
         # Exceeded tool_call_cap without a stop — model is looping.
         raise HTTPException(
             status_code=500,
-            detail=f"Model vượt {tool_call_cap} vòng tool call mà chưa trả lời.",
+            detail=f"Mô hình vượt {tool_call_cap} vòng gọi công cụ mà chưa trả lời.",
         )
 
     return {
@@ -650,7 +650,7 @@ async def update_conversation_company(
     try:
         body = await request.json()
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Dữ liệu gửi lên không phải JSON hợp lệ: {e}") from e
 
     code = body.get("company_code")
     if code in (None, ""):
@@ -915,7 +915,7 @@ async def chat_run_checks(
     try:
         body = await request.json()
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Dữ liệu gửi lên không phải JSON hợp lệ: {e}") from e
 
     company_code = (body.get("company_code") or "").strip()
     year = body.get("year")
@@ -1002,7 +1002,7 @@ async def chat_stream(
     try:
         body = await request.json()
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Body JSON lỗi: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Dữ liệu gửi lên không phải JSON hợp lệ: {e}") from e
     user_message: str = (body.get("message") or "").strip()
     conv_id: int | None = body.get("conversation_id")
     page_context: dict = body.get("page_context") or {}
@@ -1199,10 +1199,10 @@ async def chat_stream(
                     },
                 })
                 return
-            yield _sse("error", {"detail": f"Vượt {tool_call_cap} vòng tool call."})
+            yield _sse("error", {"detail": f"Vượt {tool_call_cap} vòng gọi công cụ."})
         except APIStatusError as e:
             log.warning("LLM API status error: %s", e)
-            yield _sse("error", {"detail": f"Provider lỗi {e.status_code}: {str(e)[:200]}"})
+            yield _sse("error", {"detail": f"Nhà cung cấp AI báo lỗi {e.status_code}: {str(e)[:200]}"})
         except APIError as e:
             log.warning("LLM API error: %s", e)
             yield _sse("error", {"detail": f"Lỗi LLM: {e}"})

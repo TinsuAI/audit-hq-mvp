@@ -27,7 +27,7 @@ _HASH_BYTES = 32  # SHA-256 output
 def hash_password(password: str) -> str:
     """Tạo hash mới cho password. Salt random mỗi lần."""
     if not password:
-        raise ValueError("Password không được trống")
+        raise ValueError("Mật khẩu không được trống")
     salt = secrets.token_bytes(_SALT_BYTES)
     digest = hashlib.pbkdf2_hmac(
         "sha256", password.encode("utf-8"), salt, _ITERATIONS, dklen=_HASH_BYTES
@@ -87,11 +87,11 @@ def create_user(
     """
     username = username.strip()
     if not username:
-        raise ValueError("Username không được trống")
+        raise ValueError("Tên đăng nhập không được trống")
     if role not in VALID_ROLES:
-        raise ValueError(f"Role không hợp lệ: {role!r} (chọn từ {sorted(VALID_ROLES)})")
+        raise ValueError(f"Vai trò không hợp lệ: {role!r} (chọn từ {sorted(VALID_ROLES)})")
     if get_user_by_username(db, username):
-        raise ValueError(f"Username {username!r} đã tồn tại")
+        raise ValueError(f"Tên đăng nhập {username!r} đã tồn tại")
     user = User(
         username=username, password_hash=hash_password(password), role=role,
         must_change_password=must_change,

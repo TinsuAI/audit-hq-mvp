@@ -31,6 +31,9 @@ RESULT_LABEL_VI: dict[str, str] = {
     "risk_score": "Điểm rủi ro",
     "years_processed": "Các năm đã chạy",
     "per_year": "Chi tiết theo năm",
+    # ai_overview
+    "check_code": "Mã kiểm tra",
+    "chars": "Độ dài nhận định (ký tự)",
     # ai_overview_batch
     "created": "Đã tạo tổng quan",
     "skipped": "Bỏ qua",

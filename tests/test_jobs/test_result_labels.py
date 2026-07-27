@@ -1,8 +1,9 @@
 """Nhãn tiếng Việt cho `job.result` — không khoá thô nào lọt ra trang công việc.
 
-Test then chốt: chạy THẬT cả ba handler rồi đối chiếu tập khoá với bảng nhãn.
-Handler thêm trường mới mà quên khai nhãn thì test đỏ ngay, không đợi tới lúc
-cán bộ nhìn thấy `findings_per_check` trên màn hình.
+Bốn handler được đăng ký ở `app/main.py` đều phải có nhãn cho mọi khoá `result`:
+hai handler kiểm tra chạy THẬT trong test; hai handler AI cần LLM nên đọc dict
+literal ở `return` bằng AST. Thêm trường mới mà quên khai nhãn thì test đỏ ngay,
+không đợi tới lúc cán bộ nhìn thấy `findings_per_check` trên màn hình.
 """
 
 from __future__ import annotations
@@ -65,16 +66,31 @@ def test_run_batch_no_data_result_keys_all_have_labels(session: Session) -> None
     )
 
 
-def test_overview_batch_result_keys_all_have_labels() -> None:
-    """`run_overview_batch_job` cần LLM nên chốt trên bộ khoá nó khai ở return."""
-    keys = {
-        "company_code", "year", "created", "skipped", "skipped_fresh",
-        "skipped_not_reached", "failed", "created_checks", "failed_checks",
-        "stopped_reason",
-    }
-    assert keys <= set(RESULT_LABEL_VI), (
-        f"khoá chưa có nhãn: {keys - set(RESULT_LABEL_VI)}"
-    )
+def test_ai_handler_result_keys_all_have_labels() -> None:
+    """Hai handler AI cần LLM nên đọc THẲNG dict literal ở `return` của chúng.
+
+    Đọc mã nguồn thay vì gõ tay bộ khoá: thêm trường mới vào `return` mà quên nhãn
+    thì test đỏ. (Bản gõ tay trước đó BỎ SÓT `check_code`/`chars` của `ai_overview`.)
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    import app.ai.overview as ov
+
+    for fn in (ov.run_overview_job, ov.run_overview_batch_job):
+        tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+        keys = {
+            k.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Return) and isinstance(node.value, ast.Dict)
+            for k in node.value.keys
+            if isinstance(k, ast.Constant)
+        }
+        assert keys, f"{fn.__name__}: không tìm thấy dict literal ở return"
+        assert keys <= set(RESULT_LABEL_VI), (
+            f"{fn.__name__} khoá chưa có nhãn: {keys - set(RESULT_LABEL_VI)}"
+        )
 
 
 def test_every_job_kind_has_a_label() -> None:

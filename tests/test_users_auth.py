@@ -68,7 +68,7 @@ def test_create_user_duplicate(user_session: Session):
 
 
 def test_create_user_invalid_role(user_session: Session):
-    with pytest.raises(ValueError, match="Role không hợp lệ"):
+    with pytest.raises(ValueError, match="Vai trò không hợp lệ"):
         create_user(user_session, "carol", "pass1234", "superadmin")
 
 

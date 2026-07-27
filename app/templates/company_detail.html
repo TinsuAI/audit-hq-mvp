@@ -338,7 +338,7 @@
           {% for nf in st.numeric_fields %}
           <div class="ov-stat"><span class="ovs-label">{{ PERCENTILE_LABEL.get(nf.key, nf.key) }}{% if nf.is_pct %} (%){% endif %}</span>
             <span class="ovs-value">giữa {{ nf.p50 }}{% if nf.is_pct %}%{% endif %}</span>
-            <span class="ovs-sub">{{ nf.n }} phát hiện · thấp nhất {{ nf.min }} · p90 {{ nf.p90 }} · cao nhất {{ nf.max }}</span>
+            <span class="ovs-sub">{{ nf.n }} phát hiện có số này · thấp nhất {{ nf.min }} · p90 {{ nf.p90 }} · cao nhất {{ nf.max }}</span>
             <span class="ovs-sub">cao hơn {{ nf.higher }} mã · thấp hơn {{ nf.lower }} mã</span>
           </div>
           {% endfor %}

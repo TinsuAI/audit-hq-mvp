@@ -151,7 +151,7 @@ def checks_draft(
         )
 
     if not (get_setting("enabled") and get_setting("api_key")):
-        return _new_with_error("AI assistant đang tắt hoặc chưa cấu hình. Bật trong /admin/ai.", 503)
+        return _new_with_error("Trợ lý AI đang tắt hoặc chưa cấu hình. Bật trong /admin/ai.", 503)
 
     company = db.scalar(select(Company).where(Company.code == ref_company))
     if company is None:
@@ -207,7 +207,7 @@ def checks_create(
         subject_table=subject_table, scope=scope,
     )
     if err:
-        raise HTTPException(status_code=400, detail=f"Check không hợp lệ: {err}")
+        raise HTTPException(status_code=400, detail=f"Kiểm tra không hợp lệ: {err}")
 
     def _loads(raw: str, default):
         try:
