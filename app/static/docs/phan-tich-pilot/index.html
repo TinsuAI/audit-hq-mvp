@@ -329,14 +329,18 @@
         <div class="guide-body">
           <div class="steps">
             <dl class="flowio">
-              <dt>Đầu vào</dt><dd>Bốn loại tệp cho mỗi kỳ: <b>Mẫu 15</b> (cân đối nguyên vật liệu), <b>Mẫu 15a</b> (cân đối thành phẩm), <b>Mẫu 16</b> (định mức), <b>Báo cáo hàng chi tiết</b> (bảng kê tờ khai).</dd>
-              <dt>Hệ thống làm</dt><dd>Mỗi loại một bộ đọc riêng. Chọn sheet theo nội dung chứ không theo tên; dò dòng tiêu đề thay vì dùng số dòng cố định; suy vai trò cột từ <b>đẳng thức của chính biểu</b> — tồn cuối = tồn đầu + nhập − các cột xuất — thay vì tin vào nhãn cột. Ép kiểu số và đếm ô không ép được.</dd>
-              <dt>Đầu ra</dt><dd>Bốn bảng Tầng 1. Mỗi dòng giữ liên kết về dòng dữ liệu gốc để truy nguồn (chặng A6).</dd>
+              <dt>Đầu vào</dt><dd>Mỗi kỳ báo cáo có bốn loại tệp: <b>Mẫu 15</b> (cân đối nguyên vật liệu), <b>Mẫu 15a</b> (cân đối thành phẩm), <b>Mẫu 16</b> (định mức) và <b>Báo cáo hàng chi tiết</b> (bảng kê tờ khai).</dd>
+              <dt>Hệ thống làm</dt><dd>Mỗi loại tệp có một bộ đọc riêng. Bộ đọc lần lượt làm bốn việc:
+                <ul class="plain-list" style="margin-top:9px">
+                  <li><strong>Chọn sheet theo nội dung.</strong> Hệ thống mở từng sheet và đọc nội dung bên trong để biết đâu là biểu cần lấy. Nó không dựa vào tên sheet, vì mỗi doanh nghiệp đặt tên một kiểu: cùng là Mẫu 15 nhưng 002 ghi <span class="k">BCQT_NPL2025</span>, 006 ghi <span class="k">15-BCQT-NVL</span>, còn 004 ghi <span class="k">15NVL-SXXK (GT-ok) (2025)</span>.</li>
+                  <li><strong>Tìm dòng tiêu đề.</strong> Hệ thống dò xem hàng tiêu đề nằm ở dòng nào, thay vì giả định một số dòng cố định. Ba hồ sơ pilot bắt đầu dữ liệu ở ba chỗ khác nhau: 004 từ dòng 8, 002 từ dòng 10, 006 từ dòng 14.</li>
+                  <li><strong>Xác định vai trò từng cột bằng công thức, không bằng nhãn.</strong> Hệ thống đọc công thức Excel của ô tồn cuối — ví dụ <span class="k">=E14+F14-G14-H14-I14-J14</span> — rồi suy ngược ra vai trò: cột được cộng là cột nhập, cột bị trừ là cột xuất, ô chứa công thức là tồn cuối. Nhãn ghi trên hàng tiêu đề có thể viết tắt hoặc đặt sai, còn công thức thì phản ánh đúng cách doanh nghiệp thực sự tính.</li>
+                  <li><strong>Ép kiểu số và đếm ô hỏng.</strong> Ô nào không chuyển được thành số thì hệ thống đếm lại và báo ra, thay vì âm thầm coi ô đó bằng 0.</li>
+                </ul>
+              </dd>
+              <dt>Chỗ dừng lại<br>hỏi cán bộ</dt><dd>Cách suy vai trò cột từ công thức có một chỗ không quyết định được: <b>hai cột cùng dấu thì đẳng thức không phân biệt nổi</b>. Nếu cả cột (9) và cột (10) đều bị trừ, công thức không cho biết cột nào là "xuất kho để sản xuất" và cột nào là "xuất khác". Gặp trường hợp đó, hệ thống <b>không đoán</b> mà dừng lại và hỏi cán bộ xác nhận chỉ số cột. Ánh xạ cột sau khi được xác nhận sẽ lưu theo doanh nghiệp; lần sau gặp đúng bố cục đó, hệ thống không hỏi lại.</dd>
+              <dt>Đầu ra</dt><dd>Bốn bảng dữ liệu <b>Tầng 1</b> — tên hệ thống đặt cho lớp dữ liệu thô đã chuẩn hoá, giữ nguyên từng dòng như trong tệp gốc. Mỗi dòng giữ liên kết ngược về dòng Excel đã sinh ra nó, để mọi phát hiện về sau đều truy nguồn được (chặng A6).</dd>
             </dl>
-            <ul class="plain-list">
-              <li>Khi đẳng thức không phân biệt được hai cột cùng dấu, hệ thống <strong>không đoán</strong> — nó dừng lại và yêu cầu cán bộ xác nhận chỉ số cột.</li>
-              <li>Ánh xạ cột đã xác nhận được lưu theo doanh nghiệp; lần sau gặp cùng bố cục thì không hỏi lại.</li>
-            </ul>
           </div>
           <figure><span class="fig-tag">Xác nhận ánh xạ cột</span><img src="../huong-dan/07-xac-nhan-map-cot.png" alt="Màn hình xác nhận ánh xạ cột Mẫu 15"><figcaption>Cột xanh = nhận đúng theo tiêu đề · cột vàng = cần cán bộ xác nhận chỉ số.</figcaption></figure>
         </div>
@@ -348,9 +352,9 @@
         <div class="guide-body">
           <div class="steps">
             <dl class="flowio">
-              <dt>Đầu vào</dt><dd>Mã loại hình trên bảng kê tờ khai; kỳ khai báo trên hồ sơ doanh nghiệp.</dd>
-              <dt>Hệ thống làm</dt><dd>Đếm số dòng tờ khai theo mã loại hình, chọn nhóm có nhiều dòng nhất. Kỳ nhận dưới dạng cửa sổ <span class="k">[từ ngày, đến ngày]</span>, không mặc định năm dương lịch; dòng tờ khai lọc theo cửa sổ đó.</dd>
-              <dt>Đầu ra</dt><dd>Loại hình dùng làm tập mã đối chiếu cho nhóm kiểm tra C1; cửa sổ kỳ dùng để lọc dòng tờ khai.</dd>
+              <dt>Đầu vào</dt><dd>Mã loại hình ghi trên bảng kê tờ khai, và kỳ báo cáo ghi trên hồ sơ doanh nghiệp.</dd>
+              <dt>Hệ thống làm</dt><dd>Hệ thống đếm số dòng tờ khai theo từng mã loại hình rồi chọn nhóm có nhiều dòng nhất; nhóm thắng chính là loại hình của doanh nghiệp. Kỳ báo cáo được lưu dưới dạng một <b>cửa sổ ngày</b> có ngày bắt đầu và ngày kết thúc, chứ không mặc định là năm dương lịch. Hệ thống chỉ giữ lại những dòng tờ khai có ngày đăng ký rơi vào cửa sổ đó.</dd>
+              <dt>Đầu ra</dt><dd>Hai thứ mà các chặng sau đều dùng tới. <b>Loại hình</b> quyết định những mã loại hình nào được coi là hợp lệ khi nhóm C1 đối chiếu biểu quyết toán với tờ khai — bảng dưới đây. <b>Cửa sổ kỳ</b> quyết định dòng tờ khai nào được đưa vào phép đối chiếu.</dd>
             </dl>
             <div class="tblwrap" style="margin:0">
               <table class="tb">
@@ -374,9 +378,9 @@
         <div class="guide-body wide">
           <div class="steps">
             <dl class="flowio">
-              <dt>Đầu vào</dt><dd>Bốn bảng Tầng 1 của một cặp (doanh nghiệp, kỳ).</dd>
-              <dt>Hệ thống làm</dt><dd>Chạy <b>17 bài kiểm tra</b> thuộc sáu nhóm. Mỗi bài chạy đúng một lần cho mỗi cặp (doanh nghiệp, kỳ). Toàn bộ chạy nền qua hàng đợi công việc, không chạy đồng bộ trong lúc cán bộ chờ.</dd>
-              <dt>Đầu ra</dt><dd>Danh sách phát hiện. Mỗi phát hiện có mức độ, đối tượng, mô tả và chứng cứ truy nguồn.</dd>
+              <dt>Đầu vào</dt><dd>Bốn bảng Tầng 1 của một doanh nghiệp trong một kỳ.</dd>
+              <dt>Hệ thống làm</dt><dd>Hệ thống chạy <b>17 bài kiểm tra</b> thuộc sáu nhóm, mỗi bài đúng một lần cho mỗi doanh nghiệp trong mỗi kỳ. Toàn bộ chạy nền qua hàng đợi công việc: cán bộ bấm chạy xong là rời trang được, không phải ngồi chờ kết quả.</dd>
+              <dt>Đầu ra</dt><dd>Danh sách phát hiện. Mỗi phát hiện ghi mức độ, mã đối tượng bị gắn cờ, mô tả nghiệp vụ, và chứng cứ truy nguồn về dòng dữ liệu gốc.</dd>
             </dl>
           </div>
         </div>
@@ -420,8 +424,8 @@
           <div class="steps">
             <dl class="flowio">
               <dt>Đầu vào</dt><dd>Các phát hiện chưa bị cán bộ đánh dấu <b>Loại trừ</b>.</dd>
-              <dt>Hệ thống làm</dt><dd>Mỗi bài kiểm tra tính <b>tỷ lệ</b> giữa số phát hiện có trọng số và mẫu số quy mô của doanh nghiệp (số mã nguyên vật liệu, số mã thành phẩm, số dòng định mức), quy về tối đa <b>10 điểm</b> mỗi bài. Cộng điểm tổ hợp rủi ro nếu có, rồi quy điểm thô về thang <b>0–1000</b> theo trần lý thuyết của tập bài đã chạy.</dd>
-              <dt>Đầu ra</dt><dd>Một điểm 0–1000 kèm một trong năm hạng.</dd>
+              <dt>Hệ thống làm</dt><dd>Điểm tính theo <b>tỷ lệ</b>, không theo số phát hiện tuyệt đối. Với mỗi bài kiểm tra, hệ thống lấy số phát hiện đã nhân trọng số mức độ, chia cho quy mô dữ liệu của doanh nghiệp — tuỳ bài mà mẫu số là số mã nguyên vật liệu, số mã thành phẩm hay số dòng định mức — rồi quy tỷ lệ đó về thang tối đa <b>10 điểm</b>. Điểm của các bài cộng lại với nhau, cộng thêm điểm tổ hợp rủi ro nếu có, thành <b>điểm thô</b>. Bước cuối quy điểm thô về thang <b>0–1000</b> bằng cách chia cho <b>trần lý thuyết</b>, tức mức điểm thô cao nhất mà tập bài đã chạy có thể đạt được.</dd>
+              <dt>Đầu ra</dt><dd>Một điểm từ 0 đến 1000, kèm một trong năm hạng.</dd>
             </dl>
             <ul class="plain-list">
               <li>Trọng số mức độ: nghiêm trọng <strong>10</strong> · cảnh báo <strong>3</strong> · thông tin <strong>1</strong>.</li>
@@ -452,7 +456,13 @@
             <dl class="flowio">
               <dt>Đầu vào</dt><dd>Bảng số liệu do hệ thống tính bằng truy vấn từ các phát hiện đã lưu — không đi qua mô hình.</dd>
               <dt>Hệ thống làm</dt><dd>Mô hình ngôn ngữ <b>chỉ nhận bảng đã tính</b> và trả JSON đúng bốn khoá: <span class="k">nhan_dinh</span> (1–2 câu) · <span class="k">phan_bo</span> (2–3 câu) · <span class="k">diem_nong</span> (tối đa 5 mã, mỗi mã một câu) · <span class="k">de_xuat</span> (tối đa 3 mục). Mô hình không truy vấn dữ liệu thô và không tham gia vào logic của bài kiểm tra.</dd>
-              <dt>Hậu kiểm</dt><dd>Sau khi mô hình trả kết quả, hệ thống chạy hai bước máy móc: <b>(1) loại</b> mã trong điểm nóng không có trong bảng — bỏ hẳn khỏi kết quả, không hiển thị; <b>(2) đối chiếu số</b> — tách token số trong cả bốn trường, trừ đi các token có trong bảng, phần dư lưu vào <span class="k">unsupported_numbers</span> và bật cờ <span class="k">needs_review</span>. Kiểm tra có dưới 10 phát hiện thì trường <span class="k">phan_bo</span> bị xoá kể cả khi mô hình vẫn viết.</dd>
+              <dt>Hậu kiểm</dt><dd>Sau khi mô hình trả kết quả, hệ thống chạy hai bước kiểm tra máy móc trước khi cho hiển thị.
+                <ul class="plain-list" style="margin-top:9px">
+                  <li><strong>Bước một — loại mã bịa.</strong> Hệ thống đối chiếu từng mã ở phần điểm nóng với danh sách mã có trong bảng số liệu. Mã nào không có trong bảng thì bị bỏ hẳn khỏi kết quả; cán bộ không nhìn thấy nó.</li>
+                  <li><strong>Bước hai — đối chiếu số.</strong> Hệ thống tách toàn bộ con số trong cả bốn trường mô hình viết, rồi trừ đi những con số có mặt trong bảng số liệu. Phần còn dư là số mô hình tự nghĩ ra: hệ thống lưu lại vào <span class="k">unsupported_numbers</span> và bật cờ <span class="k">needs_review</span>, hiển thị thành nhãn cảnh báo.</li>
+                </ul>
+                <p style="margin:9px 0 0">Ngoài hai bước trên, bài kiểm tra nào có dưới 10 phát hiện thì trường <span class="k">phan_bo</span> bị xoá kể cả khi mô hình vẫn viết — với vài dòng dữ liệu thì một đoạn mô tả phân bố chỉ là độn chữ.</p>
+              </dd>
               <dt>Đầu ra</dt><dd>Bảng số liệu + bốn trường nhận định + hai cờ: <span class="k">Tổng quan đã cũ</span> và <span class="k">Có số không khớp bảng</span>.</dd>
             </dl>
           </div>
@@ -468,9 +478,9 @@
         <div class="guide-body">
           <div class="steps">
             <dl class="flowio">
-              <dt>Đầu vào</dt><dd>Phát hiện kèm chứng cứ đã lưu ở chặng A3.</dd>
-              <dt>Hệ thống làm</dt><dd>Mỗi phát hiện lưu kèm <b>tên bảng Tầng 1</b> và <b>điều kiện lọc</b> dẫn tới đúng những dòng gốc làm phát sinh nó. Trang chi tiết chạy lại điều kiện đó và hiển thị các dòng.</dd>
-              <dt>Đầu ra</dt><dd>Trang chi tiết phát hiện: mô tả nghiệp vụ của bài kiểm tra, các trường tính toán, và các dòng dữ liệu gốc.</dd>
+              <dt>Đầu vào</dt><dd>Các phát hiện kèm chứng cứ đã lưu ở chặng A3.</dd>
+              <dt>Hệ thống làm</dt><dd>Ngay lúc sinh ra một phát hiện, bài kiểm tra lưu kèm hai thứ: <b>tên bảng Tầng 1</b> chứa dữ liệu gốc, và <b>điều kiện lọc</b> dẫn tới đúng những dòng đã làm phát sinh phát hiện đó. Khi cán bộ mở trang chi tiết, hệ thống chạy lại điều kiện lọc ấy và hiển thị các dòng lấy được.</dd>
+              <dt>Đầu ra</dt><dd>Trang chi tiết phát hiện, gồm mô tả nghiệp vụ của bài kiểm tra, các trường số đã tính, và các dòng dữ liệu gốc.</dd>
             </dl>
           </div>
           <figure><span class="fig-tag">Chi tiết phát hiện</span><img src="../huong-dan/17-chi-tiet-phat-hien.png" alt="Trang chi tiết một phát hiện kèm chứng cứ truy nguồn"><figcaption>Khối chứng cứ dẫn thẳng về dòng dữ liệu Tầng 1, kèm điều kiện lọc đã dùng.</figcaption></figure>
@@ -530,7 +540,7 @@
           <ul class="claims">
             <li><span class="cl cl-fact">Sự thật</span> <b>14.876 phát hiện</b> qua hai kỳ: 3.880 (kỳ 2024) và 10.996 (kỳ 2025). Điểm rủi ro <b>129</b> hạng "Cần rà soát" và <b>52</b> hạng "Có chênh lệch nhỏ".</li>
             <li><span class="cl cl-fact">Sự thật</span> Hai bài kiểm tra chiếm phần lớn số phát hiện: <b>C1.6</b> (chuyển mục đích sử dụng không có tờ khai A42) 1.660 và 5.785; <b>C1.7</b> (tỷ lệ chuyển mục đích sử dụng vượt ngưỡng) 618 và 2.436. Cộng lại <b>10.499 phát hiện, chiếm 71%</b> tổng của hai kỳ. C1.6 bắn đúng một lần cho <b>mỗi dòng</b> Mẫu 15 có cột (8) &gt; 0.</li>
-            <li><span class="cl cl-fact">Sự thật</span> Quy mô cột (8): 1.660/7.882 dòng (21%) ở kỳ 2024 với tổng 811.711 đơn vị, và 5.785/10.560 dòng (55%) ở kỳ 2025 với tổng 3.457.591 đơn vị — lần lượt 0,76% và 1,02% của (tồn đầu + nhập). Tờ khai A42 cùng kỳ: <b>0 mã / 0 đơn vị</b> ở kỳ 2024, và 284 mã / 6.693 đơn vị ở kỳ 2025.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Cột (8) có giá trị lớn hơn 0 ở <b>1.660 trên 7.882</b> dòng (21%) của kỳ 2024, tổng 811.711 đơn vị; và ở <b>5.785 trên 10.560</b> dòng (55%) của kỳ 2025, tổng 3.457.591 đơn vị. So với tổng tồn đầu cộng nhập trong kỳ, hai lượng đó chiếm 0,76% và 1,02%. Tờ khai A42 cùng kỳ thì gần như không có: <b>0 mã, 0 đơn vị</b> ở kỳ 2024, và 284 mã, 6.693 đơn vị ở kỳ 2025.</li>
             <li><span class="cl cl-infer">Suy luận</span> Biểu mẫu gộp <b>ba</b> nghiệp vụ có nghĩa vụ thuế khác nhau vào một cột — chuyển mục đích sử dụng, tiêu thụ nội địa, tiêu huỷ. Từ chứng từ không phân biệt được phần nào là tiêu huỷ (không cần tờ khai) và phần nào là tiêu thụ nội địa (cần tờ khai). Đây là câu hỏi, không phải kết luận.</li>
             <li><span class="cl cl-fact">Sự thật</span> <b>Chuyển tiếp giữa hai kỳ khớp tuyệt đối:</b> 6.501/6.501 mã nguyên vật liệu và 208/208 mã thành phẩm có tồn đầu kỳ 2025 bằng tồn cuối kỳ 2024. Không mã nào có tồn cuối 2024 &gt; 0 rồi biến mất khỏi kỳ 2025; không mã mới nào của kỳ 2025 có tồn đầu &gt; 0. Đây là phép kiểm duy nhất trong bộ dữ liệu có hai vế lấy từ hai tệp khác nhau.</li>
             <li><span class="cl cl-fact">Sự thật</span> C4.3 gắn cờ mức nghiêm trọng cho mã nhựa <span class="k">95801-Z440311-0000</span>: tiêu hao lý thuyết theo Mẫu 16 = <b>163.871.796,50</b> Gam, xuất kho để sản xuất theo Mẫu 15 = <b>31.294.330</b> Gam, chênh <b>+423,6%</b>. Bốn mã nhựa cùng họ <span class="k">95801-Z44*</span> cũng bị gắn cờ, biên độ +26,0% đến +77,9%.</li>
