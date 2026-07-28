@@ -235,6 +235,13 @@
   table.tb td.n,table.tb th.n{text-align:right;font-variant-numeric:tabular-nums}
   .guide-body figure .tblwrap{overflow-x:auto}
   main a{color:var(--brand)}
+
+  /* Màn hình rộng: cẩm nang khoá .wrap ở max-width 1180px và canh trái, nên phần dư
+     dồn hết sang mép phải. Ở đây hero và nội dung dùng CHUNG một cột rộng tối đa
+     1440px, tự canh giữa khi còn dư. Dưới 1440px kết quả không đổi so với cẩm nang
+     (max() vẫn chọn 6vw), nên bố cục quen thuộc được giữ nguyên. */
+  .hero{padding-left:max(6vw,(100% - 1440px)/2);padding-right:max(6vw,(100% - 1440px)/2)}
+  .wrap{max-width:none;padding-left:max(6vw,(100% - 1440px)/2);padding-right:max(6vw,(100% - 1440px)/2)}
 </style>
 </head>
 <body>
@@ -387,12 +394,24 @@
         <div class="guide-body">
           <div class="steps">
             <ul class="plain-list">
-              <li><strong>C2 vô hiệu trên cả ba hồ sơ pilot.</strong> Ở cả 002, 004 và 006, ô tồn cuối của Mẫu 15 là <strong>ô công thức</strong> nội bộ tệp Excel, nên đẳng thức cân đối đóng theo định nghĩa. Kết quả chạy thật: <strong>0 phát hiện</strong> C2.x ở cả ba. Đây là kết quả rỗng vì cấu trúc, không phải vì dữ liệu sạch.</li>
+              <li><strong>C2 vô hiệu trên cả ba hồ sơ pilot.</strong> Ô tồn cuối của Mẫu 15 là <strong>ô công thức trên từng dòng dữ liệu</strong>, không phải chỉ ở dòng tiêu đề hay dòng tổng — đã mở từng tệp gốc và đếm (bảng dưới). Đẳng thức cân đối vì thế đóng theo định nghĩa, và kết quả chạy thật đúng như vậy: <strong>0 phát hiện</strong> C2.x ở cả ba hồ sơ. Đây là kết quả rỗng <strong>vì cấu trúc tệp</strong>, không phải bằng chứng dữ liệu sạch.</li>
               <li><strong>C6 cần hai kỳ.</strong> Chỉ 006 có hai kỳ trong bộ dữ liệu, nên đây là hồ sơ duy nhất C6 chạy được.</li>
             </ul>
           </div>
           <figure><span class="fig-tag">Một nhóm phát hiện</span><img src="../huong-dan/14-nhom-phat-hien.png" alt="Bảng phát hiện của một bài kiểm tra"><figcaption>Mỗi bài kiểm tra một khối, tách theo ba mức độ.</figcaption></figure>
         </div>
+        <div class="tblwrap"><table class="tb">
+          <caption style="caption-side:top;text-align:left;font-size:12px;color:var(--muted);padding:0 0 9px">Cột tồn cuối Mẫu 15 — đếm trực tiếp trên tệp Excel gốc, phân biệt ô công thức với ô gõ tay</caption>
+          <thead><tr><th>Hồ sơ</th><th>Sheet · cột</th><th class="n">Công thức trên dòng dữ liệu</th><th class="n">Hằng số gõ tay</th></tr></thead>
+          <tbody>
+            <tr><td>002</td><td><span class="k">BCQT_NPL2025</span> · K</td><td class="n"><b>286 / 286</b></td><td class="n">0</td></tr>
+            <tr><td>004 sổ EPE</td><td><span class="k">15NVL-SXXK (GT-ok) (2025)</span> · S</td><td class="n"><b>104 / 104</b></td><td class="n">0</td></tr>
+            <tr><td>004 sổ GC</td><td><span class="k">15NVL-SXXK (GT-ok) (N)</span> · S</td><td class="n"><b>37 / 37</b></td><td class="n">0</td></tr>
+            <tr><td>006 kỳ 2024</td><td><span class="k">15-BCQT-NVL</span> · K</td><td class="n"><b>7.882 / 7.882</b></td><td class="n">0</td></tr>
+            <tr><td>006 kỳ 2025</td><td><span class="k">15-BCQT-NVL</span> · K</td><td class="n"><b>10.560 / 10.560</b></td><td class="n">0</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Số dòng có công thức khớp đúng số dòng hệ thống đã nạp. Mỗi tệp còn <b>một</b> ô công thức nữa ở <b>dòng tổng</b> (<span class="k">=SUM(K14:K7895)</span>, <span class="k">=SUBTOTAL(9,S8:S112)</span>) — không phải dòng dữ liệu, không nạp vào hệ thống.<br><br>Công thức của 002 và 006 tính trực tiếp: <span class="k">=+E14+F14-G14-H14-I14-J14</span>. Của 004 <b>đóng ở hai tầng</b>: <span class="k">=H8+M8-R8</span>, trong đó <span class="k">H=F+G</span>, <span class="k">M=I+J+K+L</span> (gộp bốn cột nhập 6a–6d) và <span class="k">R=SUM(N:Q)</span> tự chúng cũng là ô công thức.</div></div>
       </article>
 
       <article class="guide" id="a4" data-t="A4 chấm điểm rủi ro thang 1000 năm hạng mẫu số quy mô tỷ lệ kịch khung tổ hợp">
