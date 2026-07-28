@@ -811,3 +811,60 @@ poll SQLite — chấp nhận được vì ghi ngắn, WAL bật, và transactio
 
 Xem [[ws3-overview-staleness-model]] · [[so-lieu-phai-co-mau-so-va-nguon-doc-lap]] ·
 [[check-execution-async-via-jobs]].
+
+### 22. Phân tích pilot tách khỏi cẩm nang — trang riêng `phan-tich-pilot/`, KHÔNG gộp vào bản giao khách (2026-07-28)
+
+**Quyết định:** dựng một trang tĩnh thứ hai `app/static/docs/phan-tich-pilot/index.html` chứa (A) mô tả
+luồng dữ liệu sáu chặng và (B) phân tích ba hồ sơ pilot 002/004/006, trọng tâm là trường hợp 004 hai sổ.
+Cẩm nang `huong-dan/` giữ nguyên phạm vi cũ; chỉ thêm **một dòng liên kết** ở mục D5. Hai trang trỏ lẫn
+nhau: D5 (tính năng chung) → mục C của trang mới (trường hợp cụ thể) → ngược lại.
+
+**Lý do:** `huong-dan/` là cẩm nang sản phẩm — dữ liệu trình diễn, giao cho mọi khách. Phân tích pilot là
+dữ liệu người nộp thuế cụ thể, vòng đời khác (số đổi theo mỗi lần chạy lại check) và người đọc hẹp hơn.
+Gộp vào sẽ buộc mỗi lần chạy lại check phải sửa tài liệu giao khách.
+
+**Alternatives loại:**
+- *Gộp cả hai vào cẩm nang* — loại: đưa đặc thù một người nộp thuế vào bản giao mọi khách.
+- *Tách CSS chung ra `_shared/manual.css` rồi `<link>` từ hai trang* — loại: commit `535b71b` chọn
+  **standalone HTML** làm thuộc tính của cẩm nang ("thư mục đó copy sang host tĩnh khác chạy được nguyên
+  vẹn", `docs.py:32`). Một tệp CSS chung phá thuộc tính đó. Thay vào đó **sao chép nguyên khối `<style>`**
+  và nối thêm một khối bổ sung có đánh dấu (nhãn ba loại phát biểu + lưới đầu vào/đầu ra). Chi phí: khi
+  sửa design token phải sửa hai chỗ — chấp nhận được vì token đã ổn định.
+- *Chỉ đưa phần luồng dữ liệu vào cẩm nang, giữ riêng phần pilot* — vẫn để ngỏ nếu owner muốn một link duy
+  nhất cho onboarding. Không làm sẵn vì phần luồng dữ liệu hiện dẫn chiếu trực tiếp tới số của ba hồ sơ pilot.
+
+**Ba ràng buộc nội dung, ghi lại vì dễ vi phạm về sau:**
+1. **Trang nằm dưới `/static`, tức CÔNG KHAI không auth** (`main.py:127` mount `StaticFiles`, không có
+   dependency `require_user`). Nên tài liệu KHÔNG có tên doanh nghiệp, tên đối tác, mã số thuế, số tờ khai.
+   Mã vật tư / mã sản phẩm thì giữ — đã có sẵn trên `/showcase` công khai. Đã quét lại toàn tệp trước khi
+   commit: 0 hit.
+2. **Số phải đối chiếu DB prod, không lấy từ `audit_hq.sqlite` local.** Local hiện là bản TRƯỚC lần chạy
+   lại multi-unit (004 = 74 phát hiện / điểm 30); prod là **65 / 25**. Đã verify 81 khẳng định số bằng
+   script read-only trên `/db-data/audit_hq.sqlite` (`mode=ro`, không checkpoint WAL) — 81/81 khớp.
+3. **Giữ nguyên tách bạch ba loại phát biểu** của báo cáo phân tích sơ bộ: `(Sự thật)` đọc từ chứng từ ·
+   `(Suy luận)` nhận định · `(Căn cứ pháp lý)` dẫn văn bản. Có class CSS riêng cho ba nhãn này.
+
+**Hai đính chính so với số đang lưu hành, đã áp vào trang:**
+- **Thang điểm là 0–1000, không phải 0–190.** 190 (nay 200 khi tập check khác) là `max_raw` — trần điểm
+  thô nội bộ = 17 bài × 10 + 20 tổ hợp (`scoring.py:183-186`). Điểm hiển thị luôn quy về 0–1000.
+- **Sổ EPE của 004 có 98 mã NVL trong 104 DÒNG**, không phải "104 mã". 6 mã ghi kép hai đơn vị tính
+  (MTR/ROLL), mỗi đơn vị một dòng. Đây đúng chỗ ADR #19 `:608` gọi nhầm dòng thành mã — xem punch-list
+  mục 7 của `.ai/sessions/2026-07-26-audit-004-hai-so.md`.
+
+**Nguồn nội dung:** `../audit-hq-pilot/notes/14` (002) · `/13` (006) · `/10`, `/02`, `/05`, `/11` (004) ·
+`/12` (lỗi sản phẩm), cộng `.ai/sessions/2026-07-26-audit-004-hai-so.md` cho phần đính chính che khuất
+phát hiện, và báo cáo phân tích sơ bộ hồ sơ 004 (bản `_v2`, chủ dự án đã biên tập tay) cho văn phong và
+phần câu hỏi A/B/C.
+
+**Ảnh minh hoạ:** dùng lại ảnh dữ liệu trình diễn của cẩm nang qua đường dẫn tương đối
+`../huong-dan/*.png` — 6 ảnh, tất cả đã kiểm là dữ liệu demo hoặc đã ẩn danh. **Cố ý KHÔNG dùng
+`21-hai-so-quyet-toan.png`** dù đó là ảnh đúng chủ đề: ảnh này hiện **mã số thuế thật** của 004 và số
+liệu của lần chạy CŨ (74 phát hiện / điểm 30), mâu thuẫn với số đang công bố. Ảnh đó vẫn nằm trong cẩm
+nang đã phát hành — **việc cần làm riêng, chưa xử lý ở nhánh này.**
+
+**Kiểm chứng đã chạy:** render Chromium ở 1440px và 420px, hai nền sáng/tối — 24 mục / 6 nhóm trên mục
+lục, không tràn ngang (`body.scrollWidth == clientWidth` ở cả hai bề rộng), bảng nằm trong khung, phóng
+ảnh và phím Esc hoạt động, ô tìm kiếm lọc đúng, liên kết hai chiều với D5 điều hướng đúng.
+
+Xem [[pilot-004-epe-gc-merge]] · [[gan-nhan-to-khai-theo-so]] · [[public-showcase-and-no-edge-auth]] ·
+[[so-lieu-phai-co-mau-so-va-nguon-doc-lap]].
