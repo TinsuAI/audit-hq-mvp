@@ -359,7 +359,7 @@
           <figure><span class="fig-tag">Sửa kỳ báo cáo</span><img src="../huong-dan/22-ky-bao-cao.png" alt="Khối sửa kỳ báo cáo theo cửa sổ ngày"><figcaption>Kỳ đặt theo cửa sổ ngày; nhãn năm chỉ là tên kỳ quyết toán.</figcaption></figure>
         </div>
         <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Hai trong ba hồ sơ pilot dùng <b>kỳ tài chính 01/04 – 31/03</b>. Nếu lọc tờ khai theo năm dương lịch thì 002 mất <b>3.014/11.115</b> dòng và 004 mất <b>163/547</b> dòng — toàn bộ quý đầu của năm sau. Cửa sổ kỳ là lý do con số mất mát đó hiện bằng 0.</div></div>
-        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Phép bỏ phiếu đa số cho ra <b>một</b> loại hình cho <b>một pháp nhân</b>. Với 004 điều này đúng, vì cả hai sổ đều khai dưới mã chế xuất. Với pháp nhân giữ hai sổ mà khai đúng hai bộ mã loại hình khác nhau, cách này chưa tách được — xem mục C4.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Mỗi pháp nhân chỉ được gán một loại hình.</b> Phép đếm nêu trên lấy nhóm mã có nhiều dòng nhất, nên kết quả luôn là một loại hình duy nhất — kéo theo <b>một</b> tập mã nhập và <b>một</b> tập mã xuất dùng cho cả nhóm kiểm tra C1.<br><br>Ở 004, kết quả này không gây sai sót: cả 547 dòng tờ khai đều là mã chế xuất (E11 175 · E15 172 · E42 200), không có dòng gia công nào để bỏ sót.<br><br>Nhưng nếu một pháp nhân giữ hai sổ và khai <b>mỗi sổ theo bộ mã riêng của sổ đó</b> — sổ chế xuất khai E11/E15/E42, sổ gia công khai E21/E23/E52/E54 — thì nhóm có ít dòng hơn sẽ thua ở phép đếm. Mã loại hình của sổ đó rơi ra ngoài tập mã đối chiếu, và C1.1–C1.4 kết luận <b>sai</b> rằng vật tư của sổ đó chưa được khai tờ khai. Trường hợp này chưa xảy ra trên dữ liệu pilot — xem mục C4.</div></div>
       </article>
 
       <article class="guide" id="a3" data-t="A3 chạy kiểm tra sáu nhóm C1 C2 C3 C4 C5 C6 17 bài hàng đợi công việc chạy nền">
@@ -784,11 +784,11 @@
       </article>
 
       <article class="guide" id="e2" data-t="E2 bốn mã bắc cầu hai sổ 668419800A 663612500B 646747400A 617840106A 627877503A hàng đi đường biên kỳ">
-        <div class="guide-head"><span class="gid">E2</span><h3>Bốn mã có lượng bắc cầu giữa hai sổ — cột nhãn không đóng được</h3></div>
+        <div class="guide-head"><span class="gid">E2</span><h3>Bốn mã có lượng bắc cầu giữa hai sổ — cột nhãn không giải quyết được</h3></div>
         <div class="guide-body wide">
           <ul class="claims">
             <li><span class="cl cl-fact">Sự thật</span> Ở bốn mã, nhãn trên tờ khai nói <b>GC</b> còn quyết toán ghi sổ <b>EPE</b>, và mỗi lượng gần đúng bằng lượng nhập ghi ở Mẫu 15 của sổ EPE: <span class="k">668419800A</span> +800 · <span class="k">663612500B</span> +3.600 · <span class="k">646747400A</span> +3.000 · <span class="k">617840106A</span> +99,44.</li>
-            <li><span class="cl cl-infer">Suy luận</span> Cột nhãn tay không trả lời được các trường hợp này. Nó không đóng câu hỏi, nó làm câu hỏi sắc hơn.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Cột nhãn tay không giải quyết được bốn trường hợp này — bản thân nó mâu thuẫn với quyết toán. Phải hỏi doanh nghiệp căn cứ phân bổ từng lượng vào từng sổ.</li>
             <li><span class="cl cl-fact">Sự thật</span> Một chênh lệch ở mức hợp nhất: <span class="k">627877503A</span> khai <b>18.000</b> trên tờ khai so với <b>14.400</b> ghi sổ cộng qua cả hai sổ, lệch −3.600. Tờ khai cuối của mã này đăng ký <b>hai ngày trước khi kết thúc kỳ</b>.</li>
             <li><span class="cl cl-infer">Suy luận</span> Hàng đang đi đường, chưa nhập kho, nên đúng khi không có trong cột nhập kho của quyết toán. Chênh lệch là do lệch thời điểm giữa ngày đăng ký tờ khai và ngày nhập kho, <b>không phải thiếu hụt</b>.</li>
           </ul>
