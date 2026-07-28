@@ -385,7 +385,7 @@
         </div>
         <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Hai trong ba hồ sơ pilot dùng <b>kỳ tài chính 01/04 – 31/03</b>. Nếu lọc tờ khai theo năm dương lịch thì 002 mất <b>3.014/11.115</b> dòng và 004 mất <b>163/547</b> dòng — toàn bộ quý đầu của năm sau. Cửa sổ kỳ là lý do con số mất mát đó hiện bằng 0.</div></div>
         <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Mỗi pháp nhân chỉ được gán một loại hình.</b> Phép đếm nêu trên lấy nhóm mã có nhiều dòng nhất, nên kết quả luôn là một loại hình duy nhất — kéo theo <b>một</b> tập mã nhập và <b>một</b> tập mã xuất dùng cho cả nhóm kiểm tra C1.<br><br>Ở 004, kết quả này không gây sai sót: cả 547 dòng tờ khai đều là mã chế xuất (E11 175 · E15 172 · E42 200), không có dòng gia công nào để bỏ sót.<br><br>Nhưng nếu một pháp nhân giữ hai sổ và khai <b>mỗi sổ theo bộ mã riêng của sổ đó</b> — sổ chế xuất khai E11/E15/E42, sổ gia công khai E21/E23/E52/E54 — thì nhóm có ít dòng hơn sẽ không được chọn. Mã loại hình của sổ đó nằm ngoài tập mã dùng để đối chiếu, và C1.1–C1.4 kết luận <b>sai</b> rằng vật tư của sổ đó chưa được khai tờ khai. Trường hợp này chưa xảy ra trên dữ liệu pilot — xem mục C4.</div></div>
-        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Cần rà soát theo quy định có hiệu lực từ 01/02/2026.</b> Trường hợp nêu trên hiện chưa xảy ra trên dữ liệu pilot, nhưng Thông tư 121/2025/TT-BTC làm nó trở thành tình huống <b>sẽ gặp ở các kỳ sau</b>: doanh nghiệp chế xuất nhận gia công chuyển sang khai mã gia công, nên một pháp nhân có thể mang hai bộ mã loại hình cùng lúc. Nội dung này cùng với thay đổi về biểu mẫu nộp báo cáo được trình bày ở <b>mục E4</b>.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Cần rà soát theo quy định có hiệu lực từ 01/02/2026.</b> Trường hợp nêu trên hiện chưa xảy ra trên dữ liệu pilot, nhưng Thông tư 121/2025/TT-BTC làm nó trở thành tình huống <b>sẽ gặp ở các kỳ sau</b>: doanh nghiệp chế xuất nhận gia công chuyển sang khai mã gia công, nên một pháp nhân có thể mang hai bộ mã loại hình cùng lúc. Nội dung này cùng với thay đổi về biểu mẫu nộp báo cáo được trình bày ở <b>mục E3</b>.</div></div>
       </article>
 
       <article class="guide" id="a3" data-t="A3 chạy kiểm tra sáu nhóm C1 C2 C3 C4 C5 C6 17 bài hàng đợi công việc chạy nền">
@@ -848,8 +848,8 @@
         <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div><b>Đây là một yêu cầu nghiệp vụ đặt ra cho hệ thống.</b> Việc đối chiếu tờ khai với quyết toán theo <b>ngày đăng ký</b> sẽ sinh ra kết quả dương tính giả ở thời điểm giáp ranh giữa hai kỳ. Các bài kiểm tra dạng C1.1 cần xử lý riêng những tờ khai đăng ký sát ngày cuối kỳ. Nhận xét này có giá trị sử dụng cao hơn bản thân con số 3.600.</div></div>
       </article>
 
-      <article class="guide" id="e4" data-t="E4 quy định từ 01/02/2026 thông tư 121/2025 hai sổ một sổ mẫu 25 26 27 phụ lục II điện tử mẫu 30 điều 60 kỳ sau">
-        <div class="guide-head"><span class="gid">E4</span><h3>Quy định áp dụng từ 01/02/2026 và việc hỗ trợ các kỳ quyết toán sau</h3></div>
+      <article class="guide" id="e3" data-t="E3 quy định từ 01/02/2026 thông tư 121/2025 hai sổ một sổ mẫu 25 26 27 phụ lục II điện tử mẫu 30 điều 60 kỳ sau">
+        <div class="guide-head"><span class="gid">E3</span><h3>Quy định áp dụng từ 01/02/2026 và việc hỗ trợ các kỳ quyết toán sau</h3></div>
         <div class="guide-body wide">
           <p style="margin:0 0 14px;color:var(--muted)">Ba nội dung dưới đây đã được đối chiếu với toàn văn Điều 60 ở cả bản hợp nhất hiện hành và bản do Thông tư 121/2025/TT-BTC sửa đổi. Cả ba đều ảnh hưởng trực tiếp tới việc hệ thống có đọc được hồ sơ của các kỳ sau hay không.</p>
 
@@ -886,16 +886,6 @@
         <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Các điều khoản trên đọc từ bản PDF Công báo của văn bản hợp nhất và của Thông tư 121/2025, không đọc từ bản đăng trên web. Mã loại hình không nằm trong Thông tư 38/2015 mà ở Quyết định 1357/QĐ-TCHQ.</div></div>
       </article>
 
-      <article class="guide" id="e3" data-t="E3 hai thứ không đưa vào tài liệu cho khách giá trị tiền tệ diễn đạt mạnh hơn không có tờ khai">
-        <div class="guide-head"><span class="gid">E3</span><h3>Hai thứ không đưa vào tài liệu cho khách</h3></div>
-        <div class="guide-body wide">
-          <div class="steps"><ul class="plain-list">
-            <li><strong>Con số quy đổi giá trị tiền tệ</strong> sinh từ truy vấn thử. Bảng kê tờ khai lẫn nhiều loại tiền tệ, nên mọi phép cộng giá trị chỉ là xấp xỉ.</li>
-            <li><strong>Bất kỳ cách diễn đạt nào mạnh hơn "không có tờ khai trong dữ liệu được cung cấp".</strong> Bảng kê tờ khai chỉ lấy từ một thư mục nguồn, nên tờ khai phía GC có thể tồn tại mà chưa được gửi.</li>
-          </ul></div>
-        </div>
-        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Quy tắc chung áp dụng cho toàn bộ tài liệu này: mỗi khẳng định có lượng từ "mọi", "toàn bộ", "đều" phải kèm <b>mẫu số</b> — viết <span class="k">33/33</span> chứ không viết "tất cả" — và phải chạy truy vấn đúng tập đang nói tới, không mượn số của tập rộng hơn.</div></div>
-      </article>
     </section>
   </div>
 </main>
