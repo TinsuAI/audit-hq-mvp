@@ -332,13 +332,13 @@
               <dt>Đầu vào</dt><dd>Mỗi kỳ báo cáo có bốn loại tệp: <b>Mẫu 15</b> (cân đối nguyên vật liệu), <b>Mẫu 15a</b> (cân đối thành phẩm), <b>Mẫu 16</b> (định mức) và <b>Báo cáo hàng chi tiết</b> (bảng kê tờ khai).</dd>
               <dt>Hệ thống làm</dt><dd>Mỗi loại tệp có một bộ đọc riêng. Bộ đọc lần lượt làm bốn việc:
                 <ul class="plain-list" style="margin-top:9px">
-                  <li><strong>Chọn sheet theo nội dung.</strong> Hệ thống mở từng sheet và đọc nội dung bên trong để biết đâu là biểu cần lấy. Nó không dựa vào tên sheet, vì mỗi doanh nghiệp đặt tên một kiểu: cùng là Mẫu 15 nhưng 002 ghi <span class="k">BCQT_NPL2025</span>, 006 ghi <span class="k">15-BCQT-NVL</span>, còn 004 ghi <span class="k">15NVL-SXXK (GT-ok) (2025)</span>.</li>
+                  <li><strong>Chọn sheet theo nội dung.</strong> Hệ thống mở từng sheet và đọc nội dung bên trong để biết đâu là biểu cần lấy. Nó không dựa vào tên sheet, vì mỗi doanh nghiệp đặt tên theo cách riêng: cùng là Mẫu 15 nhưng 002 ghi <span class="k">BCQT_NPL2025</span>, 006 ghi <span class="k">15-BCQT-NVL</span>, còn 004 ghi <span class="k">15NVL-SXXK (GT-ok) (2025)</span>.</li>
                   <li><strong>Tìm dòng tiêu đề.</strong> Hệ thống dò xem hàng tiêu đề nằm ở dòng nào, thay vì giả định một số dòng cố định. Ba hồ sơ pilot bắt đầu dữ liệu ở ba chỗ khác nhau: 004 từ dòng 8, 002 từ dòng 10, 006 từ dòng 14.</li>
                   <li><strong>Xác định vai trò từng cột bằng công thức, không bằng nhãn.</strong> Hệ thống đọc công thức Excel của ô tồn cuối — ví dụ <span class="k">=E14+F14-G14-H14-I14-J14</span> — rồi suy ngược ra vai trò: cột được cộng là cột nhập, cột bị trừ là cột xuất, ô chứa công thức là tồn cuối. Nhãn ghi trên hàng tiêu đề có thể viết tắt hoặc đặt sai, còn công thức thì phản ánh đúng cách doanh nghiệp thực sự tính.</li>
-                  <li><strong>Ép kiểu số và đếm ô hỏng.</strong> Ô nào không chuyển được thành số thì hệ thống đếm lại và báo ra, thay vì âm thầm coi ô đó bằng 0.</li>
+                  <li><strong>Chuyển giá trị sang dạng số và đếm những ô không chuyển được.</strong> Ô nào không chuyển được thành số thì hệ thống đếm lại và báo cho cán bộ, thay vì mặc định coi ô đó bằng 0 mà không thông báo.</li>
                 </ul>
               </dd>
-              <dt>Chỗ dừng lại<br>hỏi cán bộ</dt><dd>Cách suy vai trò cột từ công thức có một chỗ không quyết định được: <b>hai cột cùng dấu thì đẳng thức không phân biệt nổi</b>. Nếu cả cột (9) và cột (10) đều bị trừ, công thức không cho biết cột nào là "xuất kho để sản xuất" và cột nào là "xuất khác". Gặp trường hợp đó, hệ thống <b>không đoán</b> mà dừng lại và hỏi cán bộ xác nhận chỉ số cột. Ánh xạ cột sau khi được xác nhận sẽ lưu theo doanh nghiệp; lần sau gặp đúng bố cục đó, hệ thống không hỏi lại.</dd>
+              <dt>Trường hợp phải<br>hỏi cán bộ</dt><dd>Cách suy vai trò cột từ công thức có một chỗ không quyết định được: <b>hai cột cùng dấu thì đẳng thức không phân biệt nổi</b>. Nếu cả cột (9) và cột (10) đều bị trừ, công thức không cho biết cột nào là "xuất kho để sản xuất" và cột nào là "xuất khác". Gặp trường hợp đó, hệ thống <b>không đoán</b> mà dừng lại và hỏi cán bộ xác nhận chỉ số cột. Ánh xạ cột sau khi được xác nhận sẽ lưu theo doanh nghiệp; lần sau gặp đúng bố cục đó, hệ thống không hỏi lại.</dd>
               <dt>Đầu ra</dt><dd>Bốn bảng dữ liệu <b>Tầng 1</b> — tên hệ thống đặt cho lớp dữ liệu thô đã chuẩn hoá, giữ nguyên từng dòng như trong tệp gốc. Mỗi dòng giữ liên kết ngược về dòng Excel đã sinh ra nó, để mọi phát hiện về sau đều truy nguồn được (chặng A6).</dd>
             </dl>
           </div>
@@ -353,7 +353,7 @@
           <div class="steps">
             <dl class="flowio">
               <dt>Đầu vào</dt><dd>Mã loại hình ghi trên bảng kê tờ khai, và kỳ báo cáo ghi trên hồ sơ doanh nghiệp.</dd>
-              <dt>Hệ thống làm</dt><dd>Hệ thống đếm số dòng tờ khai theo từng mã loại hình rồi chọn nhóm có nhiều dòng nhất; nhóm thắng chính là loại hình của doanh nghiệp. Kỳ báo cáo được lưu dưới dạng một <b>cửa sổ ngày</b> có ngày bắt đầu và ngày kết thúc, chứ không mặc định là năm dương lịch. Hệ thống chỉ giữ lại những dòng tờ khai có ngày đăng ký rơi vào cửa sổ đó.</dd>
+              <dt>Hệ thống làm</dt><dd>Hệ thống đếm số dòng tờ khai theo từng mã loại hình rồi chọn nhóm có nhiều dòng nhất; nhóm được chọn chính là loại hình của doanh nghiệp. Kỳ báo cáo được lưu dưới dạng một <b>cửa sổ ngày</b> có ngày bắt đầu và ngày kết thúc, chứ không mặc định là năm dương lịch. Hệ thống chỉ giữ lại những dòng tờ khai có ngày đăng ký nằm trong cửa sổ đó.</dd>
               <dt>Đầu ra</dt><dd>Hai thứ mà các chặng sau đều dùng tới. <b>Loại hình</b> quyết định những mã loại hình nào được coi là hợp lệ khi nhóm C1 đối chiếu biểu quyết toán với tờ khai — bảng dưới đây. <b>Cửa sổ kỳ</b> quyết định dòng tờ khai nào được đưa vào phép đối chiếu.</dd>
             </dl>
             <div class="tblwrap" style="margin:0">
@@ -370,7 +370,7 @@
           <figure><span class="fig-tag">Sửa kỳ báo cáo</span><img src="../huong-dan/22-ky-bao-cao.png" alt="Khối sửa kỳ báo cáo theo cửa sổ ngày"><figcaption>Kỳ đặt theo cửa sổ ngày; nhãn năm chỉ là tên kỳ quyết toán.</figcaption></figure>
         </div>
         <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Hai trong ba hồ sơ pilot dùng <b>kỳ tài chính 01/04 – 31/03</b>. Nếu lọc tờ khai theo năm dương lịch thì 002 mất <b>3.014/11.115</b> dòng và 004 mất <b>163/547</b> dòng — toàn bộ quý đầu của năm sau. Cửa sổ kỳ là lý do con số mất mát đó hiện bằng 0.</div></div>
-        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Mỗi pháp nhân chỉ được gán một loại hình.</b> Phép đếm nêu trên lấy nhóm mã có nhiều dòng nhất, nên kết quả luôn là một loại hình duy nhất — kéo theo <b>một</b> tập mã nhập và <b>một</b> tập mã xuất dùng cho cả nhóm kiểm tra C1.<br><br>Ở 004, kết quả này không gây sai sót: cả 547 dòng tờ khai đều là mã chế xuất (E11 175 · E15 172 · E42 200), không có dòng gia công nào để bỏ sót.<br><br>Nhưng nếu một pháp nhân giữ hai sổ và khai <b>mỗi sổ theo bộ mã riêng của sổ đó</b> — sổ chế xuất khai E11/E15/E42, sổ gia công khai E21/E23/E52/E54 — thì nhóm có ít dòng hơn sẽ thua ở phép đếm. Mã loại hình của sổ đó rơi ra ngoài tập mã đối chiếu, và C1.1–C1.4 kết luận <b>sai</b> rằng vật tư của sổ đó chưa được khai tờ khai. Trường hợp này chưa xảy ra trên dữ liệu pilot — xem mục C4.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Mỗi pháp nhân chỉ được gán một loại hình.</b> Phép đếm nêu trên lấy nhóm mã có nhiều dòng nhất, nên kết quả luôn là một loại hình duy nhất — kéo theo <b>một</b> tập mã nhập và <b>một</b> tập mã xuất dùng cho cả nhóm kiểm tra C1.<br><br>Ở 004, kết quả này không gây sai sót: cả 547 dòng tờ khai đều là mã chế xuất (E11 175 · E15 172 · E42 200), không có dòng gia công nào để bỏ sót.<br><br>Nhưng nếu một pháp nhân giữ hai sổ và khai <b>mỗi sổ theo bộ mã riêng của sổ đó</b> — sổ chế xuất khai E11/E15/E42, sổ gia công khai E21/E23/E52/E54 — thì nhóm có ít dòng hơn sẽ không được chọn. Mã loại hình của sổ đó nằm ngoài tập mã dùng để đối chiếu, và C1.1–C1.4 kết luận <b>sai</b> rằng vật tư của sổ đó chưa được khai tờ khai. Trường hợp này chưa xảy ra trên dữ liệu pilot — xem mục C4.</div></div>
       </article>
 
       <article class="guide" id="a3" data-t="A3 chạy kiểm tra sáu nhóm C1 C2 C3 C4 C5 C6 17 bài hàng đợi công việc chạy nền">
@@ -379,7 +379,7 @@
           <div class="steps">
             <dl class="flowio">
               <dt>Đầu vào</dt><dd>Bốn bảng Tầng 1 của một doanh nghiệp trong một kỳ.</dd>
-              <dt>Hệ thống làm</dt><dd>Hệ thống chạy <b>17 bài kiểm tra</b> thuộc sáu nhóm, mỗi bài đúng một lần cho mỗi doanh nghiệp trong mỗi kỳ. Toàn bộ chạy nền qua hàng đợi công việc: cán bộ bấm chạy xong là rời trang được, không phải ngồi chờ kết quả.</dd>
+              <dt>Hệ thống làm</dt><dd>Hệ thống chạy <b>17 bài kiểm tra</b> thuộc sáu nhóm, mỗi bài đúng một lần cho mỗi doanh nghiệp trong mỗi kỳ. Toàn bộ được chạy nền qua hàng đợi công việc, nên cán bộ không phải chờ trên trang trong lúc các bài kiểm tra thực thi.</dd>
               <dt>Đầu ra</dt><dd>Danh sách phát hiện. Mỗi phát hiện ghi mức độ, mã đối tượng bị gắn cờ, mô tả nghiệp vụ, và chứng cứ truy nguồn về dòng dữ liệu gốc.</dd>
             </dl>
           </div>
@@ -398,15 +398,15 @@
         <div class="guide-body">
           <div class="steps">
             <ul class="plain-list">
-              <li><strong>C2 vô hiệu trên cả ba hồ sơ pilot.</strong> Ô tồn cuối của Mẫu 15 là <strong>ô công thức trên từng dòng dữ liệu</strong>, không phải chỉ ở dòng tiêu đề hay dòng tổng — đã mở từng tệp gốc và đếm (bảng dưới). Đẳng thức cân đối vì thế đóng theo định nghĩa, và kết quả chạy thật đúng như vậy: <strong>0 phát hiện</strong> C2.x ở cả ba hồ sơ. Đây là kết quả rỗng <strong>vì cấu trúc tệp</strong>, không phải bằng chứng dữ liệu sạch.</li>
+              <li><strong>C2 vô hiệu trên cả ba hồ sơ pilot.</strong> Ô tồn cuối của Mẫu 15 là <strong>ô công thức trên từng dòng dữ liệu</strong>, không phải chỉ ở dòng tiêu đề hay dòng tổng — đã mở từng tệp gốc và đếm (bảng dưới). Đẳng thức cân đối vì thế đóng theo định nghĩa, và kết quả chạy thật đúng như vậy: <strong>0 phát hiện</strong> C2.x ở cả ba hồ sơ. Kết quả rỗng ở đây do <strong>cấu trúc tệp</strong>, không phải bằng chứng cho thấy dữ liệu không có chênh lệch.</li>
               <li><strong>C6 cần hai kỳ.</strong> Chỉ 006 có hai kỳ trong bộ dữ liệu, nên đây là hồ sơ duy nhất C6 chạy được.</li>
             </ul>
           </div>
           <figure><span class="fig-tag">Một nhóm phát hiện</span><img src="../huong-dan/14-nhom-phat-hien.png" alt="Bảng phát hiện của một bài kiểm tra"><figcaption>Mỗi bài kiểm tra một khối, tách theo ba mức độ.</figcaption></figure>
         </div>
         <div class="tblwrap"><table class="tb">
-          <caption style="caption-side:top;text-align:left;font-size:12px;color:var(--muted);padding:0 0 9px">Cột tồn cuối Mẫu 15 — đếm trực tiếp trên tệp Excel gốc, phân biệt ô công thức với ô gõ tay</caption>
-          <thead><tr><th>Hồ sơ</th><th>Sheet · cột</th><th class="n">Công thức trên dòng dữ liệu</th><th class="n">Hằng số gõ tay</th></tr></thead>
+          <caption style="caption-side:top;text-align:left;font-size:12px;color:var(--muted);padding:0 0 9px">Cột tồn cuối Mẫu 15 — đếm trực tiếp trên tệp Excel gốc, phân biệt ô công thức với ô nhập thủ công</caption>
+          <thead><tr><th>Hồ sơ</th><th>Sheet · cột</th><th class="n">Công thức trên dòng dữ liệu</th><th class="n">Hằng số nhập thủ công</th></tr></thead>
           <tbody>
             <tr><td>002</td><td><span class="k">BCQT_NPL2025</span> · K</td><td class="n"><b>286 / 286</b></td><td class="n">0</td></tr>
             <tr><td>004 sổ EPE</td><td><span class="k">15NVL-SXXK (GT-ok) (2025)</span> · S</td><td class="n"><b>104 / 104</b></td><td class="n">0</td></tr>
@@ -456,19 +456,19 @@
             <dl class="flowio">
               <dt>Đầu vào</dt><dd>Bảng số liệu do hệ thống tính bằng truy vấn từ các phát hiện đã lưu — không đi qua mô hình.</dd>
               <dt>Hệ thống làm</dt><dd>Mô hình ngôn ngữ <b>chỉ nhận bảng đã tính</b> và trả JSON đúng bốn khoá: <span class="k">nhan_dinh</span> (1–2 câu) · <span class="k">phan_bo</span> (2–3 câu) · <span class="k">diem_nong</span> (tối đa 5 mã, mỗi mã một câu) · <span class="k">de_xuat</span> (tối đa 3 mục). Mô hình không truy vấn dữ liệu thô và không tham gia vào logic của bài kiểm tra.</dd>
-              <dt>Hậu kiểm</dt><dd>Sau khi mô hình trả kết quả, hệ thống chạy hai bước kiểm tra máy móc trước khi cho hiển thị.
+              <dt>Hậu kiểm</dt><dd>Sau khi mô hình trả kết quả, hệ thống chạy hai bước kiểm tra tự động trước khi cho hiển thị.
                 <ul class="plain-list" style="margin-top:9px">
-                  <li><strong>Bước một — loại mã bịa.</strong> Hệ thống đối chiếu từng mã ở phần điểm nóng với danh sách mã có trong bảng số liệu. Mã nào không có trong bảng thì bị bỏ hẳn khỏi kết quả; cán bộ không nhìn thấy nó.</li>
-                  <li><strong>Bước hai — đối chiếu số.</strong> Hệ thống tách toàn bộ con số trong cả bốn trường mô hình viết, rồi trừ đi những con số có mặt trong bảng số liệu. Phần còn dư là số mô hình tự nghĩ ra: hệ thống lưu lại vào <span class="k">unsupported_numbers</span> và bật cờ <span class="k">needs_review</span>, hiển thị thành nhãn cảnh báo.</li>
+                  <li><strong>Bước một — lọc bỏ những mã hàng không tồn tại do mô hình sinh ra sai.</strong> Mô hình ngôn ngữ có thể tạo ra mã hàng không có trong dữ liệu. Hệ thống đối chiếu từng mã ở phần điểm nóng với danh sách mã có trong bảng số liệu; mã nào không có trong bảng thì bị loại khỏi kết quả và không được hiển thị cho cán bộ.</li>
+                  <li><strong>Bước hai — đối chiếu từng con số với bảng số liệu.</strong> Hệ thống tách toàn bộ con số trong cả bốn trường do mô hình viết, rồi trừ đi những con số có mặt trong bảng số liệu. Phần còn lại là con số mô hình tự tạo ra: hệ thống lưu vào <span class="k">unsupported_numbers</span>, bật cờ <span class="k">needs_review</span> và hiển thị nhãn cảnh báo cho cán bộ.</li>
                 </ul>
-                <p style="margin:9px 0 0">Ngoài hai bước trên, bài kiểm tra nào có dưới 10 phát hiện thì trường <span class="k">phan_bo</span> bị xoá kể cả khi mô hình vẫn viết — với vài dòng dữ liệu thì một đoạn mô tả phân bố chỉ là độn chữ.</p>
+                <p style="margin:9px 0 0">Ngoài hai bước trên, bài kiểm tra nào có dưới 10 phát hiện thì trường <span class="k">phan_bo</span> bị xoá kể cả khi mô hình vẫn viết: trên một số lượng phát hiện quá nhỏ, đoạn mô tả phân bố không mang thêm thông tin nào.</p>
               </dd>
               <dt>Đầu ra</dt><dd>Bảng số liệu + bốn trường nhận định + hai cờ: <span class="k">Tổng quan đã cũ</span> và <span class="k">Có số không khớp bảng</span>.</dd>
             </dl>
           </div>
           <figure><span class="fig-tag">Tổng quan AI</span><img src="../huong-dan/22b-tong-quan-ai.png" alt="Khối tổng quan AI của một bài kiểm tra"><figcaption>Ảnh chụp khối tổng quan của bài C1.2 trên hồ sơ 004: bốn mã <span class="k">MC50</span> · <span class="k">PALLET-06</span> · <span class="k">PP-BAND</span> · <span class="k">TAPE50</span>, đều gắn nhãn <b>Liên sổ</b>. Xem mục D3.</figcaption></figure>
         </div>
-        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Hậu kiểm số là phép so chuỗi, không phải kiểm chứng ngữ nghĩa.</b> Cả bảng số liệu được đưa vào tập token hợp lệ, nên bước này bắt được con số <b>không xuất hiện ở đâu trong bảng</b>; nó <b>không</b> bắt được con số có trong bảng nhưng bị gán cho mệnh đề sai. Cách so theo token là lựa chọn có chủ đích: parse số sẽ vấp ở làm tròn, năm, mã kiểm tra và mã hàng có chữ số.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Hậu kiểm số là phép so chuỗi, không phải kiểm chứng ngữ nghĩa.</b> Cả bảng số liệu được đưa vào tập token hợp lệ, nên bước này bắt được con số <b>không xuất hiện ở đâu trong bảng</b>; nó <b>không</b> bắt được con số có trong bảng nhưng bị gán cho mệnh đề sai. Cách đối chiếu theo chuỗi là lựa chọn có chủ đích: nếu phân tích con số thành giá trị rồi so sánh, phép so sẽ cho kết quả sai ở các trường hợp làm tròn, năm, mã bài kiểm tra và mã hàng có chứa chữ số.</div></div>
         <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Số liệu dùng để lập hồ sơ phải lấy từ <b>bảng số liệu</b> và <b>trang chi tiết phát hiện</b>. Phần nhận định do mô hình viết chỉ để tham khảo, không phải kết luận vi phạm, và không được đưa vào tệp kết xuất Excel.</div></div>
         <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Câu miễn trừ trách nhiệm không do mô hình viết.</b> Đó là text tĩnh của giao diện; prompt còn cấm mô hình tự viết câu miễn trừ, để câu này không đổi theo từng lượt sinh.</div></div>
       </article>
@@ -493,7 +493,7 @@
     <!-- ============ B. BA HỒ SƠ PILOT ============ -->
     <section class="block sec-read" id="pilot">
       <div class="block-h"><span class="badge">B</span><h2>Ba hồ sơ pilot</h2></div>
-      <p class="block-lead">Ba doanh nghiệp chế xuất, ba kiểu hồ sơ khác nhau. Phần này không dùng ảnh chụp màn hình dữ liệu thật — chỉ bảng và văn bản.</p>
+      <p class="block-lead">Ba doanh nghiệp chế xuất, ba dạng hồ sơ khác nhau. Phần này không dùng ảnh chụp màn hình dữ liệu thật — chỉ bảng và văn bản.</p>
 
       <article class="guide" id="b1" data-t="B1 so sánh ba doanh nghiệp 002 004 006 bảng đối chiếu quy mô phát hiện điểm rủi ro">
         <div class="guide-head"><span class="gid">B1</span><h3>Ba hồ sơ đặt cạnh nhau</h3></div>
@@ -513,7 +513,7 @@
             <tr><td><b>Hạng</b></td><td>Dữ liệu nhất quán</td><td>Dữ liệu nhất quán</td><td>Cần rà soát · Có chênh lệch nhỏ</td></tr>
           </tbody>
         </table></div>
-        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Ba hồ sơ hỏng theo ba kiểu khác nhau, và không kiểu nào lặp lại ở cả ba.</b> 002 sạch, sai sót còn lại tập trung ở hai mã lệch đúng 1.000 lần. 006 quy mô lớn, phần lớn phát hiện dồn vào hai bài kiểm tra đọc cùng một cột biểu. 004 nhỏ nhất về số phát hiện nhưng phức tạp nhất về cấu trúc — hai sổ trên một luồng tờ khai.</div></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Ba hồ sơ có ba dạng sai sót khác nhau, và không dạng nào xuất hiện ở cả ba.</b> 002 nhất quán nhất, phần sai sót còn lại tập trung ở hai mã lệch đúng 1.000 lần. 006 có quy mô lớn, và phần lớn phát hiện tập trung vào hai bài kiểm tra cùng đọc một cột của biểu mẫu. 004 nhỏ nhất về số phát hiện nhưng phức tạp nhất về cấu trúc — hai sổ trên một luồng tờ khai.</div></div>
       </article>
 
       <article class="guide" id="b2" data-t="B2 doanh nghiệp 002 sạch nhất RP-1AN RP-1AE lệch nghìn lần E13 tái xuất B13 cột 8 A42 UNK">
@@ -545,9 +545,9 @@
             <li><span class="cl cl-fact">Sự thật</span> <b>Chuyển tiếp giữa hai kỳ khớp tuyệt đối:</b> 6.501/6.501 mã nguyên vật liệu và 208/208 mã thành phẩm có tồn đầu kỳ 2025 bằng tồn cuối kỳ 2024. Không mã nào có tồn cuối 2024 &gt; 0 rồi biến mất khỏi kỳ 2025; không mã mới nào của kỳ 2025 có tồn đầu &gt; 0. Đây là phép kiểm duy nhất trong bộ dữ liệu có hai vế lấy từ hai tệp khác nhau.</li>
             <li><span class="cl cl-fact">Sự thật</span> C4.3 gắn cờ mức nghiêm trọng cho mã nhựa <span class="k">95801-Z440311-0000</span>: tiêu hao lý thuyết theo Mẫu 16 = <b>163.871.796,50</b> Gam, xuất kho để sản xuất theo Mẫu 15 = <b>31.294.330</b> Gam, chênh <b>+423,6%</b>. Bốn mã nhựa cùng họ <span class="k">95801-Z44*</span> cũng bị gắn cờ, biên độ +26,0% đến +77,9%.</li>
             <li><span class="cl cl-fact">Sự thật</span> Cả kỳ mã này nhập <b>34.000.000</b> Gam, tồn đầu kỳ <b>0</b> — tức trần vật lý là 34.000.000. Tiêu hao lý thuyết đòi gấp <b>4,9 lần</b> lượng có thật trong kho. Bốn mã nhựa anh em có định mức trung vị 88–446 g; riêng mã này trung vị 647, cao nhất 1.903.</li>
-            <li><span class="cl cl-infer">Suy luận</span> Ba khả năng: định mức khai cao, lượng nhập khai thiếu, hoặc sản lượng khai vống. Sản lượng đã đối chiếu khớp tờ khai xuất, nên còn lại định mức hoặc lượng nhập; định mức là nghi vấn chính vì các mã cùng họ thấp hơn khoảng sáu lần. Cần hỏi doanh nghiệp, không tự kết luận là thất thoát.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Có ba khả năng: định mức khai cao hơn thực tế, lượng nhập khai thiếu, hoặc sản lượng khai cao hơn thực tế. Sản lượng đã được đối chiếu và khớp với tờ khai xuất, nên chỉ còn lại định mức hoặc lượng nhập. Định mức là nguyên nhân có khả năng cao nhất, vì bốn mã cùng họ có định mức thấp hơn khoảng sáu lần. Nội dung này cần doanh nghiệp giải trình; chưa đủ căn cứ để kết luận có thất thoát.</li>
             <li><span class="cl cl-fact">Sự thật</span> Bảng kê tờ khai của nhà máy thứ hai: tên tệp ghi tới 31/08/2025 nhưng dòng cuối là <b>18/08/2025</b>, trong khi kỳ quyết toán chạy tới 31/12/2025; 414 dòng của tệp này thiếu ngày đăng ký. Lượng nhập của nhà máy này giảm dần từ tháng 5 rồi dừng, cùng lúc nhà máy còn lại tăng mạnh nửa cuối năm. <b>2.482/2.579 mã</b> (96%) nguyên vật liệu nhập của nhà máy dừng cũng có ở nhà máy kia.</li>
-            <li><span class="cl cl-infer">Suy luận</span> Hình mẫu khớp với việc một nhà máy dừng và dồn sản xuất sang nhà máy còn lại. Đối chiếu chiều nhập của kỳ 2025 vẫn khớp (+0,04%) vì đã cộng cả hai tệp, nên không mất lượng trong quyết toán. Cần doanh nghiệp xác nhận trạng thái vận hành.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Diễn biến này khớp với việc một nhà máy dừng hoạt động và sản xuất được chuyển sang nhà máy còn lại. Đối chiếu chiều nhập của kỳ 2025 vẫn khớp (+0,04%) vì đã cộng cả hai tệp, nên không mất lượng trong quyết toán. Cần doanh nghiệp xác nhận trạng thái vận hành.</li>
           </ul>
         </div>
         <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Không nâng con số này thành phát hiện.</b> Sau khi loại họ nhựa <span class="k">95801-Z44*</span>, phần còn lại của C4.3 kỳ 2025 vẫn có 1.894 mã vượt trần vật lý, nhưng biên độ chỉ 1,1–2 lần. Đó là nhiễu của mô hình C4.3, không phải một mã sai đơn lẻ.</div></div>
@@ -596,8 +596,8 @@
             <li><strong>Phát hiện không quy được về sổ nào hiển thị nhãn "Liên sổ".</strong> Đó là các phát hiện của nhóm kiểm tra chéo.</li>
           </ol></div>
         </div>
-        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Vì sao không tách hai sổ thành hai pháp nhân.</b> Tách ra sẽ phá đúng phép kiểm có giá trị nhất trên hồ sơ này — một lượng nhập có bị dùng để giải trình đầu ra ở <b>cả hai sổ</b> hay không. Ngoài ra: ưu đãi miễn thuế gắn với pháp nhân và tờ khai, không gắn với sổ; và tờ khai xuất không có khoá tách nên đầu ra không quy được về sổ nào kể cả trên nguyên tắc.</div></div>
-        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Nhãn sổ chỉ tồn tại trong bản ghi tệp đã nạp.</b> Nếu thư mục nguồn vắng mặt rồi nạp lại, hệ thống <b>dừng lượt nạp kèm thông báo</b> thay vì âm thầm dựng lại 004 thành một sổ gộp — nó đối chiếu với sổ thật đã lưu trong dữ liệu, một nguồn độc lập với bản ghi tệp. Đường gộp im lặng đã bị chặn, nhưng nhãn vẫn có thể mất và phải gán lại trước khi nạp.</div></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Vì sao không tách hai sổ thành hai pháp nhân.</b> Tách ra sẽ làm mất chính phép kiểm có giá trị nhất trên hồ sơ này: kiểm tra xem một lượng nhập có bị dùng để giải trình đầu ra ở <b>cả hai sổ</b> hay không. Ngoài ra: ưu đãi miễn thuế gắn với pháp nhân và tờ khai, không gắn với sổ; và tờ khai xuất không có khoá tách nên đầu ra không quy được về sổ nào kể cả trên nguyên tắc.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Nhãn sổ chỉ tồn tại trong bản ghi tệp đã nạp.</b> Nếu thư mục nguồn vắng mặt rồi nạp lại, hệ thống <b>dừng lượt nạp và báo lỗi</b> thay vì gộp 004 thành một sổ duy nhất mà không thông báo. Cơ chế chặn dựa trên việc đối chiếu với danh sách sổ đã lưu trong dữ liệu, một nguồn độc lập với bản ghi tệp. Trường hợp gộp sổ mà không báo lỗi đã được xử lý, nhưng nhãn sổ vẫn có thể mất và khi đó phải gán lại trước khi nạp.</div></div>
       </article>
 
       <article class="guide" id="c3" data-t="C3 phân bố 65 phát hiện theo sổ liên sổ EPE GC bảng kiểm tra mức độ nghiêm trọng">
@@ -622,7 +622,7 @@
           <ul class="claims">
             <li><span class="cl cl-fact">Sự thật</span> Theo sổ: <b>Liên sổ 35 · EPE 30 · GC 0</b>. Theo mức độ: <b>52 nghiêm trọng · 7 cảnh báo · 6 thông tin</b>. Điểm rủi ro <b>25/1000</b>, hạng "Dữ liệu nhất quán".</li>
             <li><span class="cl cl-fact">Sự thật</span> 35 phát hiện Liên sổ đều thuộc nhóm kiểm tra chéo với tờ khai. 30 phát hiện gắn sổ đều thuộc sổ EPE. Sổ GC không sinh phát hiện nào.</li>
-            <li><span class="cl cl-infer">Suy luận</span> Con số "GC 0" <b>không</b> có nghĩa sổ GC sạch tuyệt đối. Xem mục E1 — luồng tờ khai dùng chung đang che một phần.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Con số "GC 0" <b>không</b> có nghĩa sổ GC hoàn toàn không có chênh lệch. Xem mục E1: vì hai sổ dùng chung một luồng tờ khai, một phần chênh lệch của sổ GC không được bài kiểm tra phát hiện.</li>
           </ul>
         </div>
         <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Khi lọc theo một sổ mà không có phát hiện nào, hệ thống nói rõ sổ đó <b>đã được kiểm tra và không có chênh lệch</b> — khác với trạng thái thiếu dữ liệu hoặc chưa chạy kiểm tra. Thao tác lọc theo sổ mô tả ở <a href="../huong-dan/index.html#d5" style="color:var(--brand)">mục D5 của cẩm nang</a>.</div></div>
@@ -636,10 +636,10 @@
             <li><span class="cl cl-fact">Sự thật</span> <b>12 mã có mặt ở cả hai sổ mà không có tiền tố</b> — đó là phần không tách được bằng mã.</li>
             <li><span class="cl cl-fact">Sự thật</span> Ngoài mã, ranh giới duy nhất ghi lại được nằm ở <b>cột thứ 56 không tiêu đề</b> của bảng kê tờ khai nhập: giá trị <b>EPE 243 dòng / GC 104 dòng</b>. Bảng kê tờ khai xuất không có cột này, ô số hợp đồng trống toàn bộ, mã loại hình toàn E42.</li>
             <li><span class="cl cl-fact">Sự thật</span> Đã đối chiếu toàn bộ <b>33 tệp bảng kê tờ khai của 10 doanh nghiệp</b>. Hai bằng chứng: (1) mọi tệp khác đều có dòng tiêu đề ở dòng 9, dưới khối mào đầu chuẩn của cơ quan Hải quan — hai tệp của 004 có tiêu đề ở dòng 0, khối mào đầu đã bị cắt; (2) tệp nhập của 004 là tệp duy nhất trong 33 tệp có cột dữ liệu thừa thực sự.</li>
-            <li><span class="cl cl-infer">Suy luận</span> Cột 56 do <b>người gõ tay thêm vào</b> trước khi tệp đến tay dự án, không phải trường của bản xuất chuẩn. Dùng làm <b>bằng chứng đối chiếu</b> thì được; <b>không</b> được cho bộ đọc tệp phụ thuộc vào nó, vì hồ sơ của khách sau sẽ không có cột này.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Cột 56 do <b>người lập tệp nhập thủ công</b> trước khi tệp được chuyển cho dự án, không phải một trường của bản xuất chuẩn. Dùng làm <b>bằng chứng đối chiếu</b> thì được; <b>không</b> được cho bộ đọc tệp phụ thuộc vào nó, vì hồ sơ của khách sau sẽ không có cột này.</li>
             <li><span class="cl cl-fact">Sự thật</span> Trên 104 dòng mang nhãn GC, dấu hiệu nhận biết được từ chính nội dung tờ khai: ô số hợp đồng ghi hợp đồng gia công <b>48 dòng</b> · mã hàng có tiền tố <span class="k">GC-</span> <b>36 dòng</b> · có cả hai <b>3 dòng</b> · <b>không dấu hiệu nào 17 dòng</b>.</li>
             <li><span class="cl cl-law">Căn cứ pháp lý</span> Điều 60 khoản 2 điểm a Thông tư 38/2015/TT-BTC, sửa bởi khoản 39 Điều 1 Thông tư 39/2018/TT-BTC (đọc theo Văn bản hợp nhất 25/VBHN-BTC ngày 06/9/2018): nguyên liệu, vật tư có nguồn gốc nhập khẩu <i>"được theo dõi chi tiết theo từng loại hình trong kỳ"</i>. Khoản 1 xác định phạm vi gia công/SXXK bao gồm doanh nghiệp chế xuất.</li>
-            <li><span class="cl cl-infer">Suy luận</span> Ở hồ sơ này, việc theo dõi theo từng loại hình nằm trong <b>một cột Excel không tiêu đề do người gõ tay</b>, không nằm trong tờ khai. Thông thường hai loại hình tách nhau bằng mã loại hình; 004 khai cả hai sổ dưới mã chế xuất nên tờ khai không lưu dấu vết loại hình của từng lần nhập. Đây là nội dung thực chất cần trao đổi, không phải khoảng trống của đường ống dữ liệu.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Ở hồ sơ này, việc theo dõi theo từng loại hình được ghi trong <b>một cột Excel không có tiêu đề, do người lập tệp nhập thủ công</b>, chứ không nằm trong tờ khai. Thông thường hai loại hình tách nhau bằng mã loại hình; 004 khai cả hai sổ dưới mã chế xuất nên tờ khai không lưu dấu vết loại hình của từng lần nhập. Đây là nội dung thực chất cần trao đổi, không phải khoảng trống của đường ống dữ liệu.</li>
           </ul>
         </div>
         <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Với doanh nghiệp khai đúng mã loại hình cho từng sổ, vấn đề này không phát sinh:</b> mã loại hình trên tờ khai <b>chính là</b> nhãn sổ, lấy được từ dữ liệu đã nạp. 004 là ngoại lệ vì khai cả hai sổ dưới mã chế xuất. Hệ quả cho thiết kế: gộp hai sổ ở kiểm tra chéo là <b>mặc định đúng</b>, không phải ràng buộc vĩnh viễn.</div></div>
@@ -687,7 +687,7 @@
             </tbody>
           </table></div>
           <ul class="claims" style="margin-top:14px">
-            <li><span class="cl cl-fact">Sự thật</span> Tệp bảng kê xuất chỉ có một sheet và đối chiếu 1:1 với riêng bộ EPE (khớp 41/41 mã). Lượng 684 đơn vị đúng cỡ của bộ EPE — định mức EPE dựng 346/341 đơn vị — không phải cỡ của bộ GC.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Tệp bảng kê xuất chỉ có một sheet và đối chiếu 1:1 với riêng bộ EPE (khớp 41/41 mã). Lượng 684 đơn vị tương ứng với quy mô của bộ EPE, vì định mức EPE dựng 346 và 341 đơn vị; đây không phải quy mô của bộ GC.</li>
             <li><span class="cl cl-fact">Sự thật</span> <b>Thiếu một chỉ tiêu.</b> Số tiếp nhận hợp đồng gia công được khai tại ô "giấy phép xuất khẩu" (khoản 2 Điều 56, sửa bởi khoản 36 Điều 1 Thông tư 39/2018). Ô này không có trong bố cục 54 cột của bản đã cấp, nên không đối chiếu được tờ khai với hợp đồng.</li>
             <li><span class="cl cl-infer">Suy luận</span> Hai tệp tờ khai được cấp là <b>bản trích xuất đã lọc</b>.</li>
             <li><span class="cl cl-law">Căn cứ pháp lý</span> Sản phẩm gia công xuất khẩu bắt buộc có tờ khai xuất. Trước 01/02/2026: Điều 75 khoản 1 Thông tư 38/2015 (sửa bởi khoản 51 Điều 1 Thông tư 39/2018) — thủ tục theo Chương II, mã E42. Từ 01/02/2026: Điều 76 khoản 5 (bổ sung bởi khoản 47 Điều 1 Thông tư 121/2025) dẫn sang chế độ gia công tại Mục 2 Chương III, mã E52. <b>Kỳ báo cáo vắt qua mốc này.</b></li>
@@ -798,34 +798,34 @@
     <!-- ============ E. ĐÍNH CHÍNH TỪ CHÍNH HỆ THỐNG ============ -->
     <section class="block sec-adm" id="dinhchinh">
       <div class="block-h"><span class="badge">E</span><h2>Đính chính từ chính hệ thống</h2></div>
-      <p class="block-lead">Kết quả "sổ GC không có phát hiện nào" đúng ở mức nào, và luồng tờ khai dùng chung đang giấu mất gì. Phần này nêu giới hạn của chính sản phẩm trên hồ sơ này.</p>
+      <p class="block-lead">Kết quả "sổ GC không có phát hiện nào" đúng đến mức nào, và việc hai sổ dùng chung một luồng tờ khai làm bài kiểm tra bỏ sót những gì. Phần này nêu giới hạn của chính hệ thống trên hồ sơ này.</p>
 
       <article class="guide" id="e1" data-t="E1 luồng tờ khai dùng chung giấu phát hiện PEBAG1 C1.3 sáu phát hiện EPE bị che biên độ 0 đến 19">
-        <div class="guide-head"><span class="gid">E1</span><h3>Luồng tờ khai dùng chung giấu phát hiện của từng sổ</h3></div>
+        <div class="guide-head"><span class="gid">E1</span><h3>Tờ khai dùng chung làm bài kiểm tra bỏ sót chênh lệch của từng sổ</h3></div>
         <div class="guide-body wide">
           <ul class="claims">
-            <li><span class="cl cl-fact">Sự thật</span> <b>Cơ chế.</b> Bảng dòng tờ khai không có trường sổ. C1.3 khớp mã Mẫu 15 với tập mã tờ khai nhập E11/E15, không lọc theo sổ — nên vật tư của sổ nào cũng được tính là "đã khai", miễn mã đó xuất hiện đâu đó trong luồng chung.</li>
-            <li><span class="cl cl-fact">Sự thật</span> <b>Phân hoạch 37 mã của sổ GC:</b> 25 mã đã khai và chỉ có trong Mẫu 15 của GC — trong đó 18 mã mang tiền tố <span class="k">GC-</span> xuất hiện nguyên văn trên tờ khai nên không nhập nhằng; 12 mã đã khai nhưng cũng có trong Mẫu 15 của EPE, tức nhập nhằng; <b>0 mã hoàn toàn chưa khai</b>.</li>
-            <li><span class="cl cl-fact">Sự thật</span> Không có nhãn sổ trên tờ khai, biên độ che khuất là <b>0 đến 19</b> trên 37 mã — khoảng quá rộng để đưa vào báo cáo. Dùng cột nhãn ở tệp thô để thu hẹp, con số dùng được là <b>đúng một phát hiện sổ GC bị che</b>: C1.3 trên <span class="k">PEBAG1</span> — sổ GC ghi nhập 100, trong khi toàn bộ 396 đơn vị <span class="k">PEBAG1</span> không tiền tố đều mang nhãn EPE và Mẫu 15 của EPE chỉ ghi nhập 296. Kèm một phát hiện C1.2 ít giá trị (<span class="k">CARTON10</span> — sổ GC ghi dưới tên <span class="k">GC-CARTON10</span>, chỉ là khác cách đặt mã).</li>
-            <li><span class="cl cl-fact">Sự thật</span> <b>Chiều ngược lại nặng hơn.</b> <b>6 phát hiện C1.3 của sổ EPE đang bị che</b>, vì chỉ có tờ khai mang nhãn GC phủ chúng: <span class="k">CARTON10</span>, <span class="k">617840106A</span>, <span class="k">627877503A</span>, <span class="k">646747400A</span>, <span class="k">663612500B</span>, <span class="k">668419800A</span>. C1.3 của sổ EPE đáng ra là <b>19 mã</b>, không phải 13.</li>
-            <li><span class="cl cl-infer">Suy luận</span> Sổ GC sạch thật ở mức khoảng <b>97%</b>. Luồng tờ khai dùng chung đang tạo phát hiện sót thật, và chủ yếu về phía EPE — ngược chiều với dự đoán ban đầu.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Nguyên nhân nằm ở cấu trúc bảng dữ liệu.</b> Bảng lưu dòng tờ khai không có trường ghi sổ quyết toán. C1.3 khớp mã Mẫu 15 với tập mã tờ khai nhập E11/E15 mà không lọc theo sổ, nên vật tư của sổ nào cũng được tính là "đã khai" chỉ cần mã đó xuất hiện ở bất kỳ dòng tờ khai nào trong luồng chung.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Phân hoạch 37 mã của sổ GC.</b> Có 25 mã đã khai và chỉ xuất hiện trong Mẫu 15 của GC; trong đó 18 mã mang tiền tố <span class="k">GC-</span> ghi nguyên văn trên tờ khai nên xác định được ngay thuộc sổ nào. Có 12 mã đã khai nhưng cũng xuất hiện trong Mẫu 15 của EPE, tức không phân định được thuộc sổ nào. Không có mã nào hoàn toàn chưa khai.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Nếu chỉ dựa trên tờ khai, số phát hiện có thể bị bỏ sót nằm trong khoảng <b>từ 0 đến 19</b> trên 37 mã. Khoảng này quá rộng để đưa vào báo cáo. Khi dùng thêm cột nhãn ở tệp thô để thu hẹp, con số xác định được là <b>đúng một phát hiện của sổ GC bị bỏ sót</b>: C1.3 trên <span class="k">PEBAG1</span>. Sổ GC ghi nhập 100, trong khi toàn bộ 396 đơn vị <span class="k">PEBAG1</span> không có tiền tố đều mang nhãn EPE và Mẫu 15 của EPE chỉ ghi nhập 296. Kèm theo một phát hiện C1.2 có giá trị thấp: <span class="k">CARTON10</span>, do sổ GC ghi cùng vật tư đó dưới tên <span class="k">GC-CARTON10</span> — chỉ là khác cách đặt mã.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Chiều ngược lại có số lượng lớn hơn.</b> <b>6 phát hiện C1.3 của sổ EPE không được sinh ra</b>, vì các mã này chỉ được phủ bởi tờ khai mang nhãn GC: <span class="k">CARTON10</span>, <span class="k">617840106A</span>, <span class="k">627877503A</span>, <span class="k">646747400A</span>, <span class="k">663612500B</span>, <span class="k">668419800A</span>. C1.3 của sổ EPE đáng ra là <b>19 mã</b>, không phải 13.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Kết luận "sổ GC không có chênh lệch" đúng với khoảng <b>97%</b> số mã của sổ này. Việc hai sổ dùng chung một luồng tờ khai làm bài kiểm tra bỏ sót chênh lệch có thật, và phần bỏ sót nằm chủ yếu ở sổ EPE — ngược với dự đoán ban đầu.</li>
           </ul>
         </div>
-        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Nguyên tắc rút ra.</b> Đối chiếu từng sổ riêng lẻ <b>giấu mất chênh lệch</b>. Cộng qua hai sổ rồi so tổng tờ khai theo từng mã là phép kiểm có giá trị nhất trên hồ sơ này, và chỉ làm được nếu không tách hai sổ thành hai pháp nhân. Đó là lý do nhóm kiểm tra chéo giữ nguyên phạm vi pháp nhân.</div></div>
-        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Giới hạn này là giới hạn của dữ liệu 004, không phải giới hạn phổ quát.</b> Điều kiện phát sinh: khi một pháp nhân giữ hai sổ mà khai <b>cả hai sổ dưới mã loại hình của cùng một chế độ</b>, kiểm tra chéo không gán được tờ khai theo sổ và sẽ che phát hiện của từng sổ. Với doanh nghiệp khai đúng mã cho từng sổ, kiểm tra chéo hoàn toàn có thể chạy theo sổ.</div></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Nguyên tắc rút ra.</b> Đối chiếu riêng từng sổ sẽ <b>bỏ sót chênh lệch</b>: một lượng nhập chia cho hai sổ thì xét riêng mỗi sổ đều thấy hợp lý. Phép kiểm có giá trị nhất trên hồ sơ này là cộng lượng của cả hai sổ rồi so với tổng tờ khai theo từng mã, và phép này chỉ thực hiện được khi không tách hai sổ thành hai pháp nhân. Đó là lý do nhóm kiểm tra chéo giữ phạm vi ở mức pháp nhân.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Giới hạn này là giới hạn của dữ liệu 004, không phải giới hạn phổ quát.</b> Điều kiện phát sinh: khi một pháp nhân giữ hai sổ mà khai <b>cả hai sổ dưới mã loại hình của cùng một chế độ</b>, kiểm tra chéo không gán được tờ khai về từng sổ, và sẽ bỏ sót chênh lệch của mỗi sổ. Với doanh nghiệp khai đúng mã cho từng sổ, kiểm tra chéo hoàn toàn có thể chạy theo sổ.</div></div>
       </article>
 
-      <article class="guide" id="e2" data-t="E2 bốn mã bắc cầu hai sổ 668419800A 663612500B 646747400A 617840106A 627877503A hàng đi đường biên kỳ">
-        <div class="guide-head"><span class="gid">E2</span><h3>Bốn mã có lượng bắc cầu giữa hai sổ — cột nhãn không giải quyết được</h3></div>
+      <article class="guide" id="e2" data-t="E2 bốn mã nhãn không khớp hai sổ bắc cầu 668419800A 663612500B 646747400A 617840106A 627877503A hàng đi đường biên kỳ">
+        <div class="guide-head"><span class="gid">E2</span><h3>Bốn mã có nhãn tờ khai và sổ quyết toán không khớp nhau</h3></div>
         <div class="guide-body wide">
           <ul class="claims">
-            <li><span class="cl cl-fact">Sự thật</span> Ở bốn mã, nhãn trên tờ khai nói <b>GC</b> còn quyết toán ghi sổ <b>EPE</b>, và mỗi lượng gần đúng bằng lượng nhập ghi ở Mẫu 15 của sổ EPE: <span class="k">668419800A</span> +800 · <span class="k">663612500B</span> +3.600 · <span class="k">646747400A</span> +3.000 · <span class="k">617840106A</span> +99,44.</li>
-            <li><span class="cl cl-infer">Suy luận</span> Cột nhãn tay không giải quyết được bốn trường hợp này — bản thân nó mâu thuẫn với quyết toán. Phải hỏi doanh nghiệp căn cứ phân bổ từng lượng vào từng sổ.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Ở bốn mã, nhãn trên tờ khai ghi <b>GC</b> trong khi quyết toán ghi vào sổ <b>EPE</b>. Mỗi lượng chênh lệch xấp xỉ bằng lượng nhập ghi ở Mẫu 15 của sổ EPE: <span class="k">668419800A</span> +800 · <span class="k">663612500B</span> +3.600 · <span class="k">646747400A</span> +3.000 · <span class="k">617840106A</span> +99,44.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Cột nhãn nhập thủ công không giải quyết được bốn trường hợp này, vì chính nó mâu thuẫn với sổ quyết toán. Cần doanh nghiệp cho biết căn cứ phân bổ từng lượng vào từng sổ.</li>
             <li><span class="cl cl-fact">Sự thật</span> Một chênh lệch ở mức hợp nhất: <span class="k">627877503A</span> khai <b>18.000</b> trên tờ khai so với <b>14.400</b> ghi sổ cộng qua cả hai sổ, lệch −3.600. Tờ khai cuối của mã này đăng ký <b>hai ngày trước khi kết thúc kỳ</b>.</li>
             <li><span class="cl cl-infer">Suy luận</span> Hàng đang đi đường, chưa nhập kho, nên đúng khi không có trong cột nhập kho của quyết toán. Chênh lệch là do lệch thời điểm giữa ngày đăng ký tờ khai và ngày nhập kho, <b>không phải thiếu hụt</b>.</li>
           </ul>
         </div>
-        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div><b>Đầu vào nghiệp vụ cho hệ thống.</b> Đối chiếu tờ khai với quyết toán theo <b>ngày đăng ký</b> sinh dương tính giả ở biên kỳ. Kiểm tra dạng C1.1 cần xử lý riêng tờ khai sát ngày cuối kỳ. Điểm này có giá trị hơn bản thân con số 3.600.</div></div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div><b>Đây là một yêu cầu nghiệp vụ đặt ra cho hệ thống.</b> Việc đối chiếu tờ khai với quyết toán theo <b>ngày đăng ký</b> sẽ sinh ra kết quả dương tính giả ở thời điểm giáp ranh giữa hai kỳ. Các bài kiểm tra dạng C1.1 cần xử lý riêng những tờ khai đăng ký sát ngày cuối kỳ. Nhận xét này có giá trị sử dụng cao hơn bản thân con số 3.600.</div></div>
       </article>
 
       <article class="guide" id="e3" data-t="E3 hai thứ không đưa vào tài liệu cho khách giá trị tiền tệ diễn đạt mạnh hơn không có tờ khai">
