@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Phân tích hồ sơ pilot — Audit-HQ · Tinsu AI × Trọng Tín</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#eef1f7; --panel:#ffffff; --ink:#181b24; --muted:#5c6274; --faint:#8b90a2;
+    --line:#e2e6f0; --line-2:#d3d8e6;
+    --brand:#1d3557; --brand-soft:#e4eaf4;
+    --start:#2563eb; --start-soft:#e6effe;
+    --data:#7c3aed; --data-soft:#f0e9fe;
+    --run:#0891b2; --run-soft:#dcf1f8;
+    --read:#0d9488; --read-soft:#d9f5f0;
+    --act:#b45309; --act-soft:#f8ecdd;
+    --ai:#c026d3; --ai-soft:#fbe8fd;
+    --adm:#475569; --adm-soft:#e8edf3;
+    --warn:#c2410c; --warn-soft:#fdece1;
+    --ok:#0f9d6e; --ok-soft:#e3f6ee;
+    --mark:#e11d48;
+    --shadow:0 1px 2px rgba(20,22,45,.04),0 10px 30px rgba(20,22,45,.06);
+    --radius:14px;
+    --sans:"Inter","Segoe UI",Roboto,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    --mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sbw:290px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0f1118; --panel:#181b25; --ink:#e9ebf3; --muted:#a2a8bd; --faint:#767c92;
+      --line:#262a38; --line-2:#333849;
+      --brand:#7ea6dd; --brand-soft:#16233a;
+      --start:#5b9bff; --start-soft:#152447; --data:#a98bff; --data-soft:#241a47;
+      --run:#3fb6d6; --run-soft:#102b34; --read:#3fcfbc; --read-soft:#0f2f2b;
+      --act:#e0a45c; --act-soft:#33240f; --ai:#e879f9; --ai-soft:#33143a;
+      --adm:#9aa8bd; --adm-soft:#1d2431;
+      --warn:#f0925e; --warn-soft:#361d10; --ok:#3ad39a; --ok-soft:#102b23;
+      --shadow:0 1px 2px rgba(0,0,0,.35),0 12px 34px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#eef1f7; --panel:#fff; --ink:#181b24; --muted:#5c6274; --faint:#8b90a2;
+    --line:#e2e6f0; --line-2:#d3d8e6; --brand:#1d3557; --brand-soft:#e4eaf4;
+    --start:#2563eb; --start-soft:#e6effe; --data:#7c3aed; --data-soft:#f0e9fe;
+    --run:#0891b2; --run-soft:#dcf1f8; --read:#0d9488; --read-soft:#d9f5f0;
+    --act:#b45309; --act-soft:#f8ecdd; --ai:#c026d3; --ai-soft:#fbe8fd;
+    --adm:#475569; --adm-soft:#e8edf3;
+    --warn:#c2410c; --warn-soft:#fdece1; --ok:#0f9d6e; --ok-soft:#e3f6ee;
+    --shadow:0 1px 2px rgba(20,22,45,.04),0 10px 30px rgba(20,22,45,.06);
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1118; --panel:#181b25; --ink:#e9ebf3; --muted:#a2a8bd; --faint:#767c92;
+    --line:#262a38; --line-2:#333849; --brand:#7ea6dd; --brand-soft:#16233a;
+    --start:#5b9bff; --start-soft:#152447; --data:#a98bff; --data-soft:#241a47;
+    --run:#3fb6d6; --run-soft:#102b34; --read:#3fcfbc; --read-soft:#0f2f2b;
+    --act:#e0a45c; --act-soft:#33240f; --ai:#e879f9; --ai-soft:#33143a;
+    --adm:#9aa8bd; --adm-soft:#1d2431;
+    --warn:#f0925e; --warn-soft:#361d10; --ok:#3ad39a; --ok-soft:#102b23;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 12px 34px rgba(0,0,0,.4);
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased}
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{position:fixed;top:0;left:0;width:var(--sbw);height:100vh;background:var(--panel);
+           border-right:1px solid var(--line);display:flex;flex-direction:column;z-index:40}
+  .brand{display:flex;gap:11px;align-items:center;padding:18px 16px;border-bottom:1px solid var(--line)}
+  .brand .logo{width:38px;height:38px;border-radius:11px;background:var(--brand);
+               display:grid;place-items:center;flex:0 0 auto;color:#fff;font-weight:800;font-size:18px}
+  .brand h1{margin:0;font-size:15px;font-weight:750;letter-spacing:-.01em}
+  .brand span{display:block;font-size:11.5px;color:var(--faint)}
+  .searchwrap{padding:12px 12px 4px}
+  .searchwrap input{width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:10px;
+                    background:var(--bg);color:var(--ink);font:inherit;font-size:13px}
+  .searchwrap input:focus{outline:2px solid var(--brand-soft);border-color:var(--brand)}
+  nav.toc{flex:1;overflow-y:auto;padding:10px 10px 24px}
+  nav.toc .sec{margin-top:12px}
+  nav.toc .sec-h{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:11px;font-weight:700;
+                 text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+  nav.toc .sec-h .pin{width:8px;height:8px;border-radius:3px}
+  nav.toc a{display:flex;gap:8px;align-items:baseline;padding:6px 12px;font-size:13px;
+            color:var(--muted);text-decoration:none;border-radius:8px}
+  nav.toc a .n{flex:0 0 26px;color:var(--faint);font-family:var(--mono);font-size:10.5px}
+  nav.toc a:hover{background:var(--bg);color:var(--ink)}
+  nav.toc a.active{background:var(--brand-soft);color:var(--ink);font-weight:600}
+  .sb-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;
+           padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+
+  /* ---------- Main ---------- */
+  main{margin-left:var(--sbw)}
+  .topbar{display:none;position:sticky;top:0;z-index:30;align-items:center;gap:10px;
+          padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .topbar button{background:none;border:1px solid var(--line-2);border-radius:9px;padding:5px 7px;
+                 color:var(--ink);cursor:pointer}
+  .scrim{display:none;position:fixed;inset:0;background:rgba(10,12,20,.45);z-index:35}
+
+  .hero{padding:40px 6vw 26px;border-bottom:1px solid var(--line);
+        background:radial-gradient(1200px 300px at 12% -40%,var(--brand-soft),transparent 70%)}
+  .hero-logo{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+  .hero-logo .mk{width:40px;height:40px;border-radius:12px;background:var(--brand);color:#fff;
+                 display:grid;place-items:center;font-weight:800;font-size:20px}
+  .hero-logo b{font-size:15px;font-weight:750}
+  .hero .eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brand)}
+  .hero h2{margin:6px 0 8px;font-size:31px;line-height:1.15;letter-spacing:-.02em}
+  .hero p{margin:0;max-width:72ch;color:var(--muted);font-size:15px}
+  .hero .apps{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+  .appchip{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);
+           border-radius:12px;padding:9px 13px;box-shadow:var(--shadow);font-size:13px}
+  .appchip .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+               color:#fff;font-size:15px;flex:0 0 auto}
+  .appchip b{display:block;font-size:13px;font-weight:700}
+  .appchip small{color:var(--faint);font-size:11.5px}
+
+  .wrap{padding:8px 6vw 70px;max-width:1180px}
+  section.block{margin-top:40px;scroll-margin-top:14px}
+  .block-h{display:flex;align-items:center;gap:13px;margin:10px 0 4px}
+  .block-h .badge{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+                  color:#fff;font-weight:800;flex:0 0 auto}
+  .block-h h2{margin:0;font-size:22px;letter-spacing:-.01em}
+  .block-lead{margin:2px 0 0;color:var(--muted);font-size:14px;max-width:78ch}
+
+  article.guide{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+                box-shadow:var(--shadow);margin-top:16px;overflow:hidden;scroll-margin-top:14px}
+  .guide-head{display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid var(--line)}
+  .guide-head .gid{font-family:var(--mono);font-size:12px;font-weight:700;padding:3px 9px;border-radius:7px}
+  .guide-head h3{margin:0;font-size:16.5px;font-weight:650}
+  .guide-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:22px;padding:20px}
+  .guide-body.wide{grid-template-columns:minmax(0,1fr)}
+
+  .steps ol{margin:0;padding:0;list-style:none;counter-reset:s}
+  .steps li{position:relative;padding:0 0 12px 34px;counter-increment:s}
+  .steps li:last-child{padding-bottom:0}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:23px;height:23px;
+    border-radius:50%;background:var(--mark);color:#fff;font-size:13px;font-weight:700;
+    display:grid;place-items:center;box-shadow:0 1px 3px rgba(225,29,72,.4)}
+  .steps li.plain{padding-left:16px}
+  .steps li.plain::before{content:"";width:6px;height:6px;top:10px;left:3px;background:var(--faint);box-shadow:none}
+  .steps strong{font-weight:650}
+  .k{font-family:var(--mono);font-size:12.5px;background:var(--bg);border:1px solid var(--line-2);
+     border-radius:5px;padding:1px 6px}
+  .plain-list{margin:0;padding:0;list-style:none}
+  .plain-list li{position:relative;padding:0 0 10px 16px}
+  .plain-list li::before{content:"";position:absolute;left:3px;top:9px;width:6px;height:6px;
+                         border-radius:50%;background:var(--faint)}
+
+  figure{margin:0;align-self:start}
+  figure img{width:100%;display:block;border:1px solid var(--line-2);border-radius:10px;
+             cursor:zoom-in;background:var(--bg)}
+  .fig-tag{display:inline-block;font-size:11px;color:var(--muted);background:var(--bg);
+           border:1px solid var(--line);border-radius:6px;padding:2px 8px;margin-bottom:8px}
+  figcaption{margin-top:8px;font-size:12px;color:var(--faint);text-align:center}
+
+  .note{display:flex;gap:11px;margin:0 20px 20px;padding:12px 15px;border-radius:11px;
+        font-size:13.5px;line-height:1.55}
+  .note .ni{flex:0 0 auto;width:19px;height:19px;margin-top:1px;stroke:currentColor;fill:none;
+            stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .note.tip{background:var(--ok-soft);border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)}
+  .note.tip .ni{color:var(--ok)}
+  .note.warn{background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 34%,transparent)}
+  .note.warn .ni{color:var(--warn)}
+  .note.info{background:var(--brand-soft);border:1px solid color-mix(in srgb,var(--brand) 28%,transparent)}
+  .note.info .ni{color:var(--brand)}
+  .note b{font-weight:700}
+
+  .tblwrap{overflow-x:auto;margin:0 20px 20px}
+  table.tb{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.tb th,table.tb td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);
+                          vertical-align:top}
+  table.tb th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+
+  .noresult{display:none;padding:40px 0;color:var(--muted)}
+  .noresult.show{display:block}
+
+  .lb{display:none;position:fixed;inset:0;z-index:60;background:rgba(8,10,18,.9);cursor:zoom-out;padding:24px}
+  .lb.show{display:flex;align-items:center;justify-content:center}
+  .lb img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .lb .cls{position:absolute;top:16px;right:20px;color:#fff;font-size:30px;cursor:pointer;line-height:1}
+
+  .themebtn{position:fixed;right:18px;bottom:18px;z-index:50;width:42px;height:42px;border-radius:50%;
+            border:1px solid var(--line-2);background:var(--panel);color:var(--ink);cursor:pointer;
+            box-shadow:var(--shadow);font-size:17px}
+
+  /* section accents */
+  .sec-start .badge{background:var(--start)} .sec-start .gid{color:var(--start);background:var(--start-soft)}
+  .sec-data  .badge{background:var(--data)}  .sec-data  .gid{color:var(--data);background:var(--data-soft)}
+  .sec-run   .badge{background:var(--run)}   .sec-run   .gid{color:var(--run);background:var(--run-soft)}
+  .sec-read  .badge{background:var(--read)}  .sec-read  .gid{color:var(--read);background:var(--read-soft)}
+  .sec-act   .badge{background:var(--act)}   .sec-act   .gid{color:var(--act);background:var(--act-soft)}
+  .sec-ai    .badge{background:var(--ai)}    .sec-ai    .gid{color:var(--ai);background:var(--ai-soft)}
+  .sec-adm   .badge{background:var(--adm)}   .sec-adm   .gid{color:var(--adm);background:var(--adm-soft)}
+
+  @media (max-width:1080px){ .guide-body{grid-template-columns:minmax(0,1fr)} }
+  @media (max-width:900px){
+    main{margin-left:0}
+    .topbar{display:flex}
+    .sidebar{transform:translateX(-100%);transition:transform .25s ease;box-shadow:var(--shadow)}
+    body.nav-open .sidebar{transform:none}
+    body.nav-open .scrim{display:block}
+    .hero{padding-top:26px} .hero h2{font-size:25px}
+  }
+  @media print{
+    .sidebar,.topbar,.scrim,.themebtn,.searchwrap{display:none!important}
+    main{margin-left:0} body{background:#fff}
+    article.guide{break-inside:avoid;box-shadow:none}
+    .hero{background:none}
+  }
+
+  /* ---------- Bổ sung riêng cho trang phân tích pilot ---------- */
+  /* Nhãn ba loại phát biểu: Sự thật · Suy luận · Căn cứ pháp lý */
+  .cl{display:inline-block;font-weight:700;font-size:11.5px;line-height:1.5;padding:1px 8px;
+      border-radius:6px;margin-right:7px;white-space:nowrap;vertical-align:baseline}
+  .cl-fact{color:var(--read);background:var(--read-soft)}
+  .cl-infer{color:var(--act);background:var(--act-soft)}
+  .cl-law{color:var(--data);background:var(--data-soft)}
+  ul.claims{margin:0;padding:0;list-style:none}
+  ul.claims li{padding:0 0 13px 0}
+  ul.claims li:last-child{padding-bottom:0}
+  /* huỷ dấu đầu dòng đánh số của .steps khi .claims nằm bên trong nó */
+  ul.claims li::before{content:none}
+  ul.claims + .tblwrap{margin-left:0;margin-right:0}
+
+  /* Khối đầu vào → hệ thống làm → đầu ra của mỗi chặng luồng dữ liệu */
+  dl.flowio{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 14px;margin:0 0 14px}
+  dl.flowio dt{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);
+               font-weight:700;padding-top:4px;white-space:nowrap}
+  dl.flowio dd{margin:0}
+  @media (max-width:560px){
+    dl.flowio{grid-template-columns:minmax(0,1fr);gap:2px}
+    dl.flowio dd{margin:0 0 10px}
+  }
+
+  table.tb td.n,table.tb th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .guide-body figure .tblwrap{overflow-x:auto}
+  main a{color:var(--brand)}
+</style>
+</head>
+<body>
+
+<aside class="sidebar" id="sidebar">
+  <div class="brand">
+    <div class="logo">A</div>
+    <div><h1>Phân tích hồ sơ pilot</h1><span>Tài liệu nội bộ · đi kèm cẩm nang</span></div>
+  </div>
+  <div class="searchwrap">
+    <input id="q" type="search" placeholder="Tìm nội dung… (vd: hai sổ, định mức, tờ khai)" autocomplete="off">
+  </div>
+  <nav class="toc" id="toc"></nav>
+  <div class="sb-foot"><span id="cnt"></span><span style="font-size:11px;color:var(--faint)">Tinsu AI × Trọng Tín</span></div>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-tip" viewBox="0 0 24 24"><path d="M9.5 18h5M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.3 1 2.2V17h6v-1.3c0-.9.2-1.4 1-2.2A6 6 0 0 0 12 3Z"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4L21 20H3Z"/><path d="M12 10v4.5"/><path d="M12 17.5h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.5h.01"/></symbol>
+</defs></svg>
+
+<main>
+  <div class="topbar">
+    <button id="burger" aria-label="Mở mục lục">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <b>Phân tích hồ sơ pilot</b>
+  </div>
+
+  <div class="hero">
+    <div class="hero-logo"><span class="mk">A</span><b>Audit-HQ · Quản lý rủi ro Hải quan</b></div>
+    <div class="eyebrow">Tài liệu nội bộ · đi kèm cẩm nang sử dụng</div>
+    <h2>Luồng dữ liệu và ba hồ sơ pilot</h2>
+    <p>
+      Trang này mô tả đường đi của dữ liệu trong Audit-HQ — từ tệp Excel doanh nghiệp nộp tới điểm rủi ro
+      và phát hiện hiển thị trên màn hình — rồi ghi lại kết quả đối chiếu ba hồ sơ đã phân tích: 002, 004
+      và 006. Trọng tâm là hồ sơ 004: một pháp nhân nộp <b>hai bộ báo cáo quyết toán</b> trên cùng một
+      luồng tờ khai. Hướng dẫn thao tác nằm ở
+      <a href="../huong-dan/index.html" style="color:var(--brand)">cẩm nang sử dụng</a>; trang này không
+      lặp lại phần đó.
+    </p>
+    <div class="apps">
+      <div class="appchip"><span class="ic" style="background:#7c3aed">🔀</span><div><b>Luồng dữ liệu</b><small>Sáu chặng, đầu vào → đầu ra</small></div></div>
+      <div class="appchip"><span class="ic" style="background:#0d9488">🏭</span><div><b>Ba hồ sơ pilot</b><small>002 · 004 · 006</small></div></div>
+      <div class="appchip"><span class="ic" style="background:#0891b2">📚</span><div><b>Hồ sơ hai sổ</b><small>Trường hợp 004</small></div></div>
+      <div class="appchip"><span class="ic" style="background:#b45309">❓</span><div><b>Câu hỏi còn giá trị</b><small>10 nội dung đề xuất làm rõ</small></div></div>
+    </div>
+  </div>
+
+  <div class="wrap" id="content">
+    <div class="noresult" id="noresult">Không tìm thấy nội dung phù hợp. Thử từ khoá khác.</div>
+
+    <section class="block sec-adm" id="mo-dau">
+      <div class="block-h"><span class="badge">·</span><h2>Nguyên tắc trình bày</h2></div>
+      <p class="block-lead">Đọc mục này trước. Nó quy định cách hiểu mọi con số phía sau.</p>
+
+      <article class="guide" id="n1" data-t="nguyên tắc trình bày sự thật suy luận căn cứ pháp lý ba loại phát biểu giới hạn ẩn danh">
+        <div class="guide-head"><span class="gid">·</span><h3>Ba loại phát biểu, tách bạch</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> Số liệu đọc trực tiếp từ chứng từ hoặc từ cơ sở dữ liệu đang chạy, kiểm chứng lại được.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Nhận định rút ra từ các sự thật nêu trên, chưa được xác nhận.</li>
+            <li><span class="cl cl-law">Căn cứ pháp lý</span> Dẫn chiếu văn bản quy phạm pháp luật.</li>
+          </ul>
+          <p style="margin:14px 0 0;color:var(--muted);font-size:13.5px">
+            Ba loại này không trộn vào nhau trong cùng một câu. Nội dung không mang nhãn là mô tả cơ chế
+            của hệ thống, không phải phát biểu về hồ sơ doanh nghiệp.
+          </p>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Giới hạn của phân tích.</b> Kết quả dựa hoàn toàn trên bộ dữ liệu được cung cấp. Một số nội dung cho thấy dữ liệu này có thể chưa đầy đủ (xem mục D1), nên các nhận định nêu trong tài liệu <b>chưa phải kết luận</b> và có thể thay đổi khi có thêm thông tin. Tài liệu không nhằm đánh giá mức độ tuân thủ của doanh nghiệp.</div></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Ẩn danh.</b> Doanh nghiệp gọi theo mã thư mục <b>002 · 004 · 006</b>. Tài liệu không nêu tên doanh nghiệp, tên đối tác, mã số thuế hay số tờ khai. Mã vật tư và mã sản phẩm giữ nguyên vì cần thiết để đối chiếu và đã có trong bản trình diễn công khai.</div></div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div><b>Nguồn số liệu.</b> Mọi con số về phát hiện, điểm rủi ro và quy mô dữ liệu lấy từ cơ sở dữ liệu đang chạy, đối chiếu ngày <b>28/07/2026</b>. Các con số về nội dung chứng từ (cột biểu mẫu, ghi chú, hợp đồng) lấy từ báo cáo phân tích sơ bộ hồ sơ 004 và các bản ghi phân tích pilot, đã kiểm lại với tệp gốc.</div></div>
+      </article>
+    </section>
+
+    <!-- ============ A. LUỒNG DỮ LIỆU ============ -->
+    <section class="block sec-data" id="luong">
+      <div class="block-h"><span class="badge">A</span><h2>Luồng dữ liệu</h2></div>
+      <p class="block-lead">Sáu chặng, từ tệp doanh nghiệp nộp tới màn hình cán bộ. Mỗi chặng nêu đầu vào, việc hệ thống làm, đầu ra, và giới hạn của chặng đó. Ảnh minh hoạ lấy từ dữ liệu trình diễn.</p>
+
+      <article class="guide" id="a1" data-t="A1 đọc chuẩn hoá adapter mẫu 15 15a 16 báo cáo hàng chi tiết chọn sheet dò tiêu đề map cột đẳng thức tầng 1">
+        <div class="guide-head"><span class="gid">A1</span><h3>Đọc và chuẩn hoá tệp nguồn</h3></div>
+        <div class="guide-body">
+          <div class="steps">
+            <dl class="flowio">
+              <dt>Đầu vào</dt><dd>Bốn loại tệp cho mỗi kỳ: <b>Mẫu 15</b> (cân đối nguyên vật liệu), <b>Mẫu 15a</b> (cân đối thành phẩm), <b>Mẫu 16</b> (định mức), <b>Báo cáo hàng chi tiết</b> (bảng kê tờ khai).</dd>
+              <dt>Hệ thống làm</dt><dd>Mỗi loại một bộ đọc riêng. Chọn sheet theo nội dung chứ không theo tên; dò dòng tiêu đề thay vì dùng số dòng cố định; suy vai trò cột từ <b>đẳng thức của chính biểu</b> — tồn cuối = tồn đầu + nhập − các cột xuất — thay vì tin vào nhãn cột. Ép kiểu số và đếm ô không ép được.</dd>
+              <dt>Đầu ra</dt><dd>Bốn bảng Tầng 1. Mỗi dòng giữ liên kết về dòng dữ liệu gốc để truy nguồn (chặng A6).</dd>
+            </dl>
+            <ul class="plain-list">
+              <li>Khi đẳng thức không phân biệt được hai cột cùng dấu, hệ thống <strong>không đoán</strong> — nó dừng lại và yêu cầu cán bộ xác nhận chỉ số cột.</li>
+              <li>Ánh xạ cột đã xác nhận được lưu theo doanh nghiệp; lần sau gặp cùng bố cục thì không hỏi lại.</li>
+            </ul>
+          </div>
+          <figure><span class="fig-tag">Xác nhận ánh xạ cột</span><img src="../huong-dan/07-xac-nhan-map-cot.png" alt="Màn hình xác nhận ánh xạ cột Mẫu 15"><figcaption>Cột xanh = nhận đúng theo tiêu đề · cột vàng = cần cán bộ xác nhận chỉ số.</figcaption></figure>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Bố cục biểu mẫu không thống nhất giữa doanh nghiệp.</b> Trong chín hồ sơ đã đối chiếu, tám hồ sơ dùng bố cục Mẫu 15 <b>một cột nhập</b>; riêng 004 tách <b>bốn cột 6a–6d</b> kèm cột tổng. Cột nào là "nhập trong kỳ" quyết định kết quả của mọi kiểm tra phía sau — đây là lý do bước xác nhận cột tồn tại.</div></div>
+      </article>
+
+      <article class="guide" id="a2" data-t="A2 nhận diện loại hình DNCX gia công SXXK mã loại hình E11 E15 E42 kỳ báo cáo năm tài chính cửa sổ kỳ">
+        <div class="guide-head"><span class="gid">A2</span><h3>Nhận diện loại hình và kỳ báo cáo</h3></div>
+        <div class="guide-body">
+          <div class="steps">
+            <dl class="flowio">
+              <dt>Đầu vào</dt><dd>Mã loại hình trên bảng kê tờ khai; kỳ khai báo trên hồ sơ doanh nghiệp.</dd>
+              <dt>Hệ thống làm</dt><dd>Đếm số dòng tờ khai theo mã loại hình, chọn nhóm có nhiều dòng nhất. Kỳ nhận dưới dạng cửa sổ <span class="k">[từ ngày, đến ngày]</span>, không mặc định năm dương lịch; dòng tờ khai lọc theo cửa sổ đó.</dd>
+              <dt>Đầu ra</dt><dd>Loại hình dùng làm tập mã đối chiếu cho nhóm kiểm tra C1; cửa sổ kỳ dùng để lọc dòng tờ khai.</dd>
+            </dl>
+            <div class="tblwrap" style="margin:0">
+              <table class="tb">
+                <thead><tr><th>Loại hình</th><th>Mã nhập nguyên vật liệu</th><th>Mã xuất</th></tr></thead>
+                <tbody>
+                  <tr><td><b>DNCX</b> — doanh nghiệp chế xuất</td><td><span class="k">E11</span> <span class="k">E15</span></td><td><span class="k">E42</span></td></tr>
+                  <tr><td><b>Gia công</b></td><td><span class="k">E21</span> <span class="k">E23</span></td><td><span class="k">E52</span> <span class="k">E54</span></td></tr>
+                  <tr><td><b>SXXK</b> — sản xuất xuất khẩu</td><td><span class="k">E31</span> <span class="k">E33</span></td><td><span class="k">E62</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <figure><span class="fig-tag">Sửa kỳ báo cáo</span><img src="../huong-dan/22-ky-bao-cao.png" alt="Khối sửa kỳ báo cáo theo cửa sổ ngày"><figcaption>Kỳ đặt theo cửa sổ ngày; nhãn năm chỉ là tên kỳ quyết toán.</figcaption></figure>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Hai trong ba hồ sơ pilot dùng <b>kỳ tài chính 01/04 – 31/03</b>. Nếu lọc tờ khai theo năm dương lịch thì 002 mất <b>3.014/11.115</b> dòng và 004 mất <b>163/547</b> dòng — toàn bộ quý đầu của năm sau. Cửa sổ kỳ là lý do con số mất mát đó hiện bằng 0.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Phép bỏ phiếu đa số cho ra <b>một</b> loại hình cho <b>một pháp nhân</b>. Với 004 điều này đúng, vì cả hai sổ đều khai dưới mã chế xuất. Với pháp nhân giữ hai sổ mà khai đúng hai bộ mã loại hình khác nhau, cách này chưa tách được — xem mục C4.</div></div>
+      </article>
+
+      <article class="guide" id="a3" data-t="A3 chạy kiểm tra sáu nhóm C1 C2 C3 C4 C5 C6 17 bài hàng đợi công việc chạy nền">
+        <div class="guide-head"><span class="gid">A3</span><h3>Chạy sáu nhóm kiểm tra</h3></div>
+        <div class="guide-body wide">
+          <div class="steps">
+            <dl class="flowio">
+              <dt>Đầu vào</dt><dd>Bốn bảng Tầng 1 của một cặp (doanh nghiệp, kỳ).</dd>
+              <dt>Hệ thống làm</dt><dd>Chạy <b>17 bài kiểm tra</b> thuộc sáu nhóm. Mỗi bài chạy đúng một lần cho mỗi cặp (doanh nghiệp, kỳ). Toàn bộ chạy nền qua hàng đợi công việc, không chạy đồng bộ trong lúc cán bộ chờ.</dd>
+              <dt>Đầu ra</dt><dd>Danh sách phát hiện. Mỗi phát hiện có mức độ, đối tượng, mô tả và chứng cứ truy nguồn.</dd>
+            </dl>
+          </div>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Nhóm</th><th>Nội dung</th><th>Bài kiểm tra</th></tr></thead>
+          <tbody>
+            <tr><td><b>C1</b></td><td>Số lượng nhập / xuất — đối chiếu biểu quyết toán với tờ khai</td><td><span class="k">C1.1</span> <span class="k">C1.2</span> <span class="k">C1.3</span> <span class="k">C1.4</span> <span class="k">C1.6</span> <span class="k">C1.7</span></td></tr>
+            <tr><td><b>C2</b></td><td>Cân bằng và tồn kho — đẳng thức của từng dòng biểu, tồn cuối âm</td><td><span class="k">C2.1</span> <span class="k">C2.2</span> <span class="k">C2.3</span> <span class="k">C2.4</span></td></tr>
+            <tr><td><b>C3</b></td><td>Phân loại hàng hoá — loại hình mâu thuẫn, mã HS, đơn vị tính</td><td><span class="k">C3.1</span> <span class="k">C3.2</span> <span class="k">C3.3</span></td></tr>
+            <tr><td><b>C4</b></td><td>Định mức — nguồn của vật tư trong Mẫu 16, tiêu hao lý thuyết so với xuất sản xuất</td><td><span class="k">C4.1</span> <span class="k">C4.3</span></td></tr>
+            <tr><td><b>C5</b></td><td>Truy nguồn nguyên vật liệu nhập khẩu — có xuất sản xuất mà không có nguồn</td><td><span class="k">C5.1</span></td></tr>
+            <tr><td><b>C6</b></td><td>Kiểm tra liên kỳ — tồn đầu kỳ N so với tồn cuối kỳ N−1</td><td><span class="k">C6.1</span></td></tr>
+          </tbody>
+        </table></div>
+        <div class="guide-body">
+          <div class="steps">
+            <ul class="plain-list">
+              <li><strong>C2 vô hiệu trên cả ba hồ sơ pilot.</strong> Ở cả 002, 004 và 006, ô tồn cuối của Mẫu 15 là <strong>ô công thức</strong> nội bộ tệp Excel, nên đẳng thức cân đối đóng theo định nghĩa. Kết quả chạy thật: <strong>0 phát hiện</strong> C2.x ở cả ba. Đây là kết quả rỗng vì cấu trúc, không phải vì dữ liệu sạch.</li>
+              <li><strong>C6 cần hai kỳ.</strong> Chỉ 006 có hai kỳ trong bộ dữ liệu, nên đây là hồ sơ duy nhất C6 chạy được.</li>
+            </ul>
+          </div>
+          <figure><span class="fig-tag">Một nhóm phát hiện</span><img src="../huong-dan/14-nhom-phat-hien.png" alt="Bảng phát hiện của một bài kiểm tra"><figcaption>Mỗi bài kiểm tra một khối, tách theo ba mức độ.</figcaption></figure>
+        </div>
+      </article>
+
+      <article class="guide" id="a4" data-t="A4 chấm điểm rủi ro thang 1000 năm hạng mẫu số quy mô tỷ lệ kịch khung tổ hợp">
+        <div class="guide-head"><span class="gid">A4</span><h3>Chấm điểm rủi ro</h3></div>
+        <div class="guide-body">
+          <div class="steps">
+            <dl class="flowio">
+              <dt>Đầu vào</dt><dd>Các phát hiện chưa bị cán bộ đánh dấu <b>Loại trừ</b>.</dd>
+              <dt>Hệ thống làm</dt><dd>Mỗi bài kiểm tra tính <b>tỷ lệ</b> giữa số phát hiện có trọng số và mẫu số quy mô của doanh nghiệp (số mã nguyên vật liệu, số mã thành phẩm, số dòng định mức), quy về tối đa <b>10 điểm</b> mỗi bài. Cộng điểm tổ hợp rủi ro nếu có, rồi quy điểm thô về thang <b>0–1000</b> theo trần lý thuyết của tập bài đã chạy.</dd>
+              <dt>Đầu ra</dt><dd>Một điểm 0–1000 kèm một trong năm hạng.</dd>
+            </dl>
+            <ul class="plain-list">
+              <li>Trọng số mức độ: nghiêm trọng <strong>10</strong> · cảnh báo <strong>3</strong> · thông tin <strong>1</strong>.</li>
+              <li>Bài đã đạt trần 10 điểm được đánh dấu <span class="k">kịch khung</span>; phát hiện thêm không làm điểm tăng nữa.</li>
+              <li>Đánh dấu một phát hiện là <strong>Loại trừ</strong> làm điểm tính lại ngay, không cần chạy lại kiểm tra.</li>
+            </ul>
+          </div>
+          <figure><span class="fig-tag">Chi tiết cách tính điểm</span><img src="../huong-dan/13-cach-tinh-diem.png" alt="Bảng chi tiết cách tính điểm rủi ro"><figcaption>Con số <span class="k">/ 190</span> ở dòng điểm thô là <b>trần lý thuyết</b> (17 bài × 10 + 20 điểm tổ hợp), không phải thang điểm. Thang hiển thị luôn là 0–1000.</figcaption></figure>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Điểm</th><th>Hạng</th><th>Hồ sơ pilot thuộc hạng này</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0 – 50</td><td><b>Dữ liệu nhất quán</b></td><td>002 (7) · 004 (25)</td></tr>
+            <tr><td class="n">51 – 100</td><td><b>Có chênh lệch nhỏ</b></td><td>006 kỳ 2025 (52)</td></tr>
+            <tr><td class="n">101 – 300</td><td><b>Cần rà soát</b></td><td>006 kỳ 2024 (129)</td></tr>
+            <tr><td class="n">301 – 600</td><td><b>Có dấu hiệu bất thường</b></td><td>—</td></tr>
+            <tr><td class="n">601 – 1000</td><td><b>Bất thường nghiêm trọng</b></td><td>—</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Phạm vi của điểm.</b> Điểm và phát hiện là <b>chỉ số rủi ro về chất lượng dữ liệu báo cáo</b>, dùng để sắp xếp ưu tiên kiểm tra. Đây <b>không</b> phải đánh giá mức tuân thủ pháp luật — việc phân loại tuân thủ chính thức thuộc thẩm quyền cơ quan Hải quan theo Thông tư 81/2019/TT-BTC.</div></div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Vì chuẩn hoá theo tỷ lệ, doanh nghiệp quy mô lớn không bị chấm điểm cao chỉ vì có nhiều mã hàng. Hồ sơ 006 kỳ 2025 có <b>10.996</b> phát hiện mà điểm <b>52</b>, thấp hơn kỳ 2024 (<b>3.880</b> phát hiện, điểm <b>129</b>), vì mẫu số quy mô kỳ 2025 lớn hơn.</div></div>
+      </article>
+
+      <article class="guide" id="a5" data-t="A5 tổng quan AI bảng số liệu nhận định mô hình ngôn ngữ hậu kiểm số không khớp bảng đã cũ">
+        <div class="guide-head"><span class="gid">A5</span><h3>Tổng quan AI</h3></div>
+        <div class="guide-body">
+          <div class="steps">
+            <dl class="flowio">
+              <dt>Đầu vào</dt><dd>Bảng số liệu do hệ thống tính bằng truy vấn từ các phát hiện đã lưu — không đi qua mô hình.</dd>
+              <dt>Hệ thống làm</dt><dd>Mô hình ngôn ngữ <b>chỉ nhận bảng đã tính</b> và viết bốn trường ngắn: nhận định chung, điểm nóng, đề xuất rà soát, miễn trừ. Mô hình không truy vấn dữ liệu thô và không tham gia vào logic của bài kiểm tra. Sau khi mô hình trả kết quả, hệ thống <b>hậu kiểm</b>: dò các con số trong nhận định và đối chiếu với bảng; số nào không có trong bảng thì gắn cờ.</dd>
+              <dt>Đầu ra</dt><dd>Bảng số liệu + nhận định + hai cờ: <span class="k">Tổng quan đã cũ</span> và <span class="k">Có số không khớp bảng</span>.</dd>
+            </dl>
+          </div>
+          <figure><span class="fig-tag">Tổng quan AI</span><img src="../huong-dan/22b-tong-quan-ai.png" alt="Khối tổng quan AI của một bài kiểm tra"><figcaption>Ảnh chụp khối tổng quan của bài C1.2 trên hồ sơ 004: bốn mã <span class="k">MC50</span> · <span class="k">PALLET-06</span> · <span class="k">PP-BAND</span> · <span class="k">TAPE50</span>, đều gắn nhãn <b>Liên sổ</b>. Xem mục D3.</figcaption></figure>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Số liệu dùng để lập hồ sơ phải lấy từ <b>bảng số liệu</b> và <b>trang chi tiết phát hiện</b>. Phần nhận định do mô hình viết chỉ để tham khảo, không phải kết luận vi phạm, và không được đưa vào tệp kết xuất Excel.</div></div>
+      </article>
+
+      <article class="guide" id="a6" data-t="A6 hiển thị truy nguồn chứng cứ tầng 1 dòng dữ liệu gốc bảng điều kiện lọc">
+        <div class="guide-head"><span class="gid">A6</span><h3>Hiển thị và truy nguồn</h3></div>
+        <div class="guide-body">
+          <div class="steps">
+            <dl class="flowio">
+              <dt>Đầu vào</dt><dd>Phát hiện kèm chứng cứ đã lưu ở chặng A3.</dd>
+              <dt>Hệ thống làm</dt><dd>Mỗi phát hiện lưu kèm <b>tên bảng Tầng 1</b> và <b>điều kiện lọc</b> dẫn tới đúng những dòng gốc làm phát sinh nó. Trang chi tiết chạy lại điều kiện đó và hiển thị các dòng.</dd>
+              <dt>Đầu ra</dt><dd>Trang chi tiết phát hiện: mô tả nghiệp vụ của bài kiểm tra, các trường tính toán, và các dòng dữ liệu gốc.</dd>
+            </dl>
+          </div>
+          <figure><span class="fig-tag">Chi tiết phát hiện</span><img src="../huong-dan/17-chi-tiet-phat-hien.png" alt="Trang chi tiết một phát hiện kèm chứng cứ truy nguồn"><figcaption>Khối chứng cứ dẫn thẳng về dòng dữ liệu Tầng 1, kèm điều kiện lọc đã dùng.</figcaption></figure>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Khối chứng cứ trả về <b>0 dòng</b> cũng là thông tin. Trong ảnh trên, bảng tờ khai trả 0 dòng chính là lý do phát hiện tồn tại: Mẫu 15 khai nhập 1.440 nhưng không có dòng tờ khai nào tương ứng.</div></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Quy tắc bắt buộc của hệ thống: <b>không phát hiện nào được là hộp đen</b>. Mọi phát hiện phải truy nguồn được về dòng dữ liệu Tầng 1 cụ thể.</div></div>
+      </article>
+    </section>
+
+    <!-- ============ B. BA HỒ SƠ PILOT ============ -->
+    <section class="block sec-read" id="pilot">
+      <div class="block-h"><span class="badge">B</span><h2>Ba hồ sơ pilot</h2></div>
+      <p class="block-lead">Ba doanh nghiệp chế xuất, ba kiểu hồ sơ khác nhau. Phần này không dùng ảnh chụp màn hình dữ liệu thật — chỉ bảng và văn bản.</p>
+
+      <article class="guide" id="b1" data-t="B1 so sánh ba doanh nghiệp 002 004 006 bảng đối chiếu quy mô phát hiện điểm rủi ro">
+        <div class="guide-head"><span class="gid">B1</span><h3>Ba hồ sơ đặt cạnh nhau</h3></div>
+        <div class="tblwrap" style="margin-top:20px"><table class="tb">
+          <thead><tr><th></th><th>002</th><th>004</th><th>006</th></tr></thead>
+          <tbody>
+            <tr><td><b>Loại hình tự nhận</b></td><td>DNCX</td><td>DNCX</td><td>DNCX</td></tr>
+            <tr><td><b>Kỳ báo cáo</b></td><td>Tài chính<br>01/04/2025 – 31/03/2026</td><td>Tài chính<br>01/04/2025 – 31/03/2026</td><td>Dương lịch<br>01/01 – 31/12</td></tr>
+            <tr><td><b>Số kỳ đã nạp</b></td><td class="n">1</td><td class="n">1</td><td class="n">2 — kỳ 2024 và 2025</td></tr>
+            <tr><td><b>Số sổ quyết toán</b></td><td>1</td><td><b>2</b> — EPE và GC</td><td>1 (hai nhà máy, một sổ)</td></tr>
+            <tr><td><b>Dòng Mẫu 15</b></td><td class="n">286</td><td class="n">141 <span style="color:var(--faint)">(EPE 104 · GC 37)</span></td><td class="n">7.882 · 10.560</td></tr>
+            <tr><td><b>Dòng Mẫu 15a</b></td><td class="n">77</td><td class="n">45 <span style="color:var(--faint)">(EPE 43 · GC 2)</span></td><td class="n">436 · 501</td></tr>
+            <tr><td><b>Dòng Mẫu 16</b></td><td class="n">398</td><td class="n">880 <span style="color:var(--faint)">(EPE 664 · GC 216)</span></td><td class="n">71.370 · 113.561</td></tr>
+            <tr><td><b>Dòng tờ khai</b></td><td class="n">11.115 <span style="color:var(--faint)">/ 1.366 tờ khai</span></td><td class="n">547 <span style="color:var(--faint)">/ 229 tờ khai</span></td><td class="n">104.102 · 270.505</td></tr>
+            <tr><td><b>Phát hiện</b></td><td class="n"><b>48</b></td><td class="n"><b>65</b></td><td class="n"><b>3.880 · 10.996</b><br><span style="color:var(--faint)">tổng 14.876</span></td></tr>
+            <tr><td><b>Điểm rủi ro</b></td><td class="n"><b>7</b> / 1000</td><td class="n"><b>25</b> / 1000</td><td class="n"><b>129</b> · <b>52</b> / 1000</td></tr>
+            <tr><td><b>Hạng</b></td><td>Dữ liệu nhất quán</td><td>Dữ liệu nhất quán</td><td>Cần rà soát · Có chênh lệch nhỏ</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Ba hồ sơ hỏng theo ba kiểu khác nhau, và không kiểu nào lặp lại ở cả ba.</b> 002 sạch, sai sót còn lại tập trung ở hai mã lệch đúng 1.000 lần. 006 quy mô lớn, phần lớn phát hiện dồn vào hai bài kiểm tra đọc cùng một cột biểu. 004 nhỏ nhất về số phát hiện nhưng phức tạp nhất về cấu trúc — hai sổ trên một luồng tờ khai.</div></div>
+      </article>
+
+      <article class="guide" id="b2" data-t="B2 doanh nghiệp 002 sạch nhất RP-1AN RP-1AE lệch nghìn lần E13 tái xuất B13 cột 8 A42 UNK">
+        <div class="guide-head"><span class="gid">B2</span><h3>002 — hồ sơ nhất quán nhất</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> <b>48 phát hiện</b> trên 286 mã nguyên vật liệu và 77 mã thành phẩm; điểm rủi ro <b>7</b>, hạng "Dữ liệu nhất quán" — thấp nhất trong ba hồ sơ. Phân bố theo bài kiểm tra: C4.3 <b>27</b> · C3.2 <b>14</b> · C3.3 <b>3</b> · C1.1 <b>2</b> · C3.1 <b>2</b>. Mọi bài còn lại bằng 0. Theo mức độ: 25 nghiêm trọng · 22 cảnh báo · 1 thông tin.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Chiều xuất khớp tuyệt đối.</b> Mẫu 15a cột (8) đối chiếu tờ khai E42: <b>57/57 mã khớp</b>, tổng 25.634.947 = 25.634.947, lệch <b>0</b>. Bài kiểm tra C1.4 của hệ thống không sinh phát hiện nào — kết quả từ phía sản phẩm khẳng định lại con số này.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Hai phát hiện C1.1 duy nhất là hai mã lệch <b>đúng 1.000 lần</b>: <span class="k">RP-1AN</span> Mẫu 15 ghi 100.000 BAG trong khi tờ khai ghi 100 Túi; <span class="k">RP-1AE</span> ghi 80.000 so với 80. BAG và Túi là cùng một đơn vị, nên đây không phải chuyện quy đổi đơn vị.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Ba mã ghi đơn vị tính <span class="k">UNK</span> ở Mẫu 15 — <span class="k">C3-001427-00</span> · <span class="k">PACK-007</span> · <span class="k">PACK-011</span> — trong khi tờ khai ghi Cái/Chiếc và Kiện/Hộp/Bao/Gói. Đây là toàn bộ phát hiện C3.3.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Cột (7) tái xuất của cả <b>286/286</b> dòng là công thức tham chiếu tới một workbook nằm trên máy chủ nội bộ của doanh nghiệp, không có trong bộ dữ liệu được cấp. Đối chiếu vẫn khớp: tổng cột (7) = <b>2.911.113</b> đơn vị trên 136 mã, bằng <b>đúng</b> tổng tờ khai B13 của 136 mã đó. Phần dư: 4 mã B13 / 5.003 đơn vị không có dòng nào trong Mẫu 15.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Cột (7) là <b>khoảng trống truy nguồn</b>, không phải chênh lệch số liệu. Cần nêu đúng ở mức đó, không nâng lên thành nghi vấn.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Cột (8) chuyển mục đích sử dụng <b>trống trên cả 286 dòng</b>, trong khi cùng kỳ có 41 dòng tờ khai A42 — 398 đơn vị trên 28 mã.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Kênh E13: <b>1.246 dòng</b> tờ khai, 897 mã, 243.953 đơn vị; <b>890/897 mã</b> không có mặt ở cả Mẫu 15 lẫn Mẫu 15a. Mã HS tập trung ở nhóm 84/85/90 — máy móc, thiết bị, dụng cụ đo.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Hồ sơ mã HS và mức độ gần như không giao với Mẫu 15 cho thấy phần lớn kênh E13 là tài sản cố định và vật tư tiêu hao, không phải nguyên vật liệu đáng lẽ phải vào Mẫu 15. Còn lại đúng hai mã khai cả E11 lẫn E13 — đó là hai phát hiện C3.1.</li>
+          </ul>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div><b>27 trên 48 phát hiện thuộc C4.3.</b> Trên 002 định mức không trùng lặp, nên nguyên nhân không phải phép cộng thiếu bước khử trùng. Phần lớn là <b>mã tách biến thể</b>: Mẫu 16 gán định mức cho mã hậu tố <span class="k">-00</span>/<span class="k">-00A</span> trong khi sản lượng nằm ở mã <span class="k">-01</span>. Ví dụ <span class="k">C2-000409-00A</span> có Mẫu 15 xuất sản xuất 171.342, còn lượng thật nằm ở <span class="k">C2-000409-01</span> với 3.928.573.</div></div>
+      </article>
+
+      <article class="guide" id="b3" data-t="B3 doanh nghiệp 006 quy mô lớn hai nhà máy hai kỳ nhựa Z440311 định mức trần vật lý chuyển tiếp kỳ">
+        <div class="guide-head"><span class="gid">B3</span><h3>006 — quy mô lớn, hai nhà máy, hai kỳ</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> <b>14.876 phát hiện</b> qua hai kỳ: 3.880 (kỳ 2024) và 10.996 (kỳ 2025). Điểm rủi ro <b>129</b> hạng "Cần rà soát" và <b>52</b> hạng "Có chênh lệch nhỏ".</li>
+            <li><span class="cl cl-fact">Sự thật</span> Hai bài kiểm tra chiếm phần lớn số phát hiện: <b>C1.6</b> (chuyển mục đích sử dụng không có tờ khai A42) 1.660 và 5.785; <b>C1.7</b> (tỷ lệ chuyển mục đích sử dụng vượt ngưỡng) 618 và 2.436. Cộng lại <b>10.499 phát hiện, chiếm 71%</b> tổng của hai kỳ. C1.6 bắn đúng một lần cho <b>mỗi dòng</b> Mẫu 15 có cột (8) &gt; 0.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Quy mô cột (8): 1.660/7.882 dòng (21%) ở kỳ 2024 với tổng 811.711 đơn vị, và 5.785/10.560 dòng (55%) ở kỳ 2025 với tổng 3.457.591 đơn vị — lần lượt 0,76% và 1,02% của (tồn đầu + nhập). Tờ khai A42 cùng kỳ: <b>0 mã / 0 đơn vị</b> ở kỳ 2024, và 284 mã / 6.693 đơn vị ở kỳ 2025.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Biểu mẫu gộp <b>ba</b> nghiệp vụ có nghĩa vụ thuế khác nhau vào một cột — chuyển mục đích sử dụng, tiêu thụ nội địa, tiêu huỷ. Từ chứng từ không phân biệt được phần nào là tiêu huỷ (không cần tờ khai) và phần nào là tiêu thụ nội địa (cần tờ khai). Đây là câu hỏi, không phải kết luận.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Chuyển tiếp giữa hai kỳ khớp tuyệt đối:</b> 6.501/6.501 mã nguyên vật liệu và 208/208 mã thành phẩm có tồn đầu kỳ 2025 bằng tồn cuối kỳ 2024. Không mã nào có tồn cuối 2024 &gt; 0 rồi biến mất khỏi kỳ 2025; không mã mới nào của kỳ 2025 có tồn đầu &gt; 0. Đây là phép kiểm duy nhất trong bộ dữ liệu có hai vế lấy từ hai tệp khác nhau.</li>
+            <li><span class="cl cl-fact">Sự thật</span> C4.3 gắn cờ mức nghiêm trọng cho mã nhựa <span class="k">95801-Z440311-0000</span>: tiêu hao lý thuyết theo Mẫu 16 = <b>163.871.796,50</b> Gam, xuất kho để sản xuất theo Mẫu 15 = <b>31.294.330</b> Gam, chênh <b>+423,6%</b>. Bốn mã nhựa cùng họ <span class="k">95801-Z44*</span> cũng bị gắn cờ, biên độ +26,0% đến +77,9%.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Cả kỳ mã này nhập <b>34.000.000</b> Gam, tồn đầu kỳ <b>0</b> — tức trần vật lý là 34.000.000. Tiêu hao lý thuyết đòi gấp <b>4,9 lần</b> lượng có thật trong kho. Bốn mã nhựa anh em có định mức trung vị 88–446 g; riêng mã này trung vị 647, cao nhất 1.903.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Ba khả năng: định mức khai cao, lượng nhập khai thiếu, hoặc sản lượng khai vống. Sản lượng đã đối chiếu khớp tờ khai xuất, nên còn lại định mức hoặc lượng nhập; định mức là nghi vấn chính vì các mã cùng họ thấp hơn khoảng sáu lần. Cần hỏi doanh nghiệp, không tự kết luận là thất thoát.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Bảng kê tờ khai của nhà máy thứ hai: tên tệp ghi tới 31/08/2025 nhưng dòng cuối là <b>18/08/2025</b>, trong khi kỳ quyết toán chạy tới 31/12/2025; 414 dòng của tệp này thiếu ngày đăng ký. Lượng nhập của nhà máy này giảm dần từ tháng 5 rồi dừng, cùng lúc nhà máy còn lại tăng mạnh nửa cuối năm. <b>2.482/2.579 mã</b> (96%) nguyên vật liệu nhập của nhà máy dừng cũng có ở nhà máy kia.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Hình mẫu khớp với việc một nhà máy dừng và dồn sản xuất sang nhà máy còn lại. Đối chiếu chiều nhập của kỳ 2025 vẫn khớp (+0,04%) vì đã cộng cả hai tệp, nên không mất lượng trong quyết toán. Cần doanh nghiệp xác nhận trạng thái vận hành.</li>
+          </ul>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Không nâng con số này thành phát hiện.</b> Sau khi loại họ nhựa <span class="k">95801-Z44*</span>, phần còn lại của C4.3 kỳ 2025 vẫn có 1.894 mã vượt trần vật lý, nhưng biên độ chỉ 1,1–2 lần. Đó là nhiễu của mô hình C4.3, không phải một mã sai đơn lẻ.</div></div>
+      </article>
+    </section>
+
+    <!-- ============ C. 004 — HAI SỔ ============ -->
+    <section class="block sec-run" id="haiso">
+      <div class="block-h"><span class="badge">C</span><h2>004 — hai sổ quyết toán</h2></div>
+      <p class="block-lead">Một pháp nhân nộp hai bộ báo cáo quyết toán trên cùng một luồng tờ khai. Đây là hồ sơ thật đằng sau mục <a href="../huong-dan/index.html#d5" style="color:var(--brand)">D5 của cẩm nang</a> — mục đó mô tả tính năng chung, mục này là trường hợp cụ thể.</p>
+
+      <article class="guide" id="c1" data-t="C1 004 một pháp nhân hai bộ quyết toán EPE GC chế xuất nhận gia công quy mô hai sổ bên đặt gia công">
+        <div class="guide-head"><span class="gid">C1</span><h3>Hồ sơ: một pháp nhân, hai bộ quyết toán</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> Doanh nghiệp chế xuất, kỳ <b>01/04/2025 – 31/03/2026</b>. Nộp <b>hai bộ báo cáo quyết toán</b>: một bộ chế xuất (ký hiệu EPE) và một bộ cho hoạt động nhận gia công (ký hiệu GC). Đây là <b>một pháp nhân, hai sổ</b> — không phải hai chế độ đăng ký khác nhau.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Chỉ <b>một loại hình</b> trên toàn bộ tờ khai quan sát được: <b>229 tờ khai / 547 dòng hàng</b> — nhập E11 175 dòng, E15 172 dòng; xuất E42 200 dòng. Không có dòng E21/E23/E52/E54, không có E31/E33/E62.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Bộ GC <b>bắt đầu trong kỳ</b>: tồn đầu kỳ bằng 0 ở toàn bộ dòng nguyên vật liệu và thành phẩm, khớp ngày ký hợp đồng gia công <b>25/07/2025</b>.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Doanh nghiệp là <b>bên nhận gia công</b>. Cả <b>33/33 dòng</b> tờ khai xuất giao cho bên đặt gia công đều có điều kiện giá EXW, tiền tệ USD, địa điểm dỡ hàng tại Nhật Bản (ba mã cảng: 18 · 10 · 5 dòng).</li>
+            <li><span class="cl cl-infer">Suy luận</span> Bên đặt gia công là thương nhân nước ngoài và hàng thực sự rời Việt Nam. Đây không phải xuất khẩu tại chỗ. Chiều vật tư là bên đặt → 004 → bên đặt.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Cùng một sản phẩm, hai bộ định mức khác nhau. Với mã <span class="k">666232400F</span>: bộ EPE dựng từ 17 nguyên vật liệu, tổng định mức 29,0691; bộ GC dựng từ 24 nguyên vật liệu, tổng 10,7022. Không phải chênh theo tỷ lệ — tập nguyên vật liệu khác hẳn, vì hai sổ tách theo <b>quyền sở hữu vật tư</b>.</li>
+          </ul>
+        </div>
+        <div class="tblwrap"><table class="tb">
+          <thead><tr><th>Quy mô hai sổ</th><th>Sổ EPE</th><th>Sổ GC</th></tr></thead>
+          <tbody>
+            <tr><td>Mẫu 15 — mã nguyên vật liệu</td><td class="n"><b>98</b> mã / 104 dòng</td><td class="n"><b>37</b> mã / 37 dòng</td></tr>
+            <tr><td>Mẫu 15a — mã thành phẩm</td><td class="n">43</td><td class="n">2</td></tr>
+            <tr><td>Mẫu 16 — dòng định mức</td><td class="n">664 <span style="color:var(--faint)">(58 mã sản phẩm)</span></td><td class="n">216 <span style="color:var(--faint)">(8 mã sản phẩm)</span></td></tr>
+            <tr><td>Tờ khai</td><td colspan="2"><b>547 dòng / 229 tờ khai — dùng chung, không tách theo sổ</b></td></tr>
+          </tbody>
+        </table></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>12 mã nguyên vật liệu có mặt ở cả hai sổ</b>; hợp lại còn <b>123</b> mã phân biệt (98 + 37 − 12). Hai sổ chia nhau đúng lượng đã khai, không khai trùng: cộng qua hai sổ khớp tờ khai ở <b>9/12</b> mã — ví dụ <span class="k">PEBAG1</span> 296 + 100 = 396 đúng bằng lượng khai; <span class="k">S9NH022-D9648</span> 5 + 16 = 21.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Con số 104 là số dòng, không phải số mã.</b> Sổ EPE có 104 dòng Mẫu 15 chứa 98 mã phân biệt: 6 mã được ghi kép bằng hai đơn vị tính (mét và cuộn), mỗi mã một dòng cho mỗi đơn vị. Tỷ lệ mét trên cuộn là hằng số theo từng vật tư trên mọi cột, tức đây là <b>một lượng vật lý ghi lại bằng đơn vị thứ hai</b>, không phải hai bút toán độc lập. Cộng qua hai đơn vị sẽ tính hai lần.</div></div>
+      </article>
+
+      <article class="guide" id="c2" data-t="C2 cơ chế hệ thống xử lý hai sổ tag sổ tờ khai dùng chung khử trùng kiểm tra nội sổ chéo liên sổ">
+        <div class="guide-head"><span class="gid">C2</span><h3>Cơ chế hệ thống xử lý hai sổ</h3></div>
+        <div class="guide-body wide">
+          <div class="steps"><ol>
+            <li><strong>Một pháp nhân, N sổ.</strong> Hai bộ quyết toán <strong>không</strong> tạo thành hai doanh nghiệp trong hệ thống. Chúng là hai giá trị của trường <em>sổ</em> trên các bảng Tầng 1 của cùng một pháp nhân.</li>
+            <li><strong>Tờ khai gắn ở mức pháp nhân.</strong> Bảng kê tờ khai trong hai thư mục nguồn <strong>trùng khớp từng byte</strong>, nên hệ thống khử trùng và chỉ nạp một lần — 547 dòng, <strong>không cộng đôi</strong>. Dòng tờ khai không mang nhãn sổ.</li>
+            <li><strong>Gắn nhãn sổ ở tầng sổ.</strong> Nhãn EPE/GC gắn trên dòng Mẫu 15, Mẫu 15a và Mẫu 16 — đúng ba biểu mà mỗi sổ nộp riêng.</li>
+            <li><strong>Kiểm tra nội sổ tách theo sổ.</strong> C4.1, C4.3, C6.1 và nhóm C2 đối chiếu trong phạm vi một sổ, vì cả hai vế của phép so đều là biểu của sổ đó.</li>
+            <li><strong>Kiểm tra chéo đối chiếu với luồng tờ khai chung.</strong> C1.1, C1.2, C1.4, C3.1, C3.2 so <strong>tổng hợp hai sổ</strong> với tổng tờ khai của pháp nhân — không tách được, vì tờ khai không có sổ.</li>
+            <li><strong>Phát hiện không quy được về sổ nào hiển thị nhãn "Liên sổ".</strong> Đó là các phát hiện của nhóm kiểm tra chéo.</li>
+          </ol></div>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Vì sao không tách hai sổ thành hai pháp nhân.</b> Tách ra sẽ phá đúng phép kiểm có giá trị nhất trên hồ sơ này — một lượng nhập có bị dùng để giải trình đầu ra ở <b>cả hai sổ</b> hay không. Ngoài ra: ưu đãi miễn thuế gắn với pháp nhân và tờ khai, không gắn với sổ; và tờ khai xuất không có khoá tách nên đầu ra không quy được về sổ nào kể cả trên nguyên tắc.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Nhãn sổ chỉ tồn tại trong bản ghi tệp đã nạp.</b> Nếu thư mục nguồn vắng mặt rồi nạp lại, hệ thống <b>dừng lượt nạp kèm thông báo</b> thay vì âm thầm dựng lại 004 thành một sổ gộp — nó đối chiếu với sổ thật đã lưu trong dữ liệu, một nguồn độc lập với bản ghi tệp. Đường gộp im lặng đã bị chặn, nhưng nhãn vẫn có thể mất và phải gán lại trước khi nạp.</div></div>
+      </article>
+
+      <article class="guide" id="c3" data-t="C3 phân bố 65 phát hiện theo sổ liên sổ EPE GC bảng kiểm tra mức độ nghiêm trọng">
+        <div class="guide-head"><span class="gid">C3</span><h3>Phân bố 65 phát hiện theo sổ</h3></div>
+        <div class="tblwrap" style="margin-top:20px"><table class="tb">
+          <thead><tr><th>Bài kiểm tra</th><th>Nội dung</th><th>Sổ</th><th class="n">Phát hiện</th></tr></thead>
+          <tbody>
+            <tr><td><span class="k">C1.1</span></td><td>Lệch số lượng nhập nguyên vật liệu (Mẫu 15 vs tờ khai)</td><td>Liên sổ</td><td class="n">28</td></tr>
+            <tr><td><span class="k">C1.2</span></td><td>Có tờ khai nhập nhưng không có trong Mẫu 15</td><td>Liên sổ</td><td class="n">4</td></tr>
+            <tr><td><span class="k">C1.4</span></td><td>Lệch số lượng xuất thành phẩm (Mẫu 15a vs tờ khai)</td><td>Liên sổ</td><td class="n">2</td></tr>
+            <tr><td><span class="k">C3.2</span></td><td>Mã HS không nhất quán trong kỳ</td><td>Liên sổ</td><td class="n">1</td></tr>
+            <tr><td><span class="k">C1.3</span></td><td>Có trong Mẫu 15 nhưng không có tờ khai</td><td>EPE</td><td class="n">13</td></tr>
+            <tr><td><span class="k">C4.3</span></td><td>Tổng tiêu hao Mẫu 16 vượt xuất sản xuất Mẫu 15</td><td>EPE</td><td class="n">8</td></tr>
+            <tr><td><span class="k">C4.1</span></td><td>Nguyên vật liệu trong Mẫu 16 không có nguồn</td><td>EPE</td><td class="n">5</td></tr>
+            <tr><td><span class="k">C3.3</span></td><td>Đơn vị tính không nhất quán</td><td>EPE</td><td class="n">2</td></tr>
+            <tr><td><span class="k">C1.6</span></td><td>Chuyển mục đích sử dụng không có tờ khai A42</td><td>EPE</td><td class="n">1</td></tr>
+            <tr><td><span class="k">C1.7</span></td><td>Tỷ lệ chuyển mục đích sử dụng vượt ngưỡng</td><td>EPE</td><td class="n">1</td></tr>
+            <tr><td colspan="3"><b>Tổng</b></td><td class="n"><b>65</b></td></tr>
+          </tbody>
+        </table></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> Theo sổ: <b>Liên sổ 35 · EPE 30 · GC 0</b>. Theo mức độ: <b>52 nghiêm trọng · 7 cảnh báo · 6 thông tin</b>. Điểm rủi ro <b>25/1000</b>, hạng "Dữ liệu nhất quán".</li>
+            <li><span class="cl cl-fact">Sự thật</span> 35 phát hiện Liên sổ đều thuộc nhóm kiểm tra chéo với tờ khai. 30 phát hiện gắn sổ đều thuộc sổ EPE. Sổ GC không sinh phát hiện nào.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Con số "GC 0" <b>không</b> có nghĩa sổ GC sạch tuyệt đối. Xem mục E1 — luồng tờ khai dùng chung đang che một phần.</li>
+          </ul>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Khi lọc theo một sổ mà không có phát hiện nào, hệ thống nói rõ sổ đó <b>đã được kiểm tra và không có chênh lệch</b> — khác với trạng thái thiếu dữ liệu hoặc chưa chạy kiểm tra. Thao tác lọc theo sổ mô tả ở <a href="../huong-dan/index.html#d5" style="color:var(--brand)">mục D5 của cẩm nang</a>.</div></div>
+      </article>
+
+      <article class="guide" id="c4" data-t="C4 ranh giới hai sổ tiền tố GC cột 56 không tiêu đề gõ tay nhãn phân bổ điều 60 theo dõi từng loại hình">
+        <div class="guide-head"><span class="gid">C4</span><h3>Ranh giới hai sổ nằm ở đâu</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> <b>Tiền tố <span class="k">GC-</span> ở mã nguyên vật liệu tách được phần lớn.</b> Toàn bộ 39 dòng tờ khai mang mã có tiền tố <span class="k">GC-</span> đều thuộc sổ GC; không mã <span class="k">GC-</span> nào nằm ở sổ EPE. Tiền tố này đánh dấu vật tư mua trong nước theo E15 rồi hạch toán vào hợp đồng gia công.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>12 mã có mặt ở cả hai sổ mà không có tiền tố</b> — đó là phần không tách được bằng mã.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Ngoài mã, ranh giới duy nhất ghi lại được nằm ở <b>cột thứ 56 không tiêu đề</b> của bảng kê tờ khai nhập: giá trị <b>EPE 243 dòng / GC 104 dòng</b>. Bảng kê tờ khai xuất không có cột này, ô số hợp đồng trống toàn bộ, mã loại hình toàn E42.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Đã đối chiếu toàn bộ <b>33 tệp bảng kê tờ khai của 10 doanh nghiệp</b>. Hai bằng chứng: (1) mọi tệp khác đều có dòng tiêu đề ở dòng 9, dưới khối mào đầu chuẩn của cơ quan Hải quan — hai tệp của 004 có tiêu đề ở dòng 0, khối mào đầu đã bị cắt; (2) tệp nhập của 004 là tệp duy nhất trong 33 tệp có cột dữ liệu thừa thực sự.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Cột 56 do <b>người gõ tay thêm vào</b> trước khi tệp đến tay dự án, không phải trường của bản xuất chuẩn. Dùng làm <b>bằng chứng đối chiếu</b> thì được; <b>không</b> được cho bộ đọc tệp phụ thuộc vào nó, vì hồ sơ của khách sau sẽ không có cột này.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Trên 104 dòng mang nhãn GC, dấu hiệu nhận biết được từ chính nội dung tờ khai: ô số hợp đồng ghi hợp đồng gia công <b>48 dòng</b> · mã hàng có tiền tố <span class="k">GC-</span> <b>36 dòng</b> · có cả hai <b>3 dòng</b> · <b>không dấu hiệu nào 17 dòng</b>.</li>
+            <li><span class="cl cl-law">Căn cứ pháp lý</span> Điều 60 khoản 2 điểm a Thông tư 38/2015/TT-BTC, sửa bởi khoản 39 Điều 1 Thông tư 39/2018/TT-BTC (đọc theo Văn bản hợp nhất 25/VBHN-BTC ngày 06/9/2018): nguyên liệu, vật tư có nguồn gốc nhập khẩu <i>"được theo dõi chi tiết theo từng loại hình trong kỳ"</i>. Khoản 1 xác định phạm vi gia công/SXXK bao gồm doanh nghiệp chế xuất.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Ở hồ sơ này, việc theo dõi theo từng loại hình nằm trong <b>một cột Excel không tiêu đề do người gõ tay</b>, không nằm trong tờ khai. Thông thường hai loại hình tách nhau bằng mã loại hình; 004 khai cả hai sổ dưới mã chế xuất nên tờ khai không lưu dấu vết loại hình của từng lần nhập. Đây là nội dung thực chất cần trao đổi, không phải khoảng trống của đường ống dữ liệu.</li>
+          </ul>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Với doanh nghiệp khai đúng mã loại hình cho từng sổ, vấn đề này không phát sinh:</b> mã loại hình trên tờ khai <b>chính là</b> nhãn sổ, lấy được từ dữ liệu đã nạp. 004 là ngoại lệ vì khai cả hai sổ dưới mã chế xuất. Hệ quả cho thiết kế: gộp hai sổ ở kiểm tra chéo là <b>mặc định đúng</b>, không phải ràng buộc vĩnh viễn.</div></div>
+      </article>
+    </section>
+
+    <!-- ============ D. CÂU HỎI CÒN GIÁ TRỊ ============ -->
+    <section class="block sec-act" id="cauhoi">
+      <div class="block-h"><span class="badge">D</span><h2>Câu hỏi còn giá trị</h2></div>
+      <p class="block-lead">Mười nội dung đề xuất làm rõ, giữ nguyên phân nhóm và mức độ của báo cáo phân tích sơ bộ hồ sơ 004. Tính đến ngày cập nhật, chưa nội dung nào có trả lời.</p>
+
+      <article class="guide" id="d0" data-t="D0 bảng tổng hợp mười nội dung đề xuất làm rõ nhóm A B C đầu mối mức độ">
+        <div class="guide-head"><span class="gid">D0</span><h3>Bảng tổng hợp</h3></div>
+        <div class="tblwrap" style="margin-top:20px"><table class="tb">
+          <thead><tr><th>Mục</th><th>Nội dung đề xuất làm rõ</th><th>Đầu mối</th><th>Mức độ</th></tr></thead>
+          <tbody>
+            <tr><td><b>A1</b></td><td>Bản trích xuất tờ khai đầy đủ, không lọc — bản đã cấp thiếu mã loại hình E13/A42, thiếu một sổ, và thiếu 38.676 sản phẩm</td><td>Hải quan</td><td>Cao nhất</td></tr>
+            <tr><td><b>A2</b></td><td>Tra tờ khai đối ứng của 4 tờ khai E15 mã <span class="k">SD-62-HR-LF</span> (600.000 đơn vị)</td><td>Hải quan</td><td>Trung bình</td></tr>
+            <tr><td><b>B1</b></td><td>Cung cấp tệp nhập – xuất – tồn kế toán chốt 31/03/2026</td><td>Doanh nghiệp</td><td>Cao nhất</td></tr>
+            <tr><td><b>B2</b></td><td>Giải trình 850 đơn vị <span class="k">PALLET-06</span>: có tờ khai, có định mức, không có trong Mẫu 15</td><td>Doanh nghiệp</td><td>Cao</td></tr>
+            <tr><td><b>B3</b></td><td>Giải trình 78.000 MTR nguyên vật liệu + 788 thành phẩm qua cột "chuyển mục đích sử dụng, tiêu thụ nội địa, tiêu huỷ"</td><td>Doanh nghiệp</td><td>Cao</td></tr>
+            <tr><td><b>B4</b></td><td>Tư cách pháp lý của bên bán và chứng từ cho 330.275 MTR nhập kho không làm thủ tục hải quan</td><td>Doanh nghiệp</td><td>Cao</td></tr>
+            <tr><td><b>B5</b></td><td>Quy trình ghi nhận vật tư luân chuyển giữa hai sổ; căn cứ phân bổ 17 dòng tờ khai</td><td>Doanh nghiệp</td><td>Trung bình</td></tr>
+            <tr><td><b>B6</b></td><td>Giải thích chênh lệch 14,9% giữa định mức và lượng xuất kho sản xuất (<span class="k">NC-100100020P</span>)</td><td>Doanh nghiệp</td><td>Thấp</td></tr>
+            <tr><td><b>B7</b></td><td>Xác nhận kỳ báo cáo của bộ quyết toán GC — biểu mẫu ghi 2024-2025, nội dung thuộc 2025-2026</td><td>Doanh nghiệp</td><td>Trung bình</td></tr>
+            <tr><td><b>C1</b></td><td>Hướng dẫn mã loại hình cho hoạt động nhận gia công từ 01/02/2026 — liên quan 38 dòng tờ khai trong kỳ</td><td>Hải quan</td><td>Trung bình</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Hai mục <b>A1</b> và <b>B1</b> có ảnh hưởng lớn nhất; riêng A1 có thể giúp làm rõ thêm mục A2 và B3. Các mục còn lại độc lập với nhau. Sáu mục được trình bày chi tiết dưới đây.</div></div>
+      </article>
+
+      <article class="guide" id="d1" data-t="D1 A1 bản trích xuất tờ khai đầy đủ không lọc E13 A42 38676 sản phẩm không có tờ khai giấy phép xuất khẩu">
+        <div class="guide-head"><span class="gid">D1</span><h3>A1 · Bản trích xuất tờ khai đầy đủ, không lọc</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> <b>Thiếu mã loại hình.</b> Bảng kê tờ khai nhập có 347 dòng, chỉ gồm E11 (175) và E15 (172) — không có dòng E13 nào, cũng không có dòng A42/A41 nào. Trong khi chính Mẫu 15 bộ EPE ghi nhận nhập E13 trong kỳ: <span class="k">MC50</span> 108 · <span class="k">TAPE50</span> 48 · <span class="k">PP-BAND</span> 10; biểu mẫu còn có hẳn cột Tồn E13, H11.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>38.676 sản phẩm không có tờ khai.</b> Bộ quyết toán GC, Mẫu 15a, cột (8b) "Lượng SP đăng ký tờ khai và xuất kho năm nay":</li>
+          </ul>
+          <div class="tblwrap" style="margin:14px 0 0"><table class="tb">
+            <thead><tr><th>Mã sản phẩm</th><th class="n">Khai đã xuất</th><th class="n">Có trên bảng kê xuất khẩu</th><th class="n">Chênh</th></tr></thead>
+            <tbody>
+              <tr><td><span class="k">666232400F</span></td><td class="n">19.680</td><td class="n">345</td><td class="n">19.335</td></tr>
+              <tr><td><span class="k">666232500F</span></td><td class="n">19.680</td><td class="n">339</td><td class="n">19.341</td></tr>
+              <tr><td><b>Tổng</b></td><td class="n"><b>39.360</b></td><td class="n"><b>684</b></td><td class="n"><b>38.676</b></td></tr>
+            </tbody>
+          </table></div>
+          <ul class="claims" style="margin-top:14px">
+            <li><span class="cl cl-fact">Sự thật</span> Tệp bảng kê xuất chỉ có một sheet và đối chiếu 1:1 với riêng bộ EPE (khớp 41/41 mã). Lượng 684 đơn vị đúng cỡ của bộ EPE — định mức EPE dựng 346/341 đơn vị — không phải cỡ của bộ GC.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Thiếu một chỉ tiêu.</b> Số tiếp nhận hợp đồng gia công được khai tại ô "giấy phép xuất khẩu" (khoản 2 Điều 56, sửa bởi khoản 36 Điều 1 Thông tư 39/2018). Ô này không có trong bố cục 54 cột của bản đã cấp, nên không đối chiếu được tờ khai với hợp đồng.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Hai tệp tờ khai được cấp là <b>bản trích xuất đã lọc</b>.</li>
+            <li><span class="cl cl-law">Căn cứ pháp lý</span> Sản phẩm gia công xuất khẩu bắt buộc có tờ khai xuất. Trước 01/02/2026: Điều 75 khoản 1 Thông tư 38/2015 (sửa bởi khoản 51 Điều 1 Thông tư 39/2018) — thủ tục theo Chương II, mã E42. Từ 01/02/2026: Điều 76 khoản 5 (bổ sung bởi khoản 47 Điều 1 Thông tư 121/2025) dẫn sang chế độ gia công tại Mục 2 Chương III, mã E52. <b>Kỳ báo cáo vắt qua mốc này.</b></li>
+          </ul>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Ảnh hưởng — đây là nội dung mở khoá nhiều mục nhất.</b> Có bản đầy đủ thì: (i) xác định được 38.676 sản phẩm đã có tờ khai hay chưa — nếu có thì khoảng trống chỉ do lọc dữ liệu; (ii) đối chiếu được phần E13 hiện chưa kiểm được; (iii) kết luận được mục D4 về các lượng đi qua cột "chuyển mục đích sử dụng". Chưa có bản đầy đủ thì mọi đối chiếu dạng "có trong báo cáo quyết toán mà tờ khai không có" đều <b>chưa kết luận được</b>.</div></div>
+      </article>
+
+      <article class="guide" id="d2" data-t="D2 C1 mã loại hình gia công từ 01/02/2026 thông tư 121/2025 E42 E52 E21 E23 38 dòng tờ khai">
+        <div class="guide-head"><span class="gid">D2</span><h3>C1 · Mã loại hình cho hoạt động nhận gia công từ 01/02/2026</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> Kỳ báo cáo 01/04/2025 – 31/03/2026 đi qua ngày <b>01/02/2026</b> — ngày Thông tư 121/2025/TT-BTC có hiệu lực. Trong kỳ có <b>38 dòng tờ khai</b> thuộc hợp đồng gia công được đăng ký sau mốc này:</li>
+          </ul>
+          <div class="tblwrap" style="margin:14px 0 0"><table class="tb">
+            <thead><tr><th>Tờ khai đăng ký từ 01/02/2026</th><th class="n">Số dòng</th><th>Mã loại hình đang khai</th></tr></thead>
+            <tbody>
+              <tr><td>Nhập, gắn hợp đồng gia công</td><td class="n">26</td><td>E11 (23) · E15 (3)</td></tr>
+              <tr><td>Xuất, giao cho bên đặt gia công</td><td class="n">12</td><td>E42 (12)</td></tr>
+            </tbody>
+          </table></div>
+          <ul class="claims" style="margin-top:14px">
+            <li><span class="cl cl-law">Căn cứ pháp lý</span> <b>Giai đoạn trước 01/02/2026,</b> cách khai E11/E15/E42 là phù hợp: doanh nghiệp chế xuất nhận gia công cho thương nhân nước ngoài làm thủ tục theo chế độ doanh nghiệp chế xuất chung (Điều 75 khoản 1 Thông tư 38/2015, bản sửa bởi khoản 51 Điều 1 Thông tư 39/2018). Bảng mã theo Quyết định 1357/QĐ-TCHQ cũng ghi mục đích của E11 và E15 là "để sản xuất, gia công".</li>
+            <li><span class="cl cl-law">Căn cứ pháp lý</span> <b>Từ 01/02/2026,</b> khoản 47 Điều 1 Thông tư 121/2025 bổ sung Điều 76 khoản 5: trường hợp này <i>"thực hiện theo quy định về hàng hóa nhận gia công tại Việt Nam cho thương nhân nước ngoài tại Mục 2 Chương III"</i> — tức chế độ gia công, tương ứng mã E21/E23 khi nhập và E52 khi xuất.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Hợp đồng ký ngày 25/07/2025, tức trước mốc hiệu lực, nhưng 38 dòng tờ khai đăng ký sau mốc. Đề xuất xin ý kiến hướng dẫn: với các dòng này, mã loại hình nào là phù hợp.</li>
+          </ul>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div>Nội dung này cũng chạm vào hệ thống: nếu doanh nghiệp chuyển sang khai E21/E23/E52 cho sổ GC thì <b>mã loại hình trở thành nhãn sổ</b>, và kiểm tra chéo có thể chạy theo từng sổ thay vì gộp — xem mục C4 và E1.</div></div>
+      </article>
+
+      <article class="guide" id="d3" data-t="D3 B2 PALLET-06 850 đơn vị có tờ khai có định mức không có Mẫu 15 C1.2 C4.1">
+        <div class="guide-head"><span class="gid">D3</span><h3>B2 · <span class="k">PALLET-06</span>: có tờ khai nhập, có định mức, không có trong quyết toán</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> Ba tờ khai nhập mã loại hình E15 trong kỳ, tổng <b>850 Cái/Chiếc</b>, các ngày 24/12/2025 (300) · 29/01/2026 (150) · 26/02/2026 (400). Tên hàng "Pallet liền khay dưới"; cột phân bổ sổ ghi <b>EPE</b>.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Mã này có trong Mẫu 16 bộ EPE (<b>6 dòng định mức</b>, định mức 0,00089–0,0167) nhưng <b>không có dòng nào trong Mẫu 15</b>.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Đối chứng loại trừ khả năng nhầm quy ước mã:</b> cùng nhà cung cấp giao 6 mã trong kỳ; 5 mã kia — <span class="k">CARTON-11</span>, <span class="k">CARTON2</span>, <span class="k">CARTON5</span>, <span class="k">CARTON9</span>, <span class="k">NEPGOC80</span> — đều có dòng Mẫu 15. <span class="k">PALLET-06</span> là mã duy nhất không có. Cùng quy ước đặt mã, cùng nhà cung cấp, cùng sổ.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Sổ EPE có mã <span class="k">PALET1100G</span> ("Pallet gỗ 1100 × 1100", 2.080 PCE) và sổ GC có <span class="k">GC-PALLET-5</span> (180 PCE), nhưng cả hai là loại pallet khác, đơn vị khác, số lượng khác.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Có khả năng đây là vật tư nhập khẩu theo diện doanh nghiệp chế xuất chưa được phản ánh trong báo cáo quyết toán. Chưa loại trừ được các cách giải thích khác.</li>
+          </ul>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div><b>Hệ thống bắt được nội dung này ở hai bài kiểm tra độc lập:</b> C1.2 (có tờ khai nhập nhưng không có trong Mẫu 15) và C4.1 (nguyên vật liệu trong Mẫu 16 không có nguồn). Trong toàn bộ nhóm kiểm tra định mức C4 trên hồ sơ 004, đây là phát hiện thật duy nhất.</div></div>
+      </article>
+
+      <article class="guide" id="d4" data-t="D4 B3 LE1400-QLL-BLACK 78000 MTR chuyển mục đích sử dụng tiêu thụ nội địa tiêu huỷ cột 8 A42 C1.6 C1.7">
+        <div class="guide-head"><span class="gid">D4</span><h3>B3 · <span class="k">LE1400-QLL-BLACK</span>: 78.000 MTR qua cột "Chuyển mục đích sử dụng"</h3></div>
+        <div class="guide-body">
+          <div class="steps">
+            <ul class="claims">
+              <li><span class="cl cl-fact">Sự thật</span> Mẫu 15 bộ EPE, dòng "Chỉ nilon 66 dùng để may túi khí, chỉ màu đen": toàn bộ tồn đầu kỳ đi ra qua cột (8), ô ghi chú để trống.</li>
+              <li><span class="cl cl-fact">Sự thật</span> <b>Đã loại trừ khả năng bút toán đổi mã.</b> Doanh nghiệp có thực hiện đổi mã vật tư và ghi chú lại ở ô Ghi chú — bộ EPE có 6 ghi chú dạng này. Nhưng ô ghi chú của dòng đang xét <b>để trống</b>, và mã <span class="k">LE-1400-QLL-BL</span> xuất hiện trong các ghi chú đổi mã là vật tư khác: "Chỉ nilon 66 màu xanh", trong kỳ vẫn nhập 2.808.000 và xuất sản xuất 3.910.469.</li>
+            </ul>
+          </div>
+          <figure>
+            <span class="fig-tag">Dòng Mẫu 15 bộ EPE</span>
+            <div class="tblwrap" style="margin:0"><table class="tb">
+              <tbody>
+                <tr><td>Tồn đầu kỳ (5)</td><td class="n"><b>78.000</b> MTR</td></tr>
+                <tr><td>Nhập trong kỳ (6a+6b+6c+6d)</td><td class="n">0</td></tr>
+                <tr><td>Chuyển MĐSD, tiêu thụ nội địa, tiêu huỷ (8)</td><td class="n"><b>78.000</b></td></tr>
+                <tr><td>Xuất kho để sản xuất (9)</td><td class="n">0</td></tr>
+                <tr><td>Tồn cuối kỳ</td><td class="n">0</td></tr>
+                <tr><td>Ghi chú</td><td><i style="color:var(--faint)">(trống)</i></td></tr>
+              </tbody>
+            </table></div>
+          </figure>
+        </div>
+        <div class="guide-body wide" style="padding-top:0">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> Mẫu 15a bộ EPE cũng có <b>4 mã thành phẩm</b> đi qua cột chuyển mục đích sử dụng, tổng <b>788 đơn vị</b>: <span class="k">WD12-0020-100</span> 539 · <span class="k">WD15-4960-300</span> 232 · <span class="k">6458520</span> 9 · <span class="k">6535236</span> 8.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Tệp tờ khai được cấp không có dòng A42/A41 nào — nhưng tệp đã bị lọc (mục D1), nên <b>chưa kết luận được</b> là thiếu tờ khai.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Cột (8) gộp <b>ba</b> nghiệp vụ có nghĩa vụ thuế khác nhau — chuyển mục đích sử dụng · tiêu thụ nội địa · tiêu huỷ. Từ biểu mẫu không phân biệt được là hình thức nào. Đề xuất doanh nghiệp cho biết 78.000 MTR nguyên vật liệu và 788 đơn vị thành phẩm thuộc hình thức nào, kèm tờ khai (A42/A41…) hoặc chứng từ tiêu huỷ. Tuỳ hình thức xử lý, có thể phát sinh nghĩa vụ khai và nộp thuế.</li>
+          </ul>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div>Hệ thống bắt nội dung này ở <b>C1.6</b> (chuyển mục đích sử dụng không có tờ khai A42) và <b>C1.7</b> (tỷ lệ chuyển mục đích sử dụng đạt <b>100%</b> của tồn đầu cộng nhập trong kỳ). Cùng bản chất với hiện tượng ở 006 (mục B3), nhưng ở 006 quy mô là hàng nghìn mã.</div></div>
+      </article>
+
+      <article class="guide" id="d5" data-t="D5 B5 CARTON10 178 pcs vật tư luân chuyển giữa hai sổ không có bút toán điều 61 điều 86 điều 74">
+        <div class="guide-head"><span class="gid">D5</span><h3>B5 · Vật tư luân chuyển giữa hai sổ không có bút toán ghi nhận</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> Trong tệp định mức của bộ GC, sheet đối chiếu, dòng 36, doanh nghiệp <b>tự ghi</b> ở cột Ghi chú: <i>"Sử dụng 178 pcs hàng CARTON10 ( EPE)"</i>. Các cột cùng dòng đó: mã <span class="k">GC-CARTON10</span> · đơn vị PCE · xuất kho dùng cho sản xuất 3.550 · lượng theo định mức 3.728,17 · lệch <b>−178,17</b>.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Sổ GC <b>không có dòng nhập <span class="k">CARTON10</span> nào</b> — chỉ có <span class="k">GC-CARTON10</span>. Sổ EPE ghi <span class="k">CARTON10</span> nhập 450 / xuất 372. Tức 178 thùng được tiêu hao cho hợp đồng gia công mà sổ GC không ghi nhận đã nhận chúng, và sổ EPE cũng không ghi nhận đã chuyển đi.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Hai tờ khai <span class="k">CARTON10</span> tổng 450 đơn vị được gán nhãn <b>GC</b> ở cột 56, nhưng toàn bộ 450 lại nằm ở <b>sổ EPE</b> trong quyết toán.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Trong 17 dòng tờ khai không có dấu hiệu nhận biết nào (mục C4): 5 mã của cùng một nhà cung cấp được giao cùng mặt hàng dưới <b>cả hai dạng mã</b> — dạng không tiền tố (6.000 hoặc 12.000 đơn vị mỗi mã) và dạng <span class="k">GC-</span> (56.000 hoặc 112.000) — cộng 2 tờ khai <span class="k">CARTON10</span> nêu trên.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Định mức lập theo từng sổ. Vật tư nằm ở sổ này mà tiêu hao theo định mức của sổ kia thì đối chiếu định mức của <b>cả hai sổ đều sai</b>. Đây là trường hợp duy nhất được ghi lại, và chỉ vì doanh nghiệp tự chú thích — không có cơ chế nào ghi nhận các lần khác.</li>
+            <li><span class="cl cl-law">Căn cứ pháp lý</span> Điều 61 khoản 1 điểm d Thông tư 38/2015: <i>"Trước khi sử dụng nguyên liệu, vật tư để cung ứng cho hợp đồng gia công thì… thực hiện thủ tục xuất nhập khẩu tại chỗ theo quy định tại Điều 86"</i>; Điều 86 khoản 4 buộc mở tờ khai đối ứng trong 15 ngày làm việc.</li>
+            <li><span class="cl cl-law">Căn cứ pháp lý</span> <b>Điều khoản phản biện — Điều 74 khoản 1 điểm c:</b> hàng luân chuyển <i>"trong nội bộ của một DNCX"</i> không phải làm thủ tục hải quan. Việc điều nào áp dụng phụ thuộc sổ GC thực chất là loại hình gia công hay chỉ là sổ nội bộ của doanh nghiệp chế xuất. Đó là vấn đề sự kiện thuộc thẩm quyền cán bộ, không phải thứ một bài kiểm tra kết luận được.</li>
+          </ul>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Ảnh hưởng.</b> Phân bổ và luân chuyển giữa hai sổ ảnh hưởng tới số dư từng sổ và mẫu số của phép đối chiếu định mức. Nếu không có quy trình ghi nhận thì việc tái lập hai bộ quyết toán từ chứng từ sẽ khó thực hiện.</div></div>
+      </article>
+
+      <article class="guide" id="d6" data-t="D6 B6 NC-100100020P chênh 14,9% định mức xuất kho sản xuất 666232500F nhãn biến thể 04">
+        <div class="guide-head"><span class="gid">D6</span><h3>B6 · <span class="k">NC-100100020P</span>: hai số doanh nghiệp tự khai lệch 15%</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> Mẫu 16 bộ EPE có <b>19 dòng định mức</b> dùng mã này. Cột "Lượng NVL sử dụng theo định mức" do chính doanh nghiệp tính cho tổng <b>133.565,5 MTR</b> — đã kiểm: bằng đúng tích định mức × sản lượng của từng dòng.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Mẫu 15 cùng bộ ghi xuất kho để sản xuất <b>116.281,7 MTR</b>. Chênh <b>17.283,7 MTR = +14,9%</b>. Cả hai số đều do doanh nghiệp tự khai, trong cùng một bộ hồ sơ quyết toán.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Đề nghị giải thích cơ chế lệch: sản phẩm dở dang cuối kỳ, thời điểm ghi nhận xuất kho khác thời điểm tính tiêu hao, hay nguyên nhân khác. Đây là chênh lệch lớn nhất còn lại sau khi loại các tạo tác kỹ thuật khỏi nhóm C4.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Ghi nhận thêm, mức thấp nhất.</b> Mẫu 16 bộ GC, mã <span class="k">666232500F</span> có bốn khối định mức riêng biệt nhưng chỉ ba nhãn — (01) 2.866 · (02) 350 · (03) 6.010 · (03) 10.528. Bốn khối có định mức khác nhau. Tổng sản lượng 19.754 khớp tuyệt đối Mẫu 15a nên không ảnh hưởng số liệu; đề nghị xác nhận khối thứ tư có phải (04) không.</li>
+          </ul>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Quy ước hậu tố biến thể của 004 nhất quán về số liệu.</b> Chỉ Mẫu 16 dùng hậu tố <span class="k">(01)</span>, <span class="k">(02)</span>…; Mẫu 15a và tờ khai không dùng. Cộng sản lượng các biến thể theo mã gốc rồi so với Mẫu 15a: <b>41/41 mã khớp chính xác, 0 mã lệch</b>. Hậu tố là định danh đợt sản xuất, không phải mã khác.</div></div>
+      </article>
+    </section>
+
+    <!-- ============ E. ĐÍNH CHÍNH TỪ CHÍNH HỆ THỐNG ============ -->
+    <section class="block sec-adm" id="dinhchinh">
+      <div class="block-h"><span class="badge">E</span><h2>Đính chính từ chính hệ thống</h2></div>
+      <p class="block-lead">Kết quả "sổ GC không có phát hiện nào" đúng ở mức nào, và luồng tờ khai dùng chung đang giấu mất gì. Phần này nêu giới hạn của chính sản phẩm trên hồ sơ này.</p>
+
+      <article class="guide" id="e1" data-t="E1 luồng tờ khai dùng chung giấu phát hiện PEBAG1 C1.3 sáu phát hiện EPE bị che biên độ 0 đến 19">
+        <div class="guide-head"><span class="gid">E1</span><h3>Luồng tờ khai dùng chung giấu phát hiện của từng sổ</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> <b>Cơ chế.</b> Bảng dòng tờ khai không có trường sổ. C1.3 khớp mã Mẫu 15 với tập mã tờ khai nhập E11/E15, không lọc theo sổ — nên vật tư của sổ nào cũng được tính là "đã khai", miễn mã đó xuất hiện đâu đó trong luồng chung.</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Phân hoạch 37 mã của sổ GC:</b> 25 mã đã khai và chỉ có trong Mẫu 15 của GC — trong đó 18 mã mang tiền tố <span class="k">GC-</span> xuất hiện nguyên văn trên tờ khai nên không nhập nhằng; 12 mã đã khai nhưng cũng có trong Mẫu 15 của EPE, tức nhập nhằng; <b>0 mã hoàn toàn chưa khai</b>.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Không có nhãn sổ trên tờ khai, biên độ che khuất là <b>0 đến 19</b> trên 37 mã — khoảng quá rộng để đưa vào báo cáo. Dùng cột nhãn ở tệp thô để thu hẹp, con số dùng được là <b>đúng một phát hiện sổ GC bị che</b>: C1.3 trên <span class="k">PEBAG1</span> — sổ GC ghi nhập 100, trong khi toàn bộ 396 đơn vị <span class="k">PEBAG1</span> không tiền tố đều mang nhãn EPE và Mẫu 15 của EPE chỉ ghi nhập 296. Kèm một phát hiện C1.2 ít giá trị (<span class="k">CARTON10</span> — sổ GC ghi dưới tên <span class="k">GC-CARTON10</span>, chỉ là khác cách đặt mã).</li>
+            <li><span class="cl cl-fact">Sự thật</span> <b>Chiều ngược lại nặng hơn.</b> <b>6 phát hiện C1.3 của sổ EPE đang bị che</b>, vì chỉ có tờ khai mang nhãn GC phủ chúng: <span class="k">CARTON10</span>, <span class="k">617840106A</span>, <span class="k">627877503A</span>, <span class="k">646747400A</span>, <span class="k">663612500B</span>, <span class="k">668419800A</span>. C1.3 của sổ EPE đáng ra là <b>19 mã</b>, không phải 13.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Sổ GC sạch thật ở mức khoảng <b>97%</b>. Luồng tờ khai dùng chung đang tạo phát hiện sót thật, và chủ yếu về phía EPE — ngược chiều với dự đoán ban đầu.</li>
+          </ul>
+        </div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Nguyên tắc rút ra.</b> Đối chiếu từng sổ riêng lẻ <b>giấu mất chênh lệch</b>. Cộng qua hai sổ rồi so tổng tờ khai theo từng mã là phép kiểm có giá trị nhất trên hồ sơ này, và chỉ làm được nếu không tách hai sổ thành hai pháp nhân. Đó là lý do nhóm kiểm tra chéo giữ nguyên phạm vi pháp nhân.</div></div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Giới hạn này là giới hạn của dữ liệu 004, không phải giới hạn phổ quát.</b> Điều kiện phát sinh: khi một pháp nhân giữ hai sổ mà khai <b>cả hai sổ dưới mã loại hình của cùng một chế độ</b>, kiểm tra chéo không gán được tờ khai theo sổ và sẽ che phát hiện của từng sổ. Với doanh nghiệp khai đúng mã cho từng sổ, kiểm tra chéo hoàn toàn có thể chạy theo sổ.</div></div>
+      </article>
+
+      <article class="guide" id="e2" data-t="E2 bốn mã bắc cầu hai sổ 668419800A 663612500B 646747400A 617840106A 627877503A hàng đi đường biên kỳ">
+        <div class="guide-head"><span class="gid">E2</span><h3>Bốn mã có lượng bắc cầu giữa hai sổ — cột nhãn không đóng được</h3></div>
+        <div class="guide-body wide">
+          <ul class="claims">
+            <li><span class="cl cl-fact">Sự thật</span> Ở bốn mã, nhãn trên tờ khai nói <b>GC</b> còn quyết toán ghi sổ <b>EPE</b>, và mỗi lượng gần đúng bằng lượng nhập ghi ở Mẫu 15 của sổ EPE: <span class="k">668419800A</span> +800 · <span class="k">663612500B</span> +3.600 · <span class="k">646747400A</span> +3.000 · <span class="k">617840106A</span> +99,44.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Cột nhãn tay không trả lời được các trường hợp này. Nó không đóng câu hỏi, nó làm câu hỏi sắc hơn.</li>
+            <li><span class="cl cl-fact">Sự thật</span> Một chênh lệch ở mức hợp nhất: <span class="k">627877503A</span> khai <b>18.000</b> trên tờ khai so với <b>14.400</b> ghi sổ cộng qua cả hai sổ, lệch −3.600. Tờ khai cuối của mã này đăng ký <b>hai ngày trước khi kết thúc kỳ</b>.</li>
+            <li><span class="cl cl-infer">Suy luận</span> Hàng đang đi đường, chưa nhập kho, nên đúng khi không có trong cột nhập kho của quyết toán. Chênh lệch là do lệch thời điểm giữa ngày đăng ký tờ khai và ngày nhập kho, <b>không phải thiếu hụt</b>.</li>
+          </ul>
+        </div>
+        <div class="note tip"><svg class="ni"><use href="#i-tip"/></svg><div><b>Đầu vào nghiệp vụ cho hệ thống.</b> Đối chiếu tờ khai với quyết toán theo <b>ngày đăng ký</b> sinh dương tính giả ở biên kỳ. Kiểm tra dạng C1.1 cần xử lý riêng tờ khai sát ngày cuối kỳ. Điểm này có giá trị hơn bản thân con số 3.600.</div></div>
+      </article>
+
+      <article class="guide" id="e3" data-t="E3 hai thứ không đưa vào tài liệu cho khách giá trị tiền tệ diễn đạt mạnh hơn không có tờ khai">
+        <div class="guide-head"><span class="gid">E3</span><h3>Hai thứ không đưa vào tài liệu cho khách</h3></div>
+        <div class="guide-body wide">
+          <div class="steps"><ul class="plain-list">
+            <li><strong>Con số quy đổi giá trị tiền tệ</strong> sinh từ truy vấn thử. Bảng kê tờ khai lẫn nhiều loại tiền tệ, nên mọi phép cộng giá trị chỉ là xấp xỉ.</li>
+            <li><strong>Bất kỳ cách diễn đạt nào mạnh hơn "không có tờ khai trong dữ liệu được cung cấp".</strong> Bảng kê tờ khai chỉ lấy từ một thư mục nguồn, nên tờ khai phía GC có thể tồn tại mà chưa được gửi.</li>
+          </ul></div>
+        </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Quy tắc chung áp dụng cho toàn bộ tài liệu này: mỗi khẳng định có lượng từ "mọi", "toàn bộ", "đều" phải kèm <b>mẫu số</b> — viết <span class="k">33/33</span> chứ không viết "tất cả" — và phải chạy truy vấn đúng tập đang nói tới, không mượn số của tập rộng hơn.</div></div>
+      </article>
+    </section>
+  </div>
+</main>
+
+<div class="lb" id="lb"><span class="cls">×</span><img id="lbimg" alt=""></div>
+<button class="themebtn" id="themebtn" aria-label="Đổi nền sáng/tối">◑</button>
+
+<script>
+  const secMeta = {
+    'mo-dau':{n:'·',c:'var(--adm)',t:'Nguyên tắc trình bày'},
+    luong:{n:'A',c:'var(--data)',t:'Luồng dữ liệu'},
+    pilot:{n:'B',c:'var(--read)',t:'Ba hồ sơ pilot'},
+    haiso:{n:'C',c:'var(--run)',t:'004 — hai sổ quyết toán'},
+    cauhoi:{n:'D',c:'var(--act)',t:'Câu hỏi còn giá trị'},
+    dinhchinh:{n:'E',c:'var(--adm)',t:'Đính chính từ hệ thống'},
+  };
+  const toc = document.getElementById('toc');
+  document.querySelectorAll('section.block').forEach(sec=>{
+    const m = secMeta[sec.id]; if(!m) return;
+    const box = document.createElement('div'); box.className='sec';
+    box.innerHTML = `<div class="sec-h"><span class="pin" style="background:${m.c}"></span>${m.n}. ${m.t}</div>`;
+    sec.querySelectorAll('article.guide').forEach(g=>{
+      const gid = g.querySelector('.gid').textContent;
+      const title = g.querySelector('h3').textContent;
+      const a = document.createElement('a'); a.href='#'+g.id; a.dataset.for=g.id;
+      a.innerHTML = `<span class="n">${gid}</span>${title}`;
+      box.appendChild(a);
+    });
+    toc.appendChild(box);
+  });
+  const guides = [...document.querySelectorAll('article.guide')];
+  document.getElementById('cnt').textContent = guides.length + ' mục';
+
+  const q = document.getElementById('q');
+  const noresult = document.getElementById('noresult');
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/đ/g,'d');
+  q.addEventListener('input', ()=>{
+    const term = norm(q.value.trim());
+    let shown = 0;
+    guides.forEach(g=>{
+      const hay = norm((g.dataset.t||'') + ' ' + g.textContent);
+      const hit = !term || hay.includes(term);
+      g.style.display = hit ? '' : 'none';
+      const link = toc.querySelector(`a[data-for="${g.id}"]`);
+      if(link) link.style.display = hit ? '' : 'none';
+      if(hit) shown++;
+    });
+    document.querySelectorAll('section.block').forEach(sec=>{
+      const any = [...sec.querySelectorAll('article.guide')].some(g=>g.style.display!=='none');
+      sec.style.display = any ? '' : 'none';
+    });
+    document.querySelectorAll('nav.toc .sec').forEach(secBox=>{
+      const any = [...secBox.querySelectorAll('a')].some(a=>a.style.display!=='none');
+      secBox.style.display = any ? '' : 'none';
+    });
+    noresult.classList.toggle('show', shown===0);
+  });
+
+  const links = [...toc.querySelectorAll('a')];
+  const byId = Object.fromEntries(links.map(a=>[a.dataset.for,a]));
+  const io = new IntersectionObserver((ents)=>{
+    ents.forEach(e=>{
+      if(e.isIntersecting){
+        links.forEach(l=>l.classList.remove('active'));
+        const a = byId[e.target.id];
+        if(a){ a.classList.add('active'); a.scrollIntoView({block:'nearest'}); }
+      }
+    });
+  },{rootMargin:'-20% 0px -70% 0px'});
+  guides.forEach(g=>io.observe(g));
+
+  const body = document.body;
+  document.getElementById('burger').onclick = ()=>body.classList.toggle('nav-open');
+  document.getElementById('scrim').onclick = ()=>body.classList.remove('nav-open');
+  toc.addEventListener('click', e=>{ if(e.target.closest('a')) body.classList.remove('nav-open'); });
+
+  const lb = document.getElementById('lb'), lbimg = document.getElementById('lbimg');
+  document.getElementById('content').addEventListener('click', e=>{
+    const img = e.target.closest('figure img');
+    if(img){ lbimg.src = img.src; lb.classList.add('show'); }
+  });
+  lb.onclick = ()=>lb.classList.remove('show');
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') lb.classList.remove('show'); });
+
+  const themebtn = document.getElementById('themebtn');
+  const saved = localStorage.getItem('ahq-guide-theme');
+  if(saved) document.documentElement.dataset.theme = saved;
+  themebtn.onclick = ()=>{
+    const cur = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = cur;
+    localStorage.setItem('ahq-guide-theme', cur);
+  };
+</script>
+</body>
+</html>
