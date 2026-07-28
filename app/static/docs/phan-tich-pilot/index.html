@@ -451,13 +451,16 @@
           <div class="steps">
             <dl class="flowio">
               <dt>Đầu vào</dt><dd>Bảng số liệu do hệ thống tính bằng truy vấn từ các phát hiện đã lưu — không đi qua mô hình.</dd>
-              <dt>Hệ thống làm</dt><dd>Mô hình ngôn ngữ <b>chỉ nhận bảng đã tính</b> và viết bốn trường ngắn: nhận định chung, điểm nóng, đề xuất rà soát, miễn trừ. Mô hình không truy vấn dữ liệu thô và không tham gia vào logic của bài kiểm tra. Sau khi mô hình trả kết quả, hệ thống <b>hậu kiểm</b>: dò các con số trong nhận định và đối chiếu với bảng; số nào không có trong bảng thì gắn cờ.</dd>
-              <dt>Đầu ra</dt><dd>Bảng số liệu + nhận định + hai cờ: <span class="k">Tổng quan đã cũ</span> và <span class="k">Có số không khớp bảng</span>.</dd>
+              <dt>Hệ thống làm</dt><dd>Mô hình ngôn ngữ <b>chỉ nhận bảng đã tính</b> và trả JSON đúng bốn khoá: <span class="k">nhan_dinh</span> (1–2 câu) · <span class="k">phan_bo</span> (2–3 câu) · <span class="k">diem_nong</span> (tối đa 5 mã, mỗi mã một câu) · <span class="k">de_xuat</span> (tối đa 3 mục). Mô hình không truy vấn dữ liệu thô và không tham gia vào logic của bài kiểm tra.</dd>
+              <dt>Hậu kiểm</dt><dd>Sau khi mô hình trả kết quả, hệ thống chạy hai bước máy móc: <b>(1) loại</b> mã trong điểm nóng không có trong bảng — bỏ hẳn khỏi kết quả, không hiển thị; <b>(2) đối chiếu số</b> — tách token số trong cả bốn trường, trừ đi các token có trong bảng, phần dư lưu vào <span class="k">unsupported_numbers</span> và bật cờ <span class="k">needs_review</span>. Kiểm tra có dưới 10 phát hiện thì trường <span class="k">phan_bo</span> bị xoá kể cả khi mô hình vẫn viết.</dd>
+              <dt>Đầu ra</dt><dd>Bảng số liệu + bốn trường nhận định + hai cờ: <span class="k">Tổng quan đã cũ</span> và <span class="k">Có số không khớp bảng</span>.</dd>
             </dl>
           </div>
           <figure><span class="fig-tag">Tổng quan AI</span><img src="../huong-dan/22b-tong-quan-ai.png" alt="Khối tổng quan AI của một bài kiểm tra"><figcaption>Ảnh chụp khối tổng quan của bài C1.2 trên hồ sơ 004: bốn mã <span class="k">MC50</span> · <span class="k">PALLET-06</span> · <span class="k">PP-BAND</span> · <span class="k">TAPE50</span>, đều gắn nhãn <b>Liên sổ</b>. Xem mục D3.</figcaption></figure>
         </div>
+        <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div><b>Hậu kiểm số là phép so chuỗi, không phải kiểm chứng ngữ nghĩa.</b> Cả bảng số liệu được đưa vào tập token hợp lệ, nên bước này bắt được con số <b>không xuất hiện ở đâu trong bảng</b>; nó <b>không</b> bắt được con số có trong bảng nhưng bị gán cho mệnh đề sai. Cách so theo token là lựa chọn có chủ đích: parse số sẽ vấp ở làm tròn, năm, mã kiểm tra và mã hàng có chữ số.</div></div>
         <div class="note warn"><svg class="ni"><use href="#i-warn"/></svg><div>Số liệu dùng để lập hồ sơ phải lấy từ <b>bảng số liệu</b> và <b>trang chi tiết phát hiện</b>. Phần nhận định do mô hình viết chỉ để tham khảo, không phải kết luận vi phạm, và không được đưa vào tệp kết xuất Excel.</div></div>
+        <div class="note info"><svg class="ni"><use href="#i-info"/></svg><div><b>Câu miễn trừ trách nhiệm không do mô hình viết.</b> Đó là text tĩnh của giao diện; prompt còn cấm mô hình tự viết câu miễn trừ, để câu này không đổi theo từng lượt sinh.</div></div>
       </article>
 
       <article class="guide" id="a6" data-t="A6 hiển thị truy nguồn chứng cứ tầng 1 dòng dữ liệu gốc bảng điều kiện lọc">
