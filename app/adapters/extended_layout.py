@@ -226,7 +226,7 @@ def select_extended_m15(path, year: int | None = None) -> tuple[str, ColMap] | N
 
 # ---------------------------------------------------------------------------
 # Mẫu 15a — bố cục mở rộng. KHÁC Mẫu 15: số biểu KHÔNG ổn định giữa DN, nên
-# KHÔNG map field theo số biểu. `export_qty` (cột duy nhất C4.3/C1.4 dùng) phải
+# KHÔNG map field theo số biểu. `export_qty` (cột duy nhất C1.4 dùng) phải
 # xác định theo NHÃN cột, và phải là một số hạng TRỪ trong đẳng thức cân đối
 # (cổng đẳng thức riêng — ADR #15). Không xác định được → trả None → không nạp.
 #   006      : "Lượng sản phẩm xuất khẩu"                       biểu (8)  [thực ra là bố cục CHUẨN]

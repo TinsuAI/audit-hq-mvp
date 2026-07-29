@@ -95,9 +95,23 @@ def test_c4_1_still_fires_for_imported_no_source(session, company):
 # --- C4.3: tiêu hao lý thuyết vượt xuất SX ---
 
 
+def test_c4_3_uses_production_output_not_exports(session, company):
+    """P-07: số nhân là sản lượng SẢN XUẤT (M15a.intake_qty), không phải xuất khẩu.
+
+    intake (sản lượng sản xuất) = 100 → khớp actual production_out = 100 → 0% lệch,
+    KHÔNG fire. export_qty = 1000 rất khác intake — nếu code còn dùng export_qty làm
+    số nhân, theoretical = 1.0*1000 = 1000 vs actual 100 → +900% → fire critical sai.
+    """
+    add_sp(session, company.id, product_code="TP", intake=100, export_qty=1000)
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0)
+    add_nvl(session, company.id, material_code="X", imported=100, production_out=100)
+    session.commit()
+    assert check_c4_3(session, company.id, 2024) == []
+
+
 def test_c4_3_no_fire_when_close(session, company):
     # theoretical = 1.0 * 100 = 100; actual = 100 → 0% lệch
-    add_sp(session, company.id, product_code="TP", export_qty=100)
+    add_sp(session, company.id, product_code="TP", intake=100)
     add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0)
     add_nvl(session, company.id, material_code="X", imported=100, production_out=100)
     session.commit()
@@ -106,7 +120,7 @@ def test_c4_3_no_fire_when_close(session, company):
 
 def test_c4_3_warning_when_over_10pct(session, company):
     # theoretical = 1.0 * 100 = 100; actual = 90 → +11.1% lệch → warning (5-20%)
-    add_sp(session, company.id, product_code="TP", export_qty=100)
+    add_sp(session, company.id, product_code="TP", intake=100)
     add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0)
     add_nvl(session, company.id, material_code="X", imported=100, production_out=90)
     session.commit()
@@ -117,7 +131,7 @@ def test_c4_3_warning_when_over_10pct(session, company):
 
 def test_c4_3_critical_when_over_20pct(session, company):
     # theoretical = 2.0 * 100 = 200; actual = 100 → +100% lệch → critical
-    add_sp(session, company.id, product_code="TP", export_qty=100)
+    add_sp(session, company.id, product_code="TP", intake=100)
     add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0)
     add_nvl(session, company.id, material_code="X", imported=200, production_out=100)
     session.commit()
@@ -128,7 +142,7 @@ def test_c4_3_critical_when_over_20pct(session, company):
 
 def test_c4_3_critical_when_m15_has_no_production_out(session, company):
     # theoretical > 0 nhưng M15 không xuất SX gì cả → 100% lệch → critical
-    add_sp(session, company.id, product_code="TP", export_qty=100)
+    add_sp(session, company.id, product_code="TP", intake=100)
     add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0)
     add_nvl(session, company.id, material_code="X", imported=100, production_out=0)
     session.commit()
@@ -140,10 +154,10 @@ def test_c4_3_critical_when_m15_has_no_production_out(session, company):
 def test_c4_3_repeated_bom_block_counted_once(session, company):
     """Mẫu 16 lặp nguyên khối định mức cho MỖI đợt sản xuất.
 
-    Catalog (đề án §C4.3): tiêu hao = Σ(định_mức × xuất_khẩu). Cộng dồn qua mọi
-    DÒNG sẽ nhân thêm số lần lặp — 3 khối giống nhau thành 300 thay vì 100.
+    Catalog (đề án §C4.3): tiêu hao = Σ(định_mức × sản_lượng_sản_xuất). Cộng dồn qua
+    mọi DÒNG sẽ nhân thêm số lần lặp — 3 khối giống nhau thành 300 thay vì 100.
     """
-    add_sp(session, company.id, product_code="TP", export_qty=100)
+    add_sp(session, company.id, product_code="TP", intake=100)
     for _ in range(3):
         add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0)
     add_nvl(session, company.id, material_code="X", imported=100, production_out=100)
@@ -153,7 +167,7 @@ def test_c4_3_repeated_bom_block_counted_once(session, company):
 
 def test_c4_3_divergent_repeated_norms_use_max_and_are_reported(session, company):
     """Khối lặp mang định mức KHÁC nhau: lấy MAX, nhưng phải hiện ra, không chọn thầm."""
-    add_sp(session, company.id, product_code="TP", export_qty=100)
+    add_sp(session, company.id, product_code="TP", intake=100)
     add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0)
     add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0)
     add_nvl(session, company.id, material_code="X", imported=200, production_out=100)
@@ -187,11 +201,11 @@ def test_c4_3_computes_each_book_independently(session, company):
     # sổ, không cộng chéo sổ.
     # Sổ EPE: 1.0 × 100 = 100 == xuất SX 100 → không lệch.
     add_norm(session, company.id, product_code="TP_E", material_code="X", norm_qty=1.0, book="EPE")
-    add_sp(session, company.id, product_code="TP_E", export_qty=100, book="EPE")
+    add_sp(session, company.id, product_code="TP_E", intake=100, book="EPE")
     add_nvl(session, company.id, material_code="X", production_out=100, book="EPE")
     # Sổ GC: 2.0 × 100 = 200 > xuất SX 100 → lệch +100%.
     add_norm(session, company.id, product_code="TP_G", material_code="X", norm_qty=2.0, book="GC")
-    add_sp(session, company.id, product_code="TP_G", export_qty=100, book="GC")
+    add_sp(session, company.id, product_code="TP_G", intake=100, book="GC")
     add_nvl(session, company.id, material_code="X", production_out=100, book="GC")
     session.commit()
     findings = check_c4_3(session, company.id, 2024)

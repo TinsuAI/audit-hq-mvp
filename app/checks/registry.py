@@ -202,7 +202,7 @@ register(CheckSpec(
     group=4,
     title="Tổng tiêu hao M16 vượt xuất sản xuất M15",
     description=(
-        "Σ(định_mức × xuất_khẩu_M15a) theo NVL > `xuất_sản_xuất` trong M15. "
+        "Σ(định_mức × sản_lượng_sản_xuất_M15a) theo NVL > `xuất_sản_xuất` trong M15. "
         "Vượt >5% Cảnh báo · >20% Nghiêm trọng."
     ),
     default_severity=Severity.WARNING,
@@ -361,7 +361,8 @@ def _dynamic_to_spec(row) -> CheckSpec:
 #   - ``sum`` — chỉ dùng cột như một SỐ HẠNG trong đẳng thức cân đối C2 tự tính lại
 #     (bất biến dưới hoán vị cột cùng dấu) → ``balance-checked`` là đủ.
 # Cột dùng riêng lẻ (đọc từ code check): production_out (C4.3/C5.1), repurpose M15
-# (C1.6/C1.7), export M15a (C1.4/C4.3), định mức thực tế M16 (C4.3). Xem GLOSSARY.
+# (C1.6/C1.7), export M15a (C1.4), intake M15a (C4.3 — P-07, số nhân là sản lượng
+# sản xuất chứ không phải xuất khẩu), định mức thực tế M16 (C4.3). Xem GLOSSARY.
 from app.adapters.evidence import (  # noqa: E402 — tránh cycle: evidence không import checks
     BALANCE_CHECKED,
     NEEDS_REVIEW,
@@ -403,7 +404,7 @@ CHECK_COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
     ),
     "C4.3": (
         ("m16", "material_code", INDIVIDUAL), ("m16", "norm_qty", INDIVIDUAL),
-        ("m15a", "product_code", INDIVIDUAL), ("m15a", "export_qty", INDIVIDUAL),
+        ("m15a", "product_code", INDIVIDUAL), ("m15a", "intake_qty", INDIVIDUAL),
         ("m15", "material_code", INDIVIDUAL), ("m15", "production_out_qty", INDIVIDUAL),
     ),
     "C5.1": (

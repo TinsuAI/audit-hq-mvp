@@ -94,9 +94,12 @@ def check_c4_1(session: Session, company_id: int, year: int) -> list[Finding]:
 
 
 def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
-    """Σ(định_mức × xuất_khẩu_M15a) theo NVL > xuất_sản_xuất_M15.
+    """Σ(định_mức × sản_lượng_sản_xuất_M15a) theo NVL > xuất_sản_xuất_M15.
 
-    Tiêu hao lý thuyết = Σ qua các TP: norm(M16) × export_qty(M15a).
+    Tiêu hao lý thuyết = Σ qua các TP: norm(M16) × intake_qty(M15a) — intake_qty là
+    lượng SP sản xuất nhập kho trong kỳ (Mẫu 15a), KHÔNG phải lượng xuất khẩu (P-07,
+    ../audit-hq/.ai/DECISIONS.md 2026-07-24): cặp so sánh phải cùng biến cố sản xuất,
+    dùng xuất khẩu tạo sai số đúng bằng biến động tồn thành phẩm.
     Tiêu hao thực tế = production_out_qty trong M15 cùng mã NVL.
     Ngưỡng: vượt >5% Cảnh báo · >20% Nghiêm trọng (đề án §4.1).
     """
@@ -107,7 +110,7 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
     sp_rows = session.execute(
-        select(SpBalance.product_code, SpBalance.export_qty, SpBalance.book).where(
+        select(SpBalance.product_code, SpBalance.intake_qty, SpBalance.book).where(
             SpBalance.company_id == company_id,
             SpBalance.period_year == year,
         )
@@ -119,27 +122,27 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
 
-    # Gộp theo SỔ (book): mỗi sổ quyết toán là ledger riêng — định mức, xuất khẩu và
-    # xuất SX của một sổ chỉ đối chiếu TRONG sổ đó, không cộng chéo (xem ADR #19).
+    # Gộp theo SỔ (book): mỗi sổ quyết toán là ledger riêng — định mức, sản lượng sản
+    # xuất và xuất SX của một sổ chỉ đối chiếu TRONG sổ đó, không cộng chéo (ADR #19).
     # book=None (pháp nhân một sổ) là một nhóm → hành vi cũ không đổi.
     norms_by_book: dict[str | None, list[Norm]] = defaultdict(list)
     for n in norms:
         norms_by_book[n.book].append(n)
     sp_by_book: dict[str | None, dict[str, float]] = defaultdict(dict)
-    for product_code, export_qty, book in sp_rows:
-        sp_by_book[book][product_code] = export_qty
+    for product_code, intake_qty, book in sp_rows:
+        sp_by_book[book][product_code] = intake_qty
     m15_by_book: dict[str | None, dict[str, NvlBalance]] = defaultdict(dict)
     for r in nvl_rows:
         m15_by_book[r.book][r.material_code] = r
 
     findings: list[Finding] = []
     for book in sorted(norms_by_book, key=lambda b: (b is None, b or "")):
-        sp_export = sp_by_book.get(book, {})
+        sp_output = sp_by_book.get(book, {})
 
         # Mẫu 16 của một số DN lặp lại NGUYÊN KHỐI định mức cho mỗi đợt sản xuất: cùng
         # (mã SP, mã NVL) xuất hiện tới 26 lần, thường cùng một giá trị. Catalog định
-        # nghĩa tiêu hao = Σ(định_mức × xuất_khẩu) theo mã NVL — mỗi cặp tính MỘT lần.
-        # Cộng dồn qua từng DÒNG là nhân số lần lặp vào tiêu hao lý thuyết.
+        # nghĩa tiêu hao = Σ(định_mức × sản_lượng_sản_xuất) theo mã NVL — mỗi cặp tính
+        # MỘT lần. Cộng dồn qua từng DÒNG là nhân số lần lặp vào tiêu hao lý thuyết.
         #
         # LƯU Ý cho bố cục Mẫu 16 mở rộng (có cột sản lượng theo khối): ở đó các khối
         # lặp là những ĐỢT SẢN XUẤT khác nhau và phải tính Σ(định_mức_khối × sản_lượng
@@ -161,7 +164,7 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
 
         theoretical: dict[str, float] = defaultdict(float)
         for (product_code, material_code), norm_qty in bom.items():
-            sp_qty = sp_export.get(product_code) or 0.0
+            sp_qty = sp_output.get(product_code) or 0.0
             if sp_qty <= 0:
                 continue
             theoretical[material_code] += norm_qty * sp_qty

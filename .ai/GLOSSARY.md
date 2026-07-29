@@ -19,8 +19,8 @@ Ngôn ngữ chung của dự án. Chỉ định nghĩa thuật ngữ — không 
 
 **Individually-consumed column** — cột một check đọc TRỰC TIẾP (không qua tổng cân đối), nên cần
 `header-matched`/`officer-confirmed`. Ví dụ: `production_out` (C4.3, C5), `repurpose` (C1.x), cột con
-export M15a (C1.4), cột ĐM thực tế M16 (C4.3). Đối lập: cột dùng dạng TỔNG (C2 tự tính lại) — chỉ
-cần `balance-checked`.
+export M15a (C1.4), intake M15a (C4.3 — số nhân là sản lượng sản xuất, P-07), cột ĐM thực tế M16
+(C4.3). Đối lập: cột dùng dạng TỔNG (C2 tự tính lại) — chỉ cần `balance-checked`.
 
 **Form signature** — chữ ký CẤU TRÚC của một bố cục biểu. Hash = danh sách nhãn tiêu đề cột theo
 thứ tự + số cột (gập hoa/dấu/khoảng trắng, bỏ chữ số năm) + dòng đánh số khi có; KHÔNG chứa mã DN.

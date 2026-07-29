@@ -189,7 +189,7 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry(
         phase=1, group=4, code="C4.3",
         title="Tổng tiêu hao M16 vượt xuất sản xuất M15",
-        problem="Σ(`định_mức` × `xuất_khẩu_M15a`) theo NVL > `xuất_sản_xuất` trong M15. Vượt >5% Cảnh báo · >20% Nghiêm trọng.",
+        problem="Σ(`định_mức` × `sản_lượng_sản_xuất_M15a`) theo NVL > `xuất_sản_xuất` trong M15. Vượt >5% Cảnh báo · >20% Nghiêm trọng.",
         risk="Cách phổ biến nhất để lấy NVL miễn thuế ra bán nội địa — định mức ảo gồm cả thành phần không có thực trong sản phẩm, thổi phồng tiêu hao để hợp thức hoá NVL nhập khẩu dư.",
         severities=("warning", "critical"), status="mvp",
     ),
