@@ -238,6 +238,56 @@
 > (4) `app/adapters/bcct.py` nay ở nhánh `fix/bcct-label-columns` @ `06a9db5` → T7 #63.
 > Session log: `.ai/sessions/2026-08-02-demo-feedback-cot-so-nhan-du-lieu-goc.md`.
 
+> **Trạng thái (2026-07-31 — CÀI TRỌN 8 VÉ ADR #23 (#47–#54). NHÁNH `feat/adr23-ktstq-period-scope`,
+> 9 COMMIT, CHƯA PUSH / CHƯA MERGE / CHƯA DEPLOY):**
+> Cài hết 8 vé test-first theo đúng thứ tự phụ thuộc. **Toàn bộ test XANH, ruff sạch**, ~120 test mới.
+> Prod vẫn `d7844b6`, head migration prod vẫn `c5d6e7f8a9b0`.
+> **HAI CỔNG NGHIỆM THU QUA — nhưng cổng 2 cho kết quả KHÁC dự đoán của ADR.** Cổng 1 (đổi query
+> trên DB hiện trạng): **14.961 finding, delta = 0**. Cổng 2 (fresh re-ingest 002/2025 + 006/2024 +
+> 006/2025, **385.722 dòng BCCT**): **14.970 finding, delta = 0**. **ĐỪNG TIN LẠI ADR ở điểm này:**
+> ADR #23 đoán "006 file gộp nhiều kỳ sẽ có dòng dated 2024 ở nhãn 2025 vào scope 2024". **KHÔNG có
+> dòng nào** — đo được `bcct_out_of_window = 0` và `bcct_undated = 0` trên cả 3 pilot, vì parser đã
+> chọn sheet theo `year`. Defect drop im lặng ở `ingest.py:330` là THẬT và đã sửa, nhưng **bộ pilot
+> hiện tại không có ca nào kích hoạt nó** → đừng dùng bộ này để chứng minh #48 có tác dụng.
+> **4 MIGRATION** `d6e7f8a9b0c1` → `e7f8a9b0c1d2` → `f8a9b0c1d2e3` → `a9b0c1d2e3f4`, up→down→up
+> sạch trên DB dựng từ đầu. **ĐỔI KỸ THUẬT MIGRATION, áp cho cả repo:** `batch_alter_table` KHÔNG
+> thêm cột được vào `companies` / `check_runs` — batch dựng lại bảng bằng DROP + CREATE mà hai bảng
+> này là ĐÍCH của FK → `DROP TABLE` bị từ chối trên DB có dữ liệu. Dùng `op.add_column` /
+> `op.drop_column` thẳng (SQLite ≥ 3.35 hỗ trợ native, máy dev 3.45.1). **DB local ĐÃ migrate**
+> (head `a9b0c1d2e3f4`), backup WAL-safe `audit_hq.sqlite.bak-pre-adr23-20260731` (`integrity_check: ok`).
+> **LỖI THẬT bắt được ngoài test (CÓ TRƯỚC nhánh này, đã sửa):** trang tài liệu **500 cả trang** khi
+> một năm có phát hiện nhưng chưa có dòng `CompanyYearScore` — `checks_run` bật theo finding,
+> `yr.score` = None, `tier_css_for(None)` ném `TypeError`. Bắt được lúc chụp ảnh E2E. Đã guard + test
+> hồi quy. `company_detail.html` không dính (mặc định 0).
+> **LỆCH SO VỚI VÉ (cố ý, CẦN OWNER CHỐT):** (1) **#52 seed KHÁC danh sách họ vé nêu.** Vé ghi
+> "BCCT chi tiết ECUS · BCCT tổng hợp · Mẫu 15a chuẩn · biến thể 15a DN03/DN04"; thực tế seed
+> **m15 chuẩn · m15 biến thể · m15a chuẩn · m15a biến thể** — hai họ BCCT bị thay bằng hai họ m15
+> vé KHÔNG hỏi. `bcct.py` không có `ParseProvenance`, không tính `form_signature`,
+> `IngestStats.provenance` không có khoá `"bcct"` → nối vào là thay đổi lớn hơn hẳn và land không
+> cổng nào che. Đã ĐO sẵn vân tay hai họ BCCT (chi tiết ECUS `543b2492…` 18 file/8 DN · tổng hợp
+> `5c8ce1bc…` 4 file/2 DN, cùng `data_start=10`) nhưng chưa seed vì seed không có chỗ đọc là số
+> chết. (2) `skip_reason` dùng `missing:<nguồn>` thay vì `"no_bcqt"`. (3) Cảnh báo "tiêu đề lệch
+> niên độ" đọc từ cửa sổ ĐÃ LƯU (`period_window_conflict`), không đọc lại header lúc review.
+> **`/code-review` HAI TRỤC ĐÃ CHẠY — sửa 6 mục ngay trong nhánh:** (a) chứng cứ BCCT ở BẢN XUẤT
+> Excel + trang chi tiết mã còn lọc theo NHÃN trong khi check đã đổi sang cửa sổ (vi phạm
+> AGENTS.md "truy nguồn") → nay dùng `declaration_scope`; (b) **`declaration_scope` LÀM MẤT DÒNG**
+> khi kỳ láng giềng chưa có dòng `company_periods` (dòng dated 2024 nhãn 2025 rơi khỏi 2025 mà
+> 2024 chỉ nhận theo nhãn) → nay `effective_window` suy cửa sổ từ niên độ DN, **chạy lại cổng 1
+> vẫn delta = 0**; (c) `COUNT(*) … LIMIT 1` quét trọn bảng → `SELECT id … LIMIT 1`; (d) check
+> `status='error'` không còn tính là "đã chạy"; (e) `finding_detail` in thêm khoảng ngày; (f) bỏ
+> code chết. **Còn mở sau review:** map officer per-DN mới thắng template ở NHÃN chưa thắng ở VỊ
+> TRÍ CỘT (chưa lệch được vì 4 họ đều `column_map` rỗng — phải sửa TRƯỚC khi seed họ có map
+> riêng); đường bố cục mở rộng return trước khi dò template; **chưa có index
+> `(company_id, declaration_date)`** trong khi mọi check giờ lọc BCCT bằng khoảng ngày.
+> **SỐ ĐO TEMPLATE:** 4 họ seed phủ **100/119 file settlement (84%)** — nhưng 19 file KHÔNG khớp lại
+> chứa **21.030 / 31.850 dòng (66%)**. Seed phủ cấu trúc HAY GẶP, không phủ file NHIỀU DÒNG nhất.
+> **E2E:** `.ai/features/2026-07-31-adr23-ktstq-period-scope/` (brief + `ui_smoke.py` + 7 ảnh), server
+> throwaway 8331, tự dọn, kill theo PID. Ảnh là seed minh hoạ → chứng minh render, KHÔNG chứng minh parse.
+> **Next:** (1) mở PR + review + deploy (4 migration); (2) nối template vào `bcct.py` rồi seed 2 họ đã
+> đo; (3) curate tiếp 19 file m15/m15a one-off; (4) `C6.1` khai `requires={m15}` nhưng còn đọc M15 kỳ
+> N-1 — kỳ N-1 trống vẫn ra 0 finding, cùng dạng "sạch giả" #53 diệt, khác trục.
+> Session log: `.ai/sessions/2026-07-31-adr23-implement-8-tickets.md`.
+
 > **Trạng thái (2026-07-31 — KTSTQ 5 NĂM: GROUNDING → GRILL → ADR #23 → 8 VÉ. KHÔNG ĐỤNG CODE SẢN PHẨM):**
 > Chuẩn bị demo 2026-08-01 (DN sắp bị kiểm tra sau thông quan, phạm vi = ngày Kiểm tra − 5 năm → không
 > trùng trọn kỳ quyết toán). Output: 2 note + **ADR #23** (`.ai/DECISIONS.md`) + **8 issue #47–#54**.
