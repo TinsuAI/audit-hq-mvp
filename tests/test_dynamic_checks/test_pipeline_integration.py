@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
+from app.checks import ALL_CHECKS
 from app.models import CheckDefinition, CheckStatus, CompanyYearScore, Finding
 from app.pipeline.run_checks import run_checks
 from tests.conftest import add_nvl
@@ -98,7 +99,15 @@ def test_bad_sql_check_does_not_crash_run(session, company):
 
 
 def test_published_check_counted_in_score_max_raw(session, company):
-    """Check published mở rộng scope vào max_raw (trần điểm) — không lệch trần."""
+    """Check published mở rộng scope vào max_raw (trần điểm) — không lệch trần.
+
+    Kỳ này chỉ có M15 nên các check cần bcct/m15a/m16 bị skip và bị LOẠI khỏi trần
+    (#53 — check không chạy được không phải check đạt). Trần còn lại = các check
+    chạy được + check tự do X.1.
+    """
+    from app.checks.registry import missing_sources
+    from app.checks.scoring import COMBO_BONUS, MAX_RULE_SCORE
+
     session.add(_sql_check("X.1", CheckStatus.PUBLISHED))
     add_nvl(session, company.id, material_code="NVL_BAD", closing=-5)
     # 2024 là kỳ sớm nhất của fixture; không xác nhận năm đầu nộp BCQT thì C4.3 trả
@@ -114,6 +123,9 @@ def test_published_check_counted_in_score_max_raw(session, company):
         )
     )
     assert cys is not None
-    # 18 built-in + 1 published dynamic = 19 rule → max_raw = 19*10 + 20 = 210.
-    assert cys.breakdown["max_raw"] == 210.0
+    evaluable = [c for c in ALL_CHECKS if not missing_sources(c, {"m15"})]
+    expected = (len(evaluable) + 1) * MAX_RULE_SCORE + COMBO_BONUS   # +1 = X.1
+    assert cys.breakdown["max_raw"] == expected
     assert "X.1" in cys.breakdown["rule_scores"]
+    # X.1 (check tự do) KHÔNG khai requires → không bao giờ bị skip.
+    assert "X.1" not in cys.breakdown["not_evaluable"]

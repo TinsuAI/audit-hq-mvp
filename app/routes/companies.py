@@ -38,7 +38,6 @@ from app.checks.not_evaluable import load_not_evaluable
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
 from app.checks.scope import declaration_scope
 from app.checks.scoring import score_coverage, tier_css_for, tier_for
-from app.checks.sources import skip_reason_label
 from app.database import get_db
 from app.formatting import JINJA_GLOBALS as FORMAT_GLOBALS
 from app.formatting import fmt_date, fmt_price, fmt_qty
@@ -2053,25 +2052,6 @@ def company_detail(
     has_data = selected_year in data_years if selected_year is not None else False
     checks_run = year_score is not None or (selected_year in finding_years)
 
-    # Kiểm tra KHÔNG chạy được vì kỳ thiếu nguồn dữ liệu (#53). Không có khối này thì
-    # "chưa chạy vì thiếu BCQT" và "chạy rồi, 0 phát hiện" trông giống hệt nhau —
-    # cả hai đều là vắng mặt trên màn phát hiện, và đọc như "sạch".
-    skipped_checks: list[dict] = []
-    if selected_year is not None:
-        for r in db.scalars(
-            select(CheckRun).where(
-                CheckRun.company_id == company.id,
-                CheckRun.period_year == selected_year,
-                CheckRun.skip_reason.is_not(None),
-            ).order_by(CheckRun.check_code)
-        ).all():
-            spec = all_specs.get(r.check_code)
-            skipped_checks.append({
-                "code": r.check_code,
-                "title": spec.title if spec else r.check_code,
-                "reason": skip_reason_label(r.skip_reason),
-            })
-
     return templates.TemplateResponse(
         request,
         "company_detail.html",
@@ -2104,7 +2084,6 @@ def company_detail(
             "all_specs": all_specs,
             "has_data": has_data,
             "checks_run": checks_run,
-            "skipped_checks": skipped_checks,
             "scope_tags": scope_tags,
             "audit_scope_window": audit_scope_window,
             "just_ingested": bool(ingested),
