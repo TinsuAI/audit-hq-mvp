@@ -29,6 +29,7 @@ from app.adapters.extended_layout import M15aResolution, select_extended_m15a
 from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
 from app.adapters.sheet_select import SheetNotFound, select_sheet
+from app.adapters.templates import match_template, resolve_template_evidence
 
 
 @dataclass
@@ -130,13 +131,19 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
         )
 
     data_start = find_data_start(cells, "m15a")
+    # Vân tay đo TRƯỚC khi áp template (template khai vân tay theo đúng cách đo này).
+    form_sig = compute_form_signature(cells, "m15a", data_start)
+    template = match_template("m15a", form_sig, data_start)
+    col = {**_COL, **template.column_map} if template else _COL
+    if template is not None:
+        data_start = template.data_start
 
     rows = []
     for raw in cells[data_start:]:
-        product_code = normalize_code(to_str(safe_get(raw, _COL["product_code"])))
+        product_code = normalize_code(to_str(safe_get(raw, col["product_code"])))
         if not product_code:
             continue
-        row_no_raw = to_str(safe_get(raw, _COL["row_no"]))
+        row_no_raw = to_str(safe_get(raw, col["row_no"]))
         try:
             row_no = int(float(row_no_raw)) if row_no_raw else None
         except ValueError:
@@ -146,32 +153,29 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
             M15aRow(
                 row_no=row_no,
                 product_code=product_code,
-                product_name=normalize_name(to_str(safe_get(raw, _COL["product_name"]))),
-                unit=normalize_code(to_str(safe_get(raw, _COL["unit"]))),
-                opening_qty=to_float(safe_get(raw, _COL["opening_qty"])),
-                intake_qty=to_float(safe_get(raw, _COL["intake_qty"])),
-                repurpose_qty=to_float(safe_get(raw, _COL["repurpose_qty"])),
-                export_qty=to_float(safe_get(raw, _COL["export_qty"])),
-                other_out_qty=to_float(safe_get(raw, _COL["other_out_qty"])),
-                closing_qty=to_float(safe_get(raw, _COL["closing_qty"])),
+                product_name=normalize_name(to_str(safe_get(raw, col["product_name"]))),
+                unit=normalize_code(to_str(safe_get(raw, col["unit"]))),
+                opening_qty=to_float(safe_get(raw, col["opening_qty"])),
+                intake_qty=to_float(safe_get(raw, col["intake_qty"])),
+                repurpose_qty=to_float(safe_get(raw, col["repurpose_qty"])),
+                export_qty=to_float(safe_get(raw, col["export_qty"])),
+                other_out_qty=to_float(safe_get(raw, col["other_out_qty"])),
+                closing_qty=to_float(safe_get(raw, col["closing_qty"])),
             )
         )
 
-    evidence = evidence_m15a_standard(cells, data_start, cand_colmap)
+    evidence, detail = resolve_template_evidence(
+        template, _EVIDENCE_FIELDS, col, form_sig,
+        lambda: evidence_m15a_standard(cells, data_start, cand_colmap),
+    )
     return M15aFile(
         header=header, rows=rows, source_file=str(p), sheet=sheet,
         issues=ParseIssues(
-            error_cells=scan_error_cells(p, sheet, data_start, _COL.values()),
+            error_cells=scan_error_cells(p, sheet, data_start, col.values()),
             external_workbooks=count_external_workbooks(p),
             scanned=True,
         ),
-        provenance=ParseProvenance(
-            detail={
-                "form_signature": compute_form_signature(cells, "m15a", data_start),
-                "column_map": {f: _COL[f] for f in evidence if f in _COL},
-            },
-            evidence=evidence,
-        ),
+        provenance=ParseProvenance(detail=detail, evidence=evidence),
     )
 
 

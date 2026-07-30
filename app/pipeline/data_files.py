@@ -21,7 +21,14 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.adapters.evidence import FIELD_LABEL_VI, NEEDS_REVIEW, SOURCE_LABEL_VI, VERIFIED
+from app.adapters.evidence import (
+    FIELD_LABEL_VI,
+    NEEDS_REVIEW,
+    OFFICER_CONFIRMED,
+    SOURCE_LABEL_VI,
+    VERIFIED,
+)
+from app.adapters.templates import MATCH_OFFICER
 from app.checks.registry import checks_reading, review_state
 from app.models import Company, DataFile, DataFileStatus
 from app.models.data_file import SLOT_SUBDIR
@@ -273,9 +280,19 @@ def record_parse_result(
                 )
             row.parse_layout = prov_layout
             row.parse_detail = json.dumps(detail, ensure_ascii=False)
+            # Họ biểu + cách chọn cột lên CỘT riêng (ADR #23 T3) — trang tài liệu lọc
+            # và đếm theo hai giá trị này, không parse JSON để đọc.
+            row.template_id = detail.get("template_id")
+            row.match_source = (
+                MATCH_OFFICER
+                if any(src == OFFICER_CONFIRMED for src in (prov_evidence or {}).values())
+                else detail.get("match_source")
+            )
         else:
             row.parse_layout = None
             row.parse_detail = None
+            row.template_id = None
+            row.match_source = None
     session.commit()
 
 

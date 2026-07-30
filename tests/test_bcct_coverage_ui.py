@@ -99,3 +99,26 @@ def test_banner_reports_cross_label_duplicates():
         assert "trùng khoá" in r.text
     finally:
         _teardown(new_engine)
+
+
+def test_documents_page_survives_a_year_with_findings_but_no_score_row():
+    """Hồi quy: `checks_run` bật theo phát hiện, nhưng điểm năm có thể chưa có dòng —
+    render nhãn rủi ro với `score=None` làm `tier_css_for` nổ, 500 cả trang."""
+    new_engine, new_session = _setup_db()
+    try:
+        from app.models import Finding
+
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_077"))
+            db.add(Finding(
+                company_id=c.id, period_year=2025, check_code="C1.2", severity="critical",
+                subject_type="material_code", subject_key="A", title="x",
+            ))
+            db.commit()
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/companies/DN_077/documents")
+        assert r.status_code == 200
+        assert "/1000" not in r.text
+    finally:
+        _teardown(new_engine)
