@@ -19,6 +19,7 @@ from app.checks.company_type import (
     mixed_book_pairings,
 )
 from app.checks.registry import Severity, severity_for
+from app.checks.scope import declaration_scope
 from app.checks.uom import normalize, resolve_canonical
 from app.models import DeclarationLine, Finding, NvlBalance, SpBalance
 
@@ -60,8 +61,7 @@ def _sum_bcct_by_item(
     rows = session.execute(
         select(DeclarationLine.item_code, func.coalesce(func.sum(DeclarationLine.quantity), 0.0))
         .where(
-            DeclarationLine.company_id == company_id,
-            DeclarationLine.period_year == year,
+            declaration_scope(session, company_id, year),
             DeclarationLine.customs_code.in_(customs_codes),
             DeclarationLine.item_code.is_not(None),
         )
@@ -91,8 +91,7 @@ def _sum_bcct_by_item_unit(
             func.coalesce(func.sum(DeclarationLine.quantity), 0.0),
         )
         .where(
-            DeclarationLine.company_id == company_id,
-            DeclarationLine.period_year == year,
+            declaration_scope(session, company_id, year),
             DeclarationLine.customs_code.in_(customs_codes),
             DeclarationLine.item_code.is_not(None),
         )
@@ -304,8 +303,7 @@ def _c1_2_scope(
         session.scalars(
             select(DeclarationLine.item_code)
             .where(
-                DeclarationLine.company_id == company_id,
-                DeclarationLine.period_year == year,
+                declaration_scope(session, company_id, year),
                 DeclarationLine.customs_code.in_(import_codes),
                 DeclarationLine.item_code.is_not(None),
             )
@@ -328,8 +326,7 @@ def _c1_2_scope(
     for code in sorted(missing):
         total = session.scalar(
             select(func.coalesce(func.sum(DeclarationLine.quantity), 0.0)).where(
-                DeclarationLine.company_id == company_id,
-                DeclarationLine.period_year == year,
+                declaration_scope(session, company_id, year),
                 DeclarationLine.customs_code.in_(import_codes),
                 DeclarationLine.item_code == code,
             )
@@ -370,8 +367,7 @@ def _c1_3_scope(
         session.scalars(
             select(DeclarationLine.item_code)
             .where(
-                DeclarationLine.company_id == company_id,
-                DeclarationLine.period_year == year,
+                declaration_scope(session, company_id, year),
                 DeclarationLine.customs_code.in_(import_codes),
                 DeclarationLine.item_code.is_not(None),
             )
@@ -508,8 +504,7 @@ def check_c1_6(session: Session, company_id: int, year: int) -> list[Finding]:
         session.scalars(
             select(DeclarationLine.item_code)
             .where(
-                DeclarationLine.company_id == company_id,
-                DeclarationLine.period_year == year,
+                declaration_scope(session, company_id, year),
                 DeclarationLine.customs_code == "A42",
                 DeclarationLine.item_code.is_not(None),
             )

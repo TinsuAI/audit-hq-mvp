@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.checks.registry import Severity
+from app.checks.scope import declaration_scope
 from app.checks.uom import UomMatch
 from app.checks.uom import compare as uom_compare
 from app.models import DeclarationLine, Finding, NvlBalance
@@ -41,8 +42,7 @@ def check_c3_1(session: Session, company_id: int, year: int) -> list[Finding]:
     rows = session.execute(
         select(DeclarationLine.item_code, DeclarationLine.customs_code)
         .where(
-            DeclarationLine.company_id == company_id,
-            DeclarationLine.period_year == year,
+            declaration_scope(session, company_id, year),
             DeclarationLine.item_code.is_not(None),
             DeclarationLine.customs_code.in_(_NVL_CODES | _MMTB_CODES),
         )
@@ -121,8 +121,7 @@ def check_c3_2(session: Session, company_id: int, year: int) -> list[Finding]:
     rows = session.execute(
         select(DeclarationLine.item_code, DeclarationLine.hs_code)
         .where(
-            DeclarationLine.company_id == company_id,
-            DeclarationLine.period_year == year,
+            declaration_scope(session, company_id, year),
             DeclarationLine.item_code.is_not(None),
             DeclarationLine.hs_code.is_not(None),
         )
@@ -198,8 +197,7 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
     bcct_rows = session.execute(
         select(DeclarationLine.item_code, DeclarationLine.unit)
         .where(
-            DeclarationLine.company_id == company_id,
-            DeclarationLine.period_year == year,
+            declaration_scope(session, company_id, year),
             DeclarationLine.item_code.is_not(None),
             DeclarationLine.unit.is_not(None),
         )
