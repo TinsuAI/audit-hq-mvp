@@ -1229,6 +1229,11 @@ p { margin: 0 0 var(--space-3); }
   border-color: var(--c-warning-border);
 }
 
+.scope-tag { display: inline-block; margin-top: 2px; font-size: 0.72rem; color: var(--c-warn, #b45309); }
+.doc-coverage { margin: var(--space-2) 0 var(--space-3); font-size: 0.85rem; }
+.doc-coverage-lead { margin: 0 0 var(--space-2); }
+.doc-coverage-list { margin: 0; padding-left: var(--space-4); }
+.doc-coverage-list li { margin: 2px 0; }
 .doc-review-gate { margin: var(--space-2) 0 var(--space-3); font-size: 0.85rem; }
 .doc-review-gate-lead { margin: 0 0 var(--space-2); }
 .doc-review-gate-cols { margin: 0; padding-left: var(--space-4); }

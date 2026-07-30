@@ -93,7 +93,7 @@
         </details>
       </div>
       {% if yr.period_manual %}
-      <p class="doc-period-hint text-muted">⚠️ Kỳ đã sửa tay — bấm <strong>Nạp dữ liệu</strong> rồi <strong>Chạy kiểm tra</strong> để áp dụng cửa sổ kỳ mới.</p>
+      <p class="doc-period-hint text-muted">⚠️ Kỳ đã sửa tay — bấm <strong>Chạy kiểm tra</strong> để áp dụng cửa sổ kỳ mới (dữ liệu đã nạp không cần nạp lại).</p>
       {% endif %}
     </div>
 
@@ -111,6 +111,36 @@
       {% if yr.has_data %}<a href="/companies/{{ company.slug or company.code }}/data?year={{ yr.year }}&table=m15" class="btn btn-sm btn-secondary">📋 Dữ liệu gốc</a>{% endif %}
       {% if yr.checks_run %}<a href="/companies/{{ company.slug or company.code }}?year={{ yr.year }}" class="btn btn-sm btn-secondary">🔎 Phát hiện</a>{% endif %}
     </div>
+
+    {% if yr.coverage_gaps or yr.overlaps %}
+    <div class="alert alert-warning doc-coverage" role="status">
+      <ul class="doc-coverage-list">
+        {% for g in yr.coverage_gaps %}
+        <li>⚠️ Kỳ thiếu dữ liệu tờ khai từ <strong>{{ g[0].strftime('%d/%m/%Y') }} – {{ g[1].strftime('%d/%m/%Y') }}</strong> — nạp thêm file tờ khai của khoảng này (thường nằm ở file kết xuất theo năm dương lịch kề bên).</li>
+        {% endfor %}
+        {% if yr.overlaps %}
+        <li>⚠️ Cửa sổ kỳ năm {{ yr.year }} <strong>chồng lấn</strong> kỳ {{ yr.overlaps|join(', ') }} của cùng doanh nghiệp — một tờ khai có thể được đếm ở cả hai kỳ. Hợp lệ khi đây là kỳ chuyển tiếp đổi niên độ; nếu không, sửa lại cửa sổ.</li>
+        {% endif %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if yr.coverage and yr.coverage.has_warning %}
+    <div class="alert alert-warning doc-coverage" role="status">
+      <p class="doc-coverage-lead">⚠️ <strong>Dòng tờ khai lệch cửa sổ kỳ</strong> — mọi dòng đều đã lưu, không dòng nào bị bỏ. Cảnh báo để cán bộ soát lại file nguồn.</p>
+      <ul class="doc-coverage-list">
+        {% if yr.coverage.out_of_window %}
+        <li><strong>{{ yr.coverage.out_of_window }}</strong> dòng nạp ở nhãn năm {{ yr.year }} nhưng ngày tờ khai nằm ngoài kỳ {{ yr.period_from.strftime('%d/%m/%Y') }} – {{ yr.period_to.strftime('%d/%m/%Y') }} — các dòng này thuộc kỳ khác khi chạy kiểm tra.</li>
+        {% endif %}
+        {% if yr.coverage.undated %}
+        <li><strong>{{ yr.coverage.undated }}</strong> dòng không có ngày tờ khai — quy theo nhãn kỳ nạp.</li>
+        {% endif %}
+        {% if yr.coverage.cross_label_duplicates %}
+        <li><strong>{{ yr.coverage.cross_label_duplicates }}</strong> dòng trùng khoá (số tờ khai · dòng hàng) với nhãn kỳ khác của cùng doanh nghiệp — hai bản kết xuất chồng nhau. Hệ thống KHÔNG tự loại: số lượng có thể lệch giữa hai bản, cán bộ sửa file nguồn rồi nạp lại.</li>
+        {% endif %}
+      </ul>
+    </div>
+    {% endif %}
 
     {% if yr.review_gate %}
     <div class="alert alert-warning doc-review-gate" role="status">

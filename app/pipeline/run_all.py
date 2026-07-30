@@ -71,7 +71,11 @@ def main(argv: list[str] | None = None) -> int:
     for c, y in pairs:
         try:
             stats = ingest(c, y, raw_root=Path(raw_root))
-            other = f" (+{stats.bcct_other_year} BCCT kỳ khác bị loại)" if stats.bcct_other_year else ""
+            other = (
+                f" ({stats.bcct_out_of_window} BCCT ngoài cửa sổ kỳ — vẫn lưu)"
+                if stats.bcct_out_of_window
+                else ""
+            )
             print(
                 f"  ✓ {c} {y}: M15={stats.m15_rows} M15a={stats.m15a_rows} "
                 f"M16={stats.m16_rows} BCCT={stats.bcct_rows}{other}"
