@@ -86,6 +86,24 @@
            value="{{ form.address or '' }}" placeholder="VD: KCN Tân Tạo, Q. Bình Tân, TP.HCM">
   </div>
 
+  <div class="form-grid-2">
+    <div class="form-field">
+      <label class="form-label" for="fiscal_start_month">Niên độ kế toán</label>
+      <select class="form-input" id="fiscal_start_month" name="fiscal_start_month">
+        {% for month, label in fiscal_options %}
+        <option value="{{ month }}" {% if form.fiscal_start_month == month %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <p class="form-hint">Niên độ khác dương lịch phải tròn 12 tháng tính từ đầu quý (điểm a khoản 1 Điều 12 Luật Kế toán 88/2015). Nhãn năm là năm <strong>bắt đầu</strong> kỳ. Đây là mặc định cho kỳ chưa có cửa sổ riêng — kỳ đã lưu không bị ghi đè; kỳ lẻ (năm đầu / năm cuối / chuyển tiếp) sửa ở trang Tài liệu.</p>
+    </div>
+    <div class="form-field">
+      <label class="form-label" for="audit_decision_date">Ngày quyết định kiểm tra sau thông quan</label>
+      <input class="form-input" type="date" id="audit_decision_date" name="audit_decision_date"
+             value="{{ form.audit_decision_date or '' }}">
+      <p class="form-hint">Thực tế hoặc dự kiến. Phạm vi kiểm tra là <strong>5 năm trở về trước kể từ ngày này</strong>, neo trên ngày đăng ký tờ khai (khoản 3 Điều 77 Luật Hải quan 54/2014). Đây chỉ là <strong>cách hiển thị</strong>: đặt hoặc xoá ngày không đụng dữ liệu, không cần chạy lại kiểm tra. Để trống nếu chưa có đợt kiểm tra.</p>
+    </div>
+  </div>
+
   <div class="form-actions">
     <a href="/companies/{{ company.slug or company.code }}" class="btn btn-secondary">Huỷ</a>
     <button type="submit" class="btn btn-primary">💾 Lưu thay đổi</button>

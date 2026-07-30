@@ -49,6 +49,12 @@
   </div>
 </div>
 
+{% if period_conflict %}
+<div class="alert alert-warning" role="status" style="margin-bottom:var(--space-4)">
+  <p style="margin:0">⚠️ Cửa sổ kỳ năm {{ file.period_year }} đang là <strong>{{ period_conflict[0][0].strftime('%d/%m/%Y') }} – {{ period_conflict[0][1].strftime('%d/%m/%Y') }}</strong> (đọc từ tiêu đề file), <strong>lệch với niên độ kế toán</strong> đã khai cho doanh nghiệp: <strong>{{ period_conflict[1][0].strftime('%d/%m/%Y') }} – {{ period_conflict[1][1].strftime('%d/%m/%Y') }}</strong>. Hệ thống không tự chọn hộ — nếu tiêu đề file đúng thì bỏ qua, nếu sai thì sửa kỳ ở trang Tài liệu rồi chạy lại kiểm tra.</p>
+</div>
+{% endif %}
+
 <div class="alert alert-warning" role="status" style="margin-bottom:var(--space-4)">
   <p style="margin:0">⚠️ Một số cột đọc theo <strong>vị trí</strong> hoặc chỉ khớp <strong>đẳng thức cân đối</strong> — chưa đủ để chắc đúng cột (đẳng thức không phân biệt hai cột cùng dấu). Đối chiếu với <strong>nội dung file bên dưới</strong>, sửa chỉ số cột nếu sai, rồi bấm <strong>Xác nhận &amp; nạp dữ liệu</strong>. Chỉ số cột tính từ <strong>0</strong> (cột A = 0, B = 1…).</p>
 </div>

@@ -58,9 +58,26 @@ def _severity_format(workbook: xlsxwriter.Workbook) -> dict:
     }
 
 
+def _period_label(session: Session, company: Company, year: int) -> str:
+    """Nhãn kỳ kèm khoảng ngày khi kỳ ≠ dương lịch (ADR #23 T2).
+
+    Pháp luật định danh kỳ CHỈ bằng khoảng ngày, nên bản xuất cho cán bộ không được
+    chỉ in "2025" khi kỳ thực là 01/04/2025 – 31/03/2026.
+    """
+    from app.pipeline.period import load_period_windows
+
+    window = load_period_windows(session, company.id, years=[year]).get(year)
+    if window is None:
+        return str(year)
+    return (
+        f"{year} (năm tài chính "
+        f"{window[0].strftime('%d/%m/%Y')} – {window[1].strftime('%d/%m/%Y')})"
+    )
+
+
 def _write_overview(
     wb: xlsxwriter.Workbook, ws, company: Company, year: int, findings: list[Finding],
-    only: set[str] | None = None,
+    only: set[str] | None = None, period_label: str | None = None,
 ) -> None:
     bold = wb.add_format({"bold": True})
     title = wb.add_format({
@@ -80,7 +97,7 @@ def _write_overview(
         ("Tên DN", company.name or "—"),
         ("MST", company.tax_id or "—"),
         ("Địa chỉ", company.address or "—"),
-        ("Kỳ báo cáo", str(year)),
+        ("Kỳ báo cáo", period_label or str(year)),
         ("Phạm vi xuất", scope_label),
         ("Điểm rủi ro DN", company.risk_score),
     ]
@@ -230,7 +247,10 @@ def build_export(
     buffer = BytesIO()
     wb = xlsxwriter.Workbook(buffer, {"in_memory": True})
 
-    _write_overview(wb, wb.add_worksheet("Tổng quan"), company, year, findings, only=only)
+    _write_overview(
+        wb, wb.add_worksheet("Tổng quan"), company, year, findings, only=only,
+        period_label=_period_label(session, company, year),
+    )
     _write_findings(wb, wb.add_worksheet("Phát hiện"), findings)
     _write_table(
         wb, wb.add_worksheet("Chứng cứ M15"), nvls,
