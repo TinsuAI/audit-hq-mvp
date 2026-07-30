@@ -238,6 +238,120 @@
 > (4) `app/adapters/bcct.py` nay ở nhánh `fix/bcct-label-columns` @ `06a9db5` → T7 #63.
 > Session log: `.ai/sessions/2026-08-02-demo-feedback-cot-so-nhan-du-lieu-goc.md`.
 
+> **Trạng thái (2026-07-31 — KTSTQ 5 NĂM: GROUNDING → GRILL → ADR #23 → 8 VÉ. KHÔNG ĐỤNG CODE SẢN PHẨM):**
+> Chuẩn bị demo 2026-08-01 (DN sắp bị kiểm tra sau thông quan, phạm vi = ngày Kiểm tra − 5 năm → không
+> trùng trọn kỳ quyết toán). Output: 2 note + **ADR #23** (`.ai/DECISIONS.md`) + **8 issue #47–#54**.
+> `git status`: chỉ `.ai/` đổi (DECISIONS, STATUS, notes/, sessions/) — không file `app/` nào bị sửa.
+> **DEFECT NỀN (đã xác minh trong code, CHƯA sửa):** `ingest.py:330` **BỎ** dòng BCCT ngoài cửa sổ kỳ
+> ngay lúc nạp; số bị loại (`bcct_other_year`) **chỉ in ở CLI** (`run_all.py:74`, `ingest.py:385`) —
+> **web UI không thấy gì**; sửa cửa sổ kỳ sau khi nạp (`companies.py:1356`) **không phục hồi** dòng đã
+> bỏ, phải re-upload. Ca thật: DN niên độ 04/2025–03/2026, up BCCT dương lịch 2025 → dòng 01–03/2025
+> bị bỏ im lặng; dòng 01–03/2026 nằm ở file dương lịch 2026 cũng bị bỏ khi nạp năm 2026 → quý đó
+> **không bao giờ vào DB**. Kỳ hiện chỉ có setting per `(DN, năm)`, KHÔNG có default mức DN.
+> **CENSUS CẤU TRÚC FILE THẬT (475 file / 976 sheet / 11 DN, script scratchpad chỉ in aggregate):**
+> BCCT **22 vân tay** — family ECUS "chi tiết" (hrow=9) phủ **10/11 DN**, family "tổng hợp" 13 sheet/3 DN,
+> ~26 sheet bảng phẳng tiêu đề dòng 0. m15a: family chuẩn 27 sheet/8 DN + biến thể 55 sheet/2 DN + đuôi
+> dài one-off. Khác dòng bắt đầu (1↔10) và khác số cột (11↔109) ĐỀU CÓ THẬT. *Caveat: phân loại slot
+> bằng keyword ≥2 hit nên đuôi lẫn sheet không phải BCQT — dùng cho kết luận hình dạng, KHÔNG dùng làm
+> phân loại sạch.*
+> **RESEARCH PHÁP LÝ** (`.ai/notes/2026-07-31-research-ky-ke-toan-bcqt-ktstq.md`, nguồn PDF Công báo):
+> (1) kỳ BCQT = **năm tài chính**, hạn **90 ngày** sau kết thúc niên độ — giữ nguyên qua **kh.32 Đ.1
+> TT 121/2025** (hiệu lực 01/02/2026, KHÔNG có điều khoản chuyển tiếp cho BCQT); (2) **KHÔNG tồn tại quy
+> ước tên "năm tài chính 20XX"** trong văn bản chính thức — định danh pháp lý của kỳ là **khoảng ngày**;
+> (3) niên độ lệch phải 12 tháng tròn **từ đầu quý** (Đ.12 Luật KT 88/2015); quy tắc gộp kỳ đầu/cuối
+> **ĐÃ SỬA từ 01/01/2025** (kh.4 Đ.2 Luật 56/2024: ≤3 kỳ tháng liên tiếp, tối đa 15 tháng — thay
+> "<90 ngày"); (4) KTSTQ 5 năm neo **NGÀY ĐĂNG KÝ TỜ KHAI** (kh.3 Đ.77 Luật HQ 54/2014) — trùng đúng cột
+> `declaration_date` ("Ngày ĐK"); mẫu **01/QĐKT** (PL II TT 121/2025) để "Phạm vi kiểm tra" là **dòng
+> trống tự do**. *Không xác nhận được: quy ước gán năm của HTKK, quy trình KTSTQ nội bộ. vbpl.vn từ chối
+> kết nối, thuvienphapluat 403 → đi thẳng PDF Công báo.*
+> **ADR #23 chốt 4 nhánh:** **T1** `declaration_lines.period_year` = **nhãn nạp**, tư cách thuộc kỳ tính
+> lúc QUERY qua MỘT helper `declaration_scope` (dated → cửa sổ, undated → nhãn); trùng chéo nhãn / thiếu
+> phủ / chồng lấn cửa sổ = **CẢNH BÁO, không dedup, không chặn**; sửa cửa sổ **bump `data_version`** cùng
+> transaction. **T2** `companies.fiscal_start_month` ∈ {1,4,7,10} default 1, **nhãn năm = năm BẮT ĐẦU**,
+> mọi màn hiện nhãn kỳ ≠ dương lịch **in kèm khoảng ngày**. **T3** template builtin **trong CODE** (đã
+> chốt yêu cầu tương lai: quản lý qua UI), evidence mới `builtin-template` rank giữa `header-matched` và
+> `officer-confirmed` → khớp = **tự qua cổng review**, map officer per-DN vẫn thắng. **T4** phạm vi KTSTQ
+> là **VIEW**: `companies.audit_decision_date` nullable, cửa sổ `[D−5y, D]` **tính không lưu**, tag
+> render-time; `registry.requires` + `check_runs.skip_reason` để hết **"0 finding = sạch giả"** (defect
+> CHUNG hôm nay, không riêng kỳ đuôi).
+> **8 VÉ:** `#47` BCCT-1 (`declaration_scope`) → `#48` BCCT-2 (ingest lưu trọn + 3 cảnh báo) → `#49`
+> BCCT-3 (bump `data_version` + banner độ phủ) · `#50` NIENDO-1 · `#51` TPL-1 → `#52` TPL-2 · `#53`
+> KTSTQ-1 (`requires`/`skip_reason`) · `#54` KTSTQ-2 (chặn bởi #48+#53). **Vào song song được: #47, #50,
+> #51, #53.** Mỗi vé một session mới `/tdd` + `/rev`.
+> **HAI CỔNG NGHIỆM THU T1 (tách bạch, đừng gộp):** (1) đổi query trên DB HIỆN TRẠNG, không re-ingest →
+> delta finding **= 0** trên 3 pilot; (2) fresh re-ingest → delta **chỉ gồm** dòng trước đây bị drop nay
+> vào scope (006 "file gộp nhiều kỳ" sẽ có dòng dated 2024 ở nhãn 2025 vào scope 2024 — chủ ý, soát tay).
+> **DEMO 2026-08-01:** không vé nào ship kịp — demo bằng đồ có sẵn (flow review cấu trúc lạ: detect →
+> xác nhận cột → map lưu tái dùng chéo năm; sửa cửa sổ kỳ tay). **TRÁNH làm live: nạp BCCT dương lịch vào
+> DN đã set kỳ lệch** — dòng ngoài cửa sổ biến mất không dấu vết trên web UI cho tới khi #48 ship.
+> Session log: `.ai/sessions/2026-07-31-ktstq-grill-adr23-tickets.md`. Phương án:
+> `.ai/notes/2026-07-31-ktstq-5-nam-template-ky-quyet-toan.md`.
+
+> **Trạng thái (2026-07-30 — ĐỢT CHẠY SONG SONG 17 LUỒNG, HẠN 30 PHÚT. KHÔNG PUSH, KHÔNG MERGE, KHÔNG DEPLOY):**
+> Mỗi luồng sửa lỗi chạy trong git worktree + nhánh riêng; luồng đo/viết chỉ đọc DB (`mode=ro`).
+> `main` không bị đụng. Chi tiết: `.ai/sessions/2026-07-30-parallel-burst.md`.
+> **NHÁNH ĐÃ COMMIT:** `fix/percentile-keys-guardrail` (`ef80f32`,`58d9383`) · `feat/findings-export-xlsx`
+> (`852773b`) · `docs/punchlist-7-glossary` (`9eca1d5`) · 4 nhánh còn lại xem session log.
+> **LỖI MẤT DỮ LIỆU NGƯỜI DÙNG (nặng nhất, chưa có vé):** `run_checks.py:78-104` xoá cứng rồi insert lại
+> `Finding`; **không check nào truyền `status=`** → mỗi lần chạy lại kiểm tra, `status`
+> (`confirmed`/`rejected`/`noted`) và `notes` cán bộ đã ghi bị đưa về `"new"` trong im lặng.
+> Khoá bền qua re-run CÓ tồn tại: `(company_id, period_year, check_code, subject_key, book)` — kiểm trên
+> DB local, không trùng ở C1.6/C1.7/C4.3 (91% của 10.996 dòng 006/2025); ngoại lệ 4 dòng 004 C1.1/C1.3
+> (một mã hai đơn vị MTR/ROLL). Thiết kế + 4 vé: `.ai/notes/2026-07-30-trang-thai-da-soat-finding.md`.
+> **ĐỊNH DANH THẬT TRONG REPO:** không file dữ liệu nào từng bị commit (kiểm cả lịch sử), nhưng MST thật
+> `5400273360`/`0202177200` là giá trị assert ở `tests/test_adapters.py:25,38,58` +
+> `tests/test_anonymize.py:12-13,39,48,53,58,117,127`; tên pháp nhân đầy đủ ở `test_anonymize.py:44`;
+> MST `0901051747` của 004 ở `.ai/DECISIONS.md:545`, `.ai/GLOSSARY.md:94`, `STATUS.md:240,284,603` — dù
+> chính STATUS ghi MST này đã ẩn danh trên prod thành `6944313927`; tên mã `HONG_AN`/`GROWATT`/… ở ~60 vị trí
+> tracked thay vì `PILOT_xxx`. Nhỏ hơn: `deploy/scripts/add-tunnel-ingress.py:20-22` hardcode
+> `/home/tinsu/.cloudflared/cert.pem` + UUID tunnel; `app/routes/ai.py:347,353,1207,1210` log `%s` của lỗi
+> API (thân lỗi 400 có thể chứa lại prompt). `.gitignore` sạch.
+> **THANG ĐIỂM:** khuyến nghị BỎ điểm 0–1000 khỏi mọi màn, thay bằng đếm theo mức nghiêm trọng (đã có sẵn
+> trong code). Đo lại: 002/2025 7→25·22·1 · 004/2025 30→61·7·6 · 006/2024 129→3.147·394·311 ·
+> 006/2025 54→9.963·904·129. Phương án "chuẩn theo max quan sát" bị loại bằng số: sửa dữ liệu 006/2024
+> (raw 24,519→8,0) làm điểm 002 nhảy 53→125 dù dữ liệu 002 không đổi.
+> `.ai/notes/2026-07-30-adr-thang-diem-rui-ro.md`.
+> **LỆCH TÀI LIỆU vs CODE:** `CLAUDE.md` ghi "16 kiểm tra MVP" — thực tế **17** (`app/checks/registry.py:SPECS`,
+> khớp `RULE_SCOPE` + `catalog_full.py`). Trang công khai `/danh-muc-kiem-tra` **đang hiện cột `risk`**
+> (quy kết hành vi) cho cán bộ. `.ai/BACKLOG.md` còn xếp "Multi-user + RBAC" ở mục chờ, nhưng đã cài xong
+> (`app/auth.py`, `app/scoping.py`). `c4_norm.check_c4_3` vẫn dùng **lượng xuất khẩu**, chưa theo P-07.
+> **PR #45: merge được như hiện trạng.** Việc theo sau (có trước PR): `app/static/docs/huong-dan/index.html`
+> còn `map` (420,454-455,464,475-476) và `tick` (504-505,718,720,788,847,852) chưa dịch;
+> `app/templates/admin_ai.html:104-106` vẫn ghi "Model mặc định/nhanh/sâu".
+> **CHƯA XÁC MINH:** chưa nhánh nào chạy trọn `pytest tests` (đều chạy tập con do hạn giờ); hiệu năng export
+> ở 11.000 dòng chưa đo. Phải chạy full suite + `ruff check app tests scripts` trước khi merge từng nhánh.
+> Tài liệu mới: `.ai/notes/2026-07-30-tai-lieu-dao-tao-can-bo.md` (đào tạo cán bộ),
+> `2026-07-30-developer-onboarding-map.md`, `2026-07-30-chong-lan-giua-cac-kiem-tra.md`,
+> `2026-07-30-hieu-nang-man-phat-hien.md`.
+
+> **Trạng thái (2026-07-29 — UX MÀN TỔNG QUAN: 4 VÒNG PROTOTYPE, CHỐT DỪNG LẶP → `/grill-with-docs`. KHÔNG ĐỤNG CODE):**
+> Phản hồi chị Duyên (5 ý, quá tải thông tin + chỉ số mâu thuẫn). Dựng 4 vòng prototype throwaway,
+> **không sửa file sản phẩm nào**; `git status` không đổi. Kết luận: **vấn đề không nằm ở bố cục** —
+> chưa ai chốt màn này để làm gì và cán bộ rời màn với quyết định gì. Bỏ bước `/grill-with-docs`
+> mà nhảy thẳng vào prototype là nguyên nhân 4 vòng trượt.
+> **PHÁT HIỆN ĐÃ KIỂM CHỨNG (đo read-only trên DB local):**
+> (1) **Điểm 0–1000 hỏng cấu trúc** — `scoring.py:183-186` chia cho trần `max_raw`=190 (17×10+20)
+> chỉ đạt nếu cả 17 kiểm tra kịch khung; điểm thực **7·30·54·129** → DN 9.963 phát hiện nghiêm trọng
+> vẫn gắn nhãn "Có chênh lệch nhỏ". **Cần ADR trước khi đưa điểm lên bất kỳ màn nào.**
+> (2) **Mọi finding có `subject_key` DUY NHẤT** (`subjects == n` ở mọi kiểm tra) → không tồn tại
+> "top 5 mã theo số phát hiện". (3) **3 kiểm tra = 91%** phát hiện (C1.6 5.785 · C1.7 2.436 · C4.3 1.772).
+> (4) **Kiểm tra KHÔNG độc lập: `C1.7 ⊂ C1.6`, `C1.3 ⊂ C1.1`** (đúng ở 006/2025, 006/2024, 004/2025)
+> → mọi phép đếm "N kiểm tra cùng gắn cờ" là ĐẾM TRÙNG. **Bao hàm KHÔNG do cấu trúc**: `check_c1_6`
+> loại mã có A42, `check_c1_7` không, mà 006/2025 có **697 dòng A42** → phải tính động theo (DN, kỳ).
+> (5) Gom theo nhóm đề án 1/3/4: 5.866 một nhóm · 1.149 hai nhóm · **90 cả ba nhóm**.
+> (6) **So kỳ 2024 lệch mẫu số**: 3.880 của 2024 gồm **28 `COMBO_HS_GAMING`**, 2025 có 0 → so đúng là
+> **3.852 → 10.996**. (7) `catalog_full.py` có `problem` (trung tính) và `risk` (quy kết hành vi) —
+> nếu đưa mô tả lên màn cho cán bộ thì dùng `problem`.
+> **NGHI VẤN LỚN NHẤT (không phải việc thiết kế):** C1.6 gắn cờ **55% dân số mã**, C1.7 thêm 23%.
+> Kiểm tra kích hoạt trên quá nửa dân số mô tả *tình trạng hệ thống*, không sinh *ngoại lệ* — không
+> bố cục nào làm nó thân thiện được. Là câu hỏi **hiệu chỉnh ngưỡng**, phải sửa `../audit-hq/` TRƯỚC
+> (`CLAUDE.md:38`).
+> **Next:** (1) `/grill-with-docs` ở session MỚI, tham chiếu session log, chốt "màn này để làm gì" +
+> "C1.6/C1.7 là phát hiện hay lỗi hiệu chỉnh"; (2) ADR hiệu chỉnh thang điểm; (3) finding chưa có
+> trạng thái đã-soát/chưa-soát — mỗi lần vào lại quay về 10.996 dòng.
+> Session log: `.ai/sessions/2026-07-29-dashboard-ux-prototype.md`.
+> Artifact prototype v4: <https://claude.ai/code/artifact/d21463cf-b0c3-4a76-b66d-8f7c1a4beb38>
+
 > **Trạng thái (2026-07-27 — SINH TỔNG QUAN AI CHO CẢ 3 PHÁP NHÂN TRÊN PROD — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `d7844b6`):**
 > Owner chốt chạy. Xếp 4 job `AI_OVERVIEW_BATCH` (#2–#5) qua đúng đường của nút "Tạo tổng quan còn thiếu"
 > (enqueue trong container, worker AI của app tự xử — KHÔNG mở tiến trình ghi thứ hai vào SQLite).
