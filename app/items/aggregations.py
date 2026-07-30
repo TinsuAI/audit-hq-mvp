@@ -11,6 +11,7 @@ from typing import Literal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.checks.scope import declaration_scope
 from app.items.operations import classify_operation
 from app.models import DeclarationLine, Norm, NvlBalance, SpBalance
 
@@ -194,12 +195,18 @@ def bcct_lines_for_item(
     item_code: str,
     year: int | None = None,
 ) -> list[DeclarationLine]:
-    stmt = select(DeclarationLine).where(
-        DeclarationLine.company_id == company_id,
-        DeclarationLine.item_code == item_code,
-    )
-    if year is not None:
-        stmt = stmt.where(DeclarationLine.period_year == year)
+    # Lọc theo kỳ dùng `declaration_scope` (ADR #23 T1) để trang chi tiết mã hiện
+    # đúng tập dòng mà check đã đọc; không kỳ nào thì lấy toàn bộ lịch sử của mã.
+    if year is None:
+        stmt = select(DeclarationLine).where(
+            DeclarationLine.company_id == company_id,
+            DeclarationLine.item_code == item_code,
+        )
+    else:
+        stmt = select(DeclarationLine).where(
+            declaration_scope(session, company_id, year),
+            DeclarationLine.item_code == item_code,
+        )
     stmt = stmt.order_by(
         DeclarationLine.declaration_date.is_(None),
         DeclarationLine.declaration_date,

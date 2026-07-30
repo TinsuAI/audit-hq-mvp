@@ -10,7 +10,7 @@ dòng mà check thực sự đọc.
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.checks.scope import declaration_scope
 from app.models import DeclarationLine, Norm, NvlBalance, SpBalance
@@ -29,26 +29,27 @@ _SETTLEMENT_MODELS = {"m15": NvlBalance, "m15a": SpBalance, "m16": Norm}
 
 
 def available_sources(session, company_id: int, year: int) -> set[str]:
-    """Tập nguồn CÓ ÍT NHẤT một dòng cho (DN, kỳ)."""
+    """Tập nguồn CÓ ÍT NHẤT một dòng cho (DN, kỳ).
+
+    Hỏi "có dòng nào không" bằng `SELECT id … LIMIT 1`, KHÔNG bằng `COUNT(*)`:
+    `LIMIT` không cắt được aggregate, nên `COUNT(*) … LIMIT 1` vẫn quét trọn bảng —
+    với BCCT là hàng trăm nghìn dòng mỗi lần chạy kiểm tra.
+    """
     present: set[str] = set()
 
-    has_bcct = session.scalar(
-        select(func.count())
-        .select_from(DeclarationLine)
+    if session.scalar(
+        select(DeclarationLine.id)
         .where(declaration_scope(session, company_id, year))
         .limit(1)
-    )
-    if has_bcct:
+    ):
         present.add("bcct")
 
     for name, model in _SETTLEMENT_MODELS.items():
-        n = session.scalar(
-            select(func.count())
-            .select_from(model)
+        if session.scalar(
+            select(model.id)
             .where(model.company_id == company_id, model.period_year == year)
             .limit(1)
-        )
-        if n:
+        ):
             present.add(name)
     return present
 

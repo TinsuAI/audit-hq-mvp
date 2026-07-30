@@ -193,26 +193,9 @@ def overlapping_periods(session, company_id: int, year: int) -> list[int]:
     )
 
 
-def declaration_date_span(session, company_id: int, year: int) -> tuple[date, date] | None:
-    """min/max `declaration_date` của các dòng THUỘC kỳ; None khi không dòng nào có ngày."""
-    row = session.execute(
-        select(
-            func.min(DeclarationLine.declaration_date),
-            func.max(DeclarationLine.declaration_date),
-        ).where(
-            declaration_scope(session, company_id, year),
-            DeclarationLine.declaration_date.is_not(None),
-        )
-    ).first()
-    if row is None or row[0] is None or row[1] is None:
-        return None
-    return row[0], row[1]
-
-
 __all__ = [
     "BcctCoverage",
     "bcct_coverage",
     "coverage_gaps",
-    "declaration_date_span",
     "overlapping_periods",
 ]

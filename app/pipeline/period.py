@@ -52,23 +52,6 @@ def default_bounds(
     return period_from, period_to
 
 
-def header_conflicts_with_fiscal_year(
-    header: CompanyHeader | None, period_year: int, fiscal_start_month: int
-) -> tuple[tuple[date, date], tuple[date, date]] | None:
-    """Tiêu đề file lệch với niên độ mặc định của DN → `(cửa sổ tiêu đề, cửa sổ niên độ)`.
-
-    CẢNH BÁO, không chặn và KHÔNG tự chọn hộ (nhất quán với triết lý của T1): tiêu đề
-    vẫn thắng, nhưng cán bộ phải thấy là nó lệch với niên độ đã khai cho DN.
-    """
-    if fiscal_start_month == 1 or header is None:
-        return None
-    if header.period_from is None or header.period_to is None:
-        return None
-    expected = fiscal_bounds(period_year, fiscal_start_month)
-    actual = (header.period_from, header.period_to)
-    return None if actual == expected else (actual, expected)
-
-
 def period_window_conflict(
     session, company_id: int, period_year: int
 ) -> tuple[tuple[date, date], tuple[date, date]] | None:
@@ -121,9 +104,11 @@ def load_period_windows(
     mặc định của DN, để màn hiện nhãn kỳ vẫn in được khoảng ngày trước lần nạp đầu.
     """
     out: dict[int, tuple[date, date]] = {}
+    stored: set[int] = set()
     for r in session.scalars(
         select(CompanyPeriod).where(CompanyPeriod.company_id == company_id)
     ).all():
+        stored.add(r.period_year)
         if (
             r.period_from is not None
             and r.period_to is not None
@@ -133,12 +118,6 @@ def load_period_windows(
             out[r.period_year] = (r.period_from, r.period_to)
 
     if years:
-        stored = {
-            r.period_year
-            for r in session.scalars(
-                select(CompanyPeriod).where(CompanyPeriod.company_id == company_id)
-            ).all()
-        }
         month = company_fiscal_start_month(session, company_id)
         if month != 1:
             for y in years:

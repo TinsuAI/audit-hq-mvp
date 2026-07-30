@@ -20,7 +20,8 @@ from datetime import date
 from sqlalchemy import func, select
 
 from app.checks.scope import declaration_scope
-from app.models import CheckRun, CompanyPeriod, DeclarationLine, Norm, NvlBalance, SpBalance
+from app.checks.sources import available_sources
+from app.models import CheckRun, CompanyPeriod, DeclarationLine
 from app.pipeline.period import fiscal_bounds
 
 AUDIT_YEARS = 5
@@ -122,12 +123,13 @@ def scope_coverage(session, company) -> list[PeriodCoverage] | None:
         if status == "outside":
             continue
         runs = session.execute(
-            select(CheckRun.skip_reason, func.count())
+            select(CheckRun.skip_reason, CheckRun.status, func.count())
             .where(CheckRun.company_id == company.id, CheckRun.period_year == label)
-            .group_by(CheckRun.skip_reason)
+            .group_by(CheckRun.skip_reason, CheckRun.status)
         ).all()
-        checks_run = sum(n for reason, n in runs if reason is None)
-        checks_waiting = sum(n for reason, n in runs if reason is not None)
+        # `error` (check động ném lỗi) KHÔNG phải "đã chạy" — nó cũng không cho kết luận.
+        checks_run = sum(n for reason, st, n in runs if reason is None and st != "error")
+        checks_waiting = sum(n for reason, _, n in runs if reason is not None)
         out.append(PeriodCoverage(
             period_year=label,
             period_from=period_from,
@@ -141,16 +143,8 @@ def scope_coverage(session, company) -> list[PeriodCoverage] | None:
 
 
 def _has_bcqt(session, company_id: int, year: int) -> bool:
-    """Kỳ đã có ít nhất một mẫu BCQT (M15 / M15a / M16)."""
-    for model in (NvlBalance, SpBalance, Norm):
-        if session.scalar(
-            select(func.count())
-            .select_from(model)
-            .where(model.company_id == company_id, model.period_year == year)
-            .limit(1)
-        ):
-            return True
-    return False
+    """Kỳ đã có ít nhất một mẫu BCQT (M15 / M15a / M16) — cùng nguồn với gate #53."""
+    return bool(available_sources(session, company_id, year) & {"m15", "m15a", "m16"})
 
 
 def finding_scope_tag(

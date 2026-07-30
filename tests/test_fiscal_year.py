@@ -23,7 +23,6 @@ from app.pipeline.period import (
     FISCAL_START_MONTHS,
     default_bounds,
     fiscal_bounds,
-    header_conflicts_with_fiscal_year,
     load_period_windows,
     resolve_period_bounds,
 )
@@ -103,32 +102,6 @@ def test_companies_without_setting_keep_calendar_behaviour(session, company):
     assert resolve_period_bounds(session, company.id, 2025) == (
         date(2025, 1, 1), date(2025, 12, 31)
     )
-
-
-# --- Cảnh báo tiêu đề lệch niên độ -------------------------------------------
-
-
-def test_header_matching_fiscal_default_is_no_conflict():
-    h = CompanyHeader(period_from=date(2025, 4, 1), period_to=date(2026, 3, 31))
-    assert header_conflicts_with_fiscal_year(h, 2025, 4) is None
-
-
-def test_header_conflicting_with_fiscal_default_is_reported():
-    h = CompanyHeader(period_from=date(2025, 1, 1), period_to=date(2025, 12, 31))
-    conflict = header_conflicts_with_fiscal_year(h, 2025, 4)
-    assert conflict == ((date(2025, 1, 1), date(2025, 12, 31)),
-                        (date(2025, 4, 1), date(2026, 3, 31)))
-
-
-def test_no_conflict_reported_for_calendar_companies():
-    h = CompanyHeader(period_from=date(2025, 1, 1), period_to=date(2025, 12, 31))
-    assert header_conflicts_with_fiscal_year(h, 2025, 1) is None
-
-
-def test_incomplete_header_cannot_conflict():
-    assert header_conflicts_with_fiscal_year(CompanyHeader(period_from=date(2025, 1, 1)),
-                                             2025, 4) is None
-    assert header_conflicts_with_fiscal_year(None, 2025, 4) is None
 
 
 # --- Nhãn kỳ kèm khoảng ngày ở mọi màn ---------------------------------------

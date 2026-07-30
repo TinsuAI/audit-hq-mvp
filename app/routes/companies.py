@@ -2818,6 +2818,10 @@ def finding_detail(
             "show_book": show_book,
             "detail_rows": describe_details(finding.details),
             "evidence_blocks": evidence_blocks,
+            # Nhãn kỳ ≠ dương lịch phải in kèm khoảng ngày ở MỌI màn (ADR #23 T2).
+            "period_window": load_period_windows(
+                db, finding.company_id, years=[finding.period_year]
+            ).get(finding.period_year),
         },
     )
 

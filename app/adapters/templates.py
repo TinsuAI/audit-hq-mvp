@@ -10,8 +10,15 @@ Khớp template = TỰ QUA cổng review. Cổng review canh CẤU TRÚC chưa c
 template là cấu trúc đã được xem lúc curate (code + PR + test fixture), nên bắt mỗi
 DN bấm xác nhận lại là bắt họ review lại đúng thứ mình đã review, không thêm được
 kiểm tra nào cổng thực sự làm. Rủi ro chấp nhận: một template curate SAI sẽ áp im
-lặng trên diện rộng — chặn bằng ba lớp: test fixture cho từng template, badge
-"Khớp mẫu: <tên>" luôn hiển thị, và map officer per-DN rank CAO HƠN nên vẫn thắng.
+lặng trên diện rộng — chặn bằng hai lớp: test fixture cho từng template, và badge
+"Khớp mẫu: <tên>" luôn hiển thị.
+
+**GIỚI HẠN ĐANG CÓ — map officer per-DN mới thắng ở NHÃN, chưa thắng ở VỊ TRÍ CỘT.**
+`resolve_officer_confirmed` chỉ nâng nguồn bằng chứng của cột lên `officer-confirmed`
+SAU khi parse xong; chỉ số cột lúc parse vẫn là của template. Hôm nay chưa lệch được
+vì cả bốn họ đã seed đều để `column_map` RỖNG (= cột mặc định của slot), nhưng seed
+một họ có map riêng thì map cán bộ sẽ bị template che. Phải sửa trước khi seed họ đầu
+tiên có `column_map` khác mặc định.
 
 **Tầng này sống trong CODE, đổi qua PR.** ADR #23 đã chốt yêu cầu tương lai: quản
 lý template qua UI (bảng DB seed từ code). CHƯA build.
@@ -32,14 +39,6 @@ MATCH_BUILTIN = "builtin-template"
 MATCH_OFFICER = "officer-map"
 MATCH_KEYWORD = "keyword"
 MATCH_DEFAULT = "default"
-
-MATCH_LABEL_VI = {
-    MATCH_BUILTIN: "Khớp mẫu",
-    MATCH_OFFICER: "Map đã xác nhận",
-    MATCH_KEYWORD: "Dò từ khoá",
-    MATCH_DEFAULT: "Mặc định (cột cố định)",
-}
-
 
 @dataclass(frozen=True)
 class BuiltinTemplate:
@@ -172,7 +171,6 @@ __all__ = [
     "MATCH_BUILTIN",
     "MATCH_DEFAULT",
     "MATCH_KEYWORD",
-    "MATCH_LABEL_VI",
     "MATCH_OFFICER",
     "BuiltinTemplate",
     "match_template",

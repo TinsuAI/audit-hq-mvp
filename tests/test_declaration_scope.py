@@ -94,7 +94,8 @@ def test_undated_row_falls_back_to_label(session, company):
     assert count_in_scope(session, company.id, 2025) == 1
 
 
-def test_no_period_row_falls_back_to_label_for_dated_rows(session, company):
+def test_period_without_a_stored_row_still_gets_a_window(session, company):
+    """Chưa có dòng `company_periods` → cửa sổ suy từ niên độ DN, KHÔNG quy theo nhãn."""
     add_decl(
         session, company.id, declaration_no="1", customs_code="E31", item_code="A",
         quantity=10, year=2025, declaration_date=date(2025, 6, 1),
@@ -105,6 +106,35 @@ def test_no_period_row_falls_back_to_label_for_dated_rows(session, company):
     )
     session.commit()
     assert count_in_scope(session, company.id, 2025) == 1
+    assert count_in_scope(session, company.id, 2024) == 1
+
+
+def test_dated_row_is_never_orphaned_when_its_own_period_has_no_row(session, company):
+    """Dòng dated 2024 nạp dưới nhãn 2025 phải vào kỳ 2024, dù 2024 chưa có dòng kỳ.
+
+    Quy kỳ chưa-có-cửa-sổ theo NHÃN sẽ làm dòng này rơi khỏi cửa sổ 2025 mà cũng
+    không vào được 2024 — mất dòng đúng theo cách #48 sinh ra để chặn.
+    """
+    set_period(session, company.id, 2025, date(2025, 1, 1), date(2025, 12, 31))
+    add_decl(
+        session, company.id, declaration_no="1", customs_code="E31", item_code="A",
+        quantity=10, year=2025, declaration_date=date(2024, 8, 9),
+    )
+    session.commit()
+    assert count_in_scope(session, company.id, 2025) == 0
+    assert count_in_scope(session, company.id, 2024) == 1
+
+
+def test_fiscal_company_without_a_stored_row_uses_its_own_year_boundaries(session, company):
+    company.fiscal_start_month = 4
+    session.commit()
+    add_decl(
+        session, company.id, declaration_no="1", customs_code="E31", item_code="A",
+        quantity=10, year=2025, declaration_date=date(2026, 2, 1),
+    )
+    session.commit()
+    assert count_in_scope(session, company.id, 2025) == 1   # 02/2026 ∈ [04/2025, 03/2026]
+    assert count_in_scope(session, company.id, 2026) == 0
 
 
 def test_scope_never_leaks_across_companies(session, company):

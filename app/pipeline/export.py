@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_LABEL_VI, SPECS
+from app.checks.scope import declaration_scope
 from app.models import Company, DeclarationLine, Finding, Norm, NvlBalance, SpBalance
 
 _LEGAL_REFERENCES = [
@@ -234,10 +235,11 @@ def build_export(
     ).all() if nvl_codes else []
 
     if all_codes_for_decl:
+        # Cùng selector với check (ADR #23 T1): sheet chứng cứ phải trả về ĐÚNG tập
+        # dòng phát hiện được tính trên, không phải tập theo nhãn nạp.
         decls = session.scalars(
             select(DeclarationLine).where(
-                DeclarationLine.company_id == company.id,
-                DeclarationLine.period_year == year,
+                declaration_scope(session, company.id, year),
                 DeclarationLine.item_code.in_(all_codes_for_decl),
             ).limit(500)
         ).all()
