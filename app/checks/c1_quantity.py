@@ -12,9 +12,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.checks.company_type import (
+    PAIRING,
+    CompanyType,
+    Pairing,
     detect_company_type,
-    export_codes_for,
-    import_codes_for,
+    mixed_book_pairings,
 )
 from app.checks.registry import Severity, severity_for
 from app.checks.uom import normalize, resolve_canonical
@@ -160,20 +162,64 @@ def _pct_diff(actual: float, expected: float) -> float:
     return (actual - expected) / abs(expected) * 100.0
 
 
+def _book_filter(model, book: str | None):
+    return model.book.is_(None) if book is None else model.book == book
+
+
+def _per_scope(
+    session: Session,
+    company_id: int,
+    year: int,
+    fn: Callable[..., list[Finding]],
+    nvl: bool,
+) -> list[Finding]:
+    """Chạy `fn` một lượt cho cả pháp nhân, hoặc một lượt MỖI SỔ khi các sổ khác loại hình.
+
+    `mixed_book_pairings` trả None cho pháp nhân một sổ và cho pháp nhân nhiều sổ
+    cùng loại hình → đường cũ y nguyên, DN đang chạy không đổi kết quả. Chỉ pháp
+    nhân giữ hai sổ KHÁC loại hình (SXXK + thuê gia công nước ngoài) mới tách,
+    vì gộp lại thì cân đối sổ này bị đem so với tờ khai của sổ kia.
+    """
+    per_book = mixed_book_pairings(session, company_id, year)
+    if per_book is None:
+        company_type = detect_company_type(session, company_id, year)
+        pairing = PAIRING.get(company_type)
+        if pairing is None:
+            return []
+        return fn(session, company_id, year, None, False, company_type, pairing)
+
+    findings: list[Finding] = []
+    by_pairing = {p: t for t, p in PAIRING.items()}
+    for book, pairing in per_book.items():
+        findings += fn(
+            session, company_id, year, book, True,
+            by_pairing.get(pairing, CompanyType.UNKNOWN), pairing,
+        )
+    return findings
+
+
 def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
     """Lệch số lượng nhập NVL: |M15.import - Σ BCCT| / M15.import."""
-    company_type = detect_company_type(session, company_id, year)
-    import_codes = import_codes_for(company_type)
+    return _per_scope(session, company_id, year, _c1_1_scope, nvl=True)
+
+
+def _c1_1_scope(
+    session: Session, company_id: int, year: int,
+    book: str | None, scoped: bool, company_type: CompanyType, pairing: Pairing,
+) -> list[Finding]:
+    import_codes = set(pairing.nvl_codes)
     if not import_codes:
         return []
+    column = pairing.nvl_column
 
     bcct_sums = _sum_bcct_by_item(session, company_id, year, import_codes)
-    rows = session.scalars(
-        select(NvlBalance).where(
-            NvlBalance.company_id == company_id,
-            NvlBalance.period_year == year,
-        )
-    ).all()
+    q = select(NvlBalance).where(
+        NvlBalance.company_id == company_id,
+        NvlBalance.period_year == year,
+    )
+    if scoped:
+        q = q.where(_book_filter(NvlBalance, book))
+    rows = session.scalars(q).all()
 
     # Gộp import_qty theo (mã, đơn vị CHUẨN HOÁ): một mã có thể có NHIỀU dòng M15 khi
     # pháp nhân giữ nhiều sổ (đa loại hình) hoặc khai cùng mã ở hai đơn vị. Cộng across
@@ -183,7 +229,7 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
     display_unit: dict[tuple[str, str | None], str] = {}
     for r in rows:
         key = (r.material_code, _unit_key(session, r.unit))
-        agg[key] = agg.get(key, 0.0) + r.import_qty
+        agg[key] = agg.get(key, 0.0) + getattr(r, column)
         display_unit.setdefault(key, r.unit)
 
     slices_by_code: dict[str, list[tuple[str | None, float]]] = {}
@@ -221,6 +267,7 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
                 severity=sev.value,
                 subject_type="material_code",
                 subject_key=code,
+                book=book if scoped else None,
                 title=(
                     f"Lệch nhập NVL {code}: "
                     f"M15={imported:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
@@ -228,12 +275,13 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
                 details={
                     "company_type": company_type.value,
                     "import_codes": sorted(import_codes),
+                    "m15_column": column,
                     "unit": display_unit.get((code, unit)),
                     "m15_import": imported,
                     "bcct_sum": bcct_qty,
                     "diff_pct": diff_pct,
                 },
-                evidence_refs=_evidence_nvl(code, year, company_id)
+                evidence_refs=_evidence_nvl(code, year, company_id, book if scoped else None)
                 + _evidence_decl(code, year, company_id, import_codes),
             ))
     return findings
@@ -241,8 +289,14 @@ def check_c1_1(session: Session, company_id: int, year: int) -> list[Finding]:
 
 def check_c1_2(session: Session, company_id: int, year: int) -> list[Finding]:
     """Có tờ khai nhập nhưng không có dòng nào trong M15."""
-    company_type = detect_company_type(session, company_id, year)
-    import_codes = import_codes_for(company_type)
+    return _per_scope(session, company_id, year, _c1_2_scope, nvl=True)
+
+
+def _c1_2_scope(
+    session: Session, company_id: int, year: int,
+    book: str | None, scoped: bool, company_type: CompanyType, pairing: Pairing,
+) -> list[Finding]:
+    import_codes = set(pairing.nvl_codes)
     if not import_codes:
         return []
 
@@ -258,6 +312,8 @@ def check_c1_2(session: Session, company_id: int, year: int) -> list[Finding]:
             .distinct()
         ).all()
     )
+    # Mã "thiếu trong M15" phải so với M15 của MỌI sổ, kể cả khi đang chạy theo sổ:
+    # mã nằm ở sổ khác thì không phải là thiếu, chỉ là thuộc sổ khác.
     m15_codes = set(
         session.scalars(
             select(NvlBalance.material_code).where(
@@ -298,10 +354,17 @@ def check_c1_2(session: Session, company_id: int, year: int) -> list[Finding]:
 
 def check_c1_3(session: Session, company_id: int, year: int) -> list[Finding]:
     """M15 có nhập_trong_kỳ > 0 nhưng không có tờ khai nhập tương ứng."""
-    company_type = detect_company_type(session, company_id, year)
-    import_codes = import_codes_for(company_type)
+    return _per_scope(session, company_id, year, _c1_3_scope, nvl=True)
+
+
+def _c1_3_scope(
+    session: Session, company_id: int, year: int,
+    book: str | None, scoped: bool, company_type: CompanyType, pairing: Pairing,
+) -> list[Finding]:
+    import_codes = set(pairing.nvl_codes)
     if not import_codes:
         return []
+    column = pairing.nvl_column
 
     bcct_codes = set(
         session.scalars(
@@ -315,19 +378,21 @@ def check_c1_3(session: Session, company_id: int, year: int) -> list[Finding]:
             .distinct()
         ).all()
     )
-    m15_with_imports = session.scalars(
-        select(NvlBalance).where(
-            NvlBalance.company_id == company_id,
-            NvlBalance.period_year == year,
-            NvlBalance.import_qty > 0,
-        )
-    ).all()
+    q = select(NvlBalance).where(
+        NvlBalance.company_id == company_id,
+        NvlBalance.period_year == year,
+        getattr(NvlBalance, column) > 0,
+    )
+    if scoped:
+        q = q.where(_book_filter(NvlBalance, book))
+    m15_with_imports = session.scalars(q).all()
 
     findings: list[Finding] = []
     for r in _one_row_per_material(
         [r for r in m15_with_imports if r.material_code not in bcct_codes],
-        lambda r: r.import_qty,
+        lambda r: getattr(r, column),
     ):
+        qty = getattr(r, column)
         findings.append(Finding(
             company_id=company_id,
             period_year=year,
@@ -338,12 +403,13 @@ def check_c1_3(session: Session, company_id: int, year: int) -> list[Finding]:
             book=r.book,
             title=(
                 f"M15 khai nhập NVL {r.material_code} "
-                f"({r.import_qty:.2f} {r.unit or ''}) nhưng không có tờ khai"
+                f"({qty:.2f} {r.unit or ''}) nhưng không có tờ khai"
             ),
             details={
                 "company_type": company_type.value,
                 "import_codes": sorted(import_codes),
-                "m15_import": r.import_qty,
+                "m15_column": column,
+                "m15_import": qty,
             },
             evidence_refs=_evidence_nvl(r.material_code, year, company_id, r.book),
         ))
@@ -352,25 +418,33 @@ def check_c1_3(session: Session, company_id: int, year: int) -> list[Finding]:
 
 def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
     """Lệch số lượng xuất TP: |M15a.export - Σ BCCT export| / M15a.export."""
-    company_type = detect_company_type(session, company_id, year)
-    export_codes = export_codes_for(company_type)
+    return _per_scope(session, company_id, year, _c1_4_scope, nvl=False)
+
+
+def _c1_4_scope(
+    session: Session, company_id: int, year: int,
+    book: str | None, scoped: bool, company_type: CompanyType, pairing: Pairing,
+) -> list[Finding]:
+    export_codes = set(pairing.sp_codes)
     if not export_codes:
         return []
+    column = pairing.sp_column
 
     bcct_sums = _sum_bcct_by_item(session, company_id, year, export_codes)
-    rows = session.scalars(
-        select(SpBalance).where(
-            SpBalance.company_id == company_id,
-            SpBalance.period_year == year,
-        )
-    ).all()
+    q = select(SpBalance).where(
+        SpBalance.company_id == company_id,
+        SpBalance.period_year == year,
+    )
+    if scoped:
+        q = q.where(_book_filter(SpBalance, book))
+    rows = session.scalars(q).all()
 
     # Gộp export_qty theo (mã, đơn vị CHUẨN HOÁ) — như C1.1.
     agg: dict[tuple[str, str | None], float] = {}
     display_unit: dict[tuple[str, str | None], str] = {}
     for r in rows:
         key = (r.product_code, _unit_key(session, r.unit))
-        agg[key] = agg.get(key, 0.0) + r.export_qty
+        agg[key] = agg.get(key, 0.0) + getattr(r, column)
         display_unit.setdefault(key, r.unit)
 
     slices_by_code: dict[str, list[tuple[str | None, float]]] = {}
@@ -408,6 +482,7 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
                 severity=sev.value,
                 subject_type="product_code",
                 subject_key=code,
+                book=book if scoped else None,
                 title=(
                     f"Lệch xuất TP {code}: "
                     f"M15a={exported:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
@@ -415,6 +490,7 @@ def check_c1_4(session: Session, company_id: int, year: int) -> list[Finding]:
                 details={
                     "company_type": company_type.value,
                     "export_codes": sorted(export_codes),
+                    "m15a_column": column,
                     "unit": display_unit.get((code, unit)),
                     "m15a_export": exported,
                     "bcct_sum": bcct_qty,

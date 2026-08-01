@@ -52,6 +52,7 @@ RESULT_VALUE_LABEL_VI: dict[str, dict[str, str]] = {
     "company_type": {
         "DNCX": "DNCX (doanh nghiệp chế xuất)",
         "GIA_CONG": "Gia công",
+        "GIA_CONG_NN": "Thuê gia công ở nước ngoài",
         "SXXK": "SXXK (sản xuất xuất khẩu)",
         "UNKNOWN": "Chưa xác định",
     },
