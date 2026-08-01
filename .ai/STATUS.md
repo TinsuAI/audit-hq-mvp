@@ -1,5 +1,41 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-08-02 — BA PHẢN HỒI SAU DEMO ĐÃ CÀI XONG. NHÁNH
+> `feat/finding-columns-raw-data` TÁCH TỪ `main` @ `0b9e3b2`, 4 COMMIT, CHƯA PUSH /
+> CHƯA MERGE / CHƯA DEPLOY):** 956 test xanh, ruff sạch. Ba việc:
+> (1) **Link vào dữ liệu gốc đã lọc sẵn** — từ mỗi dòng phát hiện, mỗi khối chứng cứ,
+> mỗi khối trên trang chi tiết mã. Bảng đích lấy theo `evidence_refs` **chứ không đoán
+> theo `subject_type`** (C1.2 subject là mã NVL nhưng bằng chứng ở tờ khai). Màn dữ
+> liệu gốc thêm lọc số tờ khai / loại hình (nhận cả tập) / khoảng ngày / sổ, giữ bộ
+> lọc khi đổi tab, thêm cột `Nguồn file` in TÊN FILE (không in đường dẫn máy chủ).
+> (2) **Bảng phát hiện bỏ hẳn cột "Mô tả"**, số tách ra cột theo từng check qua
+> `app/checks/detail_labels.py`. Check động (admin viết SQL) không khai bộ cột nên
+> vẫn giữ cột mô tả. (3) **`app/formatting.py`** — một chỗ quyết định dấu phân cách;
+> setting `number_format` (`vi` mặc định `1.234,56` · `en` `1,234.56`) ở
+> `/admin/hien-thi`; `%` luôn có dấu, tiền luôn có mã tiền tệ.
+> **`finding.title` KHÔNG đổi cách sinh** — tiêu đề đã lưu trong DB, đổi thì phải chạy
+> lại toàn bộ kiểm tra, mà `title` còn là đầu vào của tìm kiếm, công cụ AI và
+> `ai/overview.py` (gom theo title). Việc bỏ cột mô tả nằm ở tầng render.
+> **BA LỖI THẬT bắt được:** (a) **tiêu đề cột C1.1 nói sai về con số nằm dưới nó** —
+> `m15_column` mang tên cột DB, và với DN thuê gia công ở nước ngoài cột đối chiếu là
+> `xuất kho để sản xuất` chứ không phải `nhập trong kỳ` → đổi tiêu đề thành "Số M15
+> đối chiếu" + thêm cột nêu tên cột thật; (b) **`recompute_company_year` nuốt mất
+> trạng thái cán bộ vừa ghi** (`tier_for` → `get_tiers()` tự mở `SessionLocal()`,
+> session lồng `close()` phát ROLLBACK; dính khi hai session dùng chung một
+> connection — **sản phẩm chạy pool thường nên không dính**, nhưng test đỏ sẵn trên
+> `main` từ trước, nay đã sửa + có test hồi quy); (c) **bảng C2.1 tràn ngang, nút thao
+> tác bị đẩy khỏi màn hình** khi trải trọn phương trình cân đối thành 10 cột → rút còn
+> 4 cột, đầu vào vẫn đủ ở trang chi tiết.
+> **E2E:** `.ai/features/2026-08-02-finding-columns-raw-data/` (brief + `ui_smoke.py`
+> + 9 ảnh), server throwaway 8332, tự dọn, kill theo PID. Ảnh là seed minh hoạ →
+> chứng minh RENDER, KHÔNG chứng minh adapter đọc đúng cột từ Excel thật.
+> **Next:** (1) mở PR + review + deploy — không có migration; (2) nhánh này **sẽ
+> conflict với `feat/adr23-ktstq-period-scope`** ở `companies.py` + 2 template, owner
+> đã biết khi chọn tách từ `main`; (3) bản xuất Excel kiến nghị chưa dùng lớp `fmt_*`
+> và chưa tách số ra cột — cùng vấn đề, khác mặt trận; (4) `app/adapters/bcct.py` vẫn
+> chưa commit (+71 dòng, dò cột theo nhãn tiêu đề) — việc khác, session này không đụng.
+> Session log: `.ai/sessions/2026-08-02-demo-feedback-cot-so-nhan-du-lieu-goc.md`.
+
 > **Trạng thái (2026-07-27 — SINH TỔNG QUAN AI CHO CẢ 3 PHÁP NHÂN TRÊN PROD — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `d7844b6`):**
 > Owner chốt chạy. Xếp 4 job `AI_OVERVIEW_BATCH` (#2–#5) qua đúng đường của nút "Tạo tổng quan còn thiếu"
 > (enqueue trong container, worker AI của app tự xử — KHÔNG mở tiến trình ghi thứ hai vào SQLite).
