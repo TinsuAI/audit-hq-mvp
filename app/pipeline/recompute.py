@@ -10,6 +10,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.app_settings import get_risk_tier_uppers
 from app.checks.denominators import compute_denominators, extended_rule_scope
 from app.checks.scoring import compute_company_year_score
 from app.models import Company, CompanyYearScore, Finding
@@ -21,6 +22,14 @@ def recompute_company_year(session: Session, company_id: int, year: int) -> Comp
     Finding `rejected` không tính vào điểm (xem `compute_rule_score`). Trả CompanyYearScore
     đã cập nhật. Caller tự `commit`.
     """
+    # Nạp ngưỡng hạng bằng CHÍNH session này trước khi chấm điểm. `tier_for` gọi
+    # `get_tiers()` không truyền db → cache trống thì nó tự mở `SessionLocal()`.
+    # Session lồng đó `close()` phát ROLLBACK; khi hai session dùng chung một
+    # connection (SQLite in-memory + StaticPool ở test) thì UPDATE `finding.status`
+    # đang treo của caller bị huỷ theo, và cán bộ đổi trạng thái xong thấy không ăn.
+    # Đọc trước ở đây làm cache nóng nên `get_tiers()` phía dưới không mở session nào.
+    get_risk_tier_uppers(session)
+
     findings = session.scalars(
         select(Finding).where(
             Finding.company_id == company_id,

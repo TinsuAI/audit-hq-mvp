@@ -27,6 +27,7 @@ from app.ai.config import (
 from app.ai.limits import usage_today
 from app.auth import SessionUser, require_admin
 from app.database import get_db
+from app.formatting import JINJA_GLOBALS as FORMAT_GLOBALS
 from app.models import AiConversation, AiMessage
 from app.version import VERSION, version_string
 
@@ -34,6 +35,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals["app_version_string"] = version_string()
 templates.env.globals["app_version"] = VERSION
+templates.env.globals.update(FORMAT_GLOBALS)
 
 router = APIRouter(prefix="/admin/ai")
 
