@@ -5,8 +5,9 @@ from __future__ import annotations
 import json as _json
 import re
 from collections import defaultdict
-from pathlib import Path
-from urllib.parse import quote_plus
+from datetime import date
+from pathlib import Path, PurePosixPath
+from urllib.parse import quote_plus, urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -32,9 +33,12 @@ from app.books import (
     normalize_book,
 )
 from app.checks.combos import COMBO_SPECS
+from app.checks.detail_labels import column_headers, describe_details, row_cells
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
 from app.checks.scoring import tier_css_for, tier_for
 from app.database import get_db
+from app.formatting import JINJA_GLOBALS as FORMAT_GLOBALS
+from app.formatting import fmt_date, fmt_price, fmt_qty
 from app.items.aggregations import (
     bcct_lines_for_item,
     bom_edges_for_nvl,
@@ -82,6 +86,10 @@ templates.env.globals["tier_for"] = tier_for
 templates.env.globals["PERCENTILE_LABEL"] = PERCENTILE_LABEL_VI
 # Nhãn sổ quyết toán (book) — dùng ở company_detail (split line) + finding_detail (field).
 templates.env.globals["book_label"] = book_label
+# Cột số của bảng phát hiện + nhãn tiếng Việt cho `finding.details`.
+templates.env.globals["finding_columns"] = column_headers
+templates.env.globals["finding_cells"] = row_cells
+templates.env.globals.update(FORMAT_GLOBALS)
 
 # Trang DN chỉ xem trước vài dòng mỗi kiểm tra; xem đủ thì mở riêng từng kiểm tra.
 _PREVIEW_PER_GROUP = 15
@@ -1975,9 +1983,13 @@ _TABLE_CONFIG = {
             ("material_name", "Tên NVL", "wrap"),
             ("unit", "ĐVT", ""),
             ("opening_qty", "Tồn đầu", "num"),
-            ("import_qty", "Nhập", "num"),
+            ("import_qty", "Nhập trong kỳ", "num"),
+            ("reexport_qty", "Tái xuất", "num"),
+            ("repurpose_qty", "Chuyển MĐSD", "num"),
             ("production_out_qty", "Xuất SX", "num"),
+            ("other_out_qty", "Xuất khác", "num"),
             ("closing_qty", "Tồn cuối", "num"),
+            ("source_file", "Nguồn file", "file"),
         ],
     },
     "m15a": {
@@ -1991,9 +2003,12 @@ _TABLE_CONFIG = {
             ("product_name", "Tên TP", "wrap"),
             ("unit", "ĐVT", ""),
             ("opening_qty", "Tồn đầu", "num"),
-            ("intake_qty", "Nhập kho SX", "num"),
-            ("export_qty", "Xuất", "num"),
+            ("intake_qty", "Nhập kho từ SX", "num"),
+            ("repurpose_qty", "Chuyển MĐSD", "num"),
+            ("export_qty", "Xuất khẩu", "num"),
+            ("other_out_qty", "Xuất khác", "num"),
             ("closing_qty", "Tồn cuối", "num"),
+            ("source_file", "Nguồn file", "file"),
         ],
     },
     "m16": {
@@ -2009,6 +2024,7 @@ _TABLE_CONFIG = {
             ("material_name", "Tên NVL", "wrap"),
             ("material_unit", "ĐVT NVL", ""),
             ("norm_qty", "Định mức", "num"),
+            ("source_file", "Nguồn file", "file"),
         ],
     },
     "bcct": {
@@ -2025,11 +2041,117 @@ _TABLE_CONFIG = {
             ("hs_code", "Mã HS", "code-cell"),
             ("quantity", "SL", "num"),
             ("unit", "ĐVT", ""),
+            ("unit_price", "Đơn giá", "price"),
+            ("currency", "Nguyên tệ", ""),
             ("value_total", "Trị giá (VND)", "num"),
             ("partner", "Đối tác", ""),
+            ("source_file", "Nguồn file", "file"),
         ],
     },
 }
+
+# Bảng Tầng 1 → tab trên màn dữ liệu gốc. Dùng để dựng link "Dữ liệu gốc →" từ
+# một phát hiện: bảng lấy theo `evidence_refs` chứ không đoán theo `subject_type`
+# — C1.2 có subject là mã NVL nhưng bằng chứng nằm ở tờ khai, link sang M15 sẽ ra
+# bảng rỗng.
+_DATA_TAB_BY_TABLE = {
+    "nvl_balances": "m15",
+    "sp_balances": "m15a",
+    "norms": "m16",
+    "declaration_lines": "bcct",
+}
+
+
+def raw_data_url(company: Company, year: int | None, finding: Finding) -> str | None:
+    """Link tới bảng dữ liệu gốc đã lọc sẵn theo mã của phát hiện.
+
+    Trả None khi không xác định được bảng (phát hiện tổ hợp trỏ vào bảng
+    `findings`, hoặc phát hiện không có mã đối tượng).
+    """
+    if not finding.subject_key or year is None:
+        return None
+    tab = next(
+        (
+            _DATA_TAB_BY_TABLE[ref["table"]]
+            for ref in (finding.evidence_refs or [])
+            if isinstance(ref, dict) and ref.get("table") in _DATA_TAB_BY_TABLE
+        ),
+        None,
+    )
+    if tab is None:
+        return None
+    params = {"year": year, "table": tab, "q": finding.subject_key}
+    # `declaration_lines` không có cột `book` — lọc sổ chỉ áp cho bảng BCQT.
+    if finding.book and tab != "bcct":
+        params["book"] = finding.book
+    if tab == "bcct":
+        codes = (finding.details or {}).get("import_codes") or \
+                (finding.details or {}).get("export_codes")
+        if codes:
+            params["customs"] = ",".join(codes)
+    slug = company.slug or company.code
+    return f"/companies/{slug}/data?{urlencode(params)}"
+
+
+templates.env.globals["raw_data_url"] = raw_data_url
+
+# Tên bảng Tầng 1 bằng tiếng Việt — trang chứng cứ từng in thẳng tên bảng DB.
+_EVIDENCE_TABLE_LABEL = {
+    "nvl_balances": "Mẫu 15 — Cân đối NVL",
+    "sp_balances": "Mẫu 15a — Cân đối TP",
+    "norms": "Mẫu 16 — Định mức",
+    "declaration_lines": "BCCT — Tờ khai chi tiết",
+    "findings": "Phát hiện nguồn",
+}
+
+# Khoá bộ lọc chứng cứ → nhãn. `__in` là hậu tố cú pháp của `_resolve_evidence`.
+_EVIDENCE_FILTER_LABEL = {
+    "material_code": "Mã NVL",
+    "product_code": "Mã TP",
+    "item_code": "Mã hàng",
+    "customs_code": "Loại hình",
+    "book": "Sổ quyết toán",
+    "declaration_no": "Số tờ khai",
+    "id": "Mã phát hiện",
+}
+# Khoá kỹ thuật, không nói thêm gì cho cán bộ (trang đã ghi rõ DN và kỳ).
+_EVIDENCE_FILTER_HIDDEN = {"company_id", "period_year"}
+
+
+def _describe_evidence_filter(filt: dict) -> str:
+    """Bộ lọc chứng cứ thành câu đọc được, thay cho JSON thô."""
+    parts = []
+    for key, value in filt.items():
+        field = key[:-4] if key.endswith("__in") else key
+        if field in _EVIDENCE_FILTER_HIDDEN:
+            continue
+        label = _EVIDENCE_FILTER_LABEL.get(field, field)
+        text = ", ".join(str(v) for v in value) if isinstance(value, list | tuple) \
+            else str(value)
+        parts.append(f"{label}: {text}")
+    return " · ".join(parts) if parts else "toàn bộ dòng của kỳ"
+
+
+def _evidence_data_url(company: Company, year: int, ref: dict) -> str | None:
+    """Link mở bảng dữ liệu gốc đúng bằng bộ lọc của khối chứng cứ này."""
+    tab = _DATA_TAB_BY_TABLE.get(ref.get("table"))
+    if tab is None:
+        return None
+    filt = ref.get("filter") or {}
+    params: dict[str, str | int] = {"year": year, "table": tab}
+    for key in ("material_code", "product_code", "item_code"):
+        if filt.get(key):
+            params["q"] = filt[key]
+            break
+    codes = filt.get("customs_code__in") or filt.get("customs_code")
+    if codes:
+        params["customs"] = ",".join(codes) if isinstance(codes, list | tuple) else codes
+    if filt.get("book") and tab != "bcct":
+        params["book"] = filt["book"]
+    if filt.get("declaration_no"):
+        params["decl_no"] = filt["declaration_no"]
+    slug = company.slug or company.code
+    return f"/companies/{slug}/data?{urlencode(params)}"
 
 # Map tablename → view_cols dùng cho evidence_blocks ở finding_detail.html
 # (giữ đồng nhất với cột curated của company_data).
@@ -2049,22 +2171,19 @@ _VIEW_COLS_BY_TABLE = {
 
 
 def _format_cell(value, cls: str):
-    """Format value theo loại cột để gọn và dễ đọc."""
+    """Format value theo loại cột. Dấu phân cách theo `app/formatting.py`."""
     if value is None:
         return ""
-    if cls == "num" and isinstance(value, (int, float)) and not isinstance(value, bool):
-        v = float(value)
-        # Bỏ .0 cho số nguyên.
-        if v.is_integer():
-            return f"{int(v):,}"
-        # Số "bình thường": 2 chữ số thập phân.
-        if abs(v) >= 0.01:
-            return f"{v:,.2f}"
-        # Số rất nhỏ (vd định mức tiêu hao ~0.0018 kg/sp): 2 chữ số sẽ thành 0.00 →
-        # dùng định dạng số-có-nghĩa để không mất giá trị thật.
-        return f"{v:.6g}"
+    if cls == "num":
+        return fmt_qty(value)
+    if cls == "price":
+        return fmt_price(value)
     if cls == "date" and hasattr(value, "strftime"):
-        return value.strftime("%d/%m/%Y")
+        return fmt_date(value)
+    if cls == "file" and isinstance(value, str):
+        # `source_file` lưu đường dẫn đầy đủ trên máy chủ. Cán bộ cần TÊN FILE để
+        # tìm lại trong Excel; đường dẫn máy chủ không có lý do gì phải in ra.
+        return PurePosixPath(value.replace("\\", "/")).name
     return value
 
 
@@ -2090,6 +2209,13 @@ def _format_model_rows(model, rows, full: bool = False):
     return view_cols, rows_view
 
 
+def _parse_iso_date(raw: str) -> date | None:
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
 @router.get("/companies/{code}/data", response_class=HTMLResponse)
 def company_data(
     code: str,
@@ -2097,6 +2223,11 @@ def company_data(
     year: int = Query(...),
     table: str = Query("m15"),
     q: str = Query("", description="Lọc theo mã"),
+    decl_no: str = Query("", description="Lọc theo số tờ khai (BCCT)"),
+    customs: str = Query("", description="Lọc loại hình, ngăn bằng dấu phẩy (BCCT)"),
+    date_from: str = Query("", description="Ngày ĐK từ, dạng YYYY-MM-DD (BCCT)"),
+    date_to: str = Query("", description="Ngày ĐK đến, dạng YYYY-MM-DD (BCCT)"),
+    book: str = Query("", description="Lọc theo sổ quyết toán (bảng BCQT)"),
     page: int = Query(1, ge=1),
     full: int = Query(0, description="1 = hiện toàn bộ cột DB"),
     user: SessionUser = Depends(require_user),
@@ -2111,11 +2242,28 @@ def company_data(
     model = config["model"]
     code_field = config["code_field"]
     per_page = 50
+    # `declaration_lines` không có cột `book`; các bảng BCQT không có ngày/số tờ khai.
+    # Bộ lọc nào không áp được cho bảng đang xem thì cũng không hiện trên form.
+    is_bcct = model is DeclarationLine
+    has_book = hasattr(model, "book")
 
     stmt = select(model).where(model.company_id == company.id, model.period_year == year)
     if q:
-        col = getattr(model, code_field)
-        stmt = stmt.where(col.contains(q))
+        stmt = stmt.where(getattr(model, code_field).contains(q))
+    if book and has_book:
+        stmt = stmt.where(model.book == book)
+    if is_bcct:
+        if decl_no:
+            stmt = stmt.where(model.declaration_no.contains(decl_no))
+        codes = [c.strip() for c in customs.split(",") if c.strip()]
+        if codes:
+            stmt = stmt.where(model.customs_code.in_(codes))
+        d_from = _parse_iso_date(date_from)
+        d_to = _parse_iso_date(date_to)
+        if d_from:
+            stmt = stmt.where(model.declaration_date >= d_from)
+        if d_to:
+            stmt = stmt.where(model.declaration_date <= d_to)
     stmt = stmt.order_by(getattr(model, code_field))
 
     total = db.scalar(
@@ -2135,6 +2283,31 @@ def company_data(
         )
     )
 
+    # Giá trị có thật trong kỳ, để form gợi ý thay vì bắt cán bộ nhớ mã.
+    customs_options: list[str] = []
+    if is_bcct:
+        customs_options = sorted(
+            c for c in db.scalars(
+                select(model.customs_code)
+                .where(model.company_id == company.id, model.period_year == year)
+                .distinct()
+            ).all() if c
+        )
+    book_options: list[str] = []
+    if has_book:
+        book_options = sorted(
+            b for b in db.scalars(
+                select(model.book)
+                .where(model.company_id == company.id, model.period_year == year)
+                .distinct()
+            ).all() if b
+        )
+
+    # Bộ lọc đang bật, dùng để giữ nguyên khi đổi tab / sang trang.
+    active = {
+        "q": q, "decl_no": decl_no, "customs": customs,
+        "date_from": date_from, "date_to": date_to, "book": book,
+    }
     return templates.TemplateResponse(
         request,
         "company_data.html",
@@ -2152,10 +2325,17 @@ def company_data(
             "total": total,
             "page": page,
             "per_page": per_page,
-            "q": q,
             "full": full,
+            "is_bcct": is_bcct,
+            "has_book": has_book,
+            "customs_options": customs_options,
+            "book_options": book_options,
+            "filters": active,
+            "filter_qs": urlencode({k: v for k, v in active.items() if v}),
+            "any_filter": any(active.values()),
             "parse_layout": prov_file.parse_layout if prov_file else None,
             "parse_detail": prov_file.parse_detail_obj if prov_file else {},
+            **active,
         },
     )
 
@@ -2384,6 +2564,9 @@ def finding_detail(
         view_cols, rows_view = _resolve_evidence(db, ref)
         evidence_blocks.append({
             "ref": ref,
+            "table_label": _EVIDENCE_TABLE_LABEL.get(ref.get("table"), ref.get("table")),
+            "filter_text": _describe_evidence_filter(ref.get("filter") or {}),
+            "data_url": _evidence_data_url(company, finding.period_year, ref),
             "view_cols": view_cols,
             "rows": rows_view,
         })
@@ -2398,6 +2581,7 @@ def finding_detail(
             "spec": spec,
             "is_combo": is_combo,
             "show_book": show_book,
+            "detail_rows": describe_details(finding.details),
             "evidence_blocks": evidence_blocks,
         },
     )

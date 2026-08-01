@@ -1041,6 +1041,56 @@ p { margin: 0 0 var(--space-3); }
 .evidence-block[open] summary { border-bottom-color: var(--c-border); }
 .evidence-block summary::before { content: "📋 "; }
 .evidence-block code { font-size: var(--fs-xs); color: var(--c-text-subtle); }
+.evidence-open {
+  float: right;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--c-brand-600);
+}
+
+/* — Dữ liệu gốc: bộ lọc nhiều trường — */
+.data-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--c-surface-alt);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+}
+.data-filters .form-field { margin-bottom: 0; min-width: 150px; flex: 0 1 auto; }
+.data-filters .form-input, .data-filters .form-select { min-width: 140px; }
+.data-filters-actions { display: flex; gap: var(--space-2); margin-left: auto; }
+
+/* Bảng phát hiện: ghi chú cán bộ + cụm link cuối dòng */
+.finding-note {
+  margin-top: 4px;
+  font-size: var(--fs-xs);
+  color: var(--c-text-subtle);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-links { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.row-links a { font-size: var(--fs-xs); white-space: nowrap; }
+.section-raw-link { margin-left: auto; }
+
+/* Trang định dạng hiển thị: thẻ chọn quy ước */
+.form-radio-card {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  cursor: pointer;
+}
+.form-radio-card.selected { border-color: var(--c-brand-500); background: var(--c-brand-50); }
+.form-radio-card .form-radio-body { flex: 1; }
+.form-radio-card table { max-width: 320px; }
 
 /* — Utilities — */
 .text-muted    { color: var(--c-text-muted); }

@@ -39,26 +39,26 @@
     <div class="item-hero-metrics">
       <div class="metric">
         <div class="metric-label">Tồn cuối {{ yearly[-1].year if yearly else '' }}</div>
-        <div class="metric-value">{{ "{:,.0f}".format(last_closing) }}{% if unit %} <small>{{ unit }}</small>{% endif %}</div>
+        <div class="metric-value">{{ fmt_int(last_closing) }}{% if unit %} <small>{{ unit }}</small>{% endif %}</div>
         {% if closing_delta_pct is not none %}
         <div class="metric-delta {% if closing_delta_pct < 0 %}neg{% else %}pos{% endif %}">
-          {{ "▲" if closing_delta_pct >= 0 else "▼" }} {{ "{:+.1f}".format(closing_delta_pct) }}% so với năm trước
+          {{ "▲" if closing_delta_pct >= 0 else "▼" }} {{ fmt_pct(closing_delta_pct) }} so với năm trước
         </div>
         {% endif %}
       </div>
       <div class="metric">
         <div class="metric-label">Tổng nhập (BCCT)</div>
-        <div class="metric-value">{{ "{:,.0f}".format(total_import_qty) }}</div>
+        <div class="metric-value">{{ fmt_int(total_import_qty) }}</div>
         <div class="metric-sub">{{ yearly|length }} năm có dữ liệu</div>
       </div>
       <div class="metric">
         <div class="metric-label">Tổng xuất (BCCT)</div>
-        <div class="metric-value">{{ "{:,.0f}".format(total_export_qty) }}</div>
+        <div class="metric-value">{{ fmt_int(total_export_qty) }}</div>
       </div>
       {% if kind == 'nvl' %}
       <div class="metric">
         <div class="metric-label">Tổng đưa vào SX</div>
-        <div class="metric-value">{{ "{:,.0f}".format(total_production) }}</div>
+        <div class="metric-value">{{ fmt_int(total_production) }}</div>
       </div>
       {% endif %}
       {% if mismatch_years %}
@@ -103,8 +103,11 @@
     {% if sy.balance_match %}
       <span class="badge badge-success">✅ Khớp phương trình kho</span>
     {% else %}
-      <span class="badge badge-warning">⚠️ Lệch {{ "{:+,.1f}".format(sy.balance_diff) }} {{ unit or '' }}</span>
+      <span class="badge badge-warning">⚠️ Lệch {{ fmt_num(sy.balance_diff, 1, signed=True) }} {{ unit or '' }}</span>
     {% endif %}
+    <a class="btn btn-sm btn-secondary section-raw-link"
+       href="/companies/{{ company.slug or company.code }}/data?year={{ selected_year }}&table={{ 'm15a' if kind == 'tp' else 'm15' }}&q={{ item_code | urlencode }}"
+       title="Mở bảng {{ 'Mẫu 15a' if kind == 'tp' else 'Mẫu 15' }} gốc, đã lọc sẵn mã {{ item_code }}">Dữ liệu gốc →</a>
   </div>
 
   {% if not sy.get('has_m15') and not sy.get('has_m15a') %}
@@ -116,17 +119,17 @@
   {% if kind == 'nvl' and sy.import_match == false %}
   <div class="reconcile-note">
     📊 <strong>Đối chiếu BCCT vs Mẫu 15:</strong>
-    BCCT cộng dồn <strong>{{ "{:,.0f}".format(sy.bcct_import_qty) }}</strong>,
-    Mẫu 15 nhập <strong>{{ "{:,.0f}".format(sy.import_qty) }}</strong>,
-    chênh <strong class="text-warn">{{ "{:+,.0f}".format(sy.import_diff) }}</strong>.
+    BCCT cộng dồn <strong>{{ fmt_int(sy.bcct_import_qty) }}</strong>,
+    Mẫu 15 nhập <strong>{{ fmt_int(sy.import_qty) }}</strong>,
+    chênh <strong class="text-warn">{{ fmt_num(sy.import_diff, 0, signed=True) }}</strong>.
   </div>
   {% endif %}
   {% if kind == 'tp' and sy.export_match == false %}
   <div class="reconcile-note">
     📊 <strong>Đối chiếu BCCT vs Mẫu 15a:</strong>
-    BCCT cộng dồn <strong>{{ "{:,.0f}".format(sy.bcct_export_qty) }}</strong>,
-    Mẫu 15a xuất <strong>{{ "{:,.0f}".format(sy.export_qty) }}</strong>,
-    chênh <strong class="text-warn">{{ "{:+,.0f}".format(sy.export_diff) }}</strong>.
+    BCCT cộng dồn <strong>{{ fmt_int(sy.bcct_export_qty) }}</strong>,
+    Mẫu 15a xuất <strong>{{ fmt_int(sy.export_qty) }}</strong>,
+    chênh <strong class="text-warn">{{ fmt_num(sy.export_diff, 0, signed=True) }}</strong>.
   </div>
   {% endif %}
 </section>
@@ -136,7 +139,10 @@
   <div class="card-header">
     <h2>Giao dịch BCCT — {{ selected_year }}</h2>
     {% if period_windows.get(selected_year) %}<span class="text-subtle" title="Nhãn năm là kỳ quyết toán, không phải năm dương lịch">📅 năm tài chính {{ period_windows[selected_year][0].strftime('%d/%m/%Y') }} – {{ period_windows[selected_year][1].strftime('%d/%m/%Y') }} · ngày tờ khai có thể sang năm sau</span>{% endif %}
-    <span class="text-subtle">{{ bcct_lines|length }} dòng (hiển thị tối đa 200)</span>
+    <span class="text-subtle">{{ fmt_int(bcct_lines|length) }} dòng (hiển thị tối đa 200)</span>
+    <a class="btn btn-sm btn-secondary section-raw-link"
+       href="/companies/{{ company.slug or company.code }}/data?year={{ selected_year }}&table=bcct&q={{ item_code | urlencode }}"
+       title="Mở bảng BCCT gốc, đã lọc sẵn mã {{ item_code }} — lọc tiếp được theo số tờ khai, loại hình, khoảng ngày">Dữ liệu gốc →</a>
   </div>
 
   {% if bcct_lines %}
@@ -153,14 +159,14 @@
           <th class="num">Lượng</th>
           <th>Đơn vị</th>
           <th class="num">Đơn giá</th>
-          <th class="num">Trị giá</th>
+          <th class="num">Trị giá (VND)</th>
         </tr>
       </thead>
       <tbody>
         {% for line in bcct_lines %}
         {% set op = classify_operation(line.customs_code) %}
         <tr>
-          <td>{{ line.declaration_date.strftime("%d/%m/%Y") if line.declaration_date else '—' }}</td>
+          <td>{{ fmt_date(line.declaration_date) }}</td>
           <td class="text-mono">{{ line.declaration_no }}</td>
           <td>
             <span class="badge badge-op-{{ op }}" title="{{ operation_label(line.customs_code) }}">
@@ -168,10 +174,10 @@
             </span>
           </td>
           <td>{{ line.partner or '—' }}</td>
-          <td class="num">{{ "{:,.2f}".format(line.quantity) if line.quantity is not none else '—' }}</td>
+          <td class="num">{{ fmt_qty(line.quantity) }}</td>
           <td>{{ line.unit or '—' }}</td>
-          <td class="num">{{ "{:,.4f}".format(line.unit_price) if line.unit_price is not none else '—' }}</td>
-          <td class="num">{{ "{:,.0f}".format(line.value_total) if line.value_total is not none else '—' }}</td>
+          <td class="num">{{ fmt_price(line.unit_price) }}</td>
+          <td class="num">{{ fmt_int(line.value_total) }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -192,7 +198,10 @@
         Là đầu vào của thành phẩm — {{ selected_year }}
       {% endif %}
     </h2>
-    <span class="text-subtle">{{ bom_rows|length }} mối liên kết</span>
+    <span class="text-subtle">{{ fmt_int(bom_rows|length) }} mối liên kết</span>
+    <a class="btn btn-sm btn-secondary section-raw-link"
+       href="/companies/{{ company.slug or company.code }}/data?year={{ selected_year }}&table=m16&q={{ item_code | urlencode }}"
+       title="Mở bảng Mẫu 16 gốc, đã lọc sẵn mã {{ item_code }}">Dữ liệu gốc →</a>
   </div>
 
   {% if bom_rows %}
@@ -206,7 +215,7 @@
             <tr>
               <td class="text-mono"><a href="/companies/{{ company.slug or company.code }}/items/{{ b.material_code }}?year={{ selected_year }}">{{ b.material_code }}</a></td>
               <td>{{ b.material_name or '—' }}</td>
-              <td class="num">{{ "{:,.4f}".format(b.norm_qty) }}</td>
+              <td class="num">{{ fmt_num(b.norm_qty, 4) }}</td>
               <td>{{ b.material_unit or '—' }}</td>
             </tr>
             {% endfor %}
@@ -223,7 +232,7 @@
             <tr>
               <td class="text-mono"><a href="/companies/{{ company.slug or company.code }}/items/{{ b.product_code }}?year={{ selected_year }}">{{ b.product_code }}</a></td>
               <td>{{ b.product_name or '—' }}</td>
-              <td class="num">{{ "{:,.4f}".format(b.norm_qty) }}</td>
+              <td class="num">{{ fmt_num(b.norm_qty, 4) }}</td>
               <td>{{ b.product_unit or '—' }}</td>
             </tr>
             {% endfor %}
@@ -289,12 +298,12 @@
         {% for r in yearly %}
         <tr>
           <td><a href="?year={{ r.year }}"{% if period_windows.get(r.year) %} title="Năm tài chính {{ period_windows[r.year][0].strftime('%d/%m/%Y') }} – {{ period_windows[r.year][1].strftime('%d/%m/%Y') }}"{% endif %}>{{ r.year }}{% if period_windows.get(r.year) %}<sup style="font-size:.65em;color:var(--c-warn,#b45309);font-weight:700;margin-left:2px">TC</sup>{% endif %}</a></td>
-          <td class="num">{{ "{:,.0f}".format(r.opening_qty) }}</td>
-          <td class="num">{{ "{:,.0f}".format(r.intake_qty if kind == 'tp' else r.import_qty) }}</td>
-          <td class="num">{{ "{:,.0f}".format(r.bcct_import_qty) }}</td>
-          <td class="num">{{ "{:,.0f}".format(r.export_qty if kind == 'tp' else r.production_out_qty) }}</td>
-          <td class="num">{{ "{:,.0f}".format(r.bcct_export_qty) }}</td>
-          <td class="num">{{ "{:,.0f}".format(r.closing_qty) }}</td>
+          <td class="num">{{ fmt_int(r.opening_qty) }}</td>
+          <td class="num">{{ fmt_int(r.intake_qty if kind == 'tp' else r.import_qty) }}</td>
+          <td class="num">{{ fmt_int(r.bcct_import_qty) }}</td>
+          <td class="num">{{ fmt_int(r.export_qty if kind == 'tp' else r.production_out_qty) }}</td>
+          <td class="num">{{ fmt_int(r.bcct_export_qty) }}</td>
+          <td class="num">{{ fmt_int(r.closing_qty) }}</td>
           <td>
             {% set ok_io = r.export_match if kind == 'tp' else r.import_match %}
             {% if r.balance_match and ok_io %}
