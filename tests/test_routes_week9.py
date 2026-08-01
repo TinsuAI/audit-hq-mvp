@@ -96,8 +96,11 @@ def test_finding_detail_renders_with_evidence():
         assert response.status_code == 200
         text = response.text
         assert "Chứng cứ truy nguồn" in text
-        assert "nvl_balances" in text
-        assert "declaration_lines" in text
+        # Khối chứng cứ gọi tên BIỂU MẪU, không phải tên bảng DB.
+        assert "Mẫu 15 — Cân đối NVL" in text
+        assert "BCCT — Tờ khai chi tiết" in text
+        assert "nvl_balances" not in text
+        assert "declaration_lines" not in text
         assert "C1.1" in text
         assert "Lệch nhập NVL X" in text
     finally:

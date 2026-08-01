@@ -44,23 +44,15 @@
   <p style="margin-bottom:0;font-size:var(--fs-md)">{{ finding.title }}</p>
 </div>
 
-{% if finding.details %}
+{% if detail_rows %}
 <div class="card">
-  <h3 class="card-title">Chi tiết</h3>
+  <h3 class="card-title">Số liệu của phát hiện</h3>
   <table class="data-table compact kv-table">
     <tbody>
-      {% for k, v in finding.details.items() %}
+      {% for row in detail_rows %}
       <tr>
-        <th>{{ k }}</th>
-        <td class="wrap">
-          {% if v is mapping or v is sequence and v is not string %}
-            <code class="text-mono" style="word-break:break-all">{{ v | tojson }}</code>
-          {% elif v is number %}
-            <span class="num text-mono">{{ '{:,}'.format(v) if v == v|int else '{:,.4f}'.format(v) }}</span>
-          {% else %}
-            {{ v }}
-          {% endif %}
-        </td>
+        <th>{{ row.label }}</th>
+        <td class="wrap">{{ row.value }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -70,16 +62,18 @@
 
 <div class="card">
   <h3 class="card-title">Chứng cứ truy nguồn (Tầng 1)</h3>
-  <p class="text-subtle" style="font-size:var(--fs-xs)">Mỗi phát hiện phải truy nguồn được về dòng dữ liệu cụ thể (§2.2 đề án).</p>
+  <p class="text-subtle" style="font-size:var(--fs-xs)">Mỗi phát hiện phải truy nguồn được về dòng dữ liệu cụ thể (§2.2 đề án).
+    Bảng dưới hiện tối đa 50 dòng — mở “Dữ liệu gốc” để xem trọn bộ, đã lọc sẵn.</p>
   {% if not evidence_blocks %}
     <p class="text-muted">(Không có tham chiếu chứng cứ)</p>
   {% endif %}
   {% for block in evidence_blocks %}
     <details open class="evidence-block">
       <summary>
-        <strong class="text-mono">{{ block.ref.table }}</strong>
-        · <code>{{ block.ref.filter | tojson }}</code>
-        · {{ block.rows | length }} dòng
+        <strong>{{ block.table_label }}</strong>
+        · {{ block.filter_text }}
+        · {{ fmt_int(block.rows | length) }} dòng
+        {% if block.data_url %}<a class="evidence-open" href="{{ block.data_url }}">Dữ liệu gốc →</a>{% endif %}
       </summary>
       {% if block.rows %}
       <div class="data-table-wrapper">
