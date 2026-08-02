@@ -39,17 +39,81 @@ ra bảng 10 cột của bản trước.
 
 ## Ảnh
 
-| # | Ảnh | Chứng minh |
-|---|-----|-----------|
-| 01 | `01_bang_phat_hien_tach_cot_so.png` | C1.1: bảng **không còn cột "Mô tả"**. Số tách thành cột riêng — `Số M15 đối chiếu` · `Σ tờ khai` · `Chênh lệch` (có dấu và `%`) · `ĐVT` · `Cột M15 đối chiếu`. Mã chỉ xuất hiện MỘT lần ở cột "Đối tượng". Ghi chú cán bộ chuyển xuống dưới ô Trạng thái. Mỗi dòng có link `Dữ liệu gốc →`. Đủ ba mức nghiêm trọng / cảnh báo / thông tin |
-| 02 | `02_c21_phuong_trinh_can_doi_thanh_cot.png` | C2.1: `Tồn cuối DN khai` · `Tồn cuối tính lại` · `Chênh lệch` · `Tồn ảo` (Có/—, không phải `true`). Bộ cột dừng ở bốn cột nên hai cột thao tác vẫn nằm trong màn hình — trải trọn phương trình cân đối ra 10 cột thì nút bấm bị đẩy ra ngoài |
-| 03 | `03_chi_tiet_phat_hien_nhan_tieng_viet.png` | Trang chi tiết: khoá `details` hiện bằng nhãn tiếng Việt (`Tồn cuối DN khai`, không phải `closing_reported`). Khối chứng cứ gọi **tên biểu mẫu** `Mẫu 15 — Cân đối NVL` thay cho tên bảng DB `nvl_balances`, bộ lọc đọc thành câu `Mã NVL: NPL-0231` thay cho JSON thô, kèm link `Dữ liệu gốc →` |
-| 04 | `04_du_lieu_goc_bcct_loc_san_theo_ma.png` | Màn dữ liệu gốc BCCT mở từ link của phát hiện, **ô "Mã hàng" đã điền sẵn** `NPL-0231`. Bộ lọc đủ: mã · số tờ khai · loại hình · khoảng ngày. Cột `Nguồn file` in **tên file** (`BaoCaoToKhai 2025.xls`), không in đường dẫn máy chủ. Đơn giá giữ 4 chữ số (`0,9125`), trị giá có phân cách, ngày dd/mm/yyyy |
-| 05 | `05_du_lieu_goc_loc_loai_hinh_va_ngay.png` | Lọc chồng: mã + loại hình `E31` + khoảng ngày 01/01–30/06 → còn 2 trong 4 dòng |
-| 06 | `06_doi_tab_van_giu_bo_loc.png` | Đổi tab sang Mẫu 15, **bộ lọc mã giữ nguyên** (trước đây đổi tab là mất lọc, phải gõ lại). Bộ lọc số tờ khai / loại hình / ngày tự ẩn vì bảng BCQT không có các cột đó |
-| 07 | `07_chi_tiet_ma_link_du_lieu_goc.png` | Trang chi tiết mã: mỗi khối (cân đối kho · giao dịch BCCT · định mức) có nút `Dữ liệu gốc →` trỏ đúng bảng tương ứng, đã lọc sẵn mã |
-| 08 | `08_admin_dinh_dang_hien_thi.png` | `/admin/hien-thi`: chọn quy ước phân cách, mỗi lựa chọn có bảng xem trước ba loại số (số lượng · tỷ lệ · trị giá) |
-| 09 | `09_bang_phat_hien_quy_uoc_anh_my.png` | Đổi sang quy ước Anh/Mỹ → **đúng bảng ở ảnh 01** đổi thành `84,250.50` · `+35.9 %`. Chứng minh setting áp thật, không phải nhãn trang trí |
+Mở file này trên github.com để xem ảnh hiện thẳng trong trang. Ảnh **không nhúng
+được vào phần mô tả Pull Request**: repo là private, mà GitHub tải ảnh trong
+markdown của PR/issue qua proxy camo — camo tải ẩn danh nên nhận 404 (đã đo:
+`raw.githubusercontent.com` trả 404 khi không kèm token, 200 khi có). Đường dẫn
+tương đối trong file markdown của repo thì đi lối phục vụ blob đã xác thực, nên
+render bình thường.
+
+### 01 — Bảng phát hiện tách cột số
+
+C1.1: bảng **không còn cột "Mô tả"**. Số tách thành cột riêng — `Số M15 đối chiếu` ·
+`Σ tờ khai` · `Chênh lệch` (có dấu và `%`) · `ĐVT` · `Cột M15 đối chiếu`. Mã chỉ
+xuất hiện MỘT lần ở cột "Đối tượng". Ghi chú cán bộ chuyển xuống dưới ô Trạng thái.
+Mỗi dòng có link `Dữ liệu gốc →`. Đủ ba mức nghiêm trọng / cảnh báo / thông tin.
+
+![Bảng phát hiện C1.1 tách cột số](screenshots/01_bang_phat_hien_tach_cot_so.png)
+
+### 02 — C2.1: cân đối thành cột, không tràn ngang
+
+`Tồn cuối DN khai` · `Tồn cuối tính lại` · `Chênh lệch` · `Tồn ảo` (Có/—, không phải
+`true`). Bộ cột dừng ở bốn cột nên hai cột thao tác vẫn nằm trong màn hình — trải
+trọn phương trình cân đối ra 10 cột thì nút bấm bị đẩy ra ngoài.
+
+![Bảng phát hiện C2.1](screenshots/02_c21_phuong_trinh_can_doi_thanh_cot.png)
+
+### 03 — Trang chi tiết phát hiện: nhãn tiếng Việt
+
+Khoá `details` hiện bằng nhãn tiếng Việt (`Tồn cuối DN khai`, không phải
+`closing_reported`). Khối chứng cứ gọi **tên biểu mẫu** `Mẫu 15 — Cân đối NVL` thay
+cho tên bảng DB `nvl_balances`, bộ lọc đọc thành câu `Mã NVL: NPL-0231` thay cho
+JSON thô, kèm link `Dữ liệu gốc →`.
+
+![Trang chi tiết phát hiện](screenshots/03_chi_tiet_phat_hien_nhan_tieng_viet.png)
+
+### 04 — Dữ liệu gốc BCCT, đã lọc sẵn theo mã
+
+Mở từ link của phát hiện, **ô "Mã hàng" đã điền sẵn** `NPL-0231`. Bộ lọc đủ: mã · số
+tờ khai · loại hình · khoảng ngày. Cột `Nguồn file` in **tên file**
+(`BaoCaoToKhai 2025.xls`), không in đường dẫn máy chủ. Đơn giá giữ 4 chữ số
+(`0,9125`), trị giá có phân cách, ngày dd/mm/yyyy.
+
+![Dữ liệu gốc BCCT](screenshots/04_du_lieu_goc_bcct_loc_san_theo_ma.png)
+
+### 05 — Lọc chồng theo loại hình và khoảng ngày
+
+Mã + loại hình `E31` + khoảng ngày 01/01–30/06 → còn 2 trong 4 dòng.
+
+![Lọc loại hình và ngày](screenshots/05_du_lieu_goc_loc_loai_hinh_va_ngay.png)
+
+### 06 — Đổi tab vẫn giữ bộ lọc
+
+Đổi tab sang Mẫu 15, **bộ lọc mã giữ nguyên** (trước đây đổi tab là mất lọc, phải gõ
+lại). Bộ lọc số tờ khai / loại hình / ngày tự ẩn vì bảng BCQT không có các cột đó.
+
+![Đổi tab giữ bộ lọc](screenshots/06_doi_tab_van_giu_bo_loc.png)
+
+### 07 — Trang chi tiết mã: link dữ liệu gốc từng khối
+
+Mỗi khối (cân đối kho · giao dịch BCCT · định mức) có nút `Dữ liệu gốc →` trỏ đúng
+bảng tương ứng, đã lọc sẵn mã.
+
+![Trang chi tiết mã](screenshots/07_chi_tiet_ma_link_du_lieu_goc.png)
+
+### 08 — Trang chọn quy ước hiển thị số
+
+`/admin/hien-thi`: chọn quy ước phân cách, mỗi lựa chọn có bảng xem trước ba loại số
+(số lượng · tỷ lệ · trị giá).
+
+![Trang định dạng hiển thị](screenshots/08_admin_dinh_dang_hien_thi.png)
+
+### 09 — Đổi quy ước, bảng đổi theo
+
+Đổi sang quy ước Anh/Mỹ → **đúng bảng ở ảnh 01** đổi thành `84,250.50` · `+35.9 %`.
+Chứng minh setting áp thật, không phải nhãn trang trí.
+
+![Bảng phát hiện quy ước Anh Mỹ](screenshots/09_bang_phat_hien_quy_uoc_anh_my.png)
 
 ## Lỗi thật ảnh chụp bắt được
 
