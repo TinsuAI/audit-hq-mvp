@@ -111,6 +111,6 @@ def test_published_check_counted_in_score_max_raw(session, company):
         )
     )
     assert cys is not None
-    # 17 built-in + 1 published dynamic = 18 rule → max_raw = 18*10 + 20 = 200.
-    assert cys.breakdown["max_raw"] == 200.0
+    # 18 built-in + 1 published dynamic = 19 rule → max_raw = 19*10 + 20 = 210.
+    assert cys.breakdown["max_raw"] == 210.0
     assert "X.1" in cys.breakdown["rule_scores"]

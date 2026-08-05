@@ -155,6 +155,7 @@ FINDING_COLUMNS: dict[str, tuple[str, ...]] = {
         "theoretical_consumption", "actual_m15_production_out", "diff_pct",
         "norm_source_years", "divergent_norm_products",
     ),
+    "C4.9": ("intake",),
     "C5.1": ("production_out", "import", "opening"),
     "C6.1": ("current_opening", "previous_closing", "diff"),
     "COMBO_FORGED_NORM": ("triggers",),

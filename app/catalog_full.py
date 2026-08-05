@@ -1,11 +1,11 @@
-"""Catalog đầy đủ 49 kiểm tra theo §4 đề án Audit-HQ.
+"""Catalog đầy đủ 50 kiểm tra theo §4 đề án Audit-HQ.
 
 Đây là snapshot từ `de-an-audit-hq.md` §4 — source of truth duy nhất.
 Khi đề án bump version, đồng bộ tay file này. Trang `/danh-muc-kiem-tra`
 đọc trực tiếp, không qua DB.
 
-Đối lập với `app/checks/registry.py` (17 check đã implement runnable),
-file này liệt kê toàn bộ 49 dự kiến, bao gồm WIP + conditional.
+Đối lập với `app/checks/registry.py` (18 check đã implement runnable),
+file này liệt kê toàn bộ 50 dự kiến, bao gồm WIP + conditional.
 """
 
 from __future__ import annotations
@@ -227,6 +227,13 @@ CATALOG: list[CatalogEntry] = [
         problem="`tồn_đầu_kỳ + Σ(nhập NVL đến thời điểm t) − Σ(định_mức × TP xuất khẩu đến thời điểm t)` ở từng tháng/quý. Âm tại bất kỳ thời điểm nào → cảnh báo.",
         risk="Định mức M16 khai cao bất thường (lý do chính), hoặc khai thừa TP xuất khẩu, hoặc khai thiếu nhập NVL. Doanh nghiệp \"sản xuất nhiều hơn nguyên liệu thực có\" trên giấy tờ.",
         severities=("critical",), status="wip",
+    ),
+    CatalogEntry(
+        phase=1, group=4, code="C4.9",
+        title="Thành phẩm có sản xuất trong kỳ nhưng thiếu định mức",
+        problem="`mã_SP` có `sản_lượng_sản_xuất_nhập_kho` > 0 trong M15a mà không có định mức hiệu lực nào trong M16, kể cả bản khai của các kỳ trước (xem quy tắc định mức hiệu lực ở C4.3). Kết quả là danh sách từng mã thành phẩm thiếu định mức, không phải một con số tổng. Đây là chiều ngược của C4.2: C4.2 đi từ M16 sang M15a, C4.9 đi từ M15a sang M16.",
+        risk="Không có định mức thì không tính được tiêu hao lý thuyết cho phần sản lượng đó — mọi kiểm tra Nhóm 4 và Nhóm 5 dựng trên định mức đều thiếu cơ sở, và kết quả \"không phát hiện\" trở thành kết quả giả. Cũng là dấu hiệu doanh nghiệp nộp thiếu Mẫu 16.",
+        severities=("warning",), status="mvp",
     ),
     # --- Nhóm 5 — Truy nguồn NVL nhập khẩu ---
     CatalogEntry(
