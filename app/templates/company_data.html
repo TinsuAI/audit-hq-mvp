@@ -43,9 +43,12 @@
     <span>File này lệch bố cục chuẩn — cột được suy từ dòng đánh số và <strong>chứng minh bằng đẳng thức cân đối</strong>
     <code>{{ parse_detail.formula }}</code> (khớp {{ parse_detail.matched }}/{{ parse_detail.checked }} dòng).
     {% if parse_detail.export_label %}Cột <strong>xuất khẩu</strong> chọn theo nhãn “{{ parse_detail.export_label|replace('\n',' ')|trim }}” (cột {{ parse_detail.export_col }}).{% endif %}</span>
-  {% elif parse_layout == 'labeled' %}
+  {% elif parse_layout == 'labeled' and parse_detail.norm_label %}
     <span>Định mức đọc từ cột <strong>“{{ parse_detail.norm_label|replace('\n',' ')|trim }}”</strong> (cột {{ parse_detail.norm_col }}),
     thay cho cột định mức kỹ thuật (cột {{ parse_detail.technical_col }}) — kiểm tra hải quan dùng định mức thực tế.</span>
+  {% elif parse_layout == 'labeled' %}
+    <span>File lệch bố cục chuẩn — mỗi cột chọn theo <strong>nhãn tiêu đề</strong> ở dòng
+    {{ parse_detail.header_row }}, không theo vị trí cố định. Đọc theo vị trí sẽ lấy nhầm cột.</span>
   {% endif %}
   {% if parse_detail.columns %}
     <div class="evidence-cols">

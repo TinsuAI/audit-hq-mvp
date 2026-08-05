@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
 
 from app.adapters._common import (
+    ParseProvenance,
     ensure_excel,
     normalize_code,
     normalize_name,
@@ -18,6 +19,9 @@ from app.adapters._common import (
     to_float,
     to_str,
 )
+from app.adapters.evidence import HEADER_MATCHED, POSITION_ONLY
+from app.adapters.form_signature import compute_form_signature
+from app.adapters.layout import norm
 from app.adapters.sheet_select import select_sheet
 
 
@@ -49,6 +53,7 @@ class BcctFile:
     company_name: str | None
     source_file: str
     sheet: str | None = None
+    provenance: ParseProvenance = field(default_factory=ParseProvenance)
 
 
 # BaoCaoHangChiTiet schema (HONG_AN 2024 sample, Sheet1):
@@ -79,73 +84,189 @@ _DATA_START = 10
 _MAIN_SHEET_CANDIDATES = ("Sheet1", "Sheet 1", "BCCT")
 _DECLARATION_RE = re.compile(r"^\d{9,13}$")
 
-# Nhãn tiêu đề → trường, theo THỨ TỰ ƯU TIÊN. `_COL` ở trên là bố cục ECUS "BC chi
-# tiết" (tiêu đề dòng 9, 54–56 cột) — 8 DN pilot đều dùng nó. Bản xuất
-# "BaoCaoHangChiTietMH" là bố cục KHÁC (tiêu đề dòng 0, 81 cột) mà `_COL` vẫn đọc
-# trôi vì `Số TK`/`Ngày ĐK` tình cờ trùng cột: mọi trường còn lại rơi vào cột khác
-# và KHÔNG có lỗi nào phát ra. Vì thế cột phải suy từ nhãn, không từ vị trí.
-# So khớp là BẰNG ĐÚNG chuỗi đã chuẩn hoá, không phải "chứa": `Đơn giá` vs
-# `Đơn giá tính thuế`, `Tổng trị giá` vs `Tổng trị giá hóa đơn` là hai cột khác nhau.
+# --- Bản đồ cột theo NHÃN tiêu đề (mở rộng mô hình bằng chứng WS1, ADR #18) ---
+#
+# `_COL` ở trên là bố cục ECUS "BC chi tiết" (tiêu đề dòng 9, 54 cột) — 8 DN đã kiểm
+# đều dùng nó. Bố cục khác (thiếu "Địa điểm dỡ hàng"/"Ghi chú", hoặc chèn thêm cột
+# "Tên") đẩy mọi trường sang cột khác mà đọc theo `_COL` vẫn "thành công": `quantity`
+# ra trị giá NT, `company_name` ra ngày hợp đồng, không ngoại lệ nào phát ra. Vì thế
+# cột suy từ NHÃN trước; `_COL` chỉ dùng khi chính các nhãn đã khớp chứng minh file
+# đúng bố cục chuẩn.
+#
+# So khớp là BẰNG ĐÚNG chuỗi đã `norm`, KHÔNG phải "chứa": `Đơn giá` (24) vs `Đơn giá
+# tính thuế` (25), `Tổng số lượng` (26) vs `Tổng số lượng 2` (28), `Đơn vị tính` (27)
+# vs `Đơn vị tính 2` (29) là các cột KHÁC nhau — khớp theo "chứa" lấy nhầm cột đầu tiên.
+# Alias xếp theo THỨ TỰ ƯU TIÊN: alias đầu là nhãn của bố cục chuẩn.
 _LABEL_ALIASES: dict[str, tuple[str, ...]] = {
-    "declaration_no": ("số tk",),
-    "declaration_date": ("ngày đk",),
-    "customs_code": ("mã loại hình",),
-    "line_no": ("stt hàng",),
-    "item_code": ("mã npl/sp", "mã hàng"),
-    "hs_code": ("mã hs",),
-    "item_name": ("tên hàng",),
-    "origin": ("xuất xứ", "nước xuất xứ"),
-    "unit_price": ("đơn giá", "đơn giá hóa đơn"),
-    "quantity": ("tổng số lượng", "số lượng"),
-    "unit": ("đơn vị tính",),
-    "currency": ("đơn vị tiền tệ", "ng.tệ hóa đơn"),
-    "value_foreign": ("trị giá nt", "trị giá hóa đơn"),
-    "value_total": ("tổng trị giá", "trị giá tính thuế"),
-    "tax_total": ("tổng tiền thuế",),
-    "company_tax_id": ("mã doanh nghiệp",),
-    "company_name": ("tên doanh nghiệp",),
-    "partner": ("tên đối tác",),
-    "invoice_no": ("số hóa đơn", "số hóa đơn tm"),
+    "declaration_no": ("Số TK",),
+    "declaration_date": ("Ngày ĐK",),
+    "customs_code": ("Mã loại hình",),
+    "line_no": ("STT hàng",),
+    "item_code": ("Mã NPL/SP", "Mã hàng"),
+    "hs_code": ("Mã HS",),
+    "item_name": ("Tên hàng",),
+    "origin": ("Xuất xứ", "Nước xuất xứ"),
+    "unit_price": ("Đơn giá", "Đơn giá hóa đơn"),
+    "quantity": ("Tổng số lượng", "Số lượng"),
+    "unit": ("Đơn vị tính",),
+    "currency": ("Đơn vị tiền tệ", "Ng.tệ hóa đơn"),
+    "value_foreign": ("Trị giá NT", "Trị giá hóa đơn"),
+    "value_total": ("Tổng trị giá", "Trị giá tính thuế"),
+    "tax_total": ("Tổng tiền thuế",),
+    "company_tax_id": ("Mã doanh nghiệp",),
+    "company_name": ("Tên doanh nghiệp",),
+    "partner": ("Tên đối tác",),
+    "invoice_no": ("Số hóa đơn", "Số hóa đơn TM"),
 }
-# Không có đủ ba trường này thì bản đồ theo nhãn vô dụng — rơi về `_COL`.
-_LABEL_REQUIRED = ("declaration_no", "item_code", "quantity")
+
+# Chuẩn hoá một lần lúc import. `norm` bỏ dấu, thay `đ/Đ` và GỘP whitespace, nên ô
+# tiêu đề xuống dòng ("Tổng\nsố lượng") hay hai dấu cách vẫn khớp; `strip().lower()`
+# thì không, và trượt khớp là rơi im lặng về `_COL` — đúng lớp lỗi cần diệt.
+_ALIASES: dict[str, tuple[str, ...]] = {
+    f: tuple(norm(a) for a in aliases) for f, aliases in _LABEL_ALIASES.items()
+}
+_KNOWN_LABELS = {alias for aliases in _ALIASES.values() for alias in aliases}
+
+# Ba trường này thiếu là không dựng được dòng dữ liệu nào dùng được.
+_REQUIRED_FIELDS = ("declaration_no", "item_code", "quantity")
 # Tiêu đề nằm ngay trên dòng dữ liệu, nhưng có bố cục chèn dòng đánh số ở giữa.
 _HEADER_LOOKBACK = 6
+_MIN_HEADER_LABELS = 2
+# Số nhãn tối thiểu phải cùng đúng vị trí `_COL` mới coi là đã xác nhận bố cục chuẩn.
+# Một nhãn là trùng hợp: bố cục 81 cột `BaoCaoHangChiTietMH` đọc trôi bằng `_COL` chỉ
+# vì `Số TK` tình cờ cùng cột.
+_MIN_POSITION_ANCHORS = 3
 
 
-def _header_labels(cells: list[list], data_start: int) -> dict[str, int]:
-    """Nhãn (đã chuẩn hoá) → cột, lấy ở dòng tiêu đề nhiều nhãn khớp nhất.
+class BcctColumnError(ValueError):
+    """Không dựng được bản đồ cột BCCT — TỪ CHỐI parse thay vì đọc nhầm cột.
 
-    Nhãn trùng nhau lấy lần xuất hiện SAU: `Tổng tiền thuế` có ở cả cấp tờ khai lẫn
-    cấp dòng hàng, cột cần đọc là cột cấp dòng hàng nằm sau.
+    Đọc nhầm cột không sinh lỗi nào: mọi dòng vẫn nạp, chỉ là nạp sai trường. Cùng
+    lập luận với `IngestPlanError` (`app/pipeline/ingest.py`): hỏng ồn hơn ghi sai.
     """
-    known = {alias for aliases in _LABEL_ALIASES.values() for alias in aliases}
-    best: dict[str, int] = {}
-    for i in range(max(0, data_start - _HEADER_LOOKBACK), data_start):
-        found: dict[str, int] = {}
-        for col, raw in enumerate(cells[i]):
-            label = to_str(raw)
-            if label and label.strip().lower() in known:
-                found[label.strip().lower()] = col
-        if len(found) > len(best):
-            best = found
-    return best
 
 
-def _resolve_columns(cells: list[list], data_start: int) -> dict[str, int]:
-    """Bản đồ cột cho file này: theo nhãn nếu đọc được, không thì `_COL`."""
-    labels = _header_labels(cells, data_start)
-    if not labels:
-        return _COL
-    col: dict[str, int] = {}
-    for field, aliases in _LABEL_ALIASES.items():
-        for alias in aliases:
-            if alias in labels:
-                col[field] = labels[alias]
-                break
-    if any(f not in col for f in _LABEL_REQUIRED):
-        return _COL
-    return col
+def _norm_cells(row: list) -> dict[int, str]:
+    """Cột → nhãn đã `norm` của các ô KHÔNG rỗng trong một dòng."""
+    out: dict[int, str] = {}
+    for i, raw in enumerate(row):
+        s = to_str(raw)
+        if s:
+            out[i] = norm(s)
+    return out
+
+
+def _find_header_row(cells: list[list], data_start: int) -> tuple[int | None, dict[int, str]]:
+    """Dòng tiêu đề = dòng khớp NHIỀU nhãn đã biết nhất trong cửa sổ ngay trên dữ liệu."""
+    best_row: int | None = None
+    best_hits = 0
+    best: dict[int, str] = {}
+    for r in range(max(0, data_start - _HEADER_LOOKBACK), min(data_start, len(cells))):
+        labels = _norm_cells(cells[r])
+        hits = sum(1 for v in labels.values() if v in _KNOWN_LABELS)
+        if hits > best_hits:
+            best_row, best_hits, best = r, hits, labels
+    if best_hits < _MIN_HEADER_LABELS:
+        return None, {}
+    return best_row, best
+
+
+def _band_labels(cells: list[list], header_row: int, data_start: int) -> dict[int, set[str]]:
+    """Nhãn ứng viên mỗi cột trong vùng tiêu đề `[header_row - 1, data_start)`.
+
+    Giữ từng ô làm MỘT ứng viên riêng và thêm chuỗi NỐI cả vùng: tiêu đề hai tầng (ô
+    gộp cha "Tổng số lượng" + ô con "2") chỉ đọc được khi nối, còn khớp bằng đúng
+    chuỗi (phân biệt `Đơn giá` với `Đơn giá tính thuế`) chỉ đúng khi từng ô còn riêng.
+    Vùng bắt đầu ở `header_row - 1` chứ không phải đầu cửa sổ: các dòng tổng ở đầu
+    file ("Tổng trị giá:", "Tổng tiền thuế:") nằm ở cột 0 và sẽ tranh nhãn với cột thật.
+    """
+    per_col: dict[int, set[str]] = {}
+    joined: dict[int, list[str]] = {}
+    for r in range(max(0, header_row - 1), min(data_start, len(cells))):
+        for i, v in _norm_cells(cells[r]).items():
+            per_col.setdefault(i, set()).add(v)
+            joined.setdefault(i, []).append(v)
+    for i, parts in joined.items():
+        if len(parts) > 1:
+            per_col[i].add(" ".join(parts))
+    return per_col
+
+
+def _resolve_by_label(header_cells: dict[int, str], band: dict[int, set[str]]) -> dict[str, int]:
+    """field → cột theo nhãn: dòng tiêu đề trước, cả vùng tiêu đề sau.
+
+    Hai lượt để nhãn ở dòng tiêu đề luôn thắng một nhãn tình cờ trùng ở dòng khác;
+    lượt vùng chỉ vớt trường mà dòng tiêu đề không có (tiêu đề tách hai tầng).
+    """
+    head = {c: {label} for c, label in header_cells.items()}
+    out: dict[str, int] = {}
+    for fld, aliases in _ALIASES.items():
+        col = _first_column(aliases, head)
+        if col is None:
+            col = _first_column(aliases, band)
+        if col is not None:
+            out[fld] = col
+    return out
+
+
+def _first_column(aliases: tuple[str, ...], labels: dict[int, set[str]]) -> int | None:
+    """Cột trái nhất mang một trong các alias, xét alias theo thứ tự ưu tiên."""
+    for alias in aliases:
+        for c in sorted(labels):
+            if alias in labels[c]:
+                return c
+    return None
+
+
+def _reject_collisions(col: dict[str, int], source: str) -> None:
+    """Hai trường về cùng một cột thì bản đồ sai — từ chối thay vì nhân đôi một cột."""
+    seen: dict[int, str] = {}
+    clashes: list[str] = []
+    for fld, c in sorted(col.items()):
+        if c in seen:
+            clashes.append(f"{seen[c]} và {fld} cùng cột {c}")
+        else:
+            seen[c] = fld
+    if clashes:
+        raise BcctColumnError(
+            f"{source}: bản đồ cột BCCT không đơn ánh ({'; '.join(clashes)}). "
+            "Từ chối đọc để không nạp cùng một cột cho hai trường."
+        )
+
+
+def _resolve_columns(
+    cells: list[list], data_start: int, source: str
+) -> tuple[dict[str, int], dict[str, str], int | None]:
+    """Bản đồ cột + nguồn bằng chứng mỗi trường + dòng tiêu đề đã dò được.
+
+    `_COL` chỉ được dùng khi CHÍNH các nhãn đã khớp xác nhận bố cục chuẩn: đủ
+    `_MIN_POSITION_ANCHORS` neo và mọi neo đúng vị trí `_COL`. Một neo lệch là bác bỏ
+    `_COL` cho cả file — bố cục 50 cột lệch từ cột 6 trở đi mà `Số TK` / `Ngày ĐK` /
+    `Mã loại hình` vẫn trùng vị trí.
+    """
+    hrow, header_cells = _find_header_row(cells, data_start)
+    by_label: dict[str, int] = {}
+    if hrow is not None:
+        by_label = _resolve_by_label(header_cells, _band_labels(cells, hrow, data_start))
+    anchors = [f for f in by_label if f in _COL]
+    at_position = all(by_label[f] == _COL[f] for f in anchors)
+    position_ok = len(anchors) >= _MIN_POSITION_ANCHORS and at_position
+    col: dict[str, int] = dict(_COL) if position_ok else {}
+    col.update(by_label)
+    _reject_collisions(col, source)
+
+    missing = [f for f in _REQUIRED_FIELDS if f not in col]
+    if missing:
+        found = "không dò được dòng tiêu đề"
+        if hrow is not None:
+            found = f"dòng tiêu đề {hrow}, {len(by_label)} nhãn khớp"
+        raise BcctColumnError(
+            f"{source}: không xác định được cột BCCT cho {', '.join(missing)} "
+            f"({found}). Nhãn tiêu đề cũng không xác nhận bố cục chuẩn nên không suy "
+            "được theo vị trí — từ chối đọc để không lấy nhầm cột."
+        )
+    evidence = {f: (HEADER_MATCHED if f in by_label else POSITION_ONLY) for f in col}
+    return col, evidence, hrow
 
 
 def _split_item_code_name(raw_name: str | None) -> tuple[str | None, str | None]:
@@ -169,7 +290,7 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
         sheet, data_start = choice.name, choice.data_start
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
-    col = _resolve_columns(cells, data_start)
+    col, evidence, header_row = _resolve_columns(cells, data_start, p.name)
 
     company_tax_id: str | None = None
     company_name: str | None = None
@@ -227,4 +348,15 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
         company_name=company_name,
         source_file=str(p),
         sheet=sheet,
+        provenance=ParseProvenance(
+            # `labeled` = bản đồ LỆCH `_COL`, tức đọc theo vị trí sẽ sai. Bố cục chuẩn
+            # vẫn để `standard` để badge bố cục không kêu ở 35/38 file bình thường.
+            layout="standard" if col == _COL else "labeled",
+            detail={
+                "form_signature": compute_form_signature(cells, "bcct", data_start),
+                "column_map": col,
+                "header_row": header_row,
+            },
+            evidence=evidence,
+        ),
     )
