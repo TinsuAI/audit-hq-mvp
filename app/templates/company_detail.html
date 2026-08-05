@@ -124,8 +124,8 @@
       ro (nếu có), rồi quy về thang <strong>0–1000</strong>.
     </p>
     <p class="se-formula">
-      <strong>{{ ys_score }}</strong> = làm tròn(1000 × <strong>{{ '%.2f' | format(bd.raw) }}</strong>
-      ÷ <strong>{{ bd.max_raw | int }}</strong>)
+      <strong>{{ ys_score }}</strong> = làm tròn(1000 × <strong>{{ fmt_num(bd.raw, 2) }}</strong>
+      ÷ <strong>{{ fmt_int(bd.max_raw) }}</strong>)
       <span class="se-muted">· tối đa = {{ ((bd.max_raw - 20) / 10) | int }} bài kiểm tra × 10 + 20 (tổ hợp)</span>
     </p>
 
@@ -138,7 +138,7 @@
           <td class="text-mono">{{ code }}</td>
           <td>{{ spec.title if spec else '—' }}</td>
           <td class="num">
-            {{ '%.2f' | format(sc) }}
+            {{ fmt_num(sc, 2) }}
             {% if sc >= 10 %}<span class="bd-cap" title="Đã đạt mức tối đa 10 điểm — phát hiện thêm không làm điểm tăng">kịch khung</span>{% endif %}
           </td>
         </tr>
@@ -149,7 +149,7 @@
         </tr>
         <tr class="bd-sum">
           <td colspan="2"><strong>Tổng điểm thô</strong></td>
-          <td class="num"><strong>{{ '%.2f' | format(bd.raw) }}</strong> <span class="se-muted">/ {{ bd.max_raw | int }}</span></td>
+          <td class="num"><strong>{{ fmt_num(bd.raw, 2) }}</strong> <span class="se-muted">/ {{ fmt_int(bd.max_raw) }}</span></td>
         </tr>
       </tbody>
     </table>
@@ -415,13 +415,22 @@
       </div>
       {% endif %}
       {% endif %}
-      <div class="data-table-wrapper">
+      {# Cột số lấy theo check (`app/checks/detail_labels.py`). Cột "Mô tả" bỏ hẳn:
+         mọi dòng trong nhóm nói y hệt nhau và tiêu đề nhóm ở trên đã ghi rồi; mã
+         thì cột "Đối tượng" đã có. Check động do admin viết không khai bộ cột →
+         rơi về cột "Mô tả" như cũ. #}
+      {% set cols = finding_columns(code) %}
+      <div class="data-table-wrapper{% if cols | length > 4 %} table-overflow{% endif %}">
         <table class="data-table compact">
           <thead>
             <tr>
               <th>Mức</th>
               <th>Đối tượng</th>
-              <th class="wrap">Mô tả</th>
+              {% if cols %}
+                {% for c in cols %}<th class="{{ c.css }}">{{ c.label }}</th>{% endfor %}
+              {% else %}
+                <th class="wrap">Mô tả</th>
+              {% endif %}
               <th>Trạng thái</th>
               <th>Thao tác</th>
             </tr>
@@ -435,13 +444,21 @@
                 </span>
               </td>
               <td class="code-cell">{% if multi_book %}<span class="book-pill {% if not f.book %}chung{% endif %}" title="{{ book_label(f.book) }}">{{ f.book or 'Liên sổ' }}</span> {% endif %}{% if f.subject_key %}<a href="/companies/{{ company.slug or company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% else %}—{% endif %}</td>
+              {% if cols %}
+                {% for cell in finding_cells(code, f.details) %}
+                <td class="{{ cell.css }}">{{ cell.text }}</td>
+                {% endfor %}
+              {% else %}
               <td class="wrap">
-                <div class="cell-clamp" title="{{ f.title }}{% if f.notes %} — 📝 {{ f.notes }}{% endif %}">
+                <div class="cell-clamp" title="{{ f.title }}">
                   <a href="/findings/{{ f.id }}" style="color:inherit">{{ f.title }}</a>
-                  {% if f.notes %}<span class="text-subtle" style="font-size:var(--fs-xs)"> · 📝 {{ f.notes }}</span>{% endif %}
                 </div>
               </td>
-              <td><span class="status-pill status-{{ f.status }}">{{ STATUS_LABEL[f.status] }}</span></td>
+              {% endif %}
+              <td>
+                <span class="status-pill status-{{ f.status }}">{{ STATUS_LABEL[f.status] }}</span>
+                {% if f.notes %}<div class="finding-note" title="{{ f.notes }}">📝 {{ f.notes }}</div>{% endif %}
+              </td>
               <td>
                 <form method="post" action="/findings/{{ f.id }}/status" class="status-form-inline">
                   <select name="status" aria-label="Đổi trạng thái">
@@ -452,7 +469,11 @@
                   <input type="hidden" name="notes" value="{{ f.notes or '' }}">
                   <button type="submit">Lưu</button>
                 </form>
-                <a href="/findings/{{ f.id }}" class="btn btn-sm btn-secondary" style="margin-top:4px;display:inline-block">Chi tiết →</a>
+                <div class="row-links">
+                  <a href="/findings/{{ f.id }}">Chi tiết →</a>
+                  {% set raw = raw_data_url(company, selected_year, f) %}
+                  {% if raw %}<a href="{{ raw }}" title="Mở bảng dữ liệu gốc, đã lọc sẵn mã {{ f.subject_key }}">Dữ liệu gốc →</a>{% endif %}
+                </div>
               </td>
             </tr>
             {% endfor %}

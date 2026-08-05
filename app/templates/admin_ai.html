@@ -309,23 +309,23 @@
     {# Chi phí đọc từ sổ `ai_usage` — gồm CẢ chat lẫn sinh tổng quan (ADR #21). #}
     <div class="stat">
       <span class="stat-label">💰 Chi phí</span>
-      <span class="stat-value">${{ "%.4f" | format(usage.cost_usd) }}</span>
+      <span class="stat-value">${{ fmt_num(usage.cost_usd, 4) }}</span>
       {% if usage.budget_usd > 0 %}
-        <span class="text-subtle" style="font-size:var(--fs-xs)">/ ${{ "%.2f" | format(usage.budget_usd) }} ({{ "%.1f" | format(budget_pct) }}%)</span>
+        <span class="text-subtle" style="font-size:var(--fs-xs)">/ ${{ fmt_num(usage.budget_usd, 2) }} ({{ fmt_num(budget_pct, 1) }}%)</span>
       {% endif %}
       <span class="text-subtle" style="font-size:var(--fs-xs)">
-        trò chuyện ${{ "%.4f" | format(usage.by_kind.chat.cost_usd) }}
-        · tổng quan ${{ "%.4f" | format(usage.by_kind.overview.cost_usd) }}
+        trò chuyện ${{ fmt_num(usage.by_kind.chat.cost_usd, 4) }}
+        · tổng quan ${{ fmt_num(usage.by_kind.overview.cost_usd, 4) }}
       </span>
     </div>
     {% endif %}
     <div class="stat">
       <span class="stat-label">📥 Token vào</span>
-      <span class="stat-value">{{ "{:,}".format(usage.tokens_in) }}</span>
+      <span class="stat-value">{{ fmt_int(usage.tokens_in) }}</span>
     </div>
     <div class="stat">
       <span class="stat-label">📤 Token ra</span>
-      <span class="stat-value">{{ "{:,}".format(usage.tokens_out) }}</span>
+      <span class="stat-value">{{ fmt_int(usage.tokens_out) }}</span>
     </div>
     <div class="stat">
       <span class="stat-label">💬 Tin nhắn</span>
@@ -377,8 +377,8 @@
             <td class="wrap"><div class="cell-clamp" title="{{ c.title }}">{{ c.title }}</div></td>
             <td class="text-subtle" style="font-size:var(--fs-xs)">{{ c.started_at.strftime('%d/%m %H:%M') if c.started_at else '—' }}</td>
             <td class="num">{{ c.msg_count }}</td>
-            <td class="num text-mono" style="font-size:var(--fs-xs)">{{ "{:,}".format(c.tokens_in) }} + {{ "{:,}".format(c.tokens_out) }}</td>
-            {% if show_cost %}<td class="num text-mono">${{ "%.4f" | format(c.cost_usd) }}</td>{% endif %}
+            <td class="num text-mono" style="font-size:var(--fs-xs)">{{ fmt_int(c.tokens_in) }} + {{ fmt_int(c.tokens_out) }}</td>
+            {% if show_cost %}<td class="num text-mono">${{ fmt_num(c.cost_usd, 4) }}</td>{% endif %}
             <td><a href="/admin/ai/conversations/{{ c.id }}" class="btn btn-secondary btn-sm">Xem</a></td>
           </tr>
           {% endfor %}

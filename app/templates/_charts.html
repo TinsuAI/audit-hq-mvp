@@ -29,7 +29,7 @@
         <g class="wf-bar wf-{{ b.kind }}">
           <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="3" />
           <text x="{{ b.cx }}" y="{{ b.value_y }}" text-anchor="middle" class="wf-value">
-            {% if b.kind in ('in', 'out') %}{{ "{:+,.0f}".format(b.value) }}{% else %}{{ "{:,.0f}".format(b.value) }}{% endif %}
+            {% if b.kind in ('in', 'out') %}{{ fmt_num(b.value, 0, signed=True) }}{% else %}{{ fmt_int(b.value) }}{% endif %}
           </text>
           <text x="{{ b.cx }}" y="{{ b.label_y }}" text-anchor="middle" class="wf-label">{{ b.label }}</text>
         </g>
@@ -60,9 +60,9 @@
               text-anchor="{{ n.text_anchor }}" dominant-baseline="middle">
           {% if layout.direction == 'out' %}
             <tspan class="text-mono">{{ n.code }}</tspan>
-            <tspan dx="6" class="text-subtle">{{ "{:,.4f}".format(n.qty) }} ({{ n.share_pct }}%)</tspan>
+            <tspan dx="6" class="text-subtle">{{ fmt_num(n.qty, 4) }} ({{ fmt_num(n.share_pct, 1) }}%)</tspan>
           {% else %}
-            <tspan class="text-subtle">{{ n.share_pct }}% · {{ "{:,.4f}".format(n.qty) }}</tspan>
+            <tspan class="text-subtle">{{ fmt_num(n.share_pct, 1) }}% · {{ fmt_num(n.qty, 4) }}</tspan>
             <tspan dx="6" class="text-mono">{{ n.code }}</tspan>
           {% endif %}
         </text>

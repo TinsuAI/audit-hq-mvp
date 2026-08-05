@@ -48,6 +48,17 @@ KEY_RISK_TIER_UPPERS = "risk_tier_uppers"
 KEY_COMBOS_ENABLED = "combos_enabled"
 DEFAULT_COMBOS_ENABLED = False
 
+# --- Định dạng số trên giao diện ---
+
+# `vi` = 1.234,56 · `en` = 1,234.56. Mặc định `vi` cho khớp UI tiếng Việt; đổi
+# được vì bản xuất ECUS và Excel của cán bộ có thể theo quy ước khác.
+KEY_NUMBER_FORMAT = "number_format"
+DEFAULT_NUMBER_FORMAT = "vi"
+NUMBER_FORMAT_LABELS: dict[str, str] = {
+    "vi": "Kiểu Việt Nam — 1.234,56",
+    "en": "Kiểu Anh/Mỹ — 1,234.56",
+}
+
 _CACHE_TTL_SECONDS = 30.0
 _cache: dict[str, tuple[float, object]] = {}
 _lock = Lock()
@@ -193,6 +204,49 @@ def set_combos_enabled(enabled: bool, updated_by: str, db: Session) -> None:
         db.add(AppSetting(key=KEY_COMBOS_ENABLED, value=payload, updated_by=updated_by))
     else:
         row.value = payload
+        row.updated_by = updated_by
+    db.commit()
+    invalidate_cache()
+
+
+def get_number_format(db: Session | None = None) -> str:
+    """Quy ước phân cách số đang chọn: `vi` hoặc `en`.
+
+    Gọi ở MỌI ô số trên giao diện nên phải rẻ — cache 30s gánh phần đó; giá trị
+    lạ trong DB rơi về mặc định thay vì ném lỗi giữa lúc render.
+    """
+    cached = _get_cached(KEY_NUMBER_FORMAT)
+    if cached is not None:
+        return str(cached)
+
+    own_session = db is None
+    if own_session:
+        from app.database import SessionLocal
+        s = SessionLocal()
+    else:
+        s = db
+    try:
+        row = s.get(AppSetting, KEY_NUMBER_FORMAT)
+        if row and row.value in NUMBER_FORMAT_LABELS:
+            _put_cached(KEY_NUMBER_FORMAT, row.value)
+            return row.value
+    finally:
+        if own_session:
+            s.close()
+
+    _put_cached(KEY_NUMBER_FORMAT, DEFAULT_NUMBER_FORMAT)
+    return DEFAULT_NUMBER_FORMAT
+
+
+def set_number_format(style: str, updated_by: str, db: Session) -> None:
+    """Ghi quy ước phân cách số + bust cache. Giá trị ngoài `vi`/`en` bị từ chối."""
+    if style not in NUMBER_FORMAT_LABELS:
+        raise ValidationError("Quy ước định dạng số không hợp lệ.")
+    row = db.get(AppSetting, KEY_NUMBER_FORMAT)
+    if row is None:
+        db.add(AppSetting(key=KEY_NUMBER_FORMAT, value=style, updated_by=updated_by))
+    else:
+        row.value = style
         row.updated_by = updated_by
     db.commit()
     invalidate_cache()

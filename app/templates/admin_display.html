@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Định dạng hiển thị — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Audit-HQ</a>
+  <span class="sep">›</span>
+  Quản trị
+  <span class="sep">›</span>
+  Định dạng hiển thị
+</nav>
+
+<div class="page-header">
+  <h1>Định dạng hiển thị số</h1>
+  <p class="page-subtitle">
+    Quy ước dấu phân cách áp cho mọi con số trên hệ thống: bảng phát hiện,
+    trang chi tiết, dữ liệu gốc. Đổi quy ước <em>không</em> đụng dữ liệu đã nạp
+    và <em>không</em> chạy lại kiểm tra — chỉ đổi cách in ra màn hình.
+  </p>
+</div>
+
+{% if saved %}
+<div class="alert alert-success" role="status">✅ Đã lưu quy ước hiển thị.</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-error" role="alert">⚠️ {{ error }}</div>
+{% endif %}
+
+<form method="post" action="/admin/hien-thi" class="card">
+  <h3 class="card-title">Quy ước phân cách</h3>
+  {% for opt in options %}
+  <label class="form-radio-card{% if opt.value == current %} selected{% endif %}">
+    <input type="radio" name="number_format" value="{{ opt.value }}"
+           {% if opt.value == current %}checked{% endif %}>
+    <span class="form-radio-body">
+      <strong>{{ opt.label }}</strong>
+      {% if opt.value == default_format %}<span class="badge muted">Mặc định</span>{% endif %}
+      <table class="data-table compact kv-table" style="margin-top:8px">
+        <tbody>
+          {% for row in opt.preview %}
+          <tr>
+            <th>{{ row.label }}</th>
+            <td class="num text-mono">{{ row.value }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </span>
+  </label>
+  {% endfor %}
+
+  <div style="display:flex;gap:12px;margin-top:16px;align-items:center">
+    <button type="submit" class="btn btn-primary">Lưu</button>
+    <a href="/companies" class="btn btn-link">Huỷ</a>
+  </div>
+</form>
+
+{% endblock %}

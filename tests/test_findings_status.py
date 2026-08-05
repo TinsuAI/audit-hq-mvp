@@ -124,3 +124,45 @@ def test_update_finding_requires_login():
     )
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
+
+def test_recompute_does_not_open_a_nested_session_and_lose_the_write():
+    """Hồi quy: `recompute_company_year` từng làm mất chính UPDATE vừa ghi.
+
+    `tier_for` gọi `get_tiers()` không truyền db → cache trống thì mở
+    `SessionLocal()` riêng; session lồng đó `close()` phát ROLLBACK. Khi hai
+    session dùng chung một connection (SQLite in-memory + StaticPool) thì
+    `finding.status` đang treo bị huỷ theo. Test gọi thẳng hàm, không qua HTTP,
+    để hỏng ở tầng nào cũng lộ.
+    """
+    from app.app_settings import invalidate_cache
+    from app.pipeline.recompute import recompute_company_year
+
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as s:
+            c = Company(code="RECO", tax_id="1", name="Reco")
+            s.add(c)
+            s.flush()
+            f = Finding(
+                company_id=c.id, period_year=2024, check_code="C2.1",
+                severity="critical", subject_key="X", title="x",
+            )
+            s.add(f)
+            s.commit()
+            finding_id, company_id = f.id, c.id
+
+        invalidate_cache()  # cache trống = điều kiện làm lộ lỗi
+        with new_session() as s:
+            s.get(Finding, finding_id).status = "confirmed"
+            s.flush()
+            recompute_company_year(s, company_id, 2024)
+            s.commit()
+
+        with new_session() as s:
+            assert s.get(Finding, finding_id).status == "confirmed"
+    finally:
+        invalidate_cache()
+        new_engine.dispose()
+        import app.database as dbmod
+        dbmod.engine = engine
+        dbmod.SessionLocal = SessionLocal

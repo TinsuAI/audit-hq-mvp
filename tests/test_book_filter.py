@@ -49,17 +49,17 @@ def _seed(db, code="DN_F"):
     db.add(c)
     db.flush()
     db.add_all([
-        NvlBalance(company_id=c.id, period_year=2025, book="EPE", material_code="A", unit="PCE"),
-        NvlBalance(company_id=c.id, period_year=2025, book="EPE", material_code="B", unit="PCE"),
-        NvlBalance(company_id=c.id, period_year=2025, book="GC", material_code="C", unit="PCE"),
+        NvlBalance(company_id=c.id, period_year=2025, book="EPE", material_code="NVL-EPE-1", unit="PCE"),
+        NvlBalance(company_id=c.id, period_year=2025, book="EPE", material_code="NVL-EPE-2", unit="PCE"),
+        NvlBalance(company_id=c.id, period_year=2025, book="GC", material_code="NVL-GC-1", unit="PCE"),
     ])
     db.add_all([
         Finding(company_id=c.id, period_year=2025, check_code="C4.3",
-                severity="warning", book="EPE", subject_key="A", title="epe_finding_1"),
+                severity="warning", book="EPE", subject_key="NVL-EPE-1", title="epe_finding_1"),
         Finding(company_id=c.id, period_year=2025, check_code="C4.3",
-                severity="warning", book="EPE", subject_key="B", title="epe_finding_2"),
+                severity="warning", book="EPE", subject_key="NVL-EPE-2", title="epe_finding_2"),
         Finding(company_id=c.id, period_year=2025, check_code="C1.1",
-                severity="critical", book=None, subject_key="X", title="chung_finding_1"),
+                severity="critical", book=None, subject_key="NVL-CHUNG-1", title="chung_finding_1"),
     ])
     db.add(CompanyYearScore(company_id=c.id, period_year=2025, score=42, tier="Cần rà soát", breakdown={}))
     db.commit()
@@ -74,8 +74,8 @@ def test_filter_epe_shows_only_epe():
         client = TestClient(app)
         _login(client)
         html = client.get("/companies/DN_F?year=2025&book=EPE").text
-        assert "epe_finding_1" in html
-        assert "chung_finding_1" not in html      # Chung KHÔNG bị kéo vào sổ EPE
+        assert "NVL-EPE-1" in html
+        assert "NVL-CHUNG-1" not in html      # Chung KHÔNG bị kéo vào sổ EPE
         # Segmented control có, "Sổ EPE" active.
         assert "book-filter" in html
         assert 'book=EPE" class="active"' in html
@@ -91,8 +91,8 @@ def test_filter_chung_is_book_null():
         client = TestClient(app)
         _login(client)
         html = client.get("/companies/DN_F?year=2025&book=chung").text
-        assert "chung_finding_1" in html
-        assert "epe_finding_1" not in html
+        assert "NVL-CHUNG-1" in html
+        assert "NVL-EPE-1" not in html
     finally:
         _teardown(new_engine)
 
@@ -141,9 +141,9 @@ def test_compose_with_check_focus():
         client = TestClient(app)
         _login(client)
         html = client.get("/companies/DN_F?year=2025&book=EPE&check=C4.3").text
-        assert "epe_finding_1" in html
-        assert "epe_finding_2" in html
-        assert "chung_finding_1" not in html
+        assert "NVL-EPE-1" in html
+        assert "NVL-EPE-2" in html
+        assert "NVL-CHUNG-1" not in html
     finally:
         _teardown(new_engine)
 
@@ -156,8 +156,8 @@ def test_invalid_book_treated_as_all():
         client = TestClient(app)
         _login(client)
         html = client.get("/companies/DN_F?year=2025&book=ZZZ").text
-        assert "epe_finding_1" in html
-        assert "chung_finding_1" in html              # mã lạ → coi như tất cả
+        assert "NVL-EPE-1" in html
+        assert "NVL-CHUNG-1" in html              # mã lạ → coi như tất cả
         assert 'class="active">Tất cả' in html
     finally:
         _teardown(new_engine)

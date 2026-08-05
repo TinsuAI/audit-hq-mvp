@@ -152,7 +152,7 @@
                 <span class="badge info doc-file-badge" title="Chọn cột định mức theo nhãn: “{{ pd.norm_label|replace('\n',' ')|trim }}” (cột {{ pd.norm_col }}), thay cho cột định mức kỹ thuật (cột {{ pd.technical_col }}).">🧭 ĐM thực tế · cột {{ pd.norm_col }}</span>
                 {% endif %}
               {% endif %}
-              <span class="doc-file-meta">{{ human_size(f.size_bytes) }}{% if f.row_count is not none %} · {{ '{:,}'.format(f.row_count) }} dòng{% endif %}</span>
+              <span class="doc-file-meta">{{ human_size(f.size_bytes) }}{% if f.row_count is not none %} · {{ fmt_int(f.row_count) }} dòng{% endif %}</span>
               {% if f.parse_message %}<span class="doc-file-msg" title="{{ f.parse_message }}">⚠️</span>{% endif %}
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/preview" class="doc-mini-btn" title="Xem nội dung">👁</a>
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/download" class="doc-mini-btn" title="Tải xuống">↓</a>

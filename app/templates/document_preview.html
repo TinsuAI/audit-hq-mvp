@@ -26,7 +26,7 @@
     <h1 style="word-break:break-all">{{ file.original_filename }}</h1>
     <p class="page-subtitle">
       {{ slot_label }} · Năm {{ file.period_year }} · {{ human_size(file.size_bytes) }}
-      {% if file.row_count is not none %} · đã nạp {{ '{:,}'.format(file.row_count) }} dòng{% endif %}
+      {% if file.row_count is not none %} · đã nạp {{ fmt_int(file.row_count) }} dòng{% endif %}
     </p>
   </div>
   <div class="btn-group">

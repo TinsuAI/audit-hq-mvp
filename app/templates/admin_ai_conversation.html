@@ -41,7 +41,7 @@
         <span class="text-subtle" style="font-size:var(--fs-xs)">
           {% if m.created_at %}{{ m.created_at.strftime('%H:%M:%S') }}{% endif %}
           {% if m.tokens_in or m.tokens_out %} · {{ m.tokens_in or 0 }}+{{ m.tokens_out or 0 }} token{% endif %}
-          {% if show_cost and m.cost_usd %} · ${{ "%.4f"|format(m.cost_usd) }}{% endif %}
+          {% if show_cost and m.cost_usd %} · ${{ fmt_num(m.cost_usd, 4) }}{% endif %}
           {% if m.latency_ms %} · {{ m.latency_ms }}ms{% endif %}
         </span>
       </div>
