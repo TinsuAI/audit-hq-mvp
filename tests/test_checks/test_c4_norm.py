@@ -151,6 +151,41 @@ def test_c4_3_critical_when_m15_has_no_production_out(session, company):
     assert findings[0].severity == "critical"
 
 
+def test_c4_3_skips_material_without_any_m15_row(session, company):
+    """Không có DÒNG M15 nào ≠ có dòng M15 với xuất SX = 0 (issue #59).
+
+    Mã NVL có tiêu hao lý thuyết mà không có dòng nào trong M15 là ca THIẾU NGUỒN —
+    đất của C4.1 ("NVL trong M16 không có nguồn"). C4.3 bỏ qua, không được coi như
+    xuất SX = 0 rồi bắn Nghiêm trọng. Mã CÓ dòng M15 mà xuất SX = 0 là mâu thuẫn thật
+    (đã khai nguồn nhưng không xuất cho sản xuất) → vẫn bắn.
+    """
+    add_sp(session, company.id, product_code="TP", intake=100)
+    add_norm(session, company.id, product_code="TP", material_code="GHOST", norm_qty=1.0)
+    add_norm(session, company.id, product_code="TP", material_code="ZERO", norm_qty=1.0)
+    add_nvl(session, company.id, material_code="ZERO", imported=100, production_out=0)
+    session.commit()
+    findings = check_c4_3(session, company.id, 2024)
+    assert [f.subject_key for f in findings] == ["ZERO"]
+    assert findings[0].severity == "critical"
+
+
+def test_c4_3_missing_m15_row_is_judged_inside_the_book(session, company):
+    """Dòng M15 ở SỔ KHÁC không kéo mã vào phạm vi C4.3 của sổ này (ADR #19).
+
+    Sổ EPE: mã X có dòng M15, tiêu hao khớp → không lệch. Sổ GC: cùng mã X có định mức
+    và sản lượng nhưng KHÔNG có dòng M15 trong sổ đó → bỏ qua. Nếu tra "có dòng M15"
+    trên toàn DN thay vì trong sổ thì dòng của EPE kéo mã X của GC vào và bắn Nghiêm
+    trọng với xuất SX = 0.
+    """
+    add_norm(session, company.id, product_code="TP_E", material_code="X", norm_qty=1.0, book="EPE")
+    add_sp(session, company.id, product_code="TP_E", intake=100, book="EPE")
+    add_nvl(session, company.id, material_code="X", production_out=100, book="EPE")
+    add_norm(session, company.id, product_code="TP_G", material_code="X", norm_qty=2.0, book="GC")
+    add_sp(session, company.id, product_code="TP_G", intake=100, book="GC")
+    session.commit()
+    assert check_c4_3(session, company.id, 2024) == []
+
+
 def test_c4_3_repeated_bom_block_counted_once(session, company):
     """Mẫu 16 lặp nguyên khối định mức cho MỖI đợt sản xuất.
 

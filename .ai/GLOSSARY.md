@@ -173,6 +173,12 @@ một mã không có dòng định mức trong kỳ N là trạng thái BÌNH TH
 lập với cách hiểu "định mức của kỳ N" = dòng có `period_year = N`, vốn coi mọi mã không khai lại
 là thiếu.
 
+**Ranh giới C4.1 / C4.3** — mã NVL có tiêu hao lý thuyết mà KHÔNG có dòng nào trong Mẫu 15 của
+CÙNG SỔ quyết toán là ca thiếu nguồn: thuộc C4.1, C4.3 bỏ qua mã đó. Mã CÓ dòng Mẫu 15 mà
+`xuất_sản_xuất = 0` vẫn thuộc C4.3 — đã khai nguồn nhưng không xuất cho sản xuất là mâu thuẫn
+thật. Phân định này chặn 151 phát hiện Nghiêm trọng dán nhầm nhãn khi định mức chuyển tiếp vào
+phép nhân (DN 8/2025).
+
 **ĐM mới** — tín hiệu khi một mã thành phẩm CÓ tồn đầu kỳ mà LẠI CÓ định mức khai trong kỳ đó.
 Nghĩa là định mức đã thay đổi so với bản đang chuyển tiếp. Là cảnh báo để cán bộ xem, không phải
 sai phạm: định mức thực tế đổi theo năng suất lao động và cải tiến kỹ thuật từng năm, giải trình

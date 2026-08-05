@@ -203,7 +203,8 @@ register(CheckSpec(
     title="Tổng tiêu hao M16 vượt xuất sản xuất M15",
     description=(
         "Σ(định_mức × sản_lượng_sản_xuất_M15a) theo NVL > `xuất_sản_xuất` trong M15. "
-        "Vượt >5% Cảnh báo · >20% Nghiêm trọng."
+        "Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 "
+        "thuộc C4.1 (thiếu nguồn), không xét ở đây."
     ),
     default_severity=Severity.WARNING,
 ))
