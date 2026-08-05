@@ -248,6 +248,8 @@ def list_companies(
 
 DEMO_SUFFIX = "(Demo)"
 YEAR_MIN, YEAR_MAX = 2015, 2030
+# Năm đầu nộp BCQT có thể sớm hơn cửa sổ dữ liệu đã nạp (YEAR_MIN), nên nới cận dưới.
+BCQT_YEAR_MIN = 2000
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB per file
 
 # Mỗi slot → (subdir, fixed filename stem). Stem để tên match discover() patterns.
@@ -447,10 +449,14 @@ def edit_company_form(
         "tax_id": company.tax_id or "",
         "address": company.address or "",
         "industry": company.industry or "",
+        "first_bcqt_year": company.first_bcqt_year or "",
     }
     return templates.TemplateResponse(
         request, "edit_company.html",
-        {"user": user, "company": company, "form": form_state, "error": None},
+        {
+            "user": user, "company": company, "form": form_state, "error": None,
+            "bcqt_year_min": BCQT_YEAR_MIN, "bcqt_year_max": YEAR_MAX,
+        },
     )
 
 
@@ -462,10 +468,39 @@ def update_company(
     tax_id: str = Form(""),
     address: str = Form(""),
     industry: str = Form(""),
+    first_bcqt_year: str = Form(""),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     company = get_company_or_404(db, code, user)
+
+    # Trống = "chưa biết" (NULL), không phải 0 — T6 đọc NULL để coi kỳ sớm nhất là
+    # chưa đánh giá được. Nhập sai thì trả form kèm lỗi, không ghi đè giá trị cũ.
+    raw_year = first_bcqt_year.strip()
+    parsed_year: int | None = None
+    if raw_year:
+        try:
+            parsed_year = int(raw_year)
+        except ValueError:
+            parsed_year = None
+        if parsed_year is None or not (BCQT_YEAR_MIN <= parsed_year <= YEAR_MAX):
+            form_state = {
+                "code": company.code,
+                "name": name.strip(),
+                "tax_id": tax_id.strip(),
+                "address": address.strip(),
+                "industry": industry.strip(),
+                "first_bcqt_year": raw_year,
+            }
+            return templates.TemplateResponse(
+                request, "edit_company.html",
+                {
+                    "user": user, "company": company, "form": form_state,
+                    "error": f"Năm đầu nộp BCQT phải trong khoảng {BCQT_YEAR_MIN}-{YEAR_MAX}.",
+                    "bcqt_year_min": BCQT_YEAR_MIN, "bcqt_year_max": YEAR_MAX,
+                },
+                status_code=400,
+            )
 
     # Mã DN cố định (dùng làm thư mục lưu file) — không nhận từ form.
     name = name.strip()
@@ -477,6 +512,7 @@ def update_company(
     company.tax_id = tax_id.strip() or None
     company.address = address.strip() or None
     company.industry = industry.strip() or None
+    company.first_bcqt_year = parsed_year
     db.commit()
 
     return RedirectResponse(url=f"/companies/{code}", status_code=303)

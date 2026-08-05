@@ -13,7 +13,7 @@
 <div class="page-header">
   <div class="page-title-group">
     <h1>Sửa thông tin doanh nghiệp</h1>
-    <p class="page-subtitle">Cập nhật tên, ngành, MST, địa chỉ. Định danh URL và mã lưu trữ cố định.</p>
+    <p class="page-subtitle">Cập nhật tên, ngành, MST, địa chỉ, năm đầu nộp BCQT. Định danh URL và mã lưu trữ cố định.</p>
   </div>
 </div>
 
@@ -70,10 +70,19 @@
              value="{{ form.tax_id or '' }}" placeholder="VD: 0123456789">
     </div>
     <div class="form-field">
-      <label class="form-label" for="address">Địa chỉ</label>
-      <input class="form-input" type="text" id="address" name="address"
-             value="{{ form.address or '' }}" placeholder="VD: KCN Tân Tạo, Q. Bình Tân, TP.HCM">
+      <label class="form-label" for="first_bcqt_year">Năm đầu nộp BCQT</label>
+      <input class="form-input mono-input" type="number" id="first_bcqt_year" name="first_bcqt_year"
+             min="{{ bcqt_year_min }}" max="{{ bcqt_year_max }}" step="1"
+             value="{{ form.first_bcqt_year or '' }}" placeholder="VD: 2019">
+      <p class="form-hint">Năm đầu tiên doanh nghiệp nộp báo cáo quyết toán. Để trống nếu chưa biết —
+        khi đó hệ thống coi kỳ sớm nhất đã nạp là chưa đánh giá được độ phủ định mức.</p>
     </div>
+  </div>
+
+  <div class="form-field">
+    <label class="form-label" for="address">Địa chỉ</label>
+    <input class="form-input" type="text" id="address" name="address"
+           value="{{ form.address or '' }}" placeholder="VD: KCN Tân Tạo, Q. Bình Tân, TP.HCM">
   </div>
 
   <div class="form-actions">
