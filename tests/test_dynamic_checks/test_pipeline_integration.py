@@ -101,6 +101,9 @@ def test_published_check_counted_in_score_max_raw(session, company):
     """Check published mở rộng scope vào max_raw (trần điểm) — không lệch trần."""
     session.add(_sql_check("X.1", CheckStatus.PUBLISHED))
     add_nvl(session, company.id, material_code="NVL_BAD", closing=-5)
+    # 2024 là kỳ sớm nhất của fixture; không xác nhận năm đầu nộp BCQT thì C4.3 trả
+    # `not_evaluable` (issue #62) và bị gỡ khỏi trần → đếm 17 luật thay vì 18.
+    company.first_bcqt_year = 2024
     session.commit()
 
     run_checks(company.code, 2024, session=session)

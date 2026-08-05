@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.adapters.m16 import is_domestic_origin
 from app.checks.effective_norms import effective_norms
+from app.checks.norm_gate import norm_coverage_gate
+from app.checks.not_evaluable import CheckResult
 from app.checks.registry import Severity, severity_for
 from app.models import Finding, Norm, NvlBalance, SpBalance
 
@@ -94,7 +96,7 @@ def check_c4_1(session: Session, company_id: int, year: int) -> list[Finding]:
     return findings
 
 
-def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
+def check_c4_3(session: Session, company_id: int, year: int) -> CheckResult:
     """Σ(định_mức × sản_lượng_sản_xuất_M15a) theo NVL > xuất_sản_xuất_M15.
 
     Tiêu hao lý thuyết = Σ qua các TP: norm(M16) × intake_qty(M15a) — intake_qty là
@@ -111,7 +113,16 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
     Định mức lấy theo bản khai HIỆU LỰC (issue #60) — bản có kỳ lớn nhất ≤ `year`,
     vì Mẫu 16 kế thừa giữa các kỳ. Lọc đúng `period_year == year` làm mất định mức
     của mọi mã không khai lại.
+
+    Trả `NotEvaluable` thay cho danh sách phát hiện khi (DN, kỳ) vướng cổng độ phủ
+    định mức (issue #62): thiếu định mức của một thành phẩm đã sản xuất, hoặc kỳ
+    biên chưa xác nhận năm đầu nộp BCQT — xem `app.checks.norm_gate`. Cổng chặn CẢ
+    lần chạy kể cả khi chỉ một sổ vướng, vì `check_runs` khoá theo (DN, kỳ).
     """
+    gated = norm_coverage_gate(session, company_id, year)
+    if gated is not None:
+        return gated
+
     norms_by_book = effective_norms(session, company_id, year)
     sp_rows = session.execute(
         select(SpBalance.product_code, SpBalance.intake_qty, SpBalance.book).where(
