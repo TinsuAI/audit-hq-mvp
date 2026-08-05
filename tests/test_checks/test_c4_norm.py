@@ -1,11 +1,28 @@
-"""Unit tests cho Nhóm 4 — Định mức M16."""
+"""Unit tests cho Nhóm 4 — Định mức M16.
+
+Cổng độ phủ định mức (issue #62) có test riêng ở `test_norm_gate.py`.
+"""
 
 from __future__ import annotations
+
+import pytest
 
 from app.adapters.m16 import is_domestic_origin
 from app.checks.c4_norm import check_c4_1, check_c4_3
 from app.models import Norm
 from tests.conftest import add_nvl, add_sp
+
+
+@pytest.fixture(autouse=True)
+def confirmed_first_bcqt_year(session, company):
+    """Xác nhận 2024 là năm đầu nộp BCQT của DN fixture.
+
+    C4.3 trả `NotEvaluable` ở kỳ sớm nhất hệ thống đang giữ khi chưa biết năm đầu nộp
+    BCQT (issue #62). Các test trong file này kiểm PHÉP TÍNH của C4.3, không kiểm cổng
+    — không xác nhận thì mọi fixture 1 kỳ đều dừng ở cổng kỳ biên.
+    """
+    company.first_bcqt_year = 2024
+    session.commit()
 
 
 def add_norm(
@@ -293,8 +310,12 @@ def test_c4_3_prefers_the_redeclared_norm_over_the_inherited_one(session, compan
 
 
 def test_c4_3_does_not_inherit_a_norm_from_a_later_period(session, company):
+    # TP đã khai định mức cho mã A ở 2024 nên độ phủ định mức đủ (cổng #62 không
+    # chặn); mã X chỉ được khai ở 2025 → không được kéo ngược về kỳ 2024.
+    add_norm(session, company.id, product_code="TP", material_code="A", norm_qty=1.0, year=2024)
     add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0, year=2025)
     add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    add_nvl(session, company.id, material_code="A", production_out=100, year=2024)
     add_nvl(session, company.id, material_code="X", production_out=100, year=2024)
     session.commit()
     assert check_c4_3(session, company.id, 2024) == []
