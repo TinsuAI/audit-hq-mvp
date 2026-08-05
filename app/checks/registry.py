@@ -186,7 +186,7 @@ register(CheckSpec(
 ))
 
 
-# --- Nhóm 4 — Định mức M16 (2 MVP, còn lại W.I.P) ---
+# --- Nhóm 4 — Định mức M16 (3 MVP, còn lại W.I.P) ---
 register(CheckSpec(
     code="C4.1",
     group=4,
@@ -205,6 +205,17 @@ register(CheckSpec(
         "Σ(định_mức × sản_lượng_sản_xuất_M15a) theo NVL > `xuất_sản_xuất` trong M15. "
         "Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 "
         "thuộc C4.1 (thiếu nguồn), không xét ở đây."
+    ),
+    default_severity=Severity.WARNING,
+))
+register(CheckSpec(
+    code="C4.9",
+    group=4,
+    title="TP có sản xuất trong kỳ nhưng thiếu định mức",
+    description=(
+        "Mã TP có `sản_lượng_sản_xuất_nhập_kho > 0` trong M15a mà không có định mức "
+        "hiệu lực nào trong M16, kể cả bản khai của các kỳ trước. Kết quả là danh sách "
+        "từng mã thiếu định mức, không phải một con số tổng."
     ),
     default_severity=Severity.WARNING,
 ))
@@ -407,6 +418,13 @@ CHECK_COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("m16", "material_code", INDIVIDUAL), ("m16", "norm_qty", INDIVIDUAL),
         ("m15a", "product_code", INDIVIDUAL), ("m15a", "intake_qty", INDIVIDUAL),
         ("m15", "material_code", INDIVIDUAL), ("m15", "production_out_qty", INDIVIDUAL),
+    ),
+    # C4.9 đọc cột MÃ TP của M16 (mã nào đã có định mức) chứ không đọc trị định mức.
+    # `product_code` của slot m16 chưa có trong mô hình bằng chứng nên không sinh
+    # `review_state`; khai ở đây để đổi map cột M16 kéo C4.9 vào diện chạy lại.
+    "C4.9": (
+        ("m15a", "product_code", INDIVIDUAL), ("m15a", "intake_qty", INDIVIDUAL),
+        ("m16", "product_code", INDIVIDUAL),
     ),
     "C5.1": (
         ("m15", "material_code", INDIVIDUAL), ("m15", "production_out_qty", INDIVIDUAL),

@@ -1,6 +1,6 @@
 """Nhóm 4 — Định mức M16 (§4.1 đề án).
 
-MVP tuần 5: C4.1 + C4.3. Còn lại (C4.2, C4.4-C4.8) là W.I.P.
+Đã dựng: C4.1, C4.3, C4.9. Còn lại (C4.2, C4.4-C4.8) là W.I.P.
 """
 
 from __future__ import annotations
@@ -11,7 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.m16 import is_domestic_origin
-from app.checks.effective_norms import consumed_materials, effective_norms
+from app.checks.effective_norms import (
+    consumed_materials,
+    effective_norms,
+    production_intake,
+    products_without_norm,
+)
 from app.checks.registry import Severity, severity_for
 from app.models import Finding, Norm, NvlBalance, SpBalance
 
@@ -248,7 +253,51 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
     return findings
 
 
+def check_c4_9(session: Session, company_id: int, year: int) -> list[Finding]:
+    """TP có sản xuất trong kỳ nhưng thiếu định mức M16 (issue #61).
+
+    Fire khi: mã TP có `intake_qty` > 0 trên M15a (sản lượng sản xuất nhập kho)
+    mà không có định mức HIỆU LỰC nào trong M16 — kể cả bản khai của các kỳ trước
+    (quy tắc kế thừa ở `effective_norms`, issue #60). Một phát hiện MỖI MÃ: cán bộ
+    cần danh sách từng mã thiếu định mức, không phải một con số tổng.
+
+    Chiều ngược của C4.2 (M16 → M15a): ở đây đi từ M15a sang M16.
+
+    Gộp theo SỔ quyết toán: định mức khai ở sổ này không phủ sản lượng sản xuất
+    của sổ kia (ADR #19).
+    """
+    missing = products_without_norm(session, company_id, year)
+    intake = production_intake(session, company_id, year)
+
+    findings: list[Finding] = []
+    for book in sorted(missing, key=lambda b: (b is None, b or "")):
+        for code in sorted(missing[book]):
+            qty = intake.get(book, {}).get(code, 0.0)
+            sp_filter = {"company_id": company_id, "period_year": year, "product_code": code}
+            if book is not None:
+                sp_filter["book"] = book
+            findings.append(Finding(
+                company_id=company_id,
+                period_year=year,
+                check_code="C4.9",
+                severity=Severity.WARNING.value,
+                subject_type="product_code",
+                subject_key=code,
+                book=book,
+                title=(
+                    f"TP {code}: sản xuất nhập kho {qty:.2f} trong kỳ "
+                    f"nhưng không có định mức M16 hiệu lực"
+                ),
+                details={"intake": qty},
+                # Không trỏ về `norms`: chính việc KHÔNG có dòng nào cho mã này là
+                # nội dung phát hiện. Chứng cứ là dòng M15a khai sản lượng.
+                evidence_refs=[{"table": "sp_balances", "filter": sp_filter}],
+            ))
+    return findings
+
+
 CHECKS = {
     "C4.1": check_c4_1,
     "C4.3": check_c4_3,
+    "C4.9": check_c4_9,
 }

@@ -136,19 +136,41 @@ def consumed_materials(
     return out
 
 
-def produced_products(session: Session, company_id: int, year: int) -> dict[str | None, set[str]]:
-    """{sổ: mã TP có sản lượng sản xuất nhập kho > 0 trong kỳ} (Mẫu 15a)."""
+def production_intake(
+    session: Session, company_id: int, year: int
+) -> dict[str | None, dict[str, float]]:
+    """{sổ: {mã TP: Σ sản lượng sản xuất nhập kho trong kỳ}} (Mẫu 15a).
+
+    Chỉ giữ mã có ÍT NHẤT một dòng > 0; lượng là tổng qua mọi dòng của mã đó
+    trong cùng sổ (dòng điều chỉnh âm, nếu có, được trừ vào tổng nhưng không làm
+    mã biến mất khỏi danh sách đã sản xuất).
+    """
     rows = session.execute(
         select(SpBalance.book, SpBalance.product_code, SpBalance.intake_qty).where(
             SpBalance.company_id == company_id,
             SpBalance.period_year == year,
         )
     ).all()
-    out: dict[str | None, set[str]] = defaultdict(set)
+
+    totals: dict[str | None, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    produced: dict[str | None, set[str]] = defaultdict(set)
     for book, product_code, intake_qty in rows:
-        if (intake_qty or 0.0) > 0:
-            out[book].add(product_code)
-    return out
+        qty = intake_qty or 0.0
+        totals[book][product_code] += qty
+        if qty > 0:
+            produced[book].add(product_code)
+
+    return {
+        book: {code: totals[book][code] for code in sorted(codes)}
+        for book, codes in produced.items()
+    }
+
+
+def produced_products(session: Session, company_id: int, year: int) -> dict[str | None, set[str]]:
+    """{sổ: mã TP có sản lượng sản xuất nhập kho > 0 trong kỳ} (Mẫu 15a)."""
+    return {
+        book: set(codes) for book, codes in production_intake(session, company_id, year).items()
+    }
 
 
 def products_without_norm(
@@ -178,5 +200,6 @@ __all__ = [
     "consumed_materials",
     "effective_norms",
     "produced_products",
+    "production_intake",
     "products_without_norm",
 ]

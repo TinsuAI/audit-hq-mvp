@@ -100,11 +100,11 @@ def test_score_no_findings_is_zero() -> None:
 
 def test_score_combo_bonus_one_shot() -> None:
     # 1 combo + 0 rule findings → raw = COMBO_BONUS (20).
-    # max_raw = 17 × MAX_RULE_SCORE + 20 = 190.
-    # score = round(1000 × 20 / 190) = 105.
+    # max_raw = 18 × MAX_RULE_SCORE + 20 = 200.
+    # score = round(1000 × 20 / 200) = 100.
     findings = [_f("COMBO_FORGED_NORM", "critical")]
     result = compute_company_year_score(findings, denominators={"nvl": 10, "tp": 10, "m16": 10})
-    assert result["score"] == 105
+    assert result["score"] == 100
     assert result["combo_bonus"] == 20
 
 

@@ -1,4 +1,4 @@
-"""Route `/danh-muc-kiem-tra` — hiển thị toàn bộ 49 kiểm tra theo §4 đề án.
+"""Route `/danh-muc-kiem-tra` — hiển thị toàn bộ 50 kiểm tra theo §4 đề án.
 
 Đối lập với `/admin/checks` (quản lý check dynamic + xem 16 built-in đã chạy),
 trang này là view-only public cho cán bộ HQ biết catalog tổng thể: cái nào

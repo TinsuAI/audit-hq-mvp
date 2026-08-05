@@ -1,4 +1,4 @@
-"""Test /danh-muc-kiem-tra — trang danh mục 49 kiểm tra theo §4 đề án."""
+"""Test /danh-muc-kiem-tra — trang danh mục 50 kiểm tra theo §4 đề án."""
 
 from __future__ import annotations
 
@@ -43,18 +43,18 @@ def _login(client: TestClient) -> None:
     assert r.status_code == 303
 
 
-def test_catalog_has_49_entries():
-    assert len(CATALOG) == 49
+def test_catalog_has_50_entries():
+    assert len(CATALOG) == 50
     counts = summary_counts()
-    assert counts == {"total": 49, "mvp": 17, "wip": 13, "conditional": 19}
+    assert counts == {"total": 50, "mvp": 18, "wip": 13, "conditional": 19}
 
 
 def test_catalog_phase_breakdown_matches_proposal():
-    """Phase I = 33 kiểm tra (Nhóm 1-7), Phase II = 16 (Nhóm 8-12)."""
+    """Phase I = 34 kiểm tra (Nhóm 1-7), Phase II = 16 (Nhóm 8-12)."""
     phases = grouped_by_phase()
     p1 = next(p for p in phases if p["phase"] == 1)
     p2 = next(p for p in phases if p["phase"] == 2)
-    assert sum(len(g["entries"]) for g in p1["groups"]) == 33
+    assert sum(len(g["entries"]) for g in p1["groups"]) == 34
     assert sum(len(g["entries"]) for g in p2["groups"]) == 16
     assert [g["group"] for g in p1["groups"]] == [1, 2, 3, 4, 5, 6, 7]
     assert [g["group"] for g in p2["groups"]] == [8, 9, 10, 11, 12]
@@ -84,7 +84,7 @@ def test_catalog_page_renders_all_codes():
         for code in ["C1.1", "C4.3", "C6.1", "C7.2", "C8.2", "C10.1", "C12.3"]:
             assert code in text, f"missing {code}"
         # Summary numbers.
-        assert "49" in text
+        assert "50" in text
         assert "16" in text
     finally:
         _teardown(new_engine)

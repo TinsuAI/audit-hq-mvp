@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.checks.effective_norms import (
     effective_norms,
     produced_products,
+    production_intake,
     products_without_norm,
 )
 from tests.conftest import add_sp
@@ -68,6 +69,19 @@ def test_produced_products_only_counts_positive_intake(session, company):
     add_sp(session, company.id, product_code="SOLD", intake=0, export_qty=50, year=2025)
     session.commit()
     assert produced_products(session, company.id, 2025)[None] == {"MADE"}
+
+
+def test_production_intake_sums_rows_per_book(session, company):
+    add_sp(session, company.id, product_code="TP", intake=10, year=2025)
+    add_sp(session, company.id, product_code="TP", intake=15, year=2025)
+    add_sp(session, company.id, product_code="TP", intake=7, book="GC", year=2025)
+    add_sp(session, company.id, product_code="IDLE", intake=0, year=2025)
+    session.commit()
+
+    got = production_intake(session, company.id, 2025)
+    assert got == {None: {"TP": 25.0}, "GC": {"TP": 7.0}}
+    # Cùng bộ khoá với produced_products — hai hàm không được lệch nhau.
+    assert {b: set(v) for b, v in got.items()} == produced_products(session, company.id, 2025)
 
 
 def test_products_without_norm_accepts_an_inherited_declaration(session, company):

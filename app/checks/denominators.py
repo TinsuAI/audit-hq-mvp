@@ -31,8 +31,9 @@ RULE_SCOPE: dict[str, str] = {
     "C2.1": "nvl", "C2.2": "tp", "C2.3": "nvl", "C2.4": "tp",
     # Nhóm 3: phân loại hàng hoá
     "C3.1": "nvl", "C3.2": "nvl", "C3.3": "nvl",
-    # Nhóm 4: định mức M16
-    "C4.1": "m16", "C4.3": "m16",
+    # Nhóm 4: định mức M16. C4.9 là ngoại lệ: chủ thể phát hiện là MÃ THÀNH PHẨM có
+    # sản xuất trong kỳ, nên mẫu số là số mã TP ('tp'), không phải số mã NVL trong M16.
+    "C4.1": "m16", "C4.3": "m16", "C4.9": "tp",
     # Nhóm 5: truy nguồn NVL
     "C5.1": "nvl",
     # Nhóm 6: liên kỳ
