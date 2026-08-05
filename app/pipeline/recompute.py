@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.app_settings import get_risk_tier_uppers
 from app.checks.denominators import compute_denominators, extended_rule_scope
+from app.checks.not_evaluable import load_not_evaluable
 from app.checks.scoring import compute_company_year_score
 from app.models import Company, CompanyYearScore, Finding
 
@@ -37,8 +38,12 @@ def recompute_company_year(session: Session, company_id: int, year: int) -> Comp
         )
     ).all()
     denominators = compute_denominators(session, company_id, year)
+    # Cùng tập loại trừ như `run_checks`: đổi trạng thái một finding không được kéo
+    # check `not_evaluable` trở lại mẫu số/trần, vì thế điểm sẽ nhảy sau mỗi lần
+    # cán bộ bấm "Loại trừ".
     breakdown = compute_company_year_score(
-        findings, denominators, rule_scope=extended_rule_scope(session)
+        findings, denominators, rule_scope=extended_rule_scope(session),
+        not_evaluable=load_not_evaluable(session, company_id, year),
     )
 
     cys = session.scalar(

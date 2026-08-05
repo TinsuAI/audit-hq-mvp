@@ -129,6 +129,7 @@ def compute_company_year_score(
     findings: Iterable[Finding],
     denominators: dict[str, int],
     rule_scope: dict[str, str] | None = None,
+    not_evaluable: Iterable[str] | None = None,
 ) -> dict:
     """Score 0-1000 + tier + breakdown chi tiết cho 1 (DN, năm).
 
@@ -139,6 +140,11 @@ def compute_company_year_score(
             Truyền map MỞ RỘNG (built-in + check mở rộng đã publish) để cả mẫu số
             lẫn trần `max_raw` tính cả check tự do — nếu không, check X.* đẩy `raw`
             lên mà `max_raw` cố định → lệch trần.
+        not_evaluable: mã các check KHÔNG kết luận được kỳ này
+            (`app.checks.not_evaluable.load_not_evaluable`). Mỗi mã bị gỡ khỏi CẢ
+            `rule_scores` LẪN `max_raw`: chỉ gỡ phần cộng điểm mà vẫn tính vào trần
+            thì thiếu dữ liệu lại làm điểm đẹp lên (`.ai/GLOSSARY.md`). Kết quả
+            bằng đúng lần chạy không có mã đó trong `rule_scope`.
 
     Returns:
         {
@@ -149,12 +155,17 @@ def compute_company_year_score(
           raw: float (tổng điểm thô trước khi rescale),
           max_raw: float (trần lý thuyết — để debug),
           denominators: dict (lưu lại để audit trail),
+          not_evaluable: list[str] (mã đã loại khỏi cả hai vế),
         }
     """
     from app.checks.denominators import RULE_SCOPE
 
     if rule_scope is None:
         rule_scope = RULE_SCOPE
+
+    skipped = {c for c in (not_evaluable or ()) if c}
+    if skipped:
+        rule_scope = {c: sc for c, sc in rule_scope.items() if c not in skipped}
 
     findings_list = list(findings)
 
@@ -166,6 +177,8 @@ def compute_company_year_score(
             if f.status != "rejected":
                 has_combo = True
             continue
+        if f.check_code in skipped:
+            continue  # phát hiện cũ còn sót của mã không kết luận được — không tính
         by_rule[f.check_code].append(f)
 
     rule_scores: dict[str, float] = {}
@@ -179,7 +192,8 @@ def compute_company_year_score(
     combo_bonus = COMBO_BONUS if has_combo else 0
     raw = sum(rule_scores.values()) + combo_bonus
 
-    # Trần lý thuyết: mọi rule trong rule_scope đều fire max + 1 combo.
+    # Trần lý thuyết: mọi rule trong rule_scope đều fire max + 1 combo. Rule
+    # `not_evaluable` đã bị gỡ khỏi `rule_scope` ở trên nên không nằm trong trần.
     max_raw = len(rule_scope) * MAX_RULE_SCORE + COMBO_BONUS
 
     score = round(1000 * raw / max_raw) if max_raw > 0 else 0
@@ -193,6 +207,7 @@ def compute_company_year_score(
         "raw": round(raw, 3),
         "max_raw": max_raw,
         "denominators": dict(denominators),
+        "not_evaluable": sorted(skipped),
     }
 
 

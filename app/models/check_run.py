@@ -32,8 +32,12 @@ class CheckRun(Base):
     # vì overview so `check_runs.ran_at > based_on_run_at` cần cùng một đồng hồ.
     ran_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     finding_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # 'ok' | 'error'. `not_evaluable` DÀNH SẴN (Tầng C chờ họp) — chưa build.
+    # 'ok' | 'error' | 'not_evaluable'. `not_evaluable` = check không kết luận vì
+    # thiếu đầu vào bắt buộc; mã đó bị loại khỏi điểm rủi ro (cả cộng điểm lẫn trần).
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ok")
+    # Lý do đi kèm `not_evaluable` (hiện trên UI) hoặc `error` (thông điệp lỗi).
+    # NULL khi status = 'ok'.
+    status_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Phiên bản dữ liệu (CompanyPeriod.data_version) mà lần chạy này đọc — provenance.
     data_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

@@ -126,7 +126,7 @@
     <p class="se-formula">
       <strong>{{ ys_score }}</strong> = làm tròn(1000 × <strong>{{ fmt_num(bd.raw, 2) }}</strong>
       ÷ <strong>{{ fmt_int(bd.max_raw) }}</strong>)
-      <span class="se-muted">· tối đa = {{ ((bd.max_raw - 20) / 10) | int }} bài kiểm tra × 10 + 20 (tổ hợp)</span>
+      <span class="se-muted">· tối đa = {{ ((bd.max_raw - 20) / 10) | int }} bài kiểm tra × 10 + 20 (tổ hợp){% if bd.not_evaluable %}, đã trừ {{ bd.not_evaluable | length }} bài chưa đánh giá được{% endif %}</span>
     </p>
 
     <table class="score-bd-table">
@@ -141,6 +141,14 @@
             {{ fmt_num(sc, 2) }}
             {% if sc >= 10 %}<span class="bd-cap" title="Đã đạt mức tối đa 10 điểm — phát hiện thêm không làm điểm tăng">kịch khung</span>{% endif %}
           </td>
+        </tr>
+      {% endfor %}
+      {% for code in bd.not_evaluable or [] %}
+        {% set spec = all_specs.get(code) or SPECS.get(code) %}
+        <tr class="bd-not-evaluable">
+          <td class="text-mono">{{ code }}</td>
+          <td>{{ spec.title if spec else '—' }}</td>
+          <td class="num"><span class="text-subtle" title="Kiểm tra không kết luận được vì thiếu đầu vào bắt buộc — loại khỏi cả điểm cộng lẫn trần {{ fmt_int(bd.max_raw) }}">chưa đánh giá được</span></td>
         </tr>
       {% endfor %}
         <tr class="bd-extra">
@@ -240,6 +248,27 @@
   </section>
   {% endif %}
 
+  {% if not_evaluable_checks %}
+  <section class="card not-evaluable-section" style="border-left:4px solid var(--c-warn,#b45309);margin-bottom:var(--space-4)">
+    <h2 style="margin:0 0 var(--space-2);font-size:var(--fs-md)">⃠ Chưa đánh giá được ({{ not_evaluable_checks | length }})</h2>
+    <p class="text-subtle" style="margin:0 0 var(--space-2)">
+      Các kiểm tra dưới đây <strong>không đưa ra kết luận</strong> cho năm {{ selected_year }} vì
+      thiếu đầu vào bắt buộc. Đây <strong>không phải</strong> "đã đánh giá, 0 phát hiện" — chưa có
+      cơ sở để kết luận. Các kiểm tra này không tham gia điểm rủi ro, cả phần cộng điểm lẫn phần
+      trần, để dữ liệu thiếu không làm điểm đẹp lên.
+    </p>
+    <ul class="not-evaluable-list" style="margin:0;padding-left:var(--space-4)">
+      {% for ne in not_evaluable_checks %}
+      <li style="margin-bottom:var(--space-1)">
+        <span class="badge muted text-mono">{{ ne.code }}</span>
+        <strong>{{ ne.title }}</strong>
+        {% if ne.reason %}<span class="text-subtle">— {{ ne.reason }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {% if not ordered_groups %}
     {% if book_empty and book_empty.kind == 'clean' and checks_run %}
     <div class="card book-empty-clean" style="border-left:4px solid var(--c-success,#16a34a)">
@@ -256,7 +285,7 @@
     </div>
     {% else %}
     <div class="card">
-      <p class="text-muted">Năm {{ selected_year }} không có phát hiện nào.</p>
+      <p class="text-muted">Năm {{ selected_year }} không có phát hiện nào{% if not_evaluable_checks %} ở các kiểm tra đã đánh giá — {{ not_evaluable_checks | length }} kiểm tra chưa đánh giá được, xem phần trên{% endif %}.</p>
     </div>
     {% endif %}
   {% endif %}
