@@ -1,7 +1,7 @@
 """check_runs.status_reason — lý do đi kèm trạng thái not_evaluable / error
 
 Revision ID: d1e2f3a4b5c6
-Revises: c5d6e7f8a9b0
+Revises: f1c4a2b7d3e5
 Create Date: 2026-08-05 10:00:00.000000
 
 `op.add_column` THẲNG, không `batch_alter_table`: batch mode dựng lại bảng, và
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = 'd1e2f3a4b5c6'
-down_revision: str | Sequence[str] | None = 'c5d6e7f8a9b0'
+down_revision: str | Sequence[str] | None = 'f1c4a2b7d3e5'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
