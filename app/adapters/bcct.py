@@ -79,6 +79,74 @@ _DATA_START = 10
 _MAIN_SHEET_CANDIDATES = ("Sheet1", "Sheet 1", "BCCT")
 _DECLARATION_RE = re.compile(r"^\d{9,13}$")
 
+# Nhãn tiêu đề → trường, theo THỨ TỰ ƯU TIÊN. `_COL` ở trên là bố cục ECUS "BC chi
+# tiết" (tiêu đề dòng 9, 54–56 cột) — 8 DN pilot đều dùng nó. Bản xuất
+# "BaoCaoHangChiTietMH" là bố cục KHÁC (tiêu đề dòng 0, 81 cột) mà `_COL` vẫn đọc
+# trôi vì `Số TK`/`Ngày ĐK` tình cờ trùng cột: mọi trường còn lại rơi vào cột khác
+# và KHÔNG có lỗi nào phát ra. Vì thế cột phải suy từ nhãn, không từ vị trí.
+# So khớp là BẰNG ĐÚNG chuỗi đã chuẩn hoá, không phải "chứa": `Đơn giá` vs
+# `Đơn giá tính thuế`, `Tổng trị giá` vs `Tổng trị giá hóa đơn` là hai cột khác nhau.
+_LABEL_ALIASES: dict[str, tuple[str, ...]] = {
+    "declaration_no": ("số tk",),
+    "declaration_date": ("ngày đk",),
+    "customs_code": ("mã loại hình",),
+    "line_no": ("stt hàng",),
+    "item_code": ("mã npl/sp", "mã hàng"),
+    "hs_code": ("mã hs",),
+    "item_name": ("tên hàng",),
+    "origin": ("xuất xứ", "nước xuất xứ"),
+    "unit_price": ("đơn giá", "đơn giá hóa đơn"),
+    "quantity": ("tổng số lượng", "số lượng"),
+    "unit": ("đơn vị tính",),
+    "currency": ("đơn vị tiền tệ", "ng.tệ hóa đơn"),
+    "value_foreign": ("trị giá nt", "trị giá hóa đơn"),
+    "value_total": ("tổng trị giá", "trị giá tính thuế"),
+    "tax_total": ("tổng tiền thuế",),
+    "company_tax_id": ("mã doanh nghiệp",),
+    "company_name": ("tên doanh nghiệp",),
+    "partner": ("tên đối tác",),
+    "invoice_no": ("số hóa đơn", "số hóa đơn tm"),
+}
+# Không có đủ ba trường này thì bản đồ theo nhãn vô dụng — rơi về `_COL`.
+_LABEL_REQUIRED = ("declaration_no", "item_code", "quantity")
+# Tiêu đề nằm ngay trên dòng dữ liệu, nhưng có bố cục chèn dòng đánh số ở giữa.
+_HEADER_LOOKBACK = 6
+
+
+def _header_labels(cells: list[list], data_start: int) -> dict[str, int]:
+    """Nhãn (đã chuẩn hoá) → cột, lấy ở dòng tiêu đề nhiều nhãn khớp nhất.
+
+    Nhãn trùng nhau lấy lần xuất hiện SAU: `Tổng tiền thuế` có ở cả cấp tờ khai lẫn
+    cấp dòng hàng, cột cần đọc là cột cấp dòng hàng nằm sau.
+    """
+    known = {alias for aliases in _LABEL_ALIASES.values() for alias in aliases}
+    best: dict[str, int] = {}
+    for i in range(max(0, data_start - _HEADER_LOOKBACK), data_start):
+        found: dict[str, int] = {}
+        for col, raw in enumerate(cells[i]):
+            label = to_str(raw)
+            if label and label.strip().lower() in known:
+                found[label.strip().lower()] = col
+        if len(found) > len(best):
+            best = found
+    return best
+
+
+def _resolve_columns(cells: list[list], data_start: int) -> dict[str, int]:
+    """Bản đồ cột cho file này: theo nhãn nếu đọc được, không thì `_COL`."""
+    labels = _header_labels(cells, data_start)
+    if not labels:
+        return _COL
+    col: dict[str, int] = {}
+    for field, aliases in _LABEL_ALIASES.items():
+        for alias in aliases:
+            if alias in labels:
+                col[field] = labels[alias]
+                break
+    if any(f not in col for f in _LABEL_REQUIRED):
+        return _COL
+    return col
+
 
 def _split_item_code_name(raw_name: str | None) -> tuple[str | None, str | None]:
     """BCCT col `Tên hàng` thường là `MA#&Tên`. Tách ra nếu cần."""
@@ -101,13 +169,15 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
         sheet, data_start = choice.name, choice.data_start
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
+    col = _resolve_columns(cells, data_start)
 
     company_tax_id: str | None = None
     company_name: str | None = None
     rows: list[BcctRow] = []
 
     def cell(row: list, name: str):
-        return safe_get(row, _COL[name])
+        idx = col.get(name)
+        return None if idx is None else safe_get(row, idx)
 
     for raw in cells[data_start:]:
         declaration_no = normalize_code(to_str(cell(raw, "declaration_no")))
