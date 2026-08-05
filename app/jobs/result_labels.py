@@ -27,6 +27,7 @@ RESULT_LABEL_VI: dict[str, str] = {
     "only": "Kiểm tra đã chọn",
     "total_findings": "Tổng số phát hiện",
     "findings_per_check": "Phát hiện theo kiểm tra",
+    "not_evaluable": "Chưa đánh giá được (kèm lý do)",
     "combos_fired": "Tổ hợp rủi ro đã kích hoạt",
     "risk_score": "Điểm rủi ro",
     "years_processed": "Các năm đã chạy",
