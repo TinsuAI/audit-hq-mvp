@@ -1,6 +1,6 @@
 # Audit-HQ MVP — AI Agent Rules
 
-> Repo này là **implementation** cho đề án Audit-HQ. Catalog 49 kiểm tra ở repo đề án [`audit-hq`](../audit-hq/) — đừng thay đổi mô tả check ở đây trước khi update đề án.
+> Repo này là **implementation** cho đề án Audit-HQ. Catalog 50 kiểm tra ở repo đề án [`audit-hq`](../audit-hq/) — đừng thay đổi mô tả check ở đây trước khi update đề án.
 
 ## Mục đích
 
@@ -35,4 +35,4 @@
 - Không viết check ngoài 16 MVP trước tuần 6.
 - Không refactor adapter sang ORM khác giữa chừng.
 - Không commit `.sqlite`, file Excel thực, hay output anonymize.
-- Không sửa catalog 49 check ở đây — sửa trong repo đề án trước.
+- Không sửa catalog 50 check ở đây — sửa trong repo đề án trước.
