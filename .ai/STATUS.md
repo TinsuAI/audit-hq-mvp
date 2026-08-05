@@ -1,5 +1,50 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-08-06 — BẢY TICKET #57–#63 ĐÃ CÀI XONG VÀ MERGE VÀO
+> `feat/data-completeness-gate`. Chưa push, chưa mở PR):**
+> Suite **1016 pass + 1 xfail** (vào phiên 957). `ruff check app tests` sạch.
+> T1 #57 `companies.first_bcqt_year` · T2 #58 `not_evaluable` thành trạng thái chạy thật ·
+> T3 #59 C4.3 nhường mã không có dòng M15 cho C4.1 · T4 #60 định mức hiệu lực (bản khai gần nhất
+> ≤ kỳ, gộp theo sổ) · T5 #61 check MỚI **C4.9** liệt kê mã TP thiếu định mức · T6 #62 cổng nhị
+> phân trên C4.3 · T7 #63 adapter BCCT đọc cột theo nhãn + `ParseProvenance`.
+> **Đã sửa repo đề án TRƯỚC** theo `AGENTS.md`: `audit-hq` @ `c5a5c3c` (thêm C4.9, danh mục
+> 49 → 50, Giai đoạn I 33 → 34) và `f7c638f` (mở phạm vi C4.1). ADR 05/08 ở
+> `audit-hq/.ai/DECISIONS.md`.
+>
+> **SỬA NGOÀI TICKET (owner duyệt trong phiên):** T3 cho C4.3 nhường mã không có dòng M15 sang
+> C4.1, nhưng C4.1 vẫn lọc `period_year == year` nên không thấy mã có định mức kế thừa — **196 mã**
+> không check nào báo (188 ở DN 8/2025, 8 ở DN 10/2026). Phạm vi C4.1 thành hợp của (mã khai đúng
+> kỳ) và (mã có tiêu hao lý thuyết > 0 theo định mức hiệu lực), vẫn gắn với sản xuất trong kỳ.
+> Khoảng hở nay = 0; C4.1 đi từ 36 lên 232 phát hiện trên pilot.
+>
+> **CHẶN VIỆC XẾP HẠNG DN — mốc nghiệm thu #62 SAI về số học.** "Phát hiện biến mất không làm điểm
+> rủi ro giảm" không đạt được và **không thể** đạt: loại một luật khỏi cả tử số lẫn trần kéo điểm
+> về trung bình các luật còn lại, nên điểm GIẢM đúng khi C4.3 đang chấm cao hơn trung bình đó
+> (`điểm sau ≥ điểm trước ⟺ rule_score(C4.3) ≤ 10 × raw / max_raw`). Đo: DN 7/2025 6→4 ·
+> DN 8/2024 129→**132** · DN 9/2025 28→27 · DN 10/2024 3→2 · DN 10/2025 3→1 · DN 10/2026 8→6.
+> DN 10 có 16 luật khác gần như không bắn (`raw` = 0,486 trên trần 190) nên C4.3 đang gánh điểm.
+> Đây đúng là thứ loạt ticket sinh ra để chặn — thừa nhận không đánh giá được lại làm DN sạch hơn.
+> T2 KHÔNG sửa được: T2 bảo đảm "not_evaluable == luật vắng mặt", và giữ đúng lời; cái sai là điểm
+> vốn là một TRUNG BÌNH. Ghi bằng `test_norm_gate.py::test_gate_does_not_lower_the_risk_score`
+> đánh `xfail(strict=True)` mang đủ số đo, KHÔNG hạ assertion. **Cần owner chốt thang điểm.**
+>
+> **Kết quả cổng trên pilot:** chỉ **DN 8/2025** qua cả hai cổng, giữ 1.665/2.523 = 66%. Con số
+> 1.772/3.296 = 54% ở ticket không tái hiện vì nó đo TRƯỚC T3+T4 (10/2026 568→104, 10/2024 243→24).
+> Cả 8 DN đều có `first_bcqt_year = NULL` nên mọi kỳ biên đều vướng cổng B.
+>
+> **Còn mở:** (a) thang điểm khi có luật `not_evaluable` — mục trên; (b) C4.9 ra **11** ở DN 9/2025
+> trong khi sổ ghi 9 — DN 9 là pháp nhân duy nhất hai sổ, 2 mã sản xuất sổ GC có định mức khai ở sổ
+> EPE; đếm theo sổ (ADR #19) là 11, bảng `grill-state.md` đếm không theo sổ → **hỏi cán bộ** định
+> mức sổ này có phủ sản xuất sổ kia không; (c) **cổng review WS1 chưa bắn cho BCCT** —
+> `review_state` trả `verified` cho trường không có trong `CHECK_COLUMNS` mà registry không có dòng
+> BCCT, nên cột `position-only` hiện badge nhưng file vẫn "Đã kiểm"; vế "đọc đúng cột" của dòng 0.2
+> xong, vế "cảnh báo tới cán bộ" chưa thông; (d) HIEP_QUANG + HONG_AN nạp được rồi, chưa nạp;
+> (e) DB dev lệch schema, `alembic current` fail (stamp `a9b0c1d2e3f4` chỉ có trên
+> `feat/adr23-ktstq-period-scope`) → `tests/test_smoke.py` bind vào đó nên suite đỏ ở máy dev, chạy
+> sạch bằng `DATABASE_URL="sqlite:////<scratch>/x.sqlite" pytest`; khi nhánh kia merge sẽ có hai
+> alembic head.
+> **Next: push + mở PR.** Session log: `.ai/sessions/2026-08-06-implement-issue-56-bay-ticket.md`.
+
 > **Trạng thái (2026-08-05 — ISSUE #56: SỔ YÊU CẦU → 7 TICKET #57–#63. PR #55 ĐÃ MERGE.
 > Nhánh `feat/data-completeness-gate`):**
 > **Bảy sub-issue của #56 đã mở**, gắn nhãn `ready-for-agent`, cạnh chặn khai bằng issue dependency
@@ -53,7 +98,7 @@
 > **Phạm vi #56 đã cắt:** 3/39 dòng trong phạm vi (2.1, 2.2, 0.2), 36 ngoài — chia theo cái đang
 > chặn: 6 đã có · 17 ship được xếp sau · 3 chặn bởi dữ liệu nguồn · 5 cần file mới · 5 ngoài phạm vi
 > kiểm tra. Xem mục "Phạm vi issue #56" trong `yeu-cau.md`.
-> **Next: `/implement` từng ticket ở SESSION MỚI, clear context giữa mỗi cái.**
+> ~~Next: `/implement` từng ticket ở SESSION MỚI~~ — **ĐÃ XONG 06/08/2026**, xem khối trên cùng.
 > Session log: `.ai/sessions/2026-08-05-issue-56-so-yeu-cau-cong-du-lieu.md` (phân tích) và
 > `.ai/sessions/2026-08-05-ticket-hoa-issue-56.md` (ticket hoá + T7).
 

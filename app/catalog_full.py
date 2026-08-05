@@ -175,7 +175,7 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry(
         phase=1, group=4, code="C4.1",
         title="NVL trong M16 không có nhập khẩu và không có tồn đầu kỳ",
-        problem="`mã_NVL` trong M16 nhưng (không có dòng trong M15) HOẶC (cả `nhập_trong_kỳ` = 0 VÀ `tồn_đầu_kỳ` = 0). Loại trừ NVL còn tồn từ kỳ trước.",
+        problem="`mã_NVL` trong M16 nhưng (không có dòng trong M15) HOẶC (cả `nhập_trong_kỳ` = 0 VÀ `tồn_đầu_kỳ` = 0). Loại trừ NVL còn tồn từ kỳ trước. **Phạm vi** là hợp của hai tập: mã khai định mức đúng kỳ này, và mã có tiêu hao lý thuyết > 0 trong kỳ theo định mức hiệu lực kể cả bản khai kỳ trước (xem C4.3). Vế thứ hai là phần C4.3 nhường lại — mã không có dòng M15 thuộc về đây; nếu chỉ lọc đúng kỳ thì mã có định mức kế thừa không kiểm tra nào báo. Phạm vi gắn với sản xuất trong kỳ: thành phẩm không có sản lượng thì không kéo NVL của nó vào.",
         risk="NVL xuất hiện trong định mức nhưng không có nguồn nhập khẩu lẫn tồn đầu — không thể giải trình dòng vật tư từ tờ khai đến TP xuất khẩu.",
         severities=("critical",), status="mvp",
     ),
@@ -189,7 +189,7 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry(
         phase=1, group=4, code="C4.3",
         title="Tổng tiêu hao M16 vượt xuất sản xuất M15",
-        problem="Σ(`định_mức` × `sản_lượng_sản_xuất_M15a`) theo NVL > `xuất_sản_xuất` trong M15. Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 thuộc C4.1 (thiếu nguồn), không xét ở đây.",
+        problem="Σ(`định_mức` × `sản_lượng_sản_xuất_M15a`) theo NVL > `xuất_sản_xuất` trong M15. Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 thuộc C4.1 (thiếu nguồn), không xét ở đây. **Định mức hiệu lực:** M16 kế thừa giữa các kỳ — định mức áp cho kỳ N là bản khai có kỳ lớn nhất ≤ N của cùng cặp TP-NVL trong cùng sổ, không riêng bản khai đúng kỳ N. **Cổng độ phủ định mức:** có mã TP sản xuất trong kỳ mà chưa từng khai định mức ở bất kỳ kỳ nào (xem C4.9), hoặc kỳ biên chưa xác nhận năm đầu nộp BCQT, thì kiểm tra này trả *chưa đánh giá được* cho cả kỳ — KHÔNG trả 0 phát hiện. Cổng là nhị phân, không có ngưỡng phần trăm.",
         risk="Cách phổ biến nhất để lấy NVL miễn thuế ra bán nội địa — định mức ảo gồm cả thành phần không có thực trong sản phẩm, thổi phồng tiêu hao để hợp thức hoá NVL nhập khẩu dư.",
         severities=("warning", "critical"), status="mvp",
     ),

@@ -193,7 +193,10 @@ register(CheckSpec(
     title="NVL trong M16 không có nguồn",
     description=(
         "Mã NVL có trong M16 nhưng không có dòng M15, "
-        "hoặc M15 có nhưng `nhập_trong_kỳ = 0` và `tồn_đầu_kỳ = 0`."
+        "hoặc M15 có nhưng `nhập_trong_kỳ = 0` và `tồn_đầu_kỳ = 0`. "
+        "Phạm vi là hợp của mã khai định mức đúng kỳ này và mã có tiêu hao lý thuyết "
+        "> 0 trong kỳ theo định mức HIỆU LỰC (kể cả bản khai kỳ trước) — vế sau là "
+        "phần C4.3 nhường lại, gắn với sản lượng sản xuất của kỳ."
     ),
     default_severity=Severity.CRITICAL,
 ))
@@ -204,7 +207,11 @@ register(CheckSpec(
     description=(
         "Σ(định_mức × sản_lượng_sản_xuất_M15a) theo NVL > `xuất_sản_xuất` trong M15. "
         "Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 "
-        "thuộc C4.1 (thiếu nguồn), không xét ở đây."
+        "thuộc C4.1 (thiếu nguồn), không xét ở đây. Định mức lấy theo bản khai HIỆU "
+        "LỰC — kỳ lớn nhất ≤ kỳ đang xét của cùng cặp TP-NVL trong cùng sổ, vì M16 kế "
+        "thừa giữa các kỳ. Vướng cổng độ phủ định mức (thiếu định mức của một TP đã "
+        "sản xuất, hoặc kỳ biên chưa xác nhận năm đầu nộp BCQT) thì trả CHƯA ĐÁNH GIÁ "
+        "ĐƯỢC cho cả kỳ, không trả 0 phát hiện."
     ),
     default_severity=Severity.WARNING,
 ))

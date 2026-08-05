@@ -180,6 +180,13 @@ def products_without_norm(
 
     Đây vừa là đầu vào của C4.9 (liệt kê từng mã), vừa là điều kiện cổng của C4.3
     (issue #62): thiếu định mức thì không biết thành phẩm đó tiêu hao NVL nào.
+
+    Có DÒNG định mức là đủ, KHÔNG đòi `norm_qty > 0` — khác `consumed_materials`, chỗ
+    đó đòi > 0 vì nó tính tiêu hao. Khai định mức bằng 0 vẫn là đã khai: độ phủ đạt,
+    còn giá trị 0 là sai phạm riêng, đất của C4.5 ("định mức bằng 0 hoặc âm", chưa
+    dựng). Gộp hai thứ vào đây thì một mã khai 0 sẽ chặn cả C4.3 với lý do "thiếu định
+    mức", nói sai chuyện đang xảy ra. Đo trên pilot 06/08/2026: 0 mã rơi vào ca này,
+    nên khác biệt hiện chưa đổi kết quả nào.
     """
     norms = effective_norms(session, company_id, year)
     produced = produced_products(session, company_id, year)

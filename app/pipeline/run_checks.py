@@ -143,7 +143,15 @@ def run_checks(
                     logging.getLogger(__name__).warning(
                         "Check mở rộng %s lỗi khi chạy, bỏ qua: %s", code, exc
                     )
-                    findings, status, reason = [], STATUS_ERROR, truncate_reason(str(exc))
+                    # KHÔNG lưu `str(exc)`: lỗi SQLAlchemy nhúng cả câu lệnh lẫn tham số
+                    # đã bind, tức là giá trị dòng dữ liệu thật. `check_runs.status_reason`
+                    # hiện ra UI cho cán bộ và nằm lại trong DB — AGENTS.md cấm đưa dữ liệu
+                    # thô ra ngoài. Chỉ giữ LOẠI lỗi; nội dung đầy đủ ở log hệ thống.
+                    findings, status = [], STATUS_ERROR
+                    reason = truncate_reason(
+                        f"Kiểm tra mở rộng lỗi khi chạy ({type(exc).__name__}). "
+                        "Xem nhật ký hệ thống để biết chi tiết."
+                    )
             else:
                 continue
             run_status[code] = status
@@ -291,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Tổng findings: {stats.total}")
     for code in sorted(stats.findings_per_check):
         if code in stats.not_evaluable:
-            print(f"  ⃠ {code}: chưa đánh giá được — {stats.not_evaluable[code]}")
+            print(f"  ⊘ {code}: chưa đánh giá được — {stats.not_evaluable[code]}")
             continue
         n = stats.findings_per_check[code]
         marker = "▸" if n > 0 else " "

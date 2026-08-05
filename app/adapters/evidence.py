@@ -75,7 +75,7 @@ FIELD_LABEL_VI = {
     "value_total": "Tổng trị giá",
     "tax_total": "Tổng tiền thuế",
     "partner": "Tên đối tác",
-    "invoice_no": "Số hóa đơn",
+    "invoice_no": "Số hoá đơn",
     "company_tax_id": "Mã doanh nghiệp",
     "company_name": "Tên doanh nghiệp",
 }
