@@ -1,8 +1,65 @@
 # STATUS — Audit-HQ MVP
 
+> **Trạng thái (2026-08-05 — ISSUE #56: SỔ YÊU CẦU → 7 TICKET #57–#63. PR #55 ĐÃ MERGE.
+> Nhánh `feat/data-completeness-gate`):**
+> **Bảy sub-issue của #56 đã mở**, gắn nhãn `ready-for-agent`, cạnh chặn khai bằng issue dependency
+> thật của GitHub — T1 #57 (`companies.first_bcqt_year`) · T2 #58 (`not_evaluable` thành trạng thái
+> chạy thật) · T3 #59 (C4.3 bỏ mã không có dòng M15) · T4 #60 (định mức hiệu lực, chặn bởi #59) ·
+> T5 #61 (bảng thừa/thiếu ĐM, chặn bởi #60 **và bởi một quyết định của owner**, xem dưới) ·
+> T6 #62 (cổng nhị phân, chặn bởi #57+#58+#60) · T7 #63 (mô hình bằng chứng WS1 cho BCCT, rời).
+> **Grab được ngay: #57, #58, #59, #63.** Mỗi ticket mang mốc nghiệm thu bằng số đo, không phải mô
+> tả suông. Chi tiết ở `.ai/features/2026-08-05-issue-56-data-completeness/tickets.md`.
+>
+> **#61 CHẶN BỞI OWNER:** check mới là chiều **M15a → M16** (có sản xuất mà thiếu định mức) — catalog
+> 49 không có mã cho chiều này (`C4.2` là chiều ngược, `C4.1` là M16 → M15). Theo `CLAUDE.md` phải
+> thêm mã vào `../audit-hq/de-an-audit-hq.md` TRƯỚC. Không tự đặt mã.
+>
+> **T7 #63 — lỗi mức 0 đang sống:** adapter BCCT ánh xạ cột theo vị trí cố định; file bố cục khác
+> đọc sai mọi trường mà **không báo lỗi**. Đo trên **38 file BCCT trong `data/`: 35 khớp, 3 lệch** —
+> HIEP_QUANG 2021 NK/XK (50 cột, 16 trường) và HONG_AN 2025 XK `__dup1` (55 cột, 11 trường). Ví dụ
+> HIEP_QUANG: `quantity` lấy nhầm sang cột *Trị giá NT*, `company_name` sang *Ngày hợp đồng*.
+> **10 check đọc `declaration_lines`** (C1.1–C1.7, C3.1–C3.3, C5.1) cộng `denominators.py` và
+> `company_type.py` → mức 3 (13.368 phát hiện) dựng trên bảng đó. DB hiện **sạch** (3 pilot +
+> ZONSEN đều đúng bố cục, `quantity IS NULL` = 0/2/0/0); HIEP_QUANG và HONG_AN **chưa nạp**.
+> **Thứ tự bắt buộc: sửa adapter TRƯỚC, nạp hai DN đó SAU** — dòng đã nạp không tự đổi khi luật dò
+> cột đổi. Code một phần ở nhánh `fix/bcct-label-columns` @ `06a9db5` (chưa test, chưa push).
+>
+> Phiên trước không sửa dòng code nào. **Toàn bộ sản phẩm ở
+> `.ai/features/2026-08-05-issue-56-data-completeness/`** — đọc theo thứ tự: `yeu-cau.md` (làm gì) →
+> `grill-state.md` (chốt gì + bằng chứng đo được) → `brief.md` (ghi chú kỹ thuật, chỉ đọc khi code)
+> → `officer-requirements.md` (nguyên văn yêu cầu anh Dũng).
+> **Gộp 3 tài liệu nguồn thành 29 yêu cầu** (bản ghi âm anh Dũng · notes chị Duyên 05/08 · đề xuất
+> chị Duyên 16/06) — trùng lặp nhiều: tờ khai huỷ/sửa nêu 3 lần, tiêu hao lý thuyết 3 lần, ĐM kế
+> thừa 4 lần. Xếp theo **bản đồ mức** owner đề xuất (mức 0 tiếp nhận file → 1 biểu tự đứng vững →
+> 2 đủ nguyên liệu để tính → 3 đối chiếu chéo nguồn → 4 suy diễn từ ĐM; nhánh liên kỳ riêng).
+> **BA QUYẾT ĐỊNH:** (1) kỳ sớm nhất mỗi DN mặc định `not_evaluable` cho check độ phủ ĐM, trừ khi
+> cán bộ xác nhận là **năm đầu nộp BCQT** → cần trường mới trên `companies`; (2) **định mức chuyển
+> tiếp ĐƯỢC đưa vào phép nhân C4.3** (bản khai gần nhất ≤ kỳ), bắt buộc ship kèm việc (b) của
+> `fix/c43-multiplier-p07` nếu không sinh **151 phát hiện Nghiêm trọng dán nhầm nhãn** C4.1;
+> (3) **cổng NHỊ PHÂN, không theo sản lượng** — có mã TP sản xuất mà chưa từng khai ĐM ở bất kỳ kỳ
+> nào thì nhóm 4 `not_evaluable`. Hệ quả đo được: **C4.3 còn 1.772/3.296 = 54%**, chỉ DN 8/2025 qua
+> cả hai cổng. Thêm 4 mục vào `GLOSSARY.md`.
+> **Tầng C KHÔNG CÒN CHỜ HỌP** — `not_evaluable` để dành từ ADR #18 `:467-471` chính là việc này,
+> issue #56 là buổi họp nó chờ.
+> **Mục "chặn bởi đề án" ở dưới ĐÃ STALE:** `../audit-hq/de-an-audit-hq.md` đã sửa C4.3 (số nhân =
+> sản lượng nhập kho), nên code hiện **chọi catalog**, không còn chờ owner chốt quy trình 3 repo.
+> **Còn treo:** (H1) ngữ nghĩa qua-mức cho các mức khác — nhiễm theo mã (khuyến nghị) hay chặn cả
+> mức; (H3) mã catalog cho check độ phủ M15a→M16 — nay là cạnh chặn của #61.
+> **H2 ĐÃ GỠ** (tiếp nhận file): không phải chọn giữa từ-chối và nhận-rồi-gắn-cờ. Sổ phân định sẵn
+> hai điều kiện khác nhau — dòng **0.1** *từ chối* khi không nhận ra là biểu nào (đã có một phần:
+> `select_sheet` ném `SheetNotFound`); dòng **0.2** *cảnh báo + gắn nhãn bằng chứng* khi nhận ra
+> được nhưng phải đoán cột theo vị trí. Kèm theo: dòng 0.2 trước đánh ✅ WS1 là **SAI** — WS1 chỉ
+> phủ M15/M15a/M16, `evidence.py` không có dòng nào cho BCCT. Đã hạ xuống 🔨 → T7 #63.
+> **Phạm vi #56 đã cắt:** 3/39 dòng trong phạm vi (2.1, 2.2, 0.2), 36 ngoài — chia theo cái đang
+> chặn: 6 đã có · 17 ship được xếp sau · 3 chặn bởi dữ liệu nguồn · 5 cần file mới · 5 ngoài phạm vi
+> kiểm tra. Xem mục "Phạm vi issue #56" trong `yeu-cau.md`.
+> **Next: `/implement` từng ticket ở SESSION MỚI, clear context giữa mỗi cái.**
+> Session log: `.ai/sessions/2026-08-05-issue-56-so-yeu-cau-cong-du-lieu.md` (phân tích) và
+> `.ai/sessions/2026-08-05-ticket-hoa-issue-56.md` (ticket hoá + T7).
+
 > **Trạng thái (2026-08-02 — BA PHẢN HỒI SAU DEMO ĐÃ CÀI XONG. NHÁNH
-> `feat/finding-columns-raw-data` TÁCH TỪ `main` @ `0b9e3b2`, 4 COMMIT, CHƯA PUSH /
-> CHƯA MERGE / CHƯA DEPLOY):** 956 test xanh, ruff sạch. Ba việc:
+> `feat/finding-columns-raw-data` — ĐÃ MERGE QUA PR #55 ngày 05/08, `main` nay ở
+> `d528b2f`):** 956 test xanh, ruff sạch. Ba việc:
 > (1) **Link vào dữ liệu gốc đã lọc sẵn** — từ mỗi dòng phát hiện, mỗi khối chứng cứ,
 > mỗi khối trên trang chi tiết mã. Bảng đích lấy theo `evidence_refs` **chứ không đoán
 > theo `subject_type`** (C1.2 subject là mã NVL nhưng bằng chứng ở tờ khai). Màn dữ
@@ -29,11 +86,11 @@
 > **E2E:** `.ai/features/2026-08-02-finding-columns-raw-data/` (brief + `ui_smoke.py`
 > + 9 ảnh), server throwaway 8332, tự dọn, kill theo PID. Ảnh là seed minh hoạ →
 > chứng minh RENDER, KHÔNG chứng minh adapter đọc đúng cột từ Excel thật.
-> **Next:** (1) mở PR + review + deploy — không có migration; (2) nhánh này **sẽ
-> conflict với `feat/adr23-ktstq-period-scope`** ở `companies.py` + 2 template, owner
-> đã biết khi chọn tách từ `main`; (3) bản xuất Excel kiến nghị chưa dùng lớp `fmt_*`
-> và chưa tách số ra cột — cùng vấn đề, khác mặt trận; (4) `app/adapters/bcct.py` vẫn
-> chưa commit (+71 dòng, dò cột theo nhãn tiêu đề) — việc khác, session này không đụng.
+> **Next:** (1) ~~mở PR + review~~ đã merge 05/08; **deploy vẫn chưa chạy** — không có
+> migration; (2) nhánh này **sẽ conflict với `feat/adr23-ktstq-period-scope`** ở
+> `companies.py` + 2 template, owner đã biết khi chọn tách từ `main`; (3) bản xuất Excel
+> kiến nghị chưa dùng lớp `fmt_*` và chưa tách số ra cột — cùng vấn đề, khác mặt trận;
+> (4) `app/adapters/bcct.py` nay ở nhánh `fix/bcct-label-columns` @ `06a9db5` → T7 #63.
 > Session log: `.ai/sessions/2026-08-02-demo-feedback-cot-so-nhan-du-lieu-goc.md`.
 
 > **Trạng thái (2026-07-27 — SINH TỔNG QUAN AI CHO CẢ 3 PHÁP NHÂN TRÊN PROD — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `d7844b6`):**

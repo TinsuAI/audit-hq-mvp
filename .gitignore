@@ -41,3 +41,6 @@ deploy/htpasswd
 *.sqlite-shm
 *.sqlite-wal
 *.sqlite.bak-*
+
+# Worktree tạm của agent — không phải nguồn
+.claude/worktrees/

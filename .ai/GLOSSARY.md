@@ -164,3 +164,28 @@ sang trang chi tiết mã (truy nguồn).
 overview, `ref`, model, tokens, `cost_usd`, user, thời điểm). Là NGUỒN của trần chi phí ngày và thống
 kê `/admin/ai`. Cần vì `check_overviews` upsert nên không giữ được lịch sử chi tiêu: sinh lại cùng một
 overview 3 lần trong ngày chỉ còn chi phí lần cuối.
+
+## Độ phủ định mức + chưa đánh giá được (issue #56)
+
+**Định mức hiệu lực** — bản khai định mức gần nhất TẠI hoặc TRƯỚC kỳ đang xét, cho một mã thành
+phẩm. Định mức CHUYỂN TIẾP qua các kỳ: doanh nghiệp chỉ phải khai lại khi định mức thay đổi, nên
+một mã không có dòng định mức trong kỳ N là trạng thái BÌNH THƯỜNG nếu nó đã có ở kỳ trước. Đối
+lập với cách hiểu "định mức của kỳ N" = dòng có `period_year = N`, vốn coi mọi mã không khai lại
+là thiếu.
+
+**ĐM mới** — tín hiệu khi một mã thành phẩm CÓ tồn đầu kỳ mà LẠI CÓ định mức khai trong kỳ đó.
+Nghĩa là định mức đã thay đổi so với bản đang chuyển tiếp. Là cảnh báo để cán bộ xem, không phải
+sai phạm: định mức thực tế đổi theo năng suất lao động và cải tiến kỹ thuật từng năm, giải trình
+được thì đoàn kiểm tra chấp nhận. Chú ý cực của tín hiệu — đáng chú ý là SỰ CÓ MẶT của định mức
+trên mã còn tồn, không phải sự vắng mặt.
+
+**Năm đầu nộp BCQT** — năm đầu tiên doanh nghiệp nộp báo cáo quyết toán. Là mốc để biết một mã
+"chưa từng khai định mức" hay "đã khai trước cửa sổ dữ liệu mình có". KHÔNG suy được từ dữ liệu đã
+nạp: kỳ sớm nhất trong hệ thống chỉ là biên của cửa sổ nạp, không phải biên của doanh nghiệp. Cán
+bộ nhập.
+
+**Chưa đánh giá được (`not_evaluable`)** — trạng thái thứ ba của một lần chạy kiểm tra, bên cạnh
+`ok` và `error`: kiểm tra KHÔNG đưa ra kết luận vì thiếu đầu vào bắt buộc. Phân biệt với `ok` kèm 0
+phát hiện, nghĩa là đã đánh giá và không thấy sai phạm. Kiểm tra ở trạng thái này KHÔNG tham gia
+vào điểm rủi ro — cả phần cộng điểm lẫn phần trần — vì nếu tham gia thì dữ liệu thiếu đi lại làm
+điểm đẹp lên. Ví dụ: độ phủ định mức của kỳ sớm nhất khi chưa biết năm đầu nộp BCQT.
