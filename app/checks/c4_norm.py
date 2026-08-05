@@ -102,6 +102,10 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
     dùng xuất khẩu tạo sai số đúng bằng biến động tồn thành phẩm.
     Tiêu hao thực tế = production_out_qty trong M15 cùng mã NVL.
     Ngưỡng: vượt >5% Cảnh báo · >20% Nghiêm trọng (đề án §4.1).
+
+    Bỏ qua mã NVL không có DÒNG M15 nào trong sổ đang xét (issue #59): đó là ca thiếu
+    nguồn, C4.1 đã bắt. Mã CÓ dòng M15 mà xuất SX = 0 vẫn fire — đã khai nguồn nhưng
+    không xuất cho sản xuất là mâu thuẫn thật.
     """
     norms = session.scalars(
         select(Norm).where(
@@ -174,7 +178,12 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
             if theor <= 0:
                 continue
             m15 = m15_rows.get(code)
-            actual = (m15.production_out_qty or 0.0) if m15 else 0.0
+            if m15 is None:
+                # Không có DÒNG M15 nào cho mã này trong sổ đang xét → ca thiếu nguồn,
+                # đất của C4.1. Coi như xuất SX = 0 rồi bắn Nghiêm trọng là dán nhầm
+                # nhãn: chênh lệch định mức chỉ có nghĩa khi mã có mặt trong M15.
+                continue
+            actual = m15.production_out_qty or 0.0
             if actual <= 0:
                 # Có tiêu hao lý thuyết nhưng M15 không có xuất SX → mâu thuẫn (nặng).
                 pct = 100.0
