@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlalchemy import delete, select
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
+from app.adapters.evidence import POSITION_ONLY
 from app.adapters.sheet_select import SheetNotFound
 from app.database import SessionLocal
 from app.models import (
@@ -199,10 +200,19 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
     stats.m15_rows = len(m15.rows) if m15 else 0
     stats.m15a_rows = len(m15a.rows) if m15a else 0
     stats.m16_rows = len(m16.rows) if m16 else 0
+    # BCCT có thể nhiều file trong một kỳ mà `record_parse_result` chỉ giữ MỘT
+    # provenance mỗi slot: ưu tiên file đầu tiên còn cột chỉ suy theo vị trí, để badge
+    # truy nguồn nêu đúng file cần soi thay vì file sạch nhất.
+    bcct_prov = next(
+        (b.provenance for b in bcct_files
+         if any(s == POSITION_ONLY for s in b.provenance.evidence.values())),
+        bcct_files[0].provenance if bcct_files else None,
+    )
     stats.provenance = {
         "m15": m15.provenance if m15 else None,
         "m15a": m15a.provenance if m15a else None,
         "m16": m16.provenance if m16 else None,
+        "bcct": bcct_prov,
     }
     # BCCT: giữ dòng có ngày tờ khai trong cửa sổ kỳ [period_from, period_to]
     # (năm tài chính ≠ dương lịch). Dòng ngoài cửa sổ đếm vào bcct_other_year.
