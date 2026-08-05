@@ -150,7 +150,7 @@ FINDING_COLUMNS: dict[str, tuple[str, ...]] = {
     "C3.1": ("nvl_codes", "mmtb_codes"),
     "C3.2": ("divergence", "hs_codes"),
     "C3.3": ("uom_match", "m15_units", "bcct_units"),
-    "C4.1": ("reason", "m15_import", "m15_opening"),
+    "C4.1": ("reason", "m15_import", "m15_opening", "norm_source_years"),
     "C4.3": (
         "theoretical_consumption", "actual_m15_production_out", "diff_pct",
         "norm_source_years", "divergent_norm_products",

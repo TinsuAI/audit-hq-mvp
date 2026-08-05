@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.m16 import is_domestic_origin
-from app.checks.effective_norms import effective_norms
+from app.checks.effective_norms import consumed_materials, effective_norms
 from app.checks.registry import Severity, severity_for
 from app.models import Finding, Norm, NvlBalance, SpBalance
 
@@ -25,6 +25,12 @@ def check_c4_1(session: Session, company_id: int, year: int) -> list[Finding]:
 
     Loại trừ NVL xuất xứ trong nước (Ghi chú M16 = "x"): hàng nội địa không có
     tờ khai nhập nên không đối chiếu nguồn nhập khẩu (góp ý nghiệp vụ 2026-05-29).
+
+    Phạm vi là HỢP của hai tập: (a) mã khai định mức ĐÚNG kỳ này, (b) mã có tiêu hao
+    lý thuyết > 0 trong kỳ theo định mức HIỆU LỰC, kể cả bản khai kỳ trước. Thiếu (b)
+    thì mã có định mức kế thừa mà không có dòng M15 không check nào báo: C4.3 đã
+    nhường lại cho C4.1 (issue #59) còn C4.1 lọc đúng kỳ nên không thấy. Đo trên
+    pilot 06/08/2026: 196 mã rơi vào khoảng hở đó (188 ở DN 8/2025, 8 ở DN 10/2026).
     """
     code_notes = session.execute(
         select(Norm.material_code, Norm.note, Norm.book).where(
@@ -32,6 +38,7 @@ def check_c4_1(session: Session, company_id: int, year: int) -> list[Finding]:
             Norm.period_year == year,
         ).distinct()
     ).all()
+    consumed = consumed_materials(session, company_id, year)
 
     m15_all = session.scalars(
         select(NvlBalance).where(
@@ -46,9 +53,14 @@ def check_c4_1(session: Session, company_id: int, year: int) -> list[Finding]:
     notes_by_book: dict[str | None, list[tuple[str, str | None]]] = defaultdict(list)
     for code, note, book in code_notes:
         notes_by_book[book].append((code, note))
+    for book, codes in consumed.items():
+        for code, use in codes.items():
+            notes_by_book[book].append((code, use.note))
     m15_by_book: dict[str | None, dict[str, NvlBalance]] = defaultdict(dict)
     for r in m15_all:
         m15_by_book[r.book][r.material_code] = r
+
+    same_year_codes = {(book, code) for code, _, book in code_notes}
 
     findings: list[Finding] = []
     for book in sorted(notes_by_book, key=lambda b: (b is None, b or "")):
@@ -64,7 +76,17 @@ def check_c4_1(session: Session, company_id: int, year: int) -> list[Finding]:
             else:
                 continue
 
-            norm_filter = {"company_id": company_id, "period_year": year, "material_code": code}
+            # Mã chỉ vào phạm vi qua đường định mức kế thừa thì kỳ này KHÔNG có dòng
+            # norms nào — chứng cứ phải trỏ về kỳ đã khai, nếu không mở ra là bảng rỗng.
+            if (book, code) in same_year_codes:
+                norm_years = [year]
+            else:
+                norm_years = list(consumed.get(book, {})[code].source_years)
+            norm_filter = {
+                "company_id": company_id,
+                "period_year__in": norm_years,
+                "material_code": code,
+            }
             nvl_filter = {"company_id": company_id, "period_year": year, "material_code": code}
             if book is not None:
                 norm_filter["book"] = book
@@ -86,6 +108,7 @@ def check_c4_1(session: Session, company_id: int, year: int) -> list[Finding]:
                     "reason": reason,
                     "m15_import": m15.import_qty if m15 else None,
                     "m15_opening": m15.opening_qty if m15 else None,
+                    "norm_source_years": norm_years,
                 },
                 evidence_refs=[
                     {"table": "norms", "filter": norm_filter},

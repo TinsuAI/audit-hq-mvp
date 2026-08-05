@@ -298,3 +298,48 @@ def test_c4_3_does_not_inherit_a_norm_from_a_later_period(session, company):
     add_nvl(session, company.id, material_code="X", production_out=100, year=2024)
     session.commit()
     assert check_c4_3(session, company.id, 2024) == []
+
+
+# --- C4.1 nhận lại phần C4.3 nhường (issue #59 + #60) ---
+
+
+def test_c4_1_covers_a_material_reached_only_by_an_inherited_norm(session, company):
+    # Định mức khai 2023, sản xuất 2024, không có dòng M15 nào cho mã X.
+    # C4.3 bỏ qua (nhường C4.1); C4.1 lọc đúng kỳ thì cũng không thấy → không check
+    # nào báo. Phạm vi C4.1 phải gồm cả mã có tiêu hao lý thuyết từ định mức kế thừa.
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0, year=2023)
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    session.commit()
+    assert check_c4_3(session, company.id, 2024) == []
+    findings = check_c4_1(session, company.id, 2024)
+    assert [f.subject_key for f in findings] == ["X"]
+    assert findings[0].details["reason"] == "no_m15"
+    assert findings[0].details["norm_source_years"] == [2023]
+
+
+def test_c4_1_inherited_evidence_points_at_the_declared_period(session, company):
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0, year=2023)
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    session.commit()
+    findings = check_c4_1(session, company.id, 2024)
+    norm_ref = next(r for r in findings[0].evidence_refs if r["table"] == "norms")
+    assert norm_ref["filter"]["period_year__in"] == [2023]
+
+
+def test_c4_1_ignores_an_inherited_norm_whose_product_did_not_run(session, company):
+    # Không có sản lượng trong kỳ → không có tiêu hao lý thuyết → mã không vào phạm vi
+    # qua đường kế thừa. Giữ C4.1 gắn với sản xuất của kỳ, không mở ra mọi mã từng khai.
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0, year=2023)
+    add_sp(session, company.id, product_code="TP", intake=0, year=2024)
+    session.commit()
+    assert check_c4_1(session, company.id, 2024) == []
+
+
+def test_c4_1_inherited_scope_respects_domestic_origin(session, company):
+    add_norm(
+        session, company.id, product_code="TP", material_code="X",
+        norm_qty=2.0, year=2023, note="x",
+    )
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    session.commit()
+    assert check_c4_1(session, company.id, 2024) == []

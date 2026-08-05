@@ -34,6 +34,8 @@ class EffectiveNorm:
     source_year: int
     #: Cùng kỳ nguồn có nhiều khối lặp lệch giá trị → đã lấy MAX, ghi lại để hiện ra.
     divergent: bool
+    #: Ghi chú Mẫu 16 ("x" = xuất xứ trong nước) — C4.1 loại NVL nội địa theo cột này.
+    note: str | None = None
 
 
 #: {sổ: {(mã SP, mã NVL): định mức hiệu lực}}
@@ -55,6 +57,7 @@ def effective_norms(session: Session, company_id: int, year: int) -> EffectiveNo
             Norm.material_code,
             Norm.norm_qty,
             Norm.period_year,
+            Norm.note,
         ).where(
             Norm.company_id == company_id,
             Norm.period_year <= year,
@@ -62,7 +65,7 @@ def effective_norms(session: Session, company_id: int, year: int) -> EffectiveNo
     ).all()
 
     out: EffectiveNormMap = defaultdict(dict)
-    for book, product_code, material_code, norm_qty, period_year in rows:
+    for book, product_code, material_code, norm_qty, period_year, note in rows:
         key = (product_code, material_code)
         qty = norm_qty or 0.0
         cur = out[book].get(key)
@@ -73,6 +76,7 @@ def effective_norms(session: Session, company_id: int, year: int) -> EffectiveNo
                 norm_qty=qty,
                 source_year=period_year,
                 divergent=False,
+                note=note,
             )
         elif period_year == cur.source_year and abs(cur.norm_qty - qty) > 1e-9:
             # Khối lặp lệch định mức trong cùng kỳ nguồn — lấy MAX, không chọn thầm.
@@ -82,7 +86,53 @@ def effective_norms(session: Session, company_id: int, year: int) -> EffectiveNo
                 norm_qty=max(cur.norm_qty, qty),
                 source_year=period_year,
                 divergent=True,
+                note=cur.note or note,
             )
+    return out
+
+
+@dataclass(frozen=True)
+class ConsumedMaterial:
+    """Một mã NVL có tiêu hao lý thuyết > 0 trong kỳ."""
+
+    material_code: str
+    note: str | None
+    #: Các kỳ đã khai những định mức đang áp cho mã này — chứng cứ phải trỏ đúng đó.
+    source_years: tuple[int, ...]
+
+
+def consumed_materials(
+    session: Session, company_id: int, year: int
+) -> dict[str | None, dict[str, ConsumedMaterial]]:
+    """{sổ: {mã NVL: ConsumedMaterial}} cho NVL có TIÊU HAO LÝ THUYẾT > 0 trong kỳ.
+
+    Tức là mã có định mức hiệu lực gắn với một thành phẩm thực sự có sản lượng sản
+    xuất trong kỳ. Đây là tập mà C4.3 bỏ qua khi không có dòng M15 (issue #59) và
+    C4.1 phải nhận lại — nếu không, mã có định mức kế thừa mà thiếu nguồn sẽ không
+    check nào báo.
+    """
+    norms = effective_norms(session, company_id, year)
+    produced = produced_products(session, company_id, year)
+
+    notes: dict[tuple[str | None, str], str | None] = {}
+    years: dict[tuple[str | None, str], set[int]] = defaultdict(set)
+    for book, pairs in norms.items():
+        made = produced.get(book, set())
+        for (product_code, material_code), norm in pairs.items():
+            if product_code not in made or norm.norm_qty <= 0:
+                continue
+            key = (book, material_code)
+            years[key].add(norm.source_year)
+            if notes.get(key) is None:
+                notes[key] = norm.note
+
+    out: dict[str | None, dict[str, ConsumedMaterial]] = defaultdict(dict)
+    for (book, material_code), source_years in years.items():
+        out[book][material_code] = ConsumedMaterial(
+            material_code=material_code,
+            note=notes.get((book, material_code)),
+            source_years=tuple(sorted(source_years)),
+        )
     return out
 
 
@@ -122,8 +172,10 @@ def products_without_norm(
 
 
 __all__ = [
+    "ConsumedMaterial",
     "EffectiveNorm",
     "EffectiveNormMap",
+    "consumed_materials",
     "effective_norms",
     "produced_products",
     "products_without_norm",
