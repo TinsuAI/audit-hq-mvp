@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.m16 import is_domestic_origin
+from app.checks.effective_norms import effective_norms
 from app.checks.registry import Severity, severity_for
 from app.models import Finding, Norm, NvlBalance, SpBalance
 
@@ -106,13 +107,12 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
     Bỏ qua mã NVL không có DÒNG M15 nào trong sổ đang xét (issue #59): đó là ca thiếu
     nguồn, C4.1 đã bắt. Mã CÓ dòng M15 mà xuất SX = 0 vẫn fire — đã khai nguồn nhưng
     không xuất cho sản xuất là mâu thuẫn thật.
+
+    Định mức lấy theo bản khai HIỆU LỰC (issue #60) — bản có kỳ lớn nhất ≤ `year`,
+    vì Mẫu 16 kế thừa giữa các kỳ. Lọc đúng `period_year == year` làm mất định mức
+    của mọi mã không khai lại.
     """
-    norms = session.scalars(
-        select(Norm).where(
-            Norm.company_id == company_id,
-            Norm.period_year == year,
-        )
-    ).all()
+    norms_by_book = effective_norms(session, company_id, year)
     sp_rows = session.execute(
         select(SpBalance.product_code, SpBalance.intake_qty, SpBalance.book).where(
             SpBalance.company_id == company_id,
@@ -129,9 +129,6 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
     # Gộp theo SỔ (book): mỗi sổ quyết toán là ledger riêng — định mức, sản lượng sản
     # xuất và xuất SX của một sổ chỉ đối chiếu TRONG sổ đó, không cộng chéo (ADR #19).
     # book=None (pháp nhân một sổ) là một nhóm → hành vi cũ không đổi.
-    norms_by_book: dict[str | None, list[Norm]] = defaultdict(list)
-    for n in norms:
-        norms_by_book[n.book].append(n)
     sp_by_book: dict[str | None, dict[str, float]] = defaultdict(dict)
     for product_code, intake_qty, book in sp_rows:
         sp_by_book[book][product_code] = intake_qty
@@ -147,31 +144,25 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
         # (mã SP, mã NVL) xuất hiện tới 26 lần, thường cùng một giá trị. Catalog định
         # nghĩa tiêu hao = Σ(định_mức × sản_lượng_sản_xuất) theo mã NVL — mỗi cặp tính
         # MỘT lần. Cộng dồn qua từng DÒNG là nhân số lần lặp vào tiêu hao lý thuyết.
+        # `effective_norms` đã gộp về một giá trị mỗi cặp (MAX khi các khối lệch nhau).
         #
         # LƯU Ý cho bố cục Mẫu 16 mở rộng (có cột sản lượng theo khối): ở đó các khối
         # lặp là những ĐỢT SẢN XUẤT khác nhau và phải tính Σ(định_mức_khối × sản_lượng
         # _khối), gộp lại sẽ nuốt mất sản lượng. `Norm` chưa có cột sản lượng nên đường
         # đó chưa dựng được — khi thêm, rẽ nhánh tại đây.
-        bom: dict[tuple[str, str], float] = {}
         divergent: dict[str, set[str]] = defaultdict(set)
-        for n in norms_by_book[book]:
-            key = (n.product_code, n.material_code)
-            qty = n.norm_qty or 0.0
-            prev = bom.get(key)
-            if prev is None:
-                bom[key] = qty
-            elif abs(prev - qty) > 1e-9:
-                # Khối lặp lệch định mức — lấy MAX, nhưng ghi lại để hiện ra trong
-                # phát hiện thay vì chọn thầm.
-                bom[key] = max(prev, qty)
-                divergent[n.material_code].add(n.product_code)
-
         theoretical: dict[str, float] = defaultdict(float)
-        for (product_code, material_code), norm_qty in bom.items():
+        # Kỳ nguồn của các định mức đã dùng, theo mã NVL — định mức kế thừa nằm ở kỳ
+        # KHÁC kỳ phát hiện, nên chứng cứ phải trỏ đúng kỳ đã khai (đề án §5.1).
+        norm_years: dict[str, set[int]] = defaultdict(set)
+        for (product_code, material_code), norm in norms_by_book[book].items():
             sp_qty = sp_output.get(product_code) or 0.0
             if sp_qty <= 0:
                 continue
-            theoretical[material_code] += norm_qty * sp_qty
+            theoretical[material_code] += norm.norm_qty * sp_qty
+            norm_years[material_code].add(norm.source_year)
+            if norm.divergent:
+                divergent[material_code].add(product_code)
 
         m15_rows = m15_by_book.get(book, {})
         for code, theor in theoretical.items():
@@ -194,7 +185,12 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
             sev = severity_for("C4.3", pct)
             if sev is None:
                 continue
-            norm_filter = {"company_id": company_id, "period_year": year, "material_code": code}
+            years_used = sorted(norm_years.get(code, {year}))
+            norm_filter = {
+                "company_id": company_id,
+                "period_year__in": years_used,
+                "material_code": code,
+            }
             nvl_filter = {"company_id": company_id, "period_year": year, "material_code": code}
             if book is not None:
                 norm_filter["book"] = book
@@ -217,6 +213,9 @@ def check_c4_3(session: Session, company_id: int, year: int) -> list[Finding]:
                     "diff_pct": pct,
                     # Mã SP mà các khối định mức lặp lại KHÔNG khớp nhau — đã lấy MAX.
                     "divergent_norm_products": sorted(divergent.get(code, ())),
+                    # Kỳ của các bản khai Mẫu 16 đã dùng. Khác `period_year` nghĩa là
+                    # định mức kế thừa từ kỳ trước, DN không khai lại (issue #60).
+                    "norm_source_years": years_used,
                 },
                 evidence_refs=[
                     {"table": "norms", "filter": norm_filter},

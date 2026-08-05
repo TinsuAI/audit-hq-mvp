@@ -2113,8 +2113,11 @@ _EVIDENCE_FILTER_LABEL = {
     "book": "Sổ quyết toán",
     "declaration_no": "Số tờ khai",
     "id": "Mã phát hiện",
+    "period_year": "Kỳ khai",
 }
 # Khoá kỹ thuật, không nói thêm gì cho cán bộ (trang đã ghi rõ DN và kỳ).
+# `period_year__in` KHÔNG bị ẩn: định mức kế thừa (issue #60) nằm ở kỳ khác kỳ phát
+# hiện, và đó chính là thông tin cán bộ cần thấy.
 _EVIDENCE_FILTER_HIDDEN = {"company_id", "period_year"}
 
 
@@ -2123,7 +2126,7 @@ def _describe_evidence_filter(filt: dict) -> str:
     parts = []
     for key, value in filt.items():
         field = key[:-4] if key.endswith("__in") else key
-        if field in _EVIDENCE_FILTER_HIDDEN:
+        if key in _EVIDENCE_FILTER_HIDDEN:
             continue
         label = _EVIDENCE_FILTER_LABEL.get(field, field)
         text = ", ".join(str(v) for v in value) if isinstance(value, list | tuple) \

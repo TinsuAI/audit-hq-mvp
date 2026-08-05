@@ -248,3 +248,53 @@ def test_c4_3_computes_each_book_independently(session, company):
     assert findings[0].book == "GC"
     assert findings[0].subject_key == "X"
     assert findings[0].details["theoretical_consumption"] == 200.0
+
+
+# --- Định mức hiệu lực: kế thừa giữa các kỳ (issue #60) ---
+
+
+def test_c4_3_uses_a_norm_inherited_from_an_earlier_period(session, company):
+    # DN khai định mức năm 2023, năm 2024 không khai lại. Lọc period_year == 2024
+    # làm mất định mức và C4.3 im lặng; bản khai gần nhất ≤ kỳ thì vẫn tính được.
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0, year=2023)
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    add_nvl(session, company.id, material_code="X", production_out=100, year=2024)
+    session.commit()
+    findings = check_c4_3(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].subject_key == "X"
+    assert findings[0].details["theoretical_consumption"] == 200.0
+    assert findings[0].details["norm_source_years"] == [2023]
+
+
+def test_c4_3_evidence_points_at_the_period_the_norm_was_declared_in(session, company):
+    # Truy nguồn (đề án §5.1): chứng cứ định mức phải trỏ về kỳ ĐÃ KHAI, không phải
+    # kỳ phát hiện — kỳ phát hiện không có dòng norms nào để mở ra.
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0, year=2023)
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    add_nvl(session, company.id, material_code="X", production_out=100, year=2024)
+    session.commit()
+    findings = check_c4_3(session, company.id, 2024)
+    norm_ref = next(r for r in findings[0].evidence_refs if r["table"] == "norms")
+    assert norm_ref["filter"]["period_year__in"] == [2023]
+    nvl_ref = next(r for r in findings[0].evidence_refs if r["table"] == "nvl_balances")
+    assert nvl_ref["filter"]["period_year"] == 2024
+
+
+def test_c4_3_prefers_the_redeclared_norm_over_the_inherited_one(session, company):
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=9.0, year=2023)
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0, year=2024)
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    add_nvl(session, company.id, material_code="X", production_out=100, year=2024)
+    session.commit()
+    findings = check_c4_3(session, company.id, 2024)
+    assert findings[0].details["theoretical_consumption"] == 200.0
+    assert findings[0].details["norm_source_years"] == [2024]
+
+
+def test_c4_3_does_not_inherit_a_norm_from_a_later_period(session, company):
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0, year=2025)
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    add_nvl(session, company.id, material_code="X", production_out=100, year=2024)
+    session.commit()
+    assert check_c4_3(session, company.id, 2024) == []
