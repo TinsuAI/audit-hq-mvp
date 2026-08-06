@@ -25,6 +25,43 @@ def test_uses_latest_declaration_at_or_before_the_period(session, company):
     assert effective_norms(session, company.id, 2025)[None][("TP", "A")].norm_qty == 2.0
 
 
+def test_a_newer_declaration_replaces_the_whole_bom_of_that_product(session, company):
+    """TP A khai 2022 (NVL A, B), 2023 không khai, 2025 khai lại chỉ còn NVL A.
+
+    2022 và 2023 dùng bản 2022 — đủ cả A lẫn B. 2025 dùng ĐÚNG bản 2025: B đã bị
+    bản mới bỏ nên hết hiệu lực. Ghép theo cặp sẽ để B sống tiếp bằng bản 2022,
+    tạo ra một định mức chưa từng được khai.
+    """
+    add_norm(session, company.id, product_code="TP", material_code="A", norm_qty=1.0, year=2022)
+    add_norm(session, company.id, product_code="TP", material_code="B", norm_qty=5.0, year=2022)
+    add_norm(session, company.id, product_code="TP", material_code="A", norm_qty=2.0, year=2025)
+    session.commit()
+
+    for year in (2022, 2023, 2024):
+        got = effective_norms(session, company.id, year)[None]
+        assert set(got) == {("TP", "A"), ("TP", "B")}
+        assert got[("TP", "A")].norm_qty == 1.0
+        assert got[("TP", "A")].source_year == 2022
+
+    got_2025 = effective_norms(session, company.id, 2025)[None]
+    assert set(got_2025) == {("TP", "A")}
+    assert got_2025[("TP", "A")].norm_qty == 2.0
+    assert got_2025[("TP", "A")].source_year == 2025
+
+
+def test_replacement_is_per_product_not_per_company(session, company):
+    """TP2 không khai lại thì vẫn giữ bản cũ — bản khai mới của TP1 không đụng tới."""
+    add_norm(session, company.id, product_code="TP1", material_code="A", norm_qty=1.0, year=2022)
+    add_norm(session, company.id, product_code="TP2", material_code="B", norm_qty=3.0, year=2022)
+    add_norm(session, company.id, product_code="TP1", material_code="A", norm_qty=9.0, year=2025)
+    session.commit()
+
+    got = effective_norms(session, company.id, 2025)[None]
+    assert got[("TP1", "A")].norm_qty == 9.0
+    assert got[("TP2", "B")].norm_qty == 3.0
+    assert got[("TP2", "B")].source_year == 2022
+
+
 def test_ignores_declarations_after_the_period(session, company):
     add_norm(session, company.id, product_code="TP", material_code="A", norm_qty=9.0, year=2026)
     session.commit()

@@ -9,16 +9,20 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.checks.not_evaluable import CheckResult, NotEvaluable
 from app.checks.registry import Severity
 from app.models import Finding, NvlBalance
 
 _TOLERANCE = 0.01
 
 
-def check_c6_1(session: Session, company_id: int, year: int) -> list[Finding]:
+def check_c6_1(session: Session, company_id: int, year: int) -> CheckResult:
     """Tồn đầu kỳ N (M15) khác tồn cuối kỳ N-1 (M15) — từng mã NVL.
 
-    Skip nếu chưa có dữ liệu kỳ N-1.
+    Chưa có M15 kỳ N-1 thì trả `NotEvaluable`, KHÔNG trả danh sách rỗng: rỗng ở đây
+    đọc như "mọi mã khớp" trong khi chưa so mã nào. `registry.requires` chỉ gác nguồn
+    của kỳ ĐANG xét (issue #53) nên không bắt được ca thiếu kỳ N-1 — cùng lớp lỗi
+    "sạch giả", khác trục.
     """
     prev_year = year - 1
     prev_rows = session.scalars(
@@ -28,7 +32,10 @@ def check_c6_1(session: Session, company_id: int, year: int) -> list[Finding]:
         )
     ).all()
     if not prev_rows:
-        return []
+        return NotEvaluable(
+            f"Chưa có Mẫu 15 của kỳ {prev_year} — không có tồn cuối kỳ trước để "
+            f"đối chiếu với tồn đầu kỳ {year}."
+        )
     # Khoá theo (SỔ, mã): mỗi sổ quyết toán là ledger tồn kho riêng — tồn cuối kỳ N-1
     # của một sổ chỉ so với tồn đầu kỳ N CÙNG SỔ (xem ADR #19). book=None (một sổ) là
     # một nhóm → hành vi cũ không đổi.
