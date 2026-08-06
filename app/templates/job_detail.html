@@ -92,7 +92,9 @@
   </table>
   {% if company_code %}
   <p>
-    {% if job.kind == "ingest" %}
+    {# `ai_diagnose` cũng về trang Tài liệu: chẩn đoán hay kết luận "ghim trang tính
+       rồi nạp lại", việc đó làm ở đó chứ không ở trang kết quả kiểm tra. #}
+    {% if job.kind in ("ingest", "ai_diagnose") %}
     <a href="/companies/{{ company_code }}/documents" class="btn-link">
       → Trang tài liệu của {{ company_code }}
     </a>
