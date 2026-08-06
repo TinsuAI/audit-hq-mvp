@@ -1,0 +1,65 @@
+name: Seed first BCQT year on prod
+
+# Chạy tay. Điền `companies.first_bcqt_year` bằng PHỎNG ĐOÁN = kỳ quyết toán sớm nhất
+# đang có dữ liệu.
+#
+# CẢNH BÁO: đây là phỏng đoán, không phải số liệu — kỳ sớm nhất trong hệ thống là biên
+# của cửa sổ nạp, không phải năm đầu doanh nghiệp nộp BCQT. Trường này là cổng kỳ biên
+# của C4.3: điền vào là mở cổng, C4.3 sẽ sinh phát hiện ở những kỳ đang trả *chưa đánh
+# giá được*. Chạy `report` trước để xem đoán ra năm nào.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "report = chỉ in, không ghi · apply = ghi thật"
+        type: choice
+        options: [report, apply]
+        default: report
+        required: true
+      overwrite:
+        description: "Ghi đè cả DN đã có giá trị (mặc định chỉ điền chỗ trống)"
+        type: boolean
+        default: false
+        required: false
+      company:
+        description: "Mã lưu trữ của 1 DN (để trống = tất cả)"
+        type: string
+        required: false
+
+jobs:
+  seed:
+    runs-on: [self-hosted, tinsu-prod]
+    timeout-minutes: 15
+    steps:
+      - name: Backup prod DB before writing
+        if: inputs.mode == 'apply'
+        env:
+          DB_DATA_PATH: ${{ vars.DB_DATA_PATH }}
+        run: |
+          : "${DB_DATA_PATH:?repo variable DB_DATA_PATH not set — refusing to run}"
+          DB="$DB_DATA_PATH/audit_hq.sqlite"
+          [ -f "$DB" ] || { echo "Không thấy $DB"; exit 1; }
+          # sqlite3 backup API — `cp` file .sqlite đơn lẻ mất nội dung WAL.
+          python3 - "$DB" <<'PY'
+          import sqlite3, sys, time
+          src = sys.argv[1]
+          dst = f"{src}.bak-preseed-{time.strftime('%Y%m%d-%H%M%S')}"
+          s = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+          d = sqlite3.connect(dst)
+          with d:
+              s.backup(d)
+          print("integrity:", d.execute("pragma integrity_check").fetchone()[0])
+          d.close(); s.close()
+          print("backup ->", dst)
+          PY
+          ls -1t "$DB".bak-preseed-* 2>/dev/null | tail -n +4 | xargs -r rm -f
+
+      - name: Run
+        run: |
+          ARGS=""
+          [ "${{ inputs.mode }}" = "report" ] && ARGS="$ARGS --report"
+          [ "${{ inputs.overwrite }}" = "true" ] && ARGS="$ARGS --overwrite"
+          [ -n "${{ inputs.company }}" ] && ARGS="$ARGS --company ${{ inputs.company }}"
+          # Chạy TRONG container đang phục vụ prod: cùng image, cùng DATABASE_URL,
+          # cùng volume DB. Không dựng venv riêng trên runner để khỏi lệch phiên bản.
+          docker exec audit-hq-mvp python -m scripts.seed_first_bcqt_year $ARGS
