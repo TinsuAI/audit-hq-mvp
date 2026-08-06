@@ -42,30 +42,30 @@ dựng tay. Hai pháp nhân bịa:
 
 | DN | Dựng để chứng minh |
 |---|---|
-| `DEMO_DM_DU` — Dệt May Bình Minh | Đủ độ phủ. Khai định mức 2024, **2025 không khai lại** → C4.3 vẫn tính được nhờ định mức kế thừa (#60). `first_bcqt_year = 2024` xác nhận 2024 là năm đầu nộp BCQT nên 2024 không phải kỳ biên (#57 mở khoá #62). |
-| `DEMO_DM_THIEU` — Cơ Khí Sao Mai | Thiếu độ phủ. 2024 là kỳ biên chưa xác nhận; 2025 có thành phẩm sản xuất mà chưa từng khai định mức → C4.3 `not_evaluable` (#58 + #62). Hai sổ EPE/GC để có ca "định mức khai ở sổ khác". |
+| `DEMO_DM_DU` — Dệt May Bình Minh | Đánh giá đủ 18/18 bài. Khai định mức 2024, **2025 không khai lại** → C4.3 vẫn tính được nhờ định mức kế thừa (#60). `first_bcqt_year = 2024` xác nhận 2024 là năm đầu nộp BCQT nên 2024 không phải kỳ biên (#57 mở khoá #62). |
+| `DEMO_DM_THIEU` — Cơ Khí Sao Mai | Chỉ đánh giá được 17/18 bài. 2024 là kỳ biên chưa xác nhận; 2025 có thành phẩm sản xuất mà chưa từng khai định mức → C4.3 `not_evaluable` (#58 + #62). Hai sổ EPE/GC để có ca "định mức khai ở sổ khác". |
 
 ## Ảnh
 
 Mở file này trên github.com để xem ảnh hiện thẳng trong trang.
 
-### 01 · Danh sách DN — cột Độ phủ, xếp hạng tách nhóm
+### 01 · Danh sách DN — cột "Đã đánh giá", xếp hạng tách nhóm
 
-Quyết định 06/08 (1). Dệt May Bình Minh **điểm 50, độ phủ 18/18** đứng hạng 1; Cơ Khí
-Sao Mai **điểm 113, độ phủ 17/18** xuống hạng 2. Điểm cao hơn mà vẫn xếp sau — điểm là
-trung bình trên các luật CHẤM ĐƯỢC nên hai nhóm độ phủ không so ngang được. Trộn chung
+Quyết định 06/08 (1). Dệt May Bình Minh **điểm 50, đã đánh giá 18/18 bài** đứng hạng 1;
+Cơ Khí Sao Mai **điểm 113, đã đánh giá 17/18** xuống hạng 2. Điểm cao hơn mà vẫn xếp sau
+— điểm là trung bình trên các bài CHẤM ĐƯỢC nên hai nhóm không so ngang được. Trộn chung
 một cột thì DN thiếu dữ liệu trồi lên đầu danh sách "sạch".
 
-![Danh sách DN với cột độ phủ](screenshots/01_danh_sach_do_phu_tach_nhom.png)
+![Danh sách DN với cột đã đánh giá](screenshots/01_danh_sach_do_phu_tach_nhom.png)
 
-### 02 · Chưa đánh giá được, kèm lý do — và độ phủ ngay cạnh điểm
+### 02 · Chưa đánh giá được, kèm lý do — và số bài đã đánh giá ngay cạnh điểm
 
 Ticket #58 + #62. Khối "⊘ Chưa đánh giá được (1)" nói rõ **đây không phải "đã đánh
 giá, 0 phát hiện"**, và C4.3 mang lý do đầy đủ: *2 mã thành phẩm có sản xuất trong kỳ
 nhưng chưa từng khai định mức — Sổ GC (gia công): 2 mã*. Dưới điểm là
-**ĐÃ ĐÁNH GIÁ 17/18 KIỂM TRA**.
+**ĐÃ ĐÁNH GIÁ 17/18 BÀI KIỂM TRA**.
 
-![Chưa đánh giá được và độ phủ](screenshots/02_chua_danh_gia_duoc_va_do_phu.png)
+![Chưa đánh giá được và số bài đã đánh giá](screenshots/02_chua_danh_gia_duoc_va_do_phu.png)
 
 ### 03 · C4.9 — liệt kê TỪNG mã thiếu định mức
 
@@ -136,7 +136,7 @@ mức HIỆU LỰC; điểm 0 → 50. Đo trên pilot: 4/8 (DN, kỳ) đổi m�
 2.565 → 3.316); **không kỳ nào ở pilot rơi về 0**, nên lỗi chỉ lộ ra nhờ ca seed.
 
 **2. Danh sách DN vẫn ghi "sắp xếp theo điểm rủi ro giảm dần".** Sau khi tách nhóm
-theo độ phủ thì câu đó nói sai thứ tự đang hiện. Đã sửa.
+theo số bài đã đánh giá thì câu đó nói sai thứ tự đang hiện. Đã sửa.
 
 **3. Nhãn cột `boundary_period` dài gấp đôi các cột số.** Đã rút còn "Kỳ biên" ở bảng
 qua `COLUMN_LABEL_OVERRIDES`, trang chi tiết giữ nhãn đầy đủ.
@@ -152,7 +152,7 @@ qua `COLUMN_LABEL_OVERRIDES`, trang chi tiết giữ nhãn đầy đủ.
   nhưng file vẫn hiện "Đã kiểm".
 - Ảnh 02 hiện **16/1000 · "Dữ liệu nhất quán"** trong khi C4.3 chưa đánh giá được. Đó
   đúng là hạn chế đã ghi ở `STATUS.md`: điểm là trung bình trên các luật chấm được nên
-  vẫn có thể trông đẹp; **độ phủ 17/18 in ngay dưới là thứ chặn cách đọc sai đó**.
+  vẫn có thể trông đẹp; **dòng "đã đánh giá 17/18 bài kiểm tra" in ngay dưới là thứ chặn cách đọc sai đó**.
 
 ---
 

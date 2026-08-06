@@ -91,8 +91,8 @@
          đứng một mình, phải kèm độ phủ. #}
       {% if ys_total %}
         <span class="tier-label score-coverage{% if ys_evaluated < ys_total %} score-coverage-partial{% endif %}"
-              title="{% if ys_evaluated < ys_total %}Còn kiểm tra chưa đánh giá được — điểm chỉ tính trên phần đã đánh giá, không so ngang được với kỳ đủ độ phủ.{% else %}Mọi kiểm tra trong phạm vi đều đã đánh giá.{% endif %}">
-          Đã đánh giá {{ ys_evaluated }}/{{ ys_total }} kiểm tra
+              title="{% if ys_evaluated < ys_total %}{{ ys_total - ys_evaluated }} bài kiểm tra không đưa ra được kết luận cho năm này vì thiếu dữ liệu đầu vào — xem khối “Chưa đánh giá được” bên dưới. Điểm chỉ tính trên {{ ys_evaluated }} bài còn lại, nên điểm thấp có thể chỉ vì chưa kiểm được, không phải vì doanh nghiệp làm đúng.{% else %}Cả {{ ys_total }} bài kiểm tra áp dụng cho năm này đều đã đưa ra kết luận.{% endif %}">
+          Đã đánh giá {{ ys_evaluated }}/{{ ys_total }} bài kiểm tra
         </span>
       {% endif %}
     {% else %}

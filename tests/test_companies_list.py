@@ -35,6 +35,16 @@ def _teardown(new_engine):
     dbmod.SessionLocal = SessionLocal
 
 
+def _coverage_cells(html: str) -> list[str]:
+    """Nội dung ô "Đã đánh giá" của TỪNG DÒNG, theo đúng thứ tự bảng.
+
+    Thẻ giải thích ở đầu trang cũng in "18/18" / "17/18" làm ví dụ, nên khẳng định
+    `"17/18" in r.text` là xanh giả — phải neo vào ô của dòng.
+    """
+    import re
+    return re.findall(r'class="coverage-pill[^"]*"[^>]*>\s*([\d]+/[\d]+)\s*<', html)
+
+
 def _login(client: TestClient) -> None:
     r = client.post("/login", data={"user": "admin", "password": "admin"}, follow_redirects=False)
     assert r.status_code == 303
@@ -108,8 +118,9 @@ def test_list_buckets_partial_coverage_below_full_coverage():
         r = client.get("/companies")
         assert r.status_code == 200
         assert r.text.index("DN_FULL") < r.text.index("DN_PARTIAL")
-        assert "18/18" in r.text
-        assert "17/18" in r.text
+        # Neo vào Ô của từng dòng, KHÔNG phải toàn trang: thẻ giải thích ở đầu trang
+        # cũng in "18/18" và "17/18" làm ví dụ, nên `in r.text` cho xanh giả.
+        assert _coverage_cells(r.text) == ["18/18", "17/18"]
     finally:
         _teardown(new_engine)
 
@@ -136,7 +147,6 @@ def test_list_takes_the_worst_coverage_across_years():
         _login(client)
         r = client.get("/companies")
         assert r.status_code == 200
-        assert "16/18" in r.text
-        assert "18/18" not in r.text
+        assert _coverage_cells(r.text) == ["16/18"]
     finally:
         _teardown(new_engine)

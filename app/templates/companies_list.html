@@ -6,8 +6,8 @@
   <div class="page-title-group">
     <h1>Bảng tổng quan doanh nghiệp</h1>
     <p class="page-subtitle">
-      {{ summary | length }} doanh nghiệp · doanh nghiệp đã đánh giá đủ độ phủ xếp trước,
-      trong mỗi nhóm sắp xếp theo điểm rủi ro giảm dần
+      {{ summary | length }} doanh nghiệp · doanh nghiệp đã đánh giá đủ số bài kiểm tra xếp
+      trước, trong mỗi nhóm sắp xếp theo điểm rủi ro giảm dần
     </p>
   </div>
   <div class="btn-group">
@@ -40,6 +40,13 @@
           <span class="badge warning">🟡 Cảnh báo · 3đ</span>
           <span class="badge info">🔵 Thông tin · 1đ</span>
         </div>
+        <p class="se-formula" style="margin-top:var(--space-2)">
+          Cột <strong>Đã đánh giá</strong> cho biết bao nhiêu bài trong số đó thực sự đưa ra được
+          kết luận. Bài thiếu dữ liệu đầu vào bị loại khỏi cả tử số lẫn mẫu số, nên
+          <strong>{{ n_rules - 1 }}/{{ n_rules }} không so ngang được với {{ n_rules }}/{{ n_rules }}</strong>
+          — điểm thấp có thể chỉ vì chưa kiểm được, không phải vì doanh nghiệp làm đúng.
+          Doanh nghiệp chưa đánh giá đủ xếp thành nhóm riêng ở cuối bảng.
+        </p>
       </div>
       <div class="se-block">
         <h4 class="se-h">5 mức cảnh báo <span class="se-muted">· ngưỡng mặc định</span></h4>
@@ -90,7 +97,9 @@
       <tr>
         <th>Hạng</th>
         <th class="sortable" data-sort-key="score">Điểm rủi ro dữ liệu <small style="font-weight:normal">(0-1000)</small></th>
-        <th>Độ phủ</th>
+        <th title="Số bài kiểm tra đã đưa ra được kết luận, trên tổng số bài áp dụng cho doanh nghiệp. Chưa đủ thì điểm chỉ tính trên phần đã đánh giá — không so ngang được với doanh nghiệp đánh giá đủ.">
+          Đã đánh giá <small style="font-weight:normal">(bài kiểm tra)</small>
+        </th>
         <th>Mức cảnh báo</th>
         <th class="sortable" data-sort-key="name">Doanh nghiệp</th>
         <th class="sortable" data-sort-key="industry">Ngành</th>
@@ -118,7 +127,7 @@
         <td>
           {% if item.coverage_total %}
             <span class="coverage-pill{% if not item.full_coverage %} coverage-partial{% endif %}"
-                  title="{% if item.full_coverage %}Mọi kiểm tra trong phạm vi đều đã đánh giá.{% else %}Kỳ có độ phủ thấp nhất của doanh nghiệp này còn kiểm tra chưa đánh giá được — điểm chỉ tính trên phần đã đánh giá, không so ngang được với doanh nghiệp đủ độ phủ.{% endif %}">
+                  title="{% if item.full_coverage %}Đã đánh giá đủ {{ item.coverage_total }}/{{ item.coverage_total }} bài kiểm tra ở mọi kỳ.{% else %}Năm yếu nhất của doanh nghiệp này mới đánh giá được {{ item.coverage_done }}/{{ item.coverage_total }} bài kiểm tra; {{ item.coverage_total - item.coverage_done }} bài không đưa ra được kết luận vì thiếu dữ liệu đầu vào. Điểm chỉ tính trên phần đã đánh giá nên không so ngang được với doanh nghiệp đánh giá đủ — vì vậy xếp xuống nhóm sau.{% endif %}">
               {{ item.coverage_done }}/{{ item.coverage_total }}
             </span>
           {% else %}
