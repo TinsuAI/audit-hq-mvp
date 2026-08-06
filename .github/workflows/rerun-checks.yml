@@ -1,0 +1,57 @@
+name: Rerun checks on prod
+
+# Chạy tay. Dùng sau khi deploy đổi ngữ nghĩa check (declaration_scope, cổng nguồn…):
+# code mới nhưng finding trên prod vẫn là số cũ cho tới khi chạy lại.
+#
+# CẢNH BÁO: chế độ `rerun` XOÁ trạng thái cán bộ đã đánh dấu (`run_checks` wipe rồi
+# insert lại, không mang `status`/`notes` qua). Chạy `report` trước để biết mất bao nhiêu.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "report = chỉ đếm, không đụng dữ liệu · rerun = chạy lại thật"
+        type: choice
+        options: [report, rerun]
+        default: report
+        required: true
+      company:
+        description: "Mã lưu trữ của 1 DN (để trống = tất cả)"
+        type: string
+        required: false
+
+jobs:
+  rerun:
+    runs-on: [self-hosted, tinsu-prod]
+    timeout-minutes: 60
+    steps:
+      - name: Backup prod DB before rerunning
+        if: inputs.mode == 'rerun'
+        env:
+          DB_DATA_PATH: ${{ vars.DB_DATA_PATH }}
+        run: |
+          : "${DB_DATA_PATH:?repo variable DB_DATA_PATH not set — refusing to run}"
+          DB="$DB_DATA_PATH/audit_hq.sqlite"
+          [ -f "$DB" ] || { echo "Không thấy $DB"; exit 1; }
+          # sqlite3 backup API — `cp` file .sqlite đơn lẻ mất nội dung WAL.
+          python3 - "$DB" <<'PY'
+          import sqlite3, sys, time
+          src = sys.argv[1]
+          dst = f"{src}.bak-prerun-{time.strftime('%Y%m%d-%H%M%S')}"
+          s = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+          d = sqlite3.connect(dst)
+          with d:
+              s.backup(d)
+          print("integrity:", d.execute("pragma integrity_check").fetchone()[0])
+          d.close(); s.close()
+          print("backup ->", dst)
+          PY
+          ls -1t "$DB".bak-prerun-* 2>/dev/null | tail -n +4 | xargs -r rm -f
+
+      - name: Run
+        run: |
+          ARGS=""
+          [ "${{ inputs.mode }}" = "report" ] && ARGS="$ARGS --report"
+          [ -n "${{ inputs.company }}" ] && ARGS="$ARGS --company ${{ inputs.company }}"
+          # Chạy TRONG container đang phục vụ prod: cùng image, cùng DATABASE_URL,
+          # cùng volume DB. Không dựng venv riêng trên runner để khỏi lệch phiên bản.
+          docker exec audit-hq-mvp python -m scripts.rerun_all_checks $ARGS
