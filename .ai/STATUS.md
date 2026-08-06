@@ -17,7 +17,19 @@
 > kỳ) và (mã có tiêu hao lý thuyết > 0 theo định mức hiệu lực), vẫn gắn với sản xuất trong kỳ.
 > Khoảng hở nay = 0; C4.1 đi từ 36 lên 232 phát hiện trên pilot.
 >
-> **CHẶN VIỆC XẾP HẠNG DN — mốc nghiệm thu #62 SAI về số học.** "Phát hiện biến mất không làm điểm
+> **BA QUYẾT ĐỊNH OWNER CUỐI PHIÊN — ĐÃ CÀI XONG (suite 1027 pass + 1 xfail):**
+> (1) **Thang điểm giữ nguyên công thức, nhưng điểm không bao giờ đứng một mình** —
+> `score_coverage()` cho `(đã đánh giá, tổng)`, hiện cạnh điểm ở trang DN và thành cột "Độ phủ" ở
+> danh sách DN; **xếp hạng tách nhóm**, DN có kỳ nào còn luật chưa đánh giá được xuống nhóm sau bất
+> kể điểm (cả server lẫn sort client). Độ phủ DN lấy **kỳ xấu nhất**. `compute_company_year_score`
+> lưu thêm `rule_count`. Không đổi logic check nào.
+> (2) **Kỳ biên: C4.9 vẫn liệt kê**, mỗi phát hiện mang cờ `boundary_period` — C4.3 dừng hẳn còn
+> C4.9 thì không, vì danh sách từng mã là thứ cán bộ cần.
+> (3) **DN 9: định mức ở sổ khác thì nói đúng như vậy** — hành vi không đổi (ADR #19 giữ nguyên,
+> cổng vẫn bắn), chỉ đổi câu chữ + `evidence_refs` trỏ về dòng `norms` ở sổ kia. DN 9/2025 nay đọc
+> ra **11 = 9 thiếu hẳn + 2 khai ở sổ EPE**, khớp lại với con số 9 trong sổ yêu cầu.
+>
+> **Nền của quyết định (1) — mốc nghiệm thu #62 SAI về số học.** "Phát hiện biến mất không làm điểm
 > rủi ro giảm" không đạt được và **không thể** đạt: loại một luật khỏi cả tử số lẫn trần kéo điểm
 > về trung bình các luật còn lại, nên điểm GIẢM đúng khi C4.3 đang chấm cao hơn trung bình đó
 > (`điểm sau ≥ điểm trước ⟺ rule_score(C4.3) ≤ 10 × raw / max_raw`). Đo: DN 7/2025 6→4 ·
@@ -32,14 +44,11 @@
 > 1.772/3.296 = 54% ở ticket không tái hiện vì nó đo TRƯỚC T3+T4 (10/2026 568→104, 10/2024 243→24).
 > Cả 8 DN đều có `first_bcqt_year = NULL` nên mọi kỳ biên đều vướng cổng B.
 >
-> **Còn mở:** (a) thang điểm khi có luật `not_evaluable` — mục trên; (b) C4.9 ra **11** ở DN 9/2025
-> trong khi sổ ghi 9 — DN 9 là pháp nhân duy nhất hai sổ, 2 mã sản xuất sổ GC có định mức khai ở sổ
-> EPE; đếm theo sổ (ADR #19) là 11, bảng `grill-state.md` đếm không theo sổ → **hỏi cán bộ** định
-> mức sổ này có phủ sản xuất sổ kia không; (c) **cổng review WS1 chưa bắn cho BCCT** —
+> **Còn mở:** (a) **cổng review WS1 chưa bắn cho BCCT** —
 > `review_state` trả `verified` cho trường không có trong `CHECK_COLUMNS` mà registry không có dòng
 > BCCT, nên cột `position-only` hiện badge nhưng file vẫn "Đã kiểm"; vế "đọc đúng cột" của dòng 0.2
-> xong, vế "cảnh báo tới cán bộ" chưa thông; (d) HIEP_QUANG + HONG_AN nạp được rồi, chưa nạp;
-> (e) DB dev lệch schema, `alembic current` fail (stamp `a9b0c1d2e3f4` chỉ có trên
+> xong, vế "cảnh báo tới cán bộ" chưa thông; (b) HIEP_QUANG + HONG_AN nạp được rồi, chưa nạp;
+> (c) DB dev lệch schema, `alembic current` fail (stamp `a9b0c1d2e3f4` chỉ có trên
 > `feat/adr23-ktstq-period-scope`) → `tests/test_smoke.py` bind vào đó nên suite đỏ ở máy dev, chạy
 > sạch bằng `DATABASE_URL="sqlite:////<scratch>/x.sqlite" pytest`; khi nhánh kia merge sẽ có hai
 > alembic head.

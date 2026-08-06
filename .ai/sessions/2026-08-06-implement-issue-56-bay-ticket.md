@@ -168,6 +168,33 @@ Ghi nhận, chưa sửa:
 không đổi một dòng, nên mọi phát hiện mức 3 giữ nguyên. Đo delta chỉ có nghĩa sau khi nạp
 HIEP_QUANG và HONG_AN.
 
+## Ba quyết định owner chốt cuối phiên (06/08) — đã cài xong
+
+**1. Thang điểm: giữ nguyên công thức, nhưng điểm không bao giờ đứng một mình.**
+`score_coverage(breakdown)` → `(số luật đã đánh giá, tổng số luật)`. Trang chi tiết DN hiện
+"Đã đánh giá N/M kiểm tra" ngay cạnh điểm; danh sách DN có cột "Độ phủ". Xếp hạng **tách nhóm**:
+DN có kỳ nào còn luật chưa đánh giá được thì xuống nhóm sau bất kể điểm — cả ở sort phía server
+lẫn sort phía client khi bấm cột điểm. Độ phủ của DN lấy **kỳ xấu nhất**, không phải kỳ của điểm
+max. `compute_company_year_score` lưu thêm `rule_count`: `max_raw` chỉ còn phần chấm được nên
+không suy ngược ra mẫu số; breakdown cũ (chưa có trường này) vẫn đọc được bằng cách suy từ
+`max_raw`, nếu không mọi kỳ cũ hiện độ phủ 0 và trông như chưa chạy kiểm tra.
+KHÔNG đổi một dòng logic check nào. Test `xfail` vẫn nguyên — công thức không đổi thì tính chất
+đó vẫn sai, và đó là điều cần giữ hiển thị.
+
+**2. Kỳ biên: C4.9 vẫn liệt kê, gắn cờ cảnh báo.** C4.3 dừng hẳn ở kỳ biên, C4.9 thì không —
+danh sách từng mã là thứ anh Dũng cần. Mỗi phát hiện mang `boundary_period`, nhãn
+"Kỳ biên — có thể đã khai trước cửa sổ dữ liệu", để cán bộ đi hỏi hồ sơ kỳ trước thay vì kết luận
+DN chưa khai. `is_boundary_period()` tách ra khỏi `norm_coverage_gate()` để hai check dùng chung
+một định nghĩa.
+
+**3. DN 9: định mức ở sổ khác thì nói đúng như vậy.** Hành vi KHÔNG đổi — định mức sổ EPE vẫn
+không phủ sản lượng sổ GC (ADR #19), cổng vẫn bắn. Chỉ đổi câu chữ: mã có định mức ở sổ khác báo
+"định mức M16 khai ở Sổ EPE (chế xuất)" kèm `evidence_refs` trỏ về dòng `norms` đó, thay vì
+"không có định mức hiệu lực". Đo lại trên DN 9/2025: **11 phát hiện = 9 thiếu hẳn + 2 khai ở sổ
+EPE** — khớp lại được với con số 9 trong sổ yêu cầu, và cán bộ không mất công đi đòi file đã nộp.
+
+Suite sau ba việc này: **1027 pass + 1 xfail**.
+
 ## Ghi chú kiểm chứng
 
 `op.batch_alter_table(...).add_column()` **không** tái hiện lỗi trên schema này (alembic 1.18.5 /
