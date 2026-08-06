@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json as _json
 import re
+import xml.etree.ElementTree as ET
+import zipfile
 from collections import defaultdict
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -1109,6 +1111,32 @@ PREVIEW_ROWS = 100
 PREVIEW_COLS = 40
 # Grid preview nhúng trong màn xác nhận cột (WS1) — ít dòng để đối chiếu chỉ số cột.
 REVIEW_PREVIEW_ROWS = 15
+# Trên NGƯỠNG này thì KHÔNG dựng lưới xem trước. Mở workbook bằng openpyxl/pandas phải
+# nạp bảng chuỗi dùng chung của cả file: đo trên BCCT 68MB của 006 mất 28-30 giây lúc
+# máy rảnh và 125 giây khi worker đang nạp file khác — quá 100 giây Cloudflare cho phép,
+# nên trang chọn trang tính chết đúng vào lúc cán bộ cần nó nhất. Danh sách trang tính
+# vẫn hiện (đọc thẳng từ zip, 0,00 giây), chỉ mất phần lưới ô.
+PREVIEW_MAX_BYTES = 25 * 1024 * 1024
+
+
+def _sheet_names_fast(path: Path) -> list[str] | None:
+    """Tên các trang tính, đọc thẳng `xl/workbook.xml` trong file .xlsx — 0,00 giây.
+
+    Trả None nếu không phải .xlsx đọc được (file .xls cũ, file hỏng) — người gọi lùi
+    về đường pandas, vốn chỉ đắt với file lớn mà .xls thì không lớn.
+    """
+    if path.suffix.lower() != ".xlsx":
+        return None
+    try:
+        with zipfile.ZipFile(path) as z:
+            root = ET.fromstring(z.read("xl/workbook.xml"))
+    except (OSError, zipfile.BadZipFile, ET.ParseError, KeyError):
+        return None
+    names = [
+        el.get("name") for el in root.iter()
+        if el.tag.rpartition("}")[2] == "sheet" and el.get("name")
+    ]
+    return names or None
 
 
 def _excel_col_letters(n: int) -> list[str]:
@@ -1140,7 +1168,27 @@ def _extract_sheet_preview(
         "sheet_names": [], "selected_sheet": 0, "selected_sheet_name": None,
         "columns": [], "rows": [],
         "truncated_rows": False, "truncated_cols": False, "error": None,
+        "skipped_reason": None,
     }
+
+    fast_names = _sheet_names_fast(abs_path)
+    try:
+        too_big = abs_path.stat().st_size > PREVIEW_MAX_BYTES
+    except OSError:
+        too_big = False
+    if fast_names and too_big:
+        # File lớn: giữ danh sách trang tính (thứ cán bộ cần để chọn), bỏ lưới ô.
+        out["sheet_names"] = fast_names
+        sel = fast_names.index(sheet) if isinstance(sheet, str) and sheet in fast_names else 0
+        out["selected_sheet"] = sel
+        out["selected_sheet_name"] = fast_names[sel]
+        limit_mb = PREVIEW_MAX_BYTES // 1024 // 1024
+        out["skipped_reason"] = (
+            f"File nặng hơn {limit_mb}MB — không dựng lưới xem trước (mở workbook mất "
+            "hàng chục giây, trang sẽ hết giờ). Danh sách trang tính vẫn chọn được."
+        )
+        return out
+
     try:
         xls = pd.ExcelFile(abs_path)
         out["sheet_names"] = list(xls.sheet_names)
@@ -1207,6 +1255,7 @@ def documents_preview_file(
             "preview_cols": PREVIEW_COLS,
             "human_size": _human_size,
             "error": pv["error"],
+            "skipped_reason": pv["skipped_reason"],
         },
     )
 

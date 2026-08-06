@@ -50,7 +50,9 @@
 </div>
 {% endif %}
 
-{% if not rows %}
+{% if skipped_reason %}
+<div class="card"><p class="text-muted">{{ skipped_reason }}</p></div>
+{% elif not rows %}
 <div class="card"><p class="text-muted">Sheet này trống.</p></div>
 {% else %}
 <div class="card" style="overflow:auto;max-height:75vh;padding:0">
