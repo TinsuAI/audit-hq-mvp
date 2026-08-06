@@ -85,3 +85,22 @@ class CheckOverview(Base):
             "company_id", "period_year", "check_code", name="uq_check_overview"
         ),
     )
+
+    @property
+    def fallback_is_unreadable(self) -> bool:
+        """`sections_json` NULL và `content` là khối JSON — KHÔNG đưa ra cho cán bộ.
+
+        Nhánh xuống cấp in `content` thô sinh ra cho trường hợp model viết văn xuôi
+        thay vì JSON: văn xuôi thì đọc được, cứ hiện. Nhưng khi model trả JSON mà
+        parse trượt, in thô là đổ nguyên `{`, tên khoá `nhan_dinh`/`diem_nong` và
+        thụt đầu dòng lên màn hình cán bộ — đúng thứ đã xảy ra 06/08. Trường hợp đó
+        phải nói thẳng là chưa viết được nhận định.
+        """
+        if self.sections_json:
+            return False
+        text = (self.content or "").strip()
+        if not text:
+            return False
+        if text.startswith("```"):
+            return True
+        return text.startswith("{") or text.startswith("[")

@@ -152,8 +152,51 @@ def unsupported_numbers(sections: dict, allowed: set[str]) -> list[str]:
     return sorted(written - allowed_tokens)
 
 
+def _first_json_object(text: str) -> str | None:
+    """Đối tượng `{…}` cân ngoặc ĐẦU TIÊN trong `text`, bỏ câu dẫn / ghi chú quanh nó.
+
+    Đếm ngoặc chứ không regex: giá trị chuỗi trong JSON có thể chứa `{` `}`. Bỏ qua
+    ngoặc nằm trong chuỗi và ký tự bị escape.
+    """
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None  # cụt giữa chừng (chạm max_tokens) — đừng đoán phần thiếu
+
+
 def parse_sections(raw: str) -> dict | None:
-    """JSON bốn mục từ phản hồi model. None nếu không parse được → xuống cấp text thô."""
+    """JSON bốn mục từ phản hồi model. None nếu không parse được → xuống cấp text thô.
+
+    Chịu được hai kiểu model hay trả sai dù prompt đã dặn:
+
+    - **Ký tự điều khiển thô trong chuỗi.** `json.loads` mặc định `strict=True` từ
+      chối xuống dòng / tab thật bên trong chuỗi. Model xuống dòng giữa một câu dài
+      là parse trượt, trong khi `white-space: pre-wrap` render ra y hệt JSON hợp lệ —
+      nhìn màn hình không thấy được lỗi. Dùng `strict=False`.
+    - **Chữ thừa quanh JSON.** Câu dẫn trước `{`, ghi chú sau `}`, hoặc rào ```json
+      không bọc trọn chuỗi. Cắt lấy đối tượng cân ngoặc đầu tiên.
+    """
     if not raw:
         return None
     text = raw.strip()
@@ -161,10 +204,18 @@ def parse_sections(raw: str) -> dict | None:
     fence = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.S)
     if fence:
         text = fence.group(1)
-    try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        return None
+
+    data = None
+    for candidate in (text, _first_json_object(text)):
+        if not candidate:
+            continue
+        try:
+            data = json.loads(candidate, strict=False)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(data, dict):
+            break
+        data = None
     if not isinstance(data, dict):
         return None
 
