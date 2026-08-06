@@ -814,3 +814,71 @@ class TestSankeyReadability:
         thicks = [n["thickness"] for n in out["nodes"]]
         # Tiny node still has visible thickness (>= 1.5)
         assert min(thicks) >= 1.5
+
+
+class TestItemCodeWithSlash:
+    """Mã hàng thật có chứa dấu `/` — đo trên dữ liệu: 63 dòng `declaration_lines`,
+    6 dòng `nvl_balances`, ví dụ `AB1680/4800MS10`.
+
+    `{item_code}` chỉ khớp MỘT segment nên mã có `/` tách thành hai segment và không
+    route nào khớp → 404 trước cả khi chạy auth. `| urlencode` KHÔNG chữa được: phần
+    trăm-mã hoá bị giải trước khi router so khớp, `%2F` lại thành `/`.
+    """
+
+    def test_slashed_code_routes_and_renders(self):
+        from app.main import app
+        from app.models import Company
+
+        new_engine, new_session = _setup_db()
+        try:
+            with new_session() as s:
+                c = Company(code="DN_SL1", tax_id="8888888888", name="DN Slash")
+                s.add(c)
+                s.flush()
+                add_nvl(s, c.id, material_code="AB1680/4800MS10", unit="KG",
+                        opening=1, imported=10, production_out=8, closing=3, year=2024)
+                s.commit()
+            client = TestClient(app)
+            _login(client)
+            r = client.get("/companies/DN_SL1/items/AB1680/4800MS10?year=2024")
+            assert r.status_code == 200
+            assert "AB1680/4800MS10" in r.text
+        finally:
+            _teardown(new_engine)
+
+    def test_percent_encoded_slash_reaches_the_same_page(self):
+        from app.main import app
+        from app.models import Company
+
+        new_engine, new_session = _setup_db()
+        try:
+            with new_session() as s:
+                c = Company(code="DN_SL2", tax_id="8888888881", name="DN Slash 2")
+                s.add(c)
+                s.flush()
+                add_nvl(s, c.id, material_code="AB1680/4800MS10", unit="KG",
+                        opening=1, imported=10, production_out=8, closing=3, year=2024)
+                s.commit()
+            client = TestClient(app)
+            _login(client)
+            r = client.get("/companies/DN_SL2/items/AB1680%2F4800MS10?year=2024")
+            assert r.status_code == 200
+            assert "AB1680/4800MS10" in r.text
+        finally:
+            _teardown(new_engine)
+
+    def test_unknown_code_still_404s(self):
+        """`:path` không được biến mọi URL sai thành 200."""
+        from app.main import app
+        from app.models import Company
+
+        new_engine, new_session = _setup_db()
+        try:
+            with new_session() as s:
+                s.add(Company(code="DN_SL3", tax_id="8888888882", name="DN Slash 3"))
+                s.commit()
+            client = TestClient(app)
+            _login(client)
+            assert client.get("/companies/DN_SL3/items/KHONG/CO/MA").status_code == 404
+        finally:
+            _teardown(new_engine)

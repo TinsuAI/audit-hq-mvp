@@ -2614,7 +2614,7 @@ _KIND_LABEL_VI = {
 }
 
 
-@router.get("/companies/{code}/items/{item_code}", response_class=HTMLResponse)
+@router.get("/companies/{code}/items/{item_code:path}", response_class=HTMLResponse)
 def item_detail(
     code: str,
     item_code: str,
