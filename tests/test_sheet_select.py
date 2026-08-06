@@ -159,19 +159,25 @@ def test_fiscal_year_period_rank_prefers_exact_start_year(tmp_path: Path) -> Non
     assert select_sheet(p, "m15", 2025).name == "FY 2025-26"
 
 
-def test_diagnosis_parses_with_the_same_year_as_ingest() -> None:
-    """Chẩn đoán gọi parse KHÔNG kèm year thì phá hoà theo kỳ bị bỏ qua — cán bộ
-    duyệt một sheet, ingest nạp sheet khác."""
+def test_diagnosis_parses_the_same_way_as_ingest() -> None:
+    """Chẩn đoán phải gọi parse ĐÚNG như lúc nạp: cùng kỳ VÀ cùng trang tính.
+
+    Thiếu `year` thì phá hoà theo kỳ bị bỏ qua; thiếu trang tính đã ghim thì file
+    được ghim trang vẫn trượt ở bước chẩn đoán và không bao giờ tới bước nạp. Cả hai
+    đều dẫn tới cùng một hậu quả: cán bộ duyệt một trang, hệ thống nạp trang khác.
+    """
     from app.pipeline.validate import UploadDiagnosis, _check_balance, _check_simple
 
-    seen: list[int | None] = []
+    seen: list[tuple[str | None, int | None]] = []
 
     row = type("R", (), {"opening_qty": 1.0, "import_qty": 1.0, "closing_qty": 1.0})()
 
-    def fake_parse(path, year=None):
-        seen.append(year)
-        return type("P", (), {"rows": [row], "issues": None, "sheet": "S"})()
+    def fake_parse(path, sheet=None, year=None):
+        seen.append((sheet, year))
+        return type("P", (), {"rows": [row], "issues": None, "sheet": sheet or "S"})()
 
-    _check_balance(UploadDiagnosis(), "m15", Path("x.xlsx"), fake_parse, 2025)
-    _check_simple(UploadDiagnosis(), "m16", Path("x.xlsx"), fake_parse, year=2025)
-    assert seen == [2025, 2025]
+    _check_balance(UploadDiagnosis(), "m15", Path("x.xlsx"), fake_parse, 2025, "Trang A")
+    _check_simple(
+        UploadDiagnosis(), "m16", Path("x.xlsx"), fake_parse, year=2025, sheet="Trang B",
+    )
+    assert seen == [("Trang A", 2025), ("Trang B", 2025)]
