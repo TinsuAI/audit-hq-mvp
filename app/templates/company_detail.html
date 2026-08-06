@@ -442,8 +442,21 @@
           </ul>
           {% endif %}
         </div>
+        {% elif ov.fallback_is_unreadable %}
+        {# Model trả JSON mà parse trượt. In thô là đổ nguyên `{`, tên khoá và thụt
+           đầu dòng lên màn hình cán bộ — nói thẳng là chưa viết được, kèm nút tạo
+           lại. Văn bản gốc giữ trong <details> cho người cần soi. #}
+        <p class="text-muted" style="margin:0;font-size:var(--fs-sm)">
+          Chưa viết được nhận định — AI trả về sai định dạng.{% if ai_enabled %} Bấm
+          <strong>🔄 Tạo lại</strong> ở trên để viết lại.{% endif %}
+          Bảng số liệu bên trên vẫn tính từ dữ liệu, không phụ thuộc AI.
+        </p>
+        <details style="margin-top:.4rem">
+          <summary class="text-muted" style="font-size:var(--fs-sm);cursor:pointer">Xem nguyên văn AI trả về</summary>
+          <p style="margin:.3rem 0 0;white-space:pre-wrap;font-size:var(--fs-sm)">{{ ov.content }}</p>
+        </details>
         {% else %}
-        {# JSON hỏng → xuống cấp về đoạn văn thô, trang không vỡ. #}
+        {# Model viết văn xuôi thay vì JSON — đọc được, cứ hiện. #}
         <p class="{% if ov_entry.stale %}text-muted{% endif %}" style="margin:0;white-space:pre-wrap;font-size:var(--fs-sm)">{{ ov.content }}</p>
         {% endif %}
         {% if ov.status != 'running' %}

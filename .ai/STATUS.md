@@ -1,5 +1,45 @@
 # STATUS — Audit-HQ MVP
 
+> **PROD (2026-08-06 tối — build `173571e`, alembic `d9e0f1a2b3c4`, deploy 14:18Z):**
+> **[PR #78](https://github.com/TinsuAI/audit-hq-mvp/pull/78) đã merge + deploy**, đóng hai
+> lỗi nối nhau làm mất **28.563.550.970,35 đ** im lặng ở bộ file 006. Chuỗi nhân quả: form
+> tải lên xoá file BCCT thứ nhất khi tải file thứ hai → cán bộ gộp F1/F2/F3 bằng công cụ
+> ngoài → bản gộp ghi 2.076 ô công thức thành chuỗi JSON → `to_float` trả 0,0 từng ô. Số
+> dòng (270.505) và tập khoá vẫn đúng, chỉ tiền sai, nên **không kiểm tra nào bắt được**.
+>
+> - **Ô BCCT nhận nhiều file.** `upload_data` nay `bcct: list[UploadFile]`, cộng dồn, mỗi
+>   file giữ tên gốc đã làm sạch qua `_bcct_filename()` — quy tắc đặt tên nay DÙNG CHUNG với
+>   `documents_upload_cell` (đường tải theo từng ô ở trang Tài liệu vốn đã cộng dồn đúng).
+>   `m15`/`m15a`/`m16` giữ nguyên 1 file/ô. Template thêm `multiple` **chỉ** trên ô BCCT —
+>   thiếu thuộc tính đó thì trình duyệt chỉ gửi 1 file và sửa backend thành vô ích, nên có
+>   test đọc thẳng markup. Tải lại đúng tên cũ vẫn là thay đúng file đó.
+> - **Ô công thức ghi thành chuỗi.** `to_float` đọc `result` trong
+>   `{"formula":…,"result":<số>}`; phần nhận dạng tách ra `formula_cell_result()`. `result`
+>   không phải số (`"#REF!"`, `null`, NaN) thì vẫn về 0,0 như cũ. `ParseIssues.formula_cells`
+>   đếm theo tên trường + `formula_total`; `parse_bcct` điền — **`BcctFile` trước đây không
+>   có trường `issues` nào**, đây là kênh cảnh báo parse đầu tiên của BCCT. `diagnose_upload`
+>   nêu số ô + breakdown theo cột: **cảnh báo, KHÔNG chặn nạp** (giá trị nay đọc đúng; điều
+>   cần là cán bộ biết file đã qua công cụ gộp/xuất ngoài).
+>
+> Một dòng `to_float` phủ cả **27 call site ở 6 adapter** — test end-to-end qua `parse_bcct`
+> xanh ngay khi lát cắt đầu land. Test-first, 6 lát đỏ→xanh, **16 test mới**
+> (`tests/test_formula_cells.py`, `tests/test_upload_multi_bcct.py`).
+> Suite **1244 pass + 1 xfail**, ruff sạch. Không migration, không đụng logic check nào.
+> Verify sau deploy: `https://audit-hq-demo.tinsu.ai/healthz` trả `build_sha: 173571e`.
+>
+> **KHÔNG nằm trong #78:** `to_float` vẫn trả 0,0 cho mọi chuỗi không parse được khác và
+> không đếm các ô đó. Ca ô công thức đã xử lý; cơ chế chung "chuỗi rác đọc thành 0" chưa.
+>
+> **Còn treo (chuyển từ khối dưới, chưa đụng):** `/diagnose-ai` vẫn đồng bộ (120 s với bộ
+> 006 → vẫn 524) · nửa còn lại của 524 là thời gian truyền 68MB (cần ≥ 5,8 Mbps, hoặc tải
+> lên theo mảnh) · hai DN tạm `zz-test-bo-file` / `zz-test-tonghop` trên prod chưa xoá (mỗi
+> DN 270.505 dòng) · hỏi cán bộ chữ **F** trong F1/F2/F3 nghĩa là gì để đặt nhãn slot cho
+> đúng · issue #65 (thang điểm khi có `not_evaluable`) vẫn **chặn việc xếp hạng DN theo điểm**.
+>
+> **DB DEV vẫn lệch schema** — đo lại 06/08 tối: `alembic current` = `b7c8d9e0f1a2`, head =
+> `d9e0f1a2b3c4`. Chạy `alembic upgrade head` trước khi làm việc với `data_files`, hoặc chạy
+> suite bằng `DATABASE_URL="sqlite:////<scratch>/x.sqlite" pytest` như phiên này đã làm.
+
 > **PROD (2026-08-06 chiều — build `903685a`, alembic `d9e0f1a2b3c4`):** ba PR đã merge và
 > deploy trong ngày, khởi nguồn từ lỗi **524** khi cán bộ tải bộ file 006 lên demo.
 >
@@ -19,11 +59,12 @@
 > tiết + số đo ở `.ai/notes/2026-08-06-006-f1-f2-f3-vs-file-gop.md`. Kết luận: nạp hai file
 > rời, đừng nạp bản gộp.
 >
-> **Còn treo:** `/diagnose-ai` vẫn đồng bộ (120 s với bộ 006 → vẫn 524) · form tải lên 4 ô
-> vẫn xoá file BCCT cũ khi tải file thứ hai (chính là lý do cán bộ phải gộp tay) · nửa còn
-> lại của 524 là thời gian truyền 68MB (cần ≥ 5,8 Mbps, hoặc làm tải lên theo mảnh) ·
-> `to_float` nuốt ô công thức thành 0 · hai DN tạm `zz-test-bo-file` / `zz-test-tonghop`
-> trên prod chưa xoá (mỗi DN 270.505 dòng).
+> **Còn treo:** `/diagnose-ai` vẫn đồng bộ (120 s với bộ 006 → vẫn 524) ·
+> ~~form tải lên 4 ô vẫn xoá file BCCT cũ khi tải file thứ hai (chính là lý do cán bộ phải
+> gộp tay)~~ **ĐÃ SỬA — PR #78** · nửa còn lại của 524 là thời gian truyền 68MB (cần ≥ 5,8
+> Mbps, hoặc làm tải lên theo mảnh) · ~~`to_float` nuốt ô công thức thành 0~~ **ĐÃ SỬA —
+> PR #78** · hai DN tạm `zz-test-bo-file` / `zz-test-tonghop` trên prod chưa xoá (mỗi DN
+> 270.505 dòng).
 >
 > **DB DEV đang lệch schema**: ở `b7c8d9e0f1a2`, thiếu `data_files.sheet_override` → chạy
 > `alembic upgrade head` trước khi làm việc với `data_files`.

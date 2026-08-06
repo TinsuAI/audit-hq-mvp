@@ -49,13 +49,9 @@
   </div>
   {% endfor %}
 
-  {% if ai_result %}
-  <div class="diag-ai">
-    <p class="diag-ai-title">🤖 AI chẩn đoán cấu trúc file</p>
-    <div class="diag-ai-body">{{ ai_result }}</div>
-    <p class="form-hint">Gợi ý của AI mang tính tham khảo — cán bộ tự kiểm chứng trước khi sửa file.</p>
-  </div>
-  {% elif ai_enabled %}
+  {# Kết quả AI KHÔNG hiện ở đây nữa: `/diagnose-ai` xếp job rồi chuyển sang
+     `/jobs/{id}`, chẩn đoán hiện trên trang công việc đó. #}
+  {% if ai_enabled %}
   <form method="post" action="/companies/{{ company.slug or company.code }}/diagnose-ai" class="diag-ai-form">
     <input type="hidden" name="year" value="{{ year }}">
     <button type="submit" class="btn btn-secondary">🤖 Nhờ AI chẩn đoán cấu trúc file</button>

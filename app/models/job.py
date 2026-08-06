@@ -23,12 +23,17 @@ class JobKind(StrEnum):
     BATCH_RUN = "batch_run"
     AI_OVERVIEW = "ai_overview"
     AI_OVERVIEW_BATCH = "ai_overview_batch"
+    AI_DIAGNOSE = "ai_diagnose"
 
 
 # Job gọi LLM. Worker kiểm tra LOẠI TRỪ nhóm này, worker AI CHỈ nhận nhóm này —
 # nhờ đó hàng đợi kiểm tra không bao giờ phải chờ một lời gọi LLM (ADR #21 mục 5).
 AI_JOB_KINDS: frozenset[str] = frozenset(
-    {JobKind.AI_OVERVIEW.value, JobKind.AI_OVERVIEW_BATCH.value}
+    {
+        JobKind.AI_OVERVIEW.value,
+        JobKind.AI_OVERVIEW_BATCH.value,
+        JobKind.AI_DIAGNOSE.value,
+    }
 )
 
 
