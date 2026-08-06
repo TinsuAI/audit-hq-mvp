@@ -393,6 +393,18 @@ def _write_upload_stream(upload: UploadFile, dest: Path, expected_ext: str | Non
     return written
 
 
+def _bcct_filename(original: str, year: int, ext: str) -> str:
+    """Tên trên đĩa cho 1 file BCCT — giữ tên gốc đã làm sạch.
+
+    Ô BCCT nhận NHIỀU file (một kỳ có thể gồm nhiều file rời, vd F1/F3 của 006), nên
+    không dùng được tên canonical `BCCT_<năm>`: file thứ hai sẽ đè file thứ nhất. Giữ
+    tên gốc thì cán bộ đối chiếu được với file trên máy mình, và tải lại đúng tên cũ
+    là sửa đúng file đó.
+    """
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(original).name).strip("_")
+    return safe or f"BCCT_{year}{ext}"
+
+
 def _save_upload(upload: UploadFile, dest: Path, slot: str) -> int:
     """Lưu upload vào slot canonical (multi-slot form): thay file CÙNG SLOT đã có.
 
@@ -702,7 +714,7 @@ def upload_data(
     m15: UploadFile | None = File(default=None),
     m15a: UploadFile | None = File(default=None),
     m16: UploadFile | None = File(default=None),
-    bcct: UploadFile | None = File(default=None),
+    bcct: list[UploadFile] | None = File(default=None),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -710,18 +722,34 @@ def upload_data(
     if not (YEAR_MIN <= year <= YEAR_MAX):
         raise HTTPException(status_code=400, detail=f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
 
-    base = Path(settings.raw_data_path) / company.code / str(year)
-    saved_any = False
-    uploads = {"m15": m15, "m15a": m15a, "m16": m16, "bcct": bcct}
-    for slot, upload in uploads.items():
-        if not upload or not upload.filename:
-            continue
-        ext = Path(upload.filename).suffix.lower()
+    def _ext_of(slot: str, upload: UploadFile) -> str:
+        ext = Path(upload.filename or "").suffix.lower()
         if ext not in {".xls", ".xlsx"}:
             raise HTTPException(status_code=400, detail=f"{slot}: chỉ chấp nhận .xls / .xlsx (gặp {ext})")
+        return ext
+
+    base = Path(settings.raw_data_path) / company.code / str(year)
+    saved_any = False
+
+    # m15/m15a/m16: mỗi biểu 1 bản → file mới thay file cũ cùng slot.
+    for slot, upload in (("m15", m15), ("m15a", m15a), ("m16", m16)):
+        if not upload or not upload.filename:
+            continue
+        ext = _ext_of(slot, upload)
         subdir, stem = _UPLOAD_SLOTS[slot]
-        dest = base / subdir / f"{stem}_{year}{ext}"
-        _save_upload(upload, dest, slot)
+        _save_upload(upload, base / subdir / f"{stem}_{year}{ext}", slot)
+        saved_any = True
+
+    # BCCT: CỘNG DỒN. Một kỳ có thể gồm nhiều file rời — xoá file cũ ở đây là buộc cán
+    # bộ gộp tay ngoài hệ thống, và bản gộp tay của 006 đã mất 28,5 tỷ ở ô công thức.
+    # Bỏ file thừa bằng nút xoá từng file ở trang Tài liệu.
+    bcct_subdir, _ = _UPLOAD_SLOTS["bcct"]
+    for upload in bcct or []:
+        if not upload or not upload.filename:
+            continue
+        ext = _ext_of("bcct", upload)
+        dest = base / bcct_subdir / _bcct_filename(upload.filename, year, ext)
+        _write_upload_stream(upload, dest, expected_ext=ext)
         saved_any = True
 
     if not saved_any:
@@ -1028,8 +1056,7 @@ def documents_upload_cell(
 
     if slot == "bcct":
         # Nhiều file/ô — giữ tên gốc đã làm sạch (thay nếu trùng tên).
-        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(file.filename).name).strip("_")
-        dest = dest_dir / (safe_name or f"BCCT_{year}{ext}")
+        dest = dest_dir / _bcct_filename(file.filename, year, ext)
     else:
         # 1 file/ô — xoá file cùng slot đã có trên đĩa rồi ghi tên canonical.
         for p in list(dest_dir.glob("*")):
