@@ -12,7 +12,7 @@ from urllib.parse import quote_plus, urlencode
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
@@ -1956,7 +1956,16 @@ def company_detail(
                 Finding.check_code == ccode,
                 *_book_clause(),
             )
-            .order_by(Finding.severity, Finding.subject_key)
+            # Trong cùng mức: phát hiện nhiều tiền trước (sổ yêu cầu 3.1, 4.1). Phát
+            # hiện chưa quy ra tiền được (`value_vnd` NULL) xuống cuối, không lẫn vào
+            # nhóm giá trị nhỏ. Check chưa quy tiền thì cả nhóm NULL → giữ thứ tự mã
+            # như cũ.
+            .order_by(
+                Finding.severity,
+                Finding.value_vnd.is_(None),
+                Finding.value_vnd.desc(),
+                Finding.subject_key,
+            )
             .limit(limit)
             .offset(offset)
         ).all()
@@ -2244,7 +2253,11 @@ _TABLE_CONFIG = {
         "model": Norm,
         "label": "Mẫu 16 — Định mức",
         "code_field": "material_code",
-        "code_label": "Mã NVL",
+        # Mẫu 16 là bảng CẶP: mỗi dòng mang cả mã TP lẫn mã NVL. Lọc một cột thôi thì
+        # tra mã TP ở đây ra bảng rỗng, đọc như "không có định mức" — mà C4.9 lại trỏ
+        # sang đúng bảng này bằng mã TP.
+        "search_fields": ("material_code", "product_code"),
+        "code_label": "Mã NVL hoặc mã TP",
         "view_cols": [
             ("product_code", "Mã SP", "item-link"),
             ("product_name", "Tên SP", "wrap"),
@@ -2515,7 +2528,12 @@ def company_data(
 
     stmt = select(model).where(model.company_id == company.id, model.period_year == year)
     if q:
-        stmt = stmt.where(getattr(model, code_field).contains(q))
+        # Bảng nào mang nhiều cột mã (Mẫu 16: mã TP + mã NVL) thì tra trúng cột nào
+        # cũng ra. Bảng một cột giữ nguyên hành vi cũ.
+        search_fields = config.get("search_fields") or (code_field,)
+        stmt = stmt.where(
+            or_(*(getattr(model, f).contains(q) for f in search_fields))
+        )
     if book and has_book:
         stmt = stmt.where(model.book == book)
     if is_bcct:
@@ -2614,6 +2632,11 @@ _KIND_LABEL_VI = {
 }
 
 
+# `:path` chứ không phải `{item_code}`: mã hàng thật có chứa dấu `/` (đo được 63 dòng
+# `declaration_lines`, 6 dòng `nvl_balances`, ví dụ `AB1680/4800MS10`), mà một segment
+# thì không khớp nổi → 404 trước cả khi chạy auth. `| urlencode` ở nơi sinh link KHÔNG
+# chữa được: phần trăm-mã hoá bị giải trước khi router so khớp nên `%2F` lại thành `/`.
+# Không có route con nào dưới `/items/{item_code}/` nên `:path` tham lam là an toàn.
 @router.get("/companies/{code}/items/{item_code:path}", response_class=HTMLResponse)
 def item_detail(
     code: str,

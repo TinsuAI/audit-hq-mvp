@@ -13,6 +13,7 @@ from app.database import engine as _default_engine
 from app.models import (
     Company,
     DeclarationLine,
+    Norm,
     NvlBalance,
     SpBalance,
     UomAlias,
@@ -143,6 +144,32 @@ def add_sp(
     return row
 
 
+def add_norm(
+    session: Session,
+    company_id: int,
+    *,
+    product_code: str,
+    material_code: str,
+    norm_qty: float,
+    material_unit: str | None = None,
+    note: str | None = None,
+    book: str | None = None,
+    year: int = 2024,
+) -> Norm:
+    row = Norm(
+        company_id=company_id,
+        period_year=year,
+        book=book,
+        product_code=product_code,
+        material_code=material_code,
+        material_unit=material_unit,
+        norm_qty=norm_qty,
+        note=note,
+    )
+    session.add(row)
+    return row
+
+
 def add_decl(
     session: Session,
     company_id: int,
@@ -155,6 +182,9 @@ def add_decl(
     hs_code: str = "00000000",
     year: int = 2024,
     declaration_date: date | None = None,
+    value_total: float | None = None,
+    unit_price: float | None = None,
+    currency: str | None = None,
 ) -> DeclarationLine:
     row = DeclarationLine(
         company_id=company_id,
@@ -166,6 +196,11 @@ def add_decl(
         hs_code=hs_code,
         quantity=quantity,
         unit=unit,
+        # `value_total` là trị giá VNĐ của dòng tờ khai (đã quy đổi), `unit_price` là
+        # đơn giá nguyên tệ — hai cột khác hệ, đừng suy cột này ra cột kia.
+        value_total=value_total,
+        unit_price=unit_price,
+        currency=currency,
     )
     session.add(row)
     return row

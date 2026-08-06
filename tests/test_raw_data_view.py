@@ -138,6 +138,38 @@ def test_filter_by_book_applies_to_settlement_tables():
     assert "NVL-A" not in page
 
 
+def test_m16_filter_matches_both_the_product_code_and_the_material_code():
+    """Mẫu 16 là bảng CẶP — tra mã TP ở đây phải ra dòng, không ra bảng rỗng.
+
+    C4.9 (thiếu định mức) trỏ sang chính bảng này bằng mã TP; lọc một cột thôi thì
+    link đó mở ra bảng rỗng, đọc như "không có định mức nào" trong khi mã TP nằm ở
+    cột bên cạnh.
+    """
+    from app.models import Norm
+
+    _engine, new_session = _setup_db()
+    _seed(new_session)
+    with new_session() as s:
+        cid = s.query(Company).filter_by(code="RAWCO").one().id
+        s.add_all([
+            Norm(company_id=cid, period_year=2024, product_code="TP-9",
+                 material_code="NVL-A", norm_qty=2.0),
+            Norm(company_id=cid, period_year=2024, product_code="TP-8",
+                 material_code="NVL-Z", norm_qty=1.0),
+        ])
+        s.commit()
+    client = TestClient(app)
+    _login(client)
+
+    by_product = client.get("/companies/RAWCO/data?year=2024&table=m16&q=TP-9").text
+    assert "NVL-A" in by_product
+    assert "NVL-Z" not in by_product
+
+    by_material = client.get("/companies/RAWCO/data?year=2024&table=m16&q=NVL-Z").text
+    assert "TP-8" in by_material
+    assert "TP-9" not in by_material
+
+
 def test_switching_table_tab_keeps_the_code_filter():
     """Đổi tab mà mất bộ lọc thì cán bộ phải gõ lại mã — đúng thứ đang bực."""
     _engine, new_session = _setup_db()

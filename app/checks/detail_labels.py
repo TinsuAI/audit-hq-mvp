@@ -17,10 +17,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.formatting import EMPTY, fmt_bool, fmt_int, fmt_pct, fmt_qty
+from app.formatting import EMPTY, fmt_bool, fmt_int, fmt_money, fmt_pct, fmt_qty
 
 # kind quyết định cách format + căn lề:
 #   qty   — số lượng hàng, căn phải
+#   money — tiền VNĐ, căn phải
 #   pct   — tỷ lệ, luôn có dấu và `%`, căn phải
 #   int   — số đếm, căn phải
 #   text  — chuỗi
@@ -44,6 +45,9 @@ DETAIL_FIELDS: dict[str, tuple[str, str]] = {
     "m15a_column": ("Cột M15a đối chiếu", "enum"),
     "bcct_sum": ("Σ tờ khai", "qty"),
     "diff_pct": ("Chênh lệch", "pct"),
+    # Giá trị của CHÍNH phần chênh lệch, theo đơn giá bình quân tờ khai cùng kỳ.
+    # Để xếp hạng, không phải số liệu kế toán (xem `app/checks/valuation.py`).
+    "value_vnd": ("Giá trị chênh lệch", "money"),
     "import_codes": ("Loại hình nhập", "list"),
     "export_codes": ("Loại hình xuất", "list"),
     "m15_repurpose": ("M15 chuyển MĐSD", "qty"),
@@ -69,7 +73,9 @@ DETAIL_FIELDS: dict[str, tuple[str, str]] = {
     "divergence": ("Khác nhau ở cấp", "enum"),
     "m15_unit": ("ĐVT trên M15", "text"),
     "m15_units": ("Các ĐVT trên M15", "list"),
+    "m16_units": ("ĐVT trên định mức M16", "list"),
     "bcct_units": ("ĐVT trên tờ khai", "list"),
+    "diverging_sources": ("Nguồn lệch với M15", "list"),
     "uom_match": ("Mức khớp đơn vị", "enum"),
     # --- C4 định mức ---
     "m15_opening": ("M15 tồn đầu", "qty"),
@@ -138,7 +144,7 @@ COLUMN_LABEL_OVERRIDES: dict[str, dict[str, str]] = {
 # thì bảng rộng hơn màn hình mà vẫn không đọc nhanh hơn. Khoá ngữ cảnh
 # (`company_type`, `import_codes`) chỉ hiện ở trang chi tiết.
 FINDING_COLUMNS: dict[str, tuple[str, ...]] = {
-    "C1.1": ("m15_import", "bcct_sum", "diff_pct", "unit", "m15_column"),
+    "C1.1": ("value_vnd", "m15_import", "bcct_sum", "diff_pct", "unit", "m15_column"),
     "C1.2": ("bcct_sum", "import_codes"),
     "C1.3": ("m15_import", "import_codes", "m15_column"),
     "C1.4": ("m15a_export", "bcct_sum", "diff_pct", "unit", "m15a_column"),
@@ -154,10 +160,10 @@ FINDING_COLUMNS: dict[str, tuple[str, ...]] = {
     "C2.4": ("closing_qty", "unit"),
     "C3.1": ("nvl_codes", "mmtb_codes"),
     "C3.2": ("divergence", "hs_codes"),
-    "C3.3": ("uom_match", "m15_units", "bcct_units"),
+    "C3.3": ("uom_match", "diverging_sources", "m15_units", "m16_units", "bcct_units"),
     "C4.1": ("reason", "m15_import", "m15_opening", "norm_source_years"),
     "C4.3": (
-        "theoretical_consumption", "actual_m15_production_out", "diff_pct",
+        "value_vnd", "theoretical_consumption", "actual_m15_production_out", "diff_pct",
         "norm_source_years", "divergent_norm_products",
     ),
     "C4.9": ("intake", "norm_in_other_book", "boundary_period"),
@@ -169,7 +175,7 @@ FINDING_COLUMNS: dict[str, tuple[str, ...]] = {
     "COMBO_HS_GAMING": ("triggers",),
 }
 
-_NUMERIC_KINDS = frozenset({"qty", "pct", "int"})
+_NUMERIC_KINDS = frozenset({"qty", "money", "pct", "int"})
 
 
 @dataclass(frozen=True)
@@ -194,6 +200,8 @@ def _format_value(key: str, kind: str, value: object, style: str | None) -> str:
         return EMPTY
     if kind == "qty":
         return fmt_qty(value, style=style)
+    if kind == "money":
+        return fmt_money(value, style=style)
     if kind == "pct":
         return fmt_pct(value, style=style)
     if kind == "int":

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -26,6 +26,10 @@ class Finding(Base):
     book: Mapped[str | None] = mapped_column(String(32), nullable=True)
     subject_key: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(500))
+    #: Giá trị tiền của chính chênh lệch này (VNĐ), để xếp hạng phát hiện. NULL =
+    #: chưa quy ra tiền được (không có tờ khai để lấy đơn giá, hoặc check chưa quy).
+    #: Khác 0: 0 là "đã quy, ra không đáng kể" — hai thứ không được xếp cùng chỗ.
+    value_vnd: Mapped[float | None] = mapped_column(Float, nullable=True)
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     evidence_refs: Mapped[list | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="new", index=True)

@@ -21,6 +21,7 @@ from app.checks.effective_norms import (
 from app.checks.norm_gate import is_boundary_period, norm_coverage_gate
 from app.checks.not_evaluable import CheckResult
 from app.checks.registry import Severity, severity_for
+from app.checks.valuation import material_prices_vnd, money_value
 from app.models import Finding, Norm, NvlBalance, SpBalance
 
 
@@ -139,9 +140,9 @@ def check_c4_3(session: Session, company_id: int, year: int) -> CheckResult:
     nguồn, C4.1 đã bắt. Mã CÓ dòng M15 mà xuất SX = 0 vẫn fire — đã khai nguồn nhưng
     không xuất cho sản xuất là mâu thuẫn thật.
 
-    Định mức lấy theo bản khai HIỆU LỰC (issue #60) — bản có kỳ lớn nhất ≤ `year`,
-    vì Mẫu 16 kế thừa giữa các kỳ. Lọc đúng `period_year == year` làm mất định mức
-    của mọi mã không khai lại.
+    Định mức lấy theo bản khai HIỆU LỰC (issue #60) — bản khai có kỳ lớn nhất ≤
+    `year` của CHÍNH mã TP đó, lấy trọn bản khai, vì Mẫu 16 kế thừa giữa các kỳ.
+    Lọc đúng `period_year == year` làm mất định mức của mọi mã không khai lại.
 
     Trả `NotEvaluable` thay cho danh sách phát hiện khi (DN, kỳ) vướng cổng độ phủ
     định mức (issue #62): thiếu định mức của một thành phẩm đã sản xuất, hoặc kỳ
@@ -152,6 +153,9 @@ def check_c4_3(session: Session, company_id: int, year: int) -> CheckResult:
     if gated is not None:
         return gated
 
+    # Không khoanh loại hình: C4.3 nói về NVL đã tiêu hao, không riêng NVL nhập kỳ này —
+    # mã có định mức kế thừa có thể chỉ có tờ khai ở kỳ trước trong cùng cửa sổ.
+    prices = material_prices_vnd(session, company_id, year)
     norms_by_book = effective_norms(session, company_id, year)
     sp_rows = session.execute(
         select(SpBalance.product_code, SpBalance.intake_qty, SpBalance.book).where(
@@ -235,6 +239,7 @@ def check_c4_3(session: Session, company_id: int, year: int) -> CheckResult:
             if book is not None:
                 norm_filter["book"] = book
                 nvl_filter["book"] = book
+            value_vnd = money_value(prices, code, theor - actual)
             findings.append(Finding(
                 company_id=company_id,
                 period_year=year,
@@ -243,6 +248,7 @@ def check_c4_3(session: Session, company_id: int, year: int) -> CheckResult:
                 subject_type="material_code",
                 subject_key=code,
                 book=book,
+                value_vnd=value_vnd,
                 title=(
                     f"NVL {code}: tiêu hao lý thuyết M16 ({theor:.2f}) vượt "
                     f"xuất SX M15 ({actual:.2f}) — chênh +{pct:.1f}%"
@@ -251,6 +257,7 @@ def check_c4_3(session: Session, company_id: int, year: int) -> CheckResult:
                     "theoretical_consumption": theor,
                     "actual_m15_production_out": actual,
                     "diff_pct": pct,
+                    "value_vnd": value_vnd,
                     # Mã SP mà các khối định mức lặp lại KHÔNG khớp nhau — đã lấy MAX.
                     "divergent_norm_products": sorted(divergent.get(code, ())),
                     # Kỳ của các bản khai Mẫu 16 đã dùng. Khác `period_year` nghĩa là
