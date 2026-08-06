@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import re
 import unicodedata
@@ -26,21 +27,33 @@ class CompanyHeader:
 
 @dataclass
 class ParseIssues:
-    """Ô hỏng + liên kết ngoài của một sheet đã parse.
+    """Ô hỏng + liên kết ngoài + ô công thức ghi thành chuỗi, của một sheet đã parse.
 
-    KHÔNG đổi giá trị số: ô hỏng vẫn ra 0.0 như cũ. Chỉ thôi im lặng.
+    `error_cells` / `external_workbooks` KHÔNG đổi giá trị số: ô hỏng vẫn ra 0.0 như
+    cũ, chỉ thôi im lặng. `formula_cells` thì có đổi — giá trị đọc được từ `result`
+    thay cho 0.0 — nên vẫn đếm để cán bộ biết file đã qua tay công cụ gộp/xuất nào
+    đó, đếm theo TÊN TRƯỜNG (`unit_price`, `value_total`, …).
     """
 
     error_cells: dict[str, int] = field(default_factory=dict)
     external_workbooks: int = 0
+    formula_cells: dict[str, int] = field(default_factory=dict)
     scanned: bool = False
 
     @property
     def error_total(self) -> int:
         return sum(self.error_cells.values())
 
+    @property
+    def formula_total(self) -> int:
+        return sum(self.formula_cells.values())
+
     def __bool__(self) -> bool:
-        return bool(self.error_cells) or self.external_workbooks > 0
+        return (
+            bool(self.error_cells)
+            or self.external_workbooks > 0
+            or bool(self.formula_cells)
+        )
 
 
 @dataclass
@@ -124,6 +137,35 @@ def scan_error_cells(
     return counts
 
 
+def formula_cell_result(value: Any) -> float | None:
+    """Số nằm trong ô công thức bị ghi thành chuỗi `{"formula":…,"result":…}`.
+
+    Một số công cụ gộp/xuất file ghi ô công thức thành chuỗi JSON thay vì số. Ô như
+    vậy KHÔNG parse được thành float nên trước đây thành 0.0 — số dòng và tập khoá
+    vẫn đúng, chỉ tiền sai, nên không kiểm tra nào bắt được (ca 006: 2.076 ô,
+    28.563.550.970,35 đ). `result` là giá trị Excel đã tính, đọc nó là đọc đúng ô.
+
+    Trả None khi không phải dạng đó hoặc `result` không phải số — người gọi giữ
+    nguyên đường xử lý cũ.
+    """
+    if not isinstance(value, str):
+        return None
+    s = value.strip()
+    if not (s.startswith("{") and '"formula"' in s and '"result"' in s):
+        return None
+    try:
+        obj = json.loads(s)
+    except ValueError:
+        return None
+    if not isinstance(obj, dict) or "formula" not in obj or "result" not in obj:
+        return None
+    result = obj["result"]
+    if isinstance(result, bool) or not isinstance(result, (int, float)):
+        return None
+    out = float(result)
+    return None if math.isnan(out) else out
+
+
 def to_float(value: Any) -> float:
     """Convert any cell value to float, defaulting to 0.0."""
     if value is None:
@@ -135,6 +177,9 @@ def to_float(value: Any) -> float:
     s = str(value).strip()
     if not s:
         return 0.0
+    formula_result = formula_cell_result(s)
+    if formula_result is not None:
+        return formula_result
     s = s.replace(",", "").replace(" ", "")
     try:
         return float(s)
