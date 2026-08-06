@@ -46,6 +46,9 @@ class IngestStats:
     bcct_out_of_window: int = 0
     bcct_undated: int = 0  # dòng không có ngày tờ khai — quy theo nhãn nạp
     bcct_skipped: list[str] | None = None  # file trong HANG_CHI_TIET không phải BCCT
+    # Cửa sổ kỳ suy từ tiêu đề file bị loại vì không hợp lệ với nhãn kỳ (#66) — thường
+    # là file của kỳ khác lẫn vào thư mục năm. Đã thay bằng niên độ DN, nhưng phải BÁO.
+    period_window_rejected: list[str] | None = None
     files: dict[str, str | None] | None = None
     # slot → ParseProvenance (cách đọc file: standard/extended/labeled + bằng chứng).
     provenance: dict | None = None
@@ -248,7 +251,12 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         company = _get_or_create_company(session, company_code, tax_id, name, address)
 
         # Cửa sổ kỳ (from,to): bản sửa tay > tiêu đề file > dương lịch; ghi company_periods.
-        period_from, period_to = resolve_period_bounds(session, company.id, year, company_meta)
+        # `rejected` nhận lý do khi tiêu đề file nói một kỳ khác hẳn nhãn đang nạp (#66).
+        window_rejected: list[str] = []
+        period_from, period_to = resolve_period_bounds(
+            session, company.id, year, company_meta, rejected=window_rejected
+        )
+        stats.period_window_rejected = window_rejected or None
 
         # WS3: bump data_version TRONG transaction ingest (ràng buộc advisor a) — version
         # + dữ liệu commit nguyên tử. `resolve_period_bounds` đảm bảo dòng CompanyPeriod

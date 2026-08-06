@@ -8,7 +8,10 @@ on:
 jobs:
   test:
     runs-on: [self-hosted, tinsu-prod]
-    timeout-minutes: 5
+    # 5 phút không đủ từ khi suite qua ~1.000 test: ba lượt merge d528b2f (#55),
+    # 808d9dc (#64), 78c444d (#67) đều bị huỷ đúng mốc 5 phút, nên `deploy` skip và
+    # prod đứng ở 0b9e3b2 ngày 01/08. Nới lên 20 để có biên cho cả bước dựng venv.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -44,6 +47,34 @@ jobs:
           BUILD_TIME: ${{ steps.meta.outputs.time }}
           APP_VERSION: ${{ steps.meta.outputs.version }}
         run: docker compose build
+
+      - name: Backup prod DB before migrating
+        env:
+          DB_DATA_PATH: ${{ vars.DB_DATA_PATH }}
+        run: |
+          : "${DB_DATA_PATH:?repo variable DB_DATA_PATH not set — refusing deploy}"
+          DB="$DB_DATA_PATH/audit_hq.sqlite"
+          if [ ! -f "$DB" ]; then
+            echo "Chưa có $DB — bỏ qua backup (lần deploy đầu)."
+            exit 0
+          fi
+          # `entrypoint.sh` chạy `alembic upgrade head` lúc container khởi động, nên
+          # bước kế tiếp SỬA schema prod. Backup qua sqlite3 backup API: an toàn với
+          # WAL và với DB đang có người ghi — `cp` file .sqlite đơn lẻ mất nội dung WAL.
+          python3 - "$DB" <<'PY'
+          import sqlite3, sys, time
+          src = sys.argv[1]
+          dst = f"{src}.bak-predeploy-{time.strftime('%Y%m%d-%H%M%S')}"
+          s = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+          d = sqlite3.connect(dst)
+          with d:
+              s.backup(d)
+          print("integrity:", d.execute("pragma integrity_check").fetchone()[0])
+          d.close(); s.close()
+          print("backup ->", dst)
+          PY
+          # Giữ 5 bản gần nhất, xoá phần còn lại để không đầy đĩa runner.
+          ls -1t "$DB".bak-predeploy-* 2>/dev/null | tail -n +6 | xargs -r rm -f
 
       - name: Restart container
         env:
