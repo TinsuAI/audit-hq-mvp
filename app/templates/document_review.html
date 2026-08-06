@@ -69,7 +69,36 @@
 </div>
 
 {% if not can_confirm %}
-<div class="card"><p class="text-muted">File này chưa có vị trí cột để xác nhận (chưa phân tích, hoặc không phát hiện cột nào cần xác nhận).</p></div>
+<div class="card" style="margin-bottom:var(--space-4)">
+  <p class="text-muted" style="margin:0">File này chưa có vị trí cột để xác nhận (chưa phân tích, hoặc không phát hiện cột nào cần xác nhận).</p>
+</div>
+
+{# File đọc hỏng vẫn phải chọn được trang tính: nguyên nhân hay gặp là hệ thống không
+   nhận ra trang nào đúng biểu (workbook do cán bộ tự gộp, chèn thêm cột, xoá khối tiêu
+   đề). Không có ô này thì file bế tắc — không có bố cục cột để xác nhận, mà cũng không
+   có cách chỉ cho hệ thống trang cần đọc. #}
+{% if sheet_names %}
+<form method="post" action="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/review">
+  <div class="card" style="margin-bottom:var(--space-4)">
+    <label for="sheet-input-alone" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Trang tính (sheet) cần đọc</label>
+    <p class="form-hint" style="margin:0 0 var(--space-2)">
+      {% if parsed_sheet %}Lượt nạp gần nhất đọc trang <strong>{{ parsed_sheet }}</strong>.
+      {% else %}Hệ thống <strong>không tự nhận ra</strong> trang nào đúng biểu trong file này.{% endif %}
+      Chọn đúng trang chứa dữ liệu chi tiết rồi bấm nạp lại — xem trước nội dung từng trang ở
+      <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/preview">👁 Xem toàn bộ file</a>.
+    </p>
+    <select id="sheet-input-alone" name="sheet" class="form-select mono-input" style="max-width:320px">
+      <option value="">(tự nhận diện)</option>
+      {% for s in sheet_names %}
+      <option value="{{ s }}" {% if (sheet_override or parsed_sheet) == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <div style="margin-top:var(--space-3)">
+      <button type="submit" class="btn btn-primary">⤵️ Ghim trang tính &amp; nạp lại</button>
+    </div>
+  </div>
+</form>
+{% endif %}
 {% else %}
 
 {% if preview and preview.rows and not preview.error %}

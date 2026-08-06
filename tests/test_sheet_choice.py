@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 import app.database as dbmod
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import Company, DataFile, NvlBalance
+from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.settings import settings
 from tests.helpers import drain_jobs
 
@@ -174,6 +174,75 @@ def test_officer_can_pin_another_sheet_and_reingest_reads_it(tmp_path):
         assert override == "BCQT_NVL_KY_SAU"          # ghim lại cho lượt nạp sau
         assert detail_after["sheet"] == "BCQT_NVL_KY_SAU"
         assert _codes() == {"ALT0"}                    # dòng đọc từ trang đã ghim
+    finally:
+        _teardown(new_engine, prev_root)
+
+
+def _unreadable_m15() -> bytes:
+    """Workbook mà `select_sheet` KHÔNG nhận ra trang nào đúng biểu.
+
+    Dựng lại tình huống file cán bộ tự gộp: chèn một cột đầu (nhãn nguồn) và bỏ khối
+    tiêu đề → mọi cột lệch một ô, mọi trang chấm 0 điểm, file bị từ chối khi nạp.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Bìa"
+    ws.append(["Trang bìa"])
+    ws2 = wb.create_sheet("Dữ liệu")
+    ws2.append(["Nguồn", *_M15_HEADER])
+    for i in range(3):
+        ws2.append(["F1", i + 1, f"MAT{i}", "Tên", "KG", 10, 100, 0, 0, 80, 0, 30])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_unreadable_file_still_offers_the_sheet_picker(tmp_path):
+    """File đọc hỏng vẫn phải ghim được trang tính — nếu không thì nó bế tắc.
+
+    Không có bố cục cột để xác nhận (parse thất bại nên chưa có `column_map`), mà cũng
+    không có cách chỉ cho hệ thống trang cần đọc → cán bộ chỉ còn cách sửa file nguồn.
+    """
+    new_engine, prev_root = _setup(tmp_path)
+    try:
+        client = TestClient(app)
+        _login(client)
+        client.post(
+            "/companies/DN_SHEET/upload",
+            data={"year": "2024"},
+            files={"m15": ("Mau15_NVL.xlsx", _unreadable_m15(),
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            follow_redirects=False,
+        )
+        drain_jobs()
+
+        with dbmod.SessionLocal() as db:
+            c = db.query(Company).filter_by(code="DN_SHEET").first()
+            row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
+            assert row.parse_status == DataFileStatus.ERROR   # đúng là file hỏng
+            fid = row.id
+
+        # Trang tài liệu phải có lối vào, và màn review phải có ô chọn trang.
+        docs = client.get("/companies/DN_SHEET/documents").text
+        assert f"/documents/file/{fid}/review" in docs
+        html = client.get(f"/companies/DN_SHEET/documents/file/{fid}/review").text
+        assert 'name="sheet"' in html
+        assert "không tự nhận ra" in html
+        assert '<option value="Dữ liệu"' in html
+
+        # Ghim trang → nạp lại → file đọc được.
+        r = client.post(f"/companies/DN_SHEET/documents/file/{fid}/review",
+                        data={"sheet": "Dữ liệu"}, follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"].startswith("/jobs/")
+        drain_jobs()
+
+        with dbmod.SessionLocal() as db:
+            c = db.query(Company).filter_by(code="DN_SHEET").first()
+            row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
+            assert row.sheet_override == "Dữ liệu"
+            assert row.parse_status == DataFileStatus.OK
+            assert row.row_count == 3
     finally:
         _teardown(new_engine, prev_root)
 

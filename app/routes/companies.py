@@ -1334,14 +1334,25 @@ async def documents_confirm_review(
     def _redirect(params: str) -> RedirectResponse:
         return RedirectResponse(url=f"/companies/{code}/documents?{params}", status_code=303)
 
+    form = await request.form()
+
     if not form_signature or not base_map:
-        return _redirect(
-            "error=" + quote_plus("File này không có thông tin bố cục cột để xác nhận.")
-        )
+        # File đọc hỏng thì KHÔNG có bố cục cột để xác nhận, nhưng vẫn phải ghim được
+        # trang tính: nguyên nhân thường gặp là không trang nào khớp biểu chuẩn (workbook
+        # cán bộ tự gộp — chèn cột, xoá khối tiêu đề → mọi cột lệch một ô). Ghim trang rồi
+        # nạp lại là đường DUY NHẤT đưa file đó vào hệ thống mà không phải sửa file nguồn.
+        picked = (form.get("sheet") or "").strip() or None
+        if picked is None and row.sheet_override is None:
+            return _redirect(
+                "error=" + quote_plus("File này không có thông tin bố cục cột để xác nhận.")
+            )
+        row.sheet_override = picked
+        db.commit()
+        job = _enqueue_ingest(db, user, company, year, gate=False)
+        return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
     # Map đầy đủ = cột officer sửa (field `needs_review`) chồng lên map đề xuất. Ô thiếu /
     # không hợp lệ giữ giá trị đề xuất để map không khuyết cột.
-    form = await request.form()
     column_map: dict[str, int] = {}
     for field, default_idx in base_map.items():
         raw = form.get(f"col_{field}")

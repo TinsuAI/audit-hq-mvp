@@ -197,6 +197,10 @@
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/download" class="doc-mini-btn" title="Tải xuống">↓</a>
               {% if f.parse_status == 'ok' and f.parse_detail_obj.get('column_map') %}
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/review" class="doc-mini-btn" title="Sửa vị trí cột — chạy lại các kiểm tra đọc cột đã đổi">✏️ Sửa cột</a>
+              {% elif f.parse_status == 'error' %}
+              {# Đọc hỏng thường là chọn nhầm/không nhận ra trang tính. Không có lối vào màn
+                 này thì file bế tắc: không có bố cục cột để sửa, cũng không chỉ được trang. #}
+              <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/review" class="doc-mini-btn" title="Hệ thống không đọc được file — chỉ đúng trang tính cần đọc rồi nạp lại">📄 Chọn trang tính</a>
               {% endif %}
               <form method="post" action="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/delete"
                     class="doc-mini-form" onsubmit="return confirm('Xoá file {{ f.original_filename }}?');">
