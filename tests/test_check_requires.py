@@ -21,7 +21,11 @@ from app.models import CheckRun, Company
 from tests.conftest import add_decl, add_nvl, add_sp
 from tests.test_company_period_route import _login, _setup_db, _teardown
 
-# --- Fact audit: 17 check đều khai nguồn --------------------------------------
+# Đầu câu lý do do cổng NGUỒN sinh ra — phân biệt với lý do cổng khác
+# (độ phủ định mức #62) vì cả hai cùng ghi vào `status_reason`.
+MISSING_PREFIX = "Kỳ này chưa có"
+
+# --- Fact audit: mọi check built-in đều khai nguồn --------------------------------------
 
 
 def test_every_builtin_check_declares_requires():
@@ -49,6 +53,7 @@ def test_requires_matches_the_source_audit():
         "C3.3": {"bcct", "m15"},        # đơn vị M15 vs đơn vị tờ khai
         "C4.1": {"m15", "m16"},
         "C4.3": {"m15", "m15a", "m16"},
+        "C4.9": {"m15a", "m16"},        # M15a sản lượng → M16 định mức, không đọc M15
         "C5.1": {"m15"},
         "C6.1": {"m15"},                # kỳ N và N-1, cả hai đều M15
     }
@@ -151,6 +156,12 @@ def test_not_evaluable_clears_once_the_source_arrives(session, company):
 
 
 def test_full_sources_leave_nothing_unevaluated(session, company):
+    """Đủ nguồn → không check nào bị cổng NGUỒN chặn.
+
+    Không khẳng định `not_evaluable == {}`: cổng độ phủ định mức (#62) vẫn có thể
+    dừng C4.3 ở kỳ biên vì lý do KHÁC — thiếu `first_bcqt_year`, không phải thiếu
+    nguồn. Hai cổng dùng chung một trạng thái nên phải phân biệt bằng lý do.
+    """
     from app.models import Norm
 
     add_nvl(session, company.id, material_code="A", imported=100, closing=100, year=2025)
@@ -162,11 +173,11 @@ def test_full_sources_leave_nothing_unevaluated(session, company):
     session.commit()
 
     stats = _run(company.code, 2025, session)
-    assert stats.not_evaluable == {}
+    assert not [r for r in stats.not_evaluable.values() if MISSING_PREFIX in r]
     runs = session.scalars(
         select(CheckRun).where(CheckRun.company_id == company.id)
     ).all()
-    assert all(r.status_reason is None for r in runs)
+    assert all(MISSING_PREFIX not in (r.status_reason or "") for r in runs)
 
 
 # --- Điểm năm không coi check chưa đánh giá được là sạch ----------------------

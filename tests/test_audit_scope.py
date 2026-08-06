@@ -114,8 +114,8 @@ def test_tail_period_without_bcqt_is_flagged_and_counts_waiting_checks(session, 
         CheckRun(company_id=company.id, period_year=2026, check_code="C3.1",
                  ran_at=datetime(2026, 8, 1), finding_count=0, status="ok", data_version=0),
         CheckRun(company_id=company.id, period_year=2026, check_code="C2.1",
-                 ran_at=datetime(2026, 8, 1), finding_count=0, status="skipped",
-                 data_version=0, skip_reason="missing:m15"),
+                 ran_at=datetime(2026, 8, 1), finding_count=0, status="not_evaluable",
+                 data_version=0, status_reason="Kỳ này chưa có Mẫu 15 — Cân đối NVL"),
     ])
     session.commit()
     rows = {r.period_year: r for r in scope_coverage(session, company)}

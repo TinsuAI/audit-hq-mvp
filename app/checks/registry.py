@@ -236,6 +236,7 @@ register(CheckSpec(
         "ĐƯỢC cho cả kỳ, không trả 0 phát hiện."
     ),
     default_severity=Severity.WARNING,
+    requires=frozenset({"m15", "m15a", "m16"}),
 ))
 register(CheckSpec(
     code="C4.9",
@@ -247,7 +248,8 @@ register(CheckSpec(
         "từng mã thiếu định mức, không phải một con số tổng."
     ),
     default_severity=Severity.WARNING,
-    requires=frozenset({"m15", "m15a", "m16"}),
+    # Đi từ M15a (sản lượng) sang M16 (định mức) — KHÔNG đọc M15.
+    requires=frozenset({"m15a", "m16"}),
 ))
 
 

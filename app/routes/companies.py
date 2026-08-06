@@ -53,7 +53,6 @@ from app.items.aggregations import (
 from app.items.charts import sankey_layout, sparkline_points, waterfall_layout
 from app.items.operations import classify_operation, operation_label
 from app.models import (
-    CheckRun,
     Company,
     CompanyPeriod,
     CompanyYearScore,

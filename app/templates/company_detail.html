@@ -482,7 +482,7 @@
                   {{ SEVERITY_BADGE[f.severity] }} {{ SEVERITY_LABEL[f.severity] }}
                 </span>
               </td>
-              <td class="code-cell">{% if multi_book %}<span class="book-pill {% if not f.book %}chung{% endif %}" title="{{ book_label(f.book) }}">{{ f.book or 'Liên sổ' }}</span> {% endif %}{% if f.subject_key %}<a href="/companies/{{ company.slug or company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% else %}—{% endif %}</td>
+              <td class="code-cell">{% if multi_book %}<span class="book-pill {% if not f.book %}chung{% endif %}" title="{{ book_label(f.book) }}">{{ f.book or 'Liên sổ' }}</span> {% endif %}{% if f.subject_key %}<a href="/companies/{{ company.slug or company.code }}/items/{{ f.subject_key }}?year={{ selected_year }}" title="Trang chi tiết mã {{ f.subject_key }}">{{ f.subject_key }}</a>{% else %}—{% endif %}{% set tag = scope_tags.get(f.id) %}{% if tag == 'outside' %}<span class="scope-tag" title="Mọi dòng tờ khai của mã này đều nằm ngoài cửa sổ kiểm tra {{ audit_scope_window[0].strftime('%d/%m/%Y') }} – {{ audit_scope_window[1].strftime('%d/%m/%Y') }}">⏳ Ngoài phạm vi kiểm tra — hết thời hiệu, chỉ để tham khảo</span>{% elif tag == 'partial' %}<span class="scope-tag" title="Cửa sổ kiểm tra {{ audit_scope_window[0].strftime('%d/%m/%Y') }} – {{ audit_scope_window[1].strftime('%d/%m/%Y') }}">⏳ Một phần dòng tờ khai nằm ngoài phạm vi kiểm tra</span>{% elif tag == 'period_wider' %}<span class="scope-tag" title="Đẳng thức cân đối chỉ đúng trên trọn kỳ nên kiểm tra chạy trên cả kỳ">⏳ Kỳ quyết toán rộng hơn phạm vi kiểm tra</span>{% endif %}</td>
               {% if cols %}
                 {% for cell in finding_cells(code, f.details) %}
                 <td class="{{ cell.css }}">{{ cell.text }}</td>
@@ -492,14 +492,6 @@
                 <div class="cell-clamp" title="{{ f.title }}">
                   <a href="/findings/{{ f.id }}" style="color:inherit">{{ f.title }}</a>
                 </div>
-                {% set tag = scope_tags.get(f.id) %}
-                {% if tag == 'outside' %}
-                <span class="scope-tag" title="Mọi dòng tờ khai của mã này đều nằm ngoài cửa sổ kiểm tra {{ audit_scope_window[0].strftime('%d/%m/%Y') }} – {{ audit_scope_window[1].strftime('%d/%m/%Y') }}">⏳ Ngoài phạm vi kiểm tra — hết thời hiệu, chỉ để tham khảo</span>
-                {% elif tag == 'partial' %}
-                <span class="scope-tag" title="Cửa sổ kiểm tra {{ audit_scope_window[0].strftime('%d/%m/%Y') }} – {{ audit_scope_window[1].strftime('%d/%m/%Y') }}">⏳ Một phần dòng tờ khai nằm ngoài phạm vi kiểm tra</span>
-                {% elif tag == 'period_wider' %}
-                <span class="scope-tag" title="Đẳng thức cân đối chỉ đúng trên trọn kỳ nên kiểm tra chạy trên cả kỳ">⏳ Kỳ quyết toán rộng hơn phạm vi kiểm tra</span>
-                {% endif %}
               </td>
               {% endif %}
               <td>

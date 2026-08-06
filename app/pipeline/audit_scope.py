@@ -19,6 +19,7 @@ from datetime import date
 
 from sqlalchemy import func, select
 
+from app.checks.not_evaluable import STATUS_NOT_EVALUABLE, STATUS_OK
 from app.checks.scope import declaration_scope
 from app.checks.sources import available_sources
 from app.models import CheckRun, CompanyPeriod, DeclarationLine
@@ -123,13 +124,15 @@ def scope_coverage(session, company) -> list[PeriodCoverage] | None:
         if status == "outside":
             continue
         runs = session.execute(
-            select(CheckRun.skip_reason, CheckRun.status, func.count())
+            select(CheckRun.status, func.count())
             .where(CheckRun.company_id == company.id, CheckRun.period_year == label)
-            .group_by(CheckRun.skip_reason, CheckRun.status)
+            .group_by(CheckRun.status)
         ).all()
         # `error` (check động ném lỗi) KHÔNG phải "đã chạy" — nó cũng không cho kết luận.
-        checks_run = sum(n for reason, st, n in runs if reason is None and st != "error")
-        checks_waiting = sum(n for reason, _, n in runs if reason is not None)
+        # `not_evaluable` gồm cả thiếu nguồn (#53) lẫn thiếu độ phủ định mức (#62):
+        # cả hai đều là "chưa có kết luận", đúng nghĩa cột chờ ở màn độ phủ.
+        checks_run = sum(n for st, n in runs if st == STATUS_OK)
+        checks_waiting = sum(n for st, n in runs if st == STATUS_NOT_EVALUABLE)
         out.append(PeriodCoverage(
             period_year=label,
             period_from=period_from,
