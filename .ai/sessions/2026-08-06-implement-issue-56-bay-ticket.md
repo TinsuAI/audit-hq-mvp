@@ -1,7 +1,10 @@
 # Session 2026-08-06 — Cài đặt bảy ticket của issue #56 (cổng độ phủ định mức + BCCT đọc cột theo nhãn)
 
-Nhánh `feat/data-completeness-gate`. Vào phiên: `0e1d88d` (chỉ tài liệu). Ra phiên: bảy ticket
-#57–#63 đã merge, cộng một sửa ngoài ticket được owner duyệt trong phiên.
+Nhánh `feat/data-completeness-gate`. Vào phiên: `0e1d88d` (chỉ tài liệu). Ra phiên:
+[**PR #64**](https://github.com/TinsuAI/audit-hq-mvp/pull/64) đã mở và push (25 commit,
+`Closes #57–#63`), repo đề án đã push + `make publish`, một vấn đề tách ra thành issue #65.
+Ngoài bảy ticket còn **hai lỗi tự phát hiện** trong lúc làm và **ba quyết định owner** chốt cuối
+phiên.
 
 Chạy song song bằng agent trên worktree riêng: đợt 1 là #57, #58, #59, #63 (không ai chặn ai);
 #60 tôi tự làm vì nằm trên đường găng; đợt 2 là #61 và #62.
@@ -23,7 +26,7 @@ Trước khi code C4.9 đã sửa repo đề án trước theo `AGENTS.md`: `aud
 ghi luật định mức hiệu lực + nhường C4.1 + cổng độ phủ vào mô tả C4.3, danh mục 49 → 50, Giai đoạn I
 33 → 34) và `f7c638f` (mở phạm vi C4.1). ADR ngày 05/08 ở `audit-hq/.ai/DECISIONS.md`.
 
-Test: vào phiên 957 pass, ra phiên **1016 pass + 1 xfail**. `ruff check app tests` sạch.
+Test: vào phiên 957 pass, ra phiên **1028 pass + 1 xfail**. `ruff check app tests` sạch.
 
 ## Quyết định trong phiên
 
@@ -101,18 +104,20 @@ Ghi lại bằng `tests/test_checks/test_norm_gate.py::test_gate_does_not_lower_
 `xfail(strict=True)`, reason mang đủ số đo — KHÔNG hạ assertion. Ai "sửa" điểm sau này thì test đó
 đỏ ngay.
 
-Cần một quyết định về thang điểm, ngoài phạm vi loạt ticket này. Hai hướng đã nêu: giữ `max_raw` ở
-trọn bộ luật và coi luật bị cổng là chưa chấm; hoặc để nguyên và hiện **độ phủ** ngay cạnh điểm để
-con số không bao giờ bị đọc một mình.
+Cần một quyết định về thang điểm, ngoài phạm vi loạt ticket này → **đã tách thành
+[issue #65](https://github.com/TinsuAI/audit-hq-mvp/issues/65)**, ba hướng nêu ở đó, chưa chọn.
+Owner chốt trong phiên biện pháp giảm thiểu — giữ công thức, luôn hiện "Đã đánh giá N/M bài" cạnh
+điểm, tách nhóm khi xếp hạng (quyết định (1) bên dưới). Đó là che chắn cách đọc sai, **không phải
+lời giải**; #65 chặn việc dùng điểm rủi ro để xếp hạng DN cho tới khi chốt.
 
 ## Còn mở
 
-- **Thang điểm khi có luật `not_evaluable`** — mục ngay trên. Chặn việc dùng điểm rủi ro để xếp hạng
-  DN cho tới khi chốt.
-- **C4.9 ra 11 ở DN 9/2025, sổ yêu cầu ghi 9.** Không phải lỗi: DN 9 là pháp nhân duy nhất có hai
-  sổ, 2 mã sản xuất ở sổ GC có định mức hiệu lực khai ở sổ EPE. Đếm theo sổ (ADR #19) là 11; bảng
-  trong `grill-state.md` đếm không theo sổ. Hỏi cán bộ: định mức sổ EPE có được phủ sản xuất sổ GC
-  không? Nếu có thì đó là ngoại lệ của ADR #19, phải ghi thành quyết định.
+- **Thang điểm khi có luật `not_evaluable` → [issue #65](https://github.com/TinsuAI/audit-hq-mvp/issues/65).**
+  Tách ra khỏi #56, cần owner chốt. Ba hướng nêu ở đó, chưa chọn. **CHẶN việc dùng điểm rủi ro để
+  xếp hạng DN.** Cũng ghi ở `.ai/BACKLOG.md` (trỏ về #65, không chép nội dung để khỏi lệch).
+- ~~C4.9 ra 11 ở DN 9/2025 trong khi sổ yêu cầu ghi 9~~ — **đã giải quyết**, xem quyết định (3):
+  11 = 9 thiếu hẳn + 2 khai ở sổ EPE. Hai con số hoá ra đếm cùng một thứ theo hai cách; màn hình
+  nay nói rõ cái nào là cái nào, không cần ngoại lệ cho ADR #19.
 - **Cổng review WS1 chưa bắn cho BCCT.** `review_state` trả `verified` cho mọi trường không có
   trong `CHECK_COLUMNS`, mà registry không có dòng BCCT nào. Cột `position-only` hiện badge nhưng
   file vẫn "Đã kiểm" và luồng nạp tự đi tiếp. Thêm BCCT vào `CHECK_COLUMNS` đổi vòng đời file cho
@@ -128,8 +133,13 @@ con số không bao giờ bị đọc một mình.
   đỏ ở máy dev cho tới khi migrate. Chạy sạch bằng
   `DATABASE_URL="sqlite:////<scratch>/x.sqlite" pytest`. Khi `feat/adr23-ktstq-period-scope` merge
   sẽ có hai alembic head, cần revision merge.
+- **Bản vá tạm ở prompt tổng quan AI (ADR #18 `:513`) nay HẾT CHẶN.** Nó viết "KHÔNG khẳng định
+  sạch từ mỗi con số 0 … tới khi Tầng C thêm `not_evaluable`". Tầng C đã có — gỡ được bản vá, và
+  nên cho prompt đọc `not_evaluable` thay vì né mọi số 0.
+- **Việc (a) của P-07 còn mở** — tách cột (6) khỏi (7) ở `extended_layout.py:381`. Chưa ra số sai
+  vì DN 004 có khách trả lại = 0, là trùng hợp dữ liệu chứ không phải chốt chặn trong code.
 - **Nhánh `fix/c43-multiplier-p07` và `fix/bcct-label-columns` đã cherry-pick vào nhánh này** —
-  xoá được sau khi merge.
+  xoá được sau khi merge PR #64.
 
 ## Review hai trục (chạy trước khi kết phiên)
 
@@ -194,6 +204,61 @@ không phủ sản lượng sổ GC (ADR #19), cổng vẫn bắn. Chỉ đổi 
 EPE** — khớp lại được với con số 9 trong sổ yêu cầu, và cán bộ không mất công đi đòi file đã nộp.
 
 Suite sau ba việc này: **1027 pass + 1 xfail**.
+
+## Ảnh E2E — và lỗi thứ hai nó bắt được
+
+9 ảnh + `ui_smoke.py` + `brief.md` ở `.ai/features/2026-08-05-issue-56-data-completeness/`.
+Smoke seed hai pháp nhân BỊA vào DB throwaway rồi **chạy thật `run_checks()`** — ảnh là kết
+quả check, không phải `Finding` dựng tay. Không đụng DB live hay cổng 8200.
+
+**Mẫu số `m16` = 0 khi DN không khai lại định mức.** Seed DN có định mức kế thừa (0 dòng
+`norms` trong kỳ) ra **điểm 0** dù có phát hiện Nghiêm trọng. `_count_distinct_m16` đếm
+`period_year == year`, mà T4 vừa làm C4.3 đánh giá được ở kỳ không có dòng nào → mẫu số 0 →
+`compute_rule_score` trả 0 → mọi phát hiện C4.3 của kỳ đó rơi khỏi điểm. **DN ngừng khai lại
+định mức thì điểm tự đẹp lên** — cùng một lớp lỗi với khoảng hở C4.1, ở chỗ khác. Sửa: đếm
+theo định mức hiệu lực; điểm 0 → 50. Pilot đổi mẫu số ở 4/8 (DN, kỳ), **không kỳ nào rơi về
+0** nên chỉ ca seed mới lộ ra — bài học: dữ liệu pilot không phủ hết ca biên, ca seed có giá
+trị riêng.
+
+Hai lỗi nhỏ ảnh cũng bắt: phụ đề bảng còn ghi "sắp xếp theo điểm rủi ro giảm dần" sau khi đã
+tách nhóm; nhãn cột `boundary_period` dài gấp đôi các cột số.
+
+## Từ ngữ: "Độ phủ" → "Đã đánh giá"
+
+Owner phản hồi chữ "độ phủ" không rõ nghĩa. Đúng — đó là chữ của dân test, cán bộ đọc cột
+không biết đang phủ cái gì. Hai màn hình nay nói cùng một câu: **"Đã đánh giá 17/18 bài kiểm
+tra"**. Thêm ba lớp giải thích: `title` ở tiêu đề cột, `title` ở từng ô (nói luôn vì sao DN
+đó xếp xuống nhóm sau), và một đoạn trong thẻ "Cách tính điểm rủi ro" đã có sẵn.
+
+**Giữ "độ phủ định mức" trong code và tài liệu nghiệp vụ** — đó là tên cái CỔNG (thành phẩm
+đã khai định mức chưa), khác hẳn chuyện chấm được bao nhiêu bài. Trộn hai thứ vào một chữ
+mới là chỗ gây rối ban đầu.
+
+Repo không có component tooltip, cả codebase dùng `title=` gốc trình duyệt → theo lối đó,
+không dựng cơ chế mới.
+
+**Hai test hỏng vì đoạn giải thích mới in "18/18" làm ví dụ** — chúng khẳng định
+`"17/18" in r.text` trên TOÀN TRANG. Hỏng là đúng: kiểu khẳng định đó xanh giả, dòng dữ liệu
+render rỗng vẫn qua. Sửa cả hai neo vào ô của từng dòng qua `_coverage_cells()`.
+Cùng họ với [[test-false-green-ambient-db]].
+
+## Push, PR, publish
+
+- `feat/data-completeness-gate` push, **[PR #64](https://github.com/TinsuAI/audit-hq-mvp/pull/64)**
+  mở, `Closes #57–#63`. **KHÔNG** đóng #56 — sổ yêu cầu còn 36 dòng ngoài phạm vi.
+- **Ảnh không nhúng được vào mô tả PR.** Repo private, GitHub tải ảnh markdown của PR qua
+  proxy camo, camo tải ẩn danh. Đo lại 06/08 trên đúng file: ẩn danh **404**, có token **200**.
+  PR để gallery dạng LIÊN KẾT + trỏ `brief.md` (ở đó GitHub render bằng phiên người xem nên
+  hiện inline). Muốn thumbnail thật trong PR thì phải kéo thả file vào comment — `gh` không
+  có API upload attachment.
+- Repo đề án push **6 commit** (5 + 1 phát sinh). Rà trước 2 commit có từ trước phiên
+  (`f047b03`, `77f1117`): sạch, 4 file văn bản, không dữ liệu thật.
+  **Phát sinh:** `de-an-audit-hq.html` là file SINH RA từ markdown qua `make html` và đã cũ —
+  bản đang nằm trong repo (và đang được `make publish` đẩy lên web) vẫn ghi "49 kiểm tra",
+  không có C4.9. Render lại → `8fba236`.
+- `make publish` xong. Verify trên web thật, không chỉ tin exit code:
+  `https://audit-hq.tinsu.ai/` trả 200, C4.9 xuất hiện 4 chỗ, "49 kiểm tra" hết, **md5 bản web
+  = md5 file local**.
 
 ## Ghi chú kiểm chứng
 

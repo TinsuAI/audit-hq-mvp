@@ -1,8 +1,11 @@
 # STATUS — Audit-HQ MVP
 
-> **Trạng thái (2026-08-06 — BẢY TICKET #57–#63 ĐÃ CÀI XONG VÀ MERGE VÀO
-> `feat/data-completeness-gate`. Chưa push, chưa mở PR):**
-> Suite **1016 pass + 1 xfail** (vào phiên 957). `ruff check app tests` sạch.
+> **Trạng thái (2026-08-06 — BẢY TICKET #57–#63 XONG. [PR #64](https://github.com/TinsuAI/audit-hq-mvp/pull/64)
+> ĐÃ MỞ, ĐÃ PUSH, CHỜ REVIEW. Đề án đã push + publish):**
+> Suite **1028 pass + 1 xfail** (vào phiên 957). `ruff check app tests` sạch. Chưa merge.
+> `feat/data-completeness-gate` @ `170692d`, 25 commit trên `origin/main`.
+> Repo đề án `TinsuAI/audit-hq` `main` @ `8fba236` đã push; `make publish` đã chạy —
+> `https://audit-hq.tinsu.ai/` verify được: C4.9 có mặt, "50 kiểm tra", md5 khớp file local.
 > T1 #57 `companies.first_bcqt_year` · T2 #58 `not_evaluable` thành trạng thái chạy thật ·
 > T3 #59 C4.3 nhường mã không có dòng M15 cho C4.1 · T4 #60 định mức hiệu lực (bản khai gần nhất
 > ≤ kỳ, gộp theo sổ) · T5 #61 check MỚI **C4.9** liệt kê mã TP thiếu định mức · T6 #62 cổng nhị
@@ -17,12 +20,14 @@
 > kỳ) và (mã có tiêu hao lý thuyết > 0 theo định mức hiệu lực), vẫn gắn với sản xuất trong kỳ.
 > Khoảng hở nay = 0; C4.1 đi từ 36 lên 232 phát hiện trên pilot.
 >
-> **BA QUYẾT ĐỊNH OWNER CUỐI PHIÊN — ĐÃ CÀI XONG (suite 1027 pass + 1 xfail):**
+> **BA QUYẾT ĐỊNH OWNER CUỐI PHIÊN — ĐÃ CÀI XONG:**
 > (1) **Thang điểm giữ nguyên công thức, nhưng điểm không bao giờ đứng một mình** —
-> `score_coverage()` cho `(đã đánh giá, tổng)`, hiện cạnh điểm ở trang DN và thành cột "Độ phủ" ở
-> danh sách DN; **xếp hạng tách nhóm**, DN có kỳ nào còn luật chưa đánh giá được xuống nhóm sau bất
-> kể điểm (cả server lẫn sort client). Độ phủ DN lấy **kỳ xấu nhất**. `compute_company_year_score`
-> lưu thêm `rule_count`. Không đổi logic check nào.
+> `score_coverage()` cho `(đã đánh giá, tổng)`, hiện cạnh điểm ở trang DN và thành cột
+> **"Đã đánh giá"** ở danh sách DN; **xếp hạng tách nhóm**, DN có kỳ nào chưa đánh giá đủ xuống
+> nhóm sau bất kể điểm (cả server lẫn sort client). Lấy theo **kỳ xấu nhất**.
+> `compute_company_year_score` lưu thêm `rule_count`. Không đổi logic check nào.
+> *(Chữ "độ phủ" đã bỏ khỏi giao diện — jargon, cán bộ không biết đang phủ cái gì. Giữ "độ phủ
+> định mức" trong code/nghiệp vụ vì đó là tên cái CỔNG, khác chuyện chấm được bao nhiêu bài.)*
 > (2) **Kỳ biên: C4.9 vẫn liệt kê**, mỗi phát hiện mang cờ `boundary_period` — C4.3 dừng hẳn còn
 > C4.9 thì không, vì danh sách từng mã là thứ cán bộ cần.
 > (3) **DN 9: định mức ở sổ khác thì nói đúng như vậy** — hành vi không đổi (ADR #19 giữ nguyên,
@@ -38,21 +43,44 @@
 > Đây đúng là thứ loạt ticket sinh ra để chặn — thừa nhận không đánh giá được lại làm DN sạch hơn.
 > T2 KHÔNG sửa được: T2 bảo đảm "not_evaluable == luật vắng mặt", và giữ đúng lời; cái sai là điểm
 > vốn là một TRUNG BÌNH. Ghi bằng `test_norm_gate.py::test_gate_does_not_lower_the_risk_score`
-> đánh `xfail(strict=True)` mang đủ số đo, KHÔNG hạ assertion. **Cần owner chốt thang điểm.**
+> đánh `xfail(strict=True)` mang đủ số đo, KHÔNG hạ assertion. **Đã tách thành issue #65 —
+> cần owner chốt thang điểm; CHẶN việc dùng điểm rủi ro để xếp hạng DN.** Ba hướng đã nêu ở #65,
+> chưa chọn. Biện pháp ở PR #64 chỉ che chắn cách đọc sai, không phải lời giải.
 >
 > **Kết quả cổng trên pilot:** chỉ **DN 8/2025** qua cả hai cổng, giữ 1.665/2.523 = 66%. Con số
 > 1.772/3.296 = 54% ở ticket không tái hiện vì nó đo TRƯỚC T3+T4 (10/2026 568→104, 10/2024 243→24).
 > Cả 8 DN đều có `first_bcqt_year = NULL` nên mọi kỳ biên đều vướng cổng B.
 >
-> **Còn mở:** (a) **cổng review WS1 chưa bắn cho BCCT** —
-> `review_state` trả `verified` cho trường không có trong `CHECK_COLUMNS` mà registry không có dòng
-> BCCT, nên cột `position-only` hiện badge nhưng file vẫn "Đã kiểm"; vế "đọc đúng cột" của dòng 0.2
-> xong, vế "cảnh báo tới cán bộ" chưa thông; (b) HIEP_QUANG + HONG_AN nạp được rồi, chưa nạp;
-> (c) DB dev lệch schema, `alembic current` fail (stamp `a9b0c1d2e3f4` chỉ có trên
-> `feat/adr23-ktstq-period-scope`) → `tests/test_smoke.py` bind vào đó nên suite đỏ ở máy dev, chạy
-> sạch bằng `DATABASE_URL="sqlite:////<scratch>/x.sqlite" pytest`; khi nhánh kia merge sẽ có hai
-> alembic head.
-> **Next: push + mở PR.** Session log: `.ai/sessions/2026-08-06-implement-issue-56-bay-ticket.md`.
+> **Lỗi thứ hai tự phát hiện — mẫu số `m16` = 0.** Bộ ảnh E2E seed một DN có định mức kế thừa
+> (0 dòng `norms` trong kỳ) và ra **điểm 0** dù có phát hiện Nghiêm trọng: `_count_distinct_m16`
+> đếm `period_year == year`, mà #60 vừa làm C4.3 đánh giá được ở kỳ không có dòng nào → mẫu số 0 →
+> `compute_rule_score` trả 0 → **DN ngừng khai lại định mức thì điểm tự đẹp lên**. Đã sửa: đếm theo
+> định mức hiệu lực. Trên pilot đổi mẫu số ở 4/8 (DN, kỳ) (8/2025 8.165→9.885 · 10/2024
+> 1.737→1.865 · 10/2025 2.662→2.995 · 10/2026 2.565→3.316), **không kỳ nào rơi về 0** nên chỉ ca
+> seed mới lộ ra.
+>
+> **Ảnh E2E:** 9 ảnh + `ui_smoke.py` + `brief.md` ở
+> `.ai/features/2026-08-05-issue-56-data-completeness/`. Ảnh là kết quả `run_checks()` chạy THẬT
+> trên hai DN seed bịa trong DB throwaway. Ảnh **không nhúng được vào mô tả PR** (repo private,
+> camo tải ẩn danh → 404; đo lại 06/08); PR #64 để gallery dạng liên kết, xem inline thì mở
+> `brief.md` trên github.com.
+>
+> **Còn mở:** (a) **#65 thang điểm** — mục trên, chặn xếp hạng DN; (b) **cổng review WS1 chưa bắn
+> cho BCCT** — `review_state` trả `verified` cho trường không có trong `CHECK_COLUMNS` mà registry
+> không có dòng BCCT, nên cột `position-only` hiện badge nhưng file vẫn "Đã kiểm"; vế "đọc đúng
+> cột" của dòng 0.2 xong, vế "cảnh báo tới cán bộ" chưa thông; (c) HIEP_QUANG + HONG_AN nạp được
+> rồi, chưa nạp; (d) **bản vá tạm ở prompt tổng quan AI** (ADR #18 `:513`) nay hết chặn — Tầng C đã
+> có `not_evaluable`, gỡ được và nên cho prompt đọc trạng thái đó thay vì né mọi số 0; (e) việc (a)
+> của P-07 còn mở — tách cột (6) khỏi (7) ở `extended_layout.py`; (f) DB dev lệch schema,
+> `alembic current` fail (stamp `a9b0c1d2e3f4` chỉ có trên `feat/adr23-ktstq-period-scope`) →
+> `tests/test_smoke.py` bind vào đó nên suite đỏ ở máy dev, chạy sạch bằng
+> `DATABASE_URL="sqlite:////<scratch>/x.sqlite" pytest`; khi nhánh kia merge sẽ có hai alembic head,
+> cần revision merge; (g) nhánh `fix/c43-multiplier-p07` + `fix/bcct-label-columns` đã cherry-pick
+> vào đây, xoá được.
+>
+> **Next: review + merge PR #64.** Sau merge: xoá hai nhánh ở (g), rồi chốt #65 trước khi bật
+> tính năng xếp hạng DN theo điểm.
+> Session log: `.ai/sessions/2026-08-06-implement-issue-56-bay-ticket.md`.
 
 > **Trạng thái (2026-08-05 — ISSUE #56: SỔ YÊU CẦU → 7 TICKET #57–#63. PR #55 ĐÃ MERGE.
 > Nhánh `feat/data-completeness-gate`):**
