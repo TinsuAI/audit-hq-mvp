@@ -23,6 +23,7 @@ from app.adapters._common import (
 )
 from app.adapters.evidence import evidence_m16
 from app.adapters.form_signature import compute_form_signature
+from app.adapters.layout import find_data_start
 from app.adapters.sheet_select import SheetNotFound, select_sheet
 
 
@@ -133,6 +134,7 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
     xls = pd.ExcelFile(p)
     cols = _M16_TT39_COLS
     data_start = _M16_TT39_DATA_START
+    picked = sheet is not None
     if sheet is None:
         try:
             # Chọn theo nội dung trước: có DN gộp Mẫu 15/15a/16 vào một workbook,
@@ -149,6 +151,10 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
 
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
+    if picked:
+        # Trang tính do cán bộ chỉ định: dò dòng dữ liệu đầu ngay trên trang đó thay vì
+        # giữ hằng số của mẫu chuẩn — trang được chỉ định thường là trang lệch mẫu.
+        data_start = find_data_start(cells, "m16")
     header = parse_company_header(cells)
 
     # ĐM thực tế thắng ĐM kỹ thuật khi có cả hai (004). Copy trước khi sửa — `cols` là

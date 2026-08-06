@@ -27,6 +27,48 @@
   </div>
 
   {% if job.status == "done" and job.result %}
+  {% set res = job.result %}
+  {% set company_code = job.payload.get("company_code") if job.payload else None %}
+
+  {% if res.get("diagnostics") %}
+  <div class="diag-panel">
+    <div class="diag-head">
+      <span class="diag-icon">⚠️</span>
+      <div>
+        <h3>Dữ liệu chưa nạp được — phát hiện vấn đề khi đọc file</h3>
+        <p>Hệ thống chưa nạp để tránh phân tích nhầm trên dữ liệu đọc sai. Sửa file rồi tải lại, hoặc nhờ AI chẩn đoán cấu trúc file.</p>
+      </div>
+    </div>
+    {% for d in res["diagnostics"] %}
+    <div class="diag-item diag-item-{{ 'error' if d.level == 'error' else 'warn' }}">
+      <p class="diag-item-title">{{ '🔴' if d.level == 'error' else '🟡' }} {{ d.title }}</p>
+      <p class="diag-item-detail">{{ d.detail }}</p>
+    </div>
+    {% endfor %}
+    {% if company_code %}
+    <form method="post" action="/companies/{{ company_code }}/diagnose-ai" class="diag-ai-form">
+      <input type="hidden" name="year" value="{{ job.period_year or '' }}">
+      <button type="submit" class="btn btn-secondary">🤖 Nhờ AI chẩn đoán cấu trúc file</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if res.get("review_columns") %}
+  <div class="diag-panel">
+    <div class="diag-head">
+      <span class="diag-icon">⚠️</span>
+      <div>
+        <h3>Đã phân tích, chưa nạp — cần xác nhận cột</h3>
+        <p>Các cột dưới đây chỉ suy được theo vị trí. Xác nhận ở trang tài liệu rồi hệ thống nạp tiếp.</p>
+      </div>
+    </div>
+    <div class="diag-item diag-item-warn">
+      <p class="diag-item-detail">{{ res["review_columns"] | join(" · ") }}</p>
+    </div>
+  </div>
+  {% endif %}
+
   <h3>Kết quả</h3>
   <table class="data-table compact">
     <tbody>
@@ -35,11 +77,20 @@
     {% endfor %}
     </tbody>
   </table>
-  {% if job.payload and job.payload.get("company_code") %}
+  {% if company_code %}
   <p>
-    <a href="/companies/{{ job.payload['company_code'] }}?year={{ job.period_year or '' }}" class="btn-link">
-      → Xem kết quả kiểm tra cho {{ job.payload["company_code"] }}
+    {% if job.kind == "ingest" %}
+    <a href="/companies/{{ company_code }}/documents" class="btn-link">
+      → Trang tài liệu của {{ company_code }}
     </a>
+    {% if res.get("checks_job_id") %}
+    · <a href="/jobs/{{ res['checks_job_id'] }}" class="btn-link">→ Công việc chạy kiểm tra #{{ res["checks_job_id"] }}</a>
+    {% endif %}
+    {% else %}
+    <a href="/companies/{{ company_code }}?year={{ job.period_year or '' }}" class="btn-link">
+      → Xem kết quả kiểm tra cho {{ company_code }}
+    </a>
+    {% endif %}
   </p>
   {% endif %}
   {% endif %}

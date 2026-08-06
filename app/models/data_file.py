@@ -77,6 +77,11 @@ class DataFile(Base):
     # (ADR #19 Revision — UI + upload). NULL = pháp nhân một sổ / tờ khai dùng chung.
     # Chỉ có nghĩa với slot m15/m15a/m16; slot bcct luôn toàn pháp nhân → NULL.
     book: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Trang tính (sheet) do CÁN BỘ chỉ định cho file này. NULL = để `select_sheet`
+    # tự chấm điểm chọn. Cần vì một workbook kết xuất từ ECUS có cả trang tổng hợp
+    # cấp tờ khai lẫn trang chi tiết dòng hàng, và vài trang phụ (phí, lệ phí, tờ
+    # khai tại chỗ) — chọn nhầm thì đọc ra dòng SAI chứ không phải 0 dòng.
+    sheet_override: Mapped[str | None] = mapped_column(String(128), nullable=True)
     parse_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=DataFileStatus.PENDING,
     )

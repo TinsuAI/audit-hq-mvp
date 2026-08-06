@@ -74,8 +74,6 @@ from app.pipeline.audit_scope import (
 )
 from app.pipeline.coverage import bcct_coverage, coverage_gaps, overlapping_periods
 from app.pipeline.export import build_export
-from app.pipeline.ingest import IngestPlanError
-from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.period import (
     FISCAL_START_MONTHS,
     QUARTER_START_MONTHS,
@@ -630,6 +628,44 @@ def update_company(
     return RedirectResponse(url=f"/companies/{code}", status_code=303)
 
 
+def _enqueue_ingest(
+    db: Session,
+    user: SessionUser,
+    company: Company,
+    year: int,
+    *,
+    gate: bool,
+    then_run_checks: dict | None = None,
+):
+    """Xếp job nạp dữ liệu cho (DN, năm) và trả Job vừa tạo.
+
+    Mọi đường nạp (tải lên, nạp lại, xác nhận cột) đi qua đây — đọc file là việc
+    hàng phút, request không giữ nổi (Cloudflare cắt ở 100 giây).
+    """
+    from app.auth_users import get_user_by_username
+    from app.jobs import enqueue_job
+    from app.models.job import JobKind
+
+    ur = get_user_by_username(db, user.name)
+    if ur is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản của phiên đăng nhập này không còn tồn tại. Hãy đăng nhập lại.",
+        )
+    payload: dict = {
+        "company_code": company.code,
+        "year": year,
+        "gate": gate,
+        "created_by": ur.id,
+    }
+    if then_run_checks is not None:
+        payload["then_run_checks"] = then_run_checks
+    return enqueue_job(
+        db, kind=JobKind.INGEST, payload=payload,
+        created_by=ur.id, company_id=company.id, period_year=year,
+    )
+
+
 @router.get("/companies/{code}/upload", response_class=HTMLResponse)
 def upload_form(
     code: str,
@@ -692,82 +728,14 @@ def upload_data(
             status_code=303,
         )
 
-    # Cập nhật registry file ngay sau khi lưu (kể cả khi sắp báo lỗi chẩn đoán).
-    from app.pipeline.data_files import (
-        record_parse_result,
-        should_stop_for_review,
-        sync_data_files,
-        year_review_gate,
-    )
+    # Cập nhật registry file ngay sau khi lưu (nhanh — chỉ đọc tên + kích thước).
+    from app.pipeline.data_files import sync_data_files
     sync_data_files(db, company)
 
-    # CHẨN ĐOÁN trước khi nạp — chống misparse thầm lặng (file HQ sai mẫu/lệch cột).
-    diagnosis = diagnose_upload(company.code, year, Path(settings.raw_data_path))
-    if diagnosis.has_errors:
-        from app.ai.config import get_setting
-        from app.pipeline.ingest import IngestStats
-        record_parse_result(
-            db, company, year, IngestStats(company_code=company.code, period_year=year), diagnosis,
-        )
-        try:
-            ai_enabled = bool(get_setting("enabled")) and bool(get_setting("api_key"))
-        except Exception:  # noqa: BLE001 — AI optional, đừng để lỗi config chặn upload
-            ai_enabled = False
-        return templates.TemplateResponse(
-            request, "upload_data.html",
-            {
-                "user": user, "company": company, "year": year,
-                "year_options": _year_options(year),
-                "year_min": YEAR_MIN, "year_max": YEAR_MAX, "error": None,
-                "diagnosis": diagnosis, "ai_enabled": ai_enabled,
-            },
-            status_code=422,
-        )
-
-    # Cổng review (ADR #18): dry-run parse trước để tính bằng chứng + review mỗi cột,
-    # CHƯA ghi dòng. Mọi cột `verified` → tự advance sang parsed (đường whitelist chảy
-    # suốt); có cột `needs_review` → DỪNG ở `analyzed`, cán bộ bấm "Nạp dữ liệu" để
-    # tiếp (cảnh báo, không chặn — check vẫn chạy sau khi parsed).
-    raw_path = Path(settings.raw_data_path)
-    try:
-        analyze_stats = run_ingest(company.code, year, raw_root=raw_path, dry_run=True)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=400, detail=f"Lỗi khi dò cấu trúc file: {e}") from e
-    except Exception as e:  # noqa: BLE001 — show parser errors back to user
-        raise HTTPException(status_code=500, detail=f"Phân tích file lỗi: {type(e).__name__}: {e}") from e
-    record_parse_result(db, company, year, analyze_stats, diagnosis, committed=False)
-
-    gate = year_review_gate(db, company, year)
-    if should_stop_for_review(gate):
-        return RedirectResponse(
-            url=(
-                f"/companies/{code}/documents?msg=%C4%90%C3%A3+t%E1%BA%A3i+l%C3%AAn+%26"
-                f"+ph%C3%A2n+t%C3%ADch+n%C4%83m+{year}+%E2%80%94+c%E1%BA%A7n+x%C3%A1c"
-                f"+nh%E1%BA%ADn+c%E1%BB%99t+tr%C6%B0%E1%BB%9Bc+khi+n%E1%BA%A1p"
-            ),
-            status_code=303,
-        )
-
-    # Tự advance: NẠP dữ liệu (commit). KHÔNG tự chạy kiểm tra (bước riêng).
-    try:
-        stats = run_ingest(company.code, year, raw_root=raw_path)
-    except IngestPlanError as e:
-        # Kế hoạch nạp bị từ chối (gán sổ nửa vời / thiếu file đã đăng ký) — việc cán bộ
-        # phải xử lý ở trang tài liệu, không phải lỗi hệ thống. File đã tải lên + đăng ký;
-        # kế hoạch bị từ chối TRƯỚC lệnh xoá nên dữ liệu cũ nguyên vẹn.
-        return RedirectResponse(
-            url=f"/companies/{code}/documents?error="
-            + quote_plus(f"Đã tải lên, CHƯA nạp dữ liệu. {e}"),
-            status_code=303,
-        )
-    except Exception as e:  # noqa: BLE001 — show parser errors back to user
-        raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
-
-    record_parse_result(db, company, year, stats, diagnosis)
-    return RedirectResponse(
-        url=f"/companies/{code}/documents?msg=%C4%90%C3%A3+t%E1%BA%A3i+l%C3%AAn+%26+n%E1%BA%A1p+d%E1%BB%AF+li%E1%BB%87u+n%C4%83m+{year}",
-        status_code=303,
-    )
+    # Chẩn đoán + nạp chạy ở worker, KHÔNG trong request: một bộ file lớn (BCCT 68MB
+    # của 006) mất vài phút, còn Cloudflare cắt kết nối ở 100 giây (lỗi 524).
+    job = _enqueue_ingest(db, user, company, year, gate=True)
+    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
 @router.post("/companies/{code}/diagnose-ai", response_model=None)
@@ -1158,7 +1126,7 @@ def _excel_col_letters(n: int) -> list[str]:
 
 
 def _extract_sheet_preview(
-    abs_path: Path, sheet: int = 0,
+    abs_path: Path, sheet: int | str = 0,
     max_rows: int = PREVIEW_ROWS, max_cols: int = PREVIEW_COLS,
 ) -> dict:
     """Đọc thô (không qua adapter) `max_rows × max_cols` ô đầu của một sheet Excel.
@@ -1169,14 +1137,21 @@ def _extract_sheet_preview(
     import pandas as pd
 
     out: dict = {
-        "sheet_names": [], "selected_sheet": 0, "columns": [], "rows": [],
+        "sheet_names": [], "selected_sheet": 0, "selected_sheet_name": None,
+        "columns": [], "rows": [],
         "truncated_rows": False, "truncated_cols": False, "error": None,
     }
     try:
         xls = pd.ExcelFile(abs_path)
         out["sheet_names"] = list(xls.sheet_names)
-        sel = sheet if 0 <= sheet < len(out["sheet_names"]) else 0
+        # `sheet` là TÊN trang khi gọi từ màn review (trang parser thật sự đọc) và là
+        # chỉ số khi gọi từ trang xem file. Tên không có trong workbook → về trang đầu.
+        if isinstance(sheet, str):
+            sel = out["sheet_names"].index(sheet) if sheet in out["sheet_names"] else 0
+        else:
+            sel = sheet if 0 <= sheet < len(out["sheet_names"]) else 0
         out["selected_sheet"] = sel
+        out["selected_sheet_name"] = out["sheet_names"][sel] if out["sheet_names"] else None
         df = pd.read_excel(xls, sheet_name=sel, header=None, nrows=max_rows + 1, dtype=object)
         out["truncated_rows"] = len(df) > max_rows
         df = df.iloc[:max_rows]
@@ -1275,8 +1250,14 @@ def documents_review_file(
     mapped_idx = [i for i in column_map.values() if isinstance(i, int)]
     grid_cols = min(max((max(mapped_idx) + 2 if mapped_idx else 0), 8), PREVIEW_COLS)
     abs_path = _resolve_within_root(row.stored_path)
+    # Lưới xem trước phải là TRANG PARSER ĐỌC, không phải trang đầu workbook: file BCCT
+    # kết xuất từ ECUS có trang `Tổng hợp` đứng trước trang `Chi tiết` đang được nạp,
+    # xác nhận chỉ số cột trên trang tổng hợp là xác nhận nhầm bố cục.
+    parsed_sheet = detail.get("sheet")
     preview = (
-        _extract_sheet_preview(abs_path, 0, REVIEW_PREVIEW_ROWS, grid_cols)
+        _extract_sheet_preview(
+            abs_path, row.sheet_override or parsed_sheet or 0, REVIEW_PREVIEW_ROWS, grid_cols,
+        )
         if abs_path.is_file() else None
     )
     col_annot = {
@@ -1307,6 +1288,11 @@ def documents_review_file(
             "is_settlement": is_settlement,
             "book_options": book_options,
             "book_known": BOOK_LABELS,
+            # Trang tính: trang parser đọc lần gần nhất, trang cán bộ đã chỉ định, và
+            # danh sách trang có trong workbook để chọn lại.
+            "parsed_sheet": parsed_sheet,
+            "sheet_override": row.sheet_override,
+            "sheet_names": (preview or {}).get("sheet_names", []),
             # Cửa sổ kỳ đang dùng lệch niên độ DN (#50): CẢNH BÁO, không tự chọn hộ.
             "period_conflict": period_window_conflict(db, company.id, row.period_year),
         },
@@ -1321,12 +1307,13 @@ async def documents_confirm_review(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    """Xác nhận map cột: ghi saved-map (#6) rồi re-ingest (commit) → file advance
+    """Xác nhận map cột / sổ / trang tính rồi xếp job nạp lại → file advance
     `analyzed→parsed`, cột trong map resolve `officer-confirmed` → `verified`.
 
-    Chuỗi advance: ``save_column_map`` (+ commit) → ``run_ingest`` → ``record_parse_result``
+    Chuỗi advance: ``save_column_map`` (+ commit) → job ``ingest`` → ``record_parse_result``
     (committed=True). ``record_parse_result`` gọi ``resolve_officer_confirmed`` nên các cột
-    vừa lưu map lên `officer-confirmed`, cổng review clear.
+    vừa lưu map lên `officer-confirmed`, cổng review clear. Phần nạp nằm ở hàng đợi vì đọc
+    file là việc hàng phút với bộ dữ liệu thật (xem DECISIONS 2026-08-06).
     """
     company = get_company_or_404(db, code, user)
     row = db.get(DataFile, file_id)
@@ -1378,10 +1365,19 @@ async def documents_confirm_review(
         book_changed = (row.book or None) != new_book
         row.book = new_book
 
+    # Trang tính: ô trống = "để hệ thống tự chọn", chọn tên = ghim trang đó. Ghim đúng
+    # trang đang đọc vẫn được lưu (không tự xoá), nếu không thì lần sửa sau lặng lẽ trả
+    # quyền chọn về cho máy. So sánh trang SẼ ĐỌC (không phải giá trị ô) để biết có đổi
+    # thật hay không — đổi trang là đổi toàn bộ dòng, xử lý như đổi sổ: chạy lại cả năm.
+    new_sheet = (form.get("sheet") or "").strip() or None
+    read_sheet = detail.get("sheet")  # trang lượt nạp gần nhất đã đọc
+    unpinned = row.sheet_override is not None and new_sheet is None
+    sheet_changed = unpinned or (row.sheet_override or read_sheet) != (new_sheet or read_sheet)
+    row.sheet_override = new_sheet
+
     evidence = {c["field"]: c.get("evidence") for c in columns if c.get("field")}
 
     from app.auth_users import get_user_by_username
-    from app.pipeline.data_files import record_parse_result, sync_data_files
     from app.pipeline.saved_map import save_column_map
 
     ur = get_user_by_username(db, user.name)
@@ -1391,46 +1387,13 @@ async def documents_confirm_review(
     )
     db.commit()
 
-    # Re-ingest thật (commit dòng) — record_parse_result đọc saved-map vừa ghi để nâng
-    # các cột lên officer-confirmed → verified → cổng review clear, file thành parsed.
-    raw_root = Path(settings.raw_data_path)
-    diagnosis = diagnose_upload(company.code, year, raw_root)
-    if diagnosis.has_errors:
-        from app.pipeline.ingest import IngestStats
-        sync_data_files(db, company)
-        record_parse_result(
-            db, company, year,
-            IngestStats(company_code=company.code, period_year=year), diagnosis,
-        )
-        return _redirect(
-            "error=" + quote_plus("Đã lưu bố cục cột nhưng nạp lỗi — xem chi tiết ở trang tải lên.")
-        )
-    try:
-        stats = run_ingest(company.code, year, raw_root=raw_root)
-    except IngestPlanError as e:
-        # Selector sổ là per-file: gán xong file này thì file kia còn trống — bước BẮT BUỘC
-        # đi qua khi dựng pháp nhân nhiều sổ, không phải lỗi hệ thống. Sổ vừa gán đã commit
-        # ở trên nên cán bộ gán tiếp file sau; kế hoạch bị từ chối TRƯỚC lệnh xoá nên dòng
-        # của lượt nạp trước còn nguyên.
-        sync_data_files(db, company)
-        return _redirect(
-            "error=" + quote_plus(f"Đã lưu sổ cho file này, CHƯA nạp dữ liệu. {e}")
-        )
-    except Exception as e:  # noqa: BLE001 — show parser errors back to user
-        raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
-
-    sync_data_files(db, company)
-    record_parse_result(db, company, year, stats, diagnosis)
-
     # File đã `parsed` + có cột đổi map → chạy lại CHỈ check đọc cột đã đổi (scoped,
     # ADR #18). Finding tham chiếu Tầng 1 qua evidence_refs (table + filter theo mã
     # hàng), KHÔNG theo id dòng → dòng thay khi re-ingest không làm treo finding của
     # check KHÔNG chạy lại (khoá lọc = mã hàng vẫn đúng vì cột mã không đổi). Nếu cột
     # KHOÁ (mã) đổi thì khoá lọc đổi → mở rộng ra mọi check đọc slot (gồm C2.1/C2.2).
-    label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
-    # Re-run check sau re-ingest (ADR #18 Revision — WS2, async qua job): cột đổi map →
-    # scoped theo check đọc cột đó; ĐỔI SỔ (book) trên file đã parsed → gom nội-sổ +
-    # union cross-layer đổi trên diện rộng → chạy lại TOÀN BỘ năm (only=None).
+    # ĐỔI SỔ (book) trên file đã parsed → gom nội-sổ + union cross-layer đổi trên diện
+    # rộng → chạy lại TOÀN BỘ năm (only=None).
     affected: set[str] = set()
     if was_parsed and changed_fields:
         from app.checks.registry import checks_reading, checks_reading_slot
@@ -1439,36 +1402,26 @@ async def documents_confirm_review(
             affected.update(checks_reading(slot, f))
         if _SLOT_KEY_FIELD.get(slot) in changed_fields:
             affected.update(checks_reading_slot(slot))
-    run_full = was_parsed and book_changed
+    run_full = was_parsed and (book_changed or sheet_changed)
+    then_run_checks: dict | None = None
     if was_parsed and (affected or run_full):
-        # confirm + re-ingest (áp map/book, file→`parsed`) GIỮ đồng bộ ở trên; chỉ phần
-        # re-run enqueue → worker 1-thread serialize ghi, triệt tranh chấp SQLite.
-        if ur is not None:
-            from app.jobs import enqueue_job
-            from app.models.job import JobKind
-            payload: dict = {"company_code": company.code, "year": year}
-            if not run_full:
-                payload["only"] = sorted(affected)
-            job = enqueue_job(
-                db, kind=JobKind.RUN_CHECKS, payload=payload,
-                created_by=ur.id, company_id=company.id, period_year=year,
-            )
-            log_access(
-                db, username=user.name, action=ACTION_RUN_CHECKS,
-                company_code=company.code,
-                detail=(
-                    f"year={year} "
-                    f"only={'ALL' if run_full else ','.join(sorted(affected))} (confirm-review)"
-                ),
-            )
-            return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
-        # Fallback hiếm (session user không map được row): chạy inline để không bỏ sót.
-        from app.pipeline.run_checks import run_checks
-        run_checks(company.code, year, only=None if run_full else affected)
+        then_run_checks = {"only": None if run_full else sorted(affected)}
+        log_access(
+            db, username=user.name, action=ACTION_RUN_CHECKS,
+            company_code=company.code,
+            detail=(
+                f"year={year} "
+                f"only={'ALL' if run_full else ','.join(sorted(affected))} (confirm-review)"
+            ),
+        )
 
-    return _redirect(
-        "msg=" + quote_plus(f"Đã xác nhận cột {label} năm {year} và nạp dữ liệu")
+    # Re-ingest thật (commit dòng) chạy ở worker — record_parse_result đọc saved-map vừa
+    # ghi để nâng các cột lên officer-confirmed → verified → cổng review clear, file thành
+    # `parsed`. Job nối tiếp job chạy kiểm tra khi cần, đúng thứ tự.
+    job = _enqueue_ingest(
+        db, user, company, year, gate=False, then_run_checks=then_run_checks,
     )
+    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
 @router.post("/companies/{code}/documents/ingest", response_model=None)
@@ -1478,42 +1431,14 @@ def documents_ingest_year(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    """Nạp lại dữ liệu cho 1 năm từ file đã tải lên (không cần upload lại)."""
+    """Nạp lại dữ liệu cho 1 năm từ file đã tải lên (không cần upload lại).
+
+    Cán bộ vừa quyết định xong ở trang tài liệu nên KHÔNG dừng lại ở cổng review
+    (`gate=False`) — dừng nữa là quay vòng chính thao tác họ vừa làm.
+    """
     company = get_company_or_404(db, code, user)
-
-    from app.pipeline.data_files import record_parse_result, sync_data_files
-
-    raw_root = Path(settings.raw_data_path)
-    diagnosis = diagnose_upload(company.code, year, raw_root)
-    if diagnosis.has_errors:
-        from app.pipeline.ingest import IngestStats
-        sync_data_files(db, company)
-        record_parse_result(
-            db, company, year, IngestStats(company_code=company.code, period_year=year), diagnosis,
-        )
-        return RedirectResponse(
-            url=f"/companies/{code}/documents?error=N%E1%BA%A1p+l%E1%BB%97i%2C+xem+chi+ti%E1%BA%BFt+%E1%BB%9F+trang+t%E1%BA%A3i+l%C3%AAn",
-            status_code=303,
-        )
-    try:
-        stats = run_ingest(company.code, year, raw_root=raw_root)
-    except IngestPlanError as e:
-        # Gán sổ nửa vời / thiếu file đã đăng ký: việc cán bộ phải xử lý, không phải lỗi
-        # hệ thống. Từ chối xảy ra TRƯỚC lệnh xoá nên dữ liệu của lượt nạp trước còn nguyên.
-        sync_data_files(db, company)
-        return RedirectResponse(
-            url=f"/companies/{code}/documents?error=" + quote_plus(str(e)),
-            status_code=303,
-        )
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Nạp dữ liệu lỗi: {type(e).__name__}: {e}") from e
-
-    sync_data_files(db, company)
-    record_parse_result(db, company, year, stats, diagnosis)
-    return RedirectResponse(
-        url=f"/companies/{code}/documents?msg=%C4%90%C3%A3+n%E1%BA%A1p+d%E1%BB%AF+li%E1%BB%87u+n%C4%83m+{year}",
-        status_code=303,
-    )
+    job = _enqueue_ingest(db, user, company, year, gate=False)
+    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
 @router.post("/companies/{code}/documents/period", response_model=None)

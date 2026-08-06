@@ -22,7 +22,7 @@ from app.auth import (
 from app.auth_users import get_user_by_username, seed_default_admin, set_password
 from app.database import SessionLocal, get_db
 from app.jobs import register_handler
-from app.jobs.handlers import run_batch_handler, run_checks_handler
+from app.jobs.handlers import ingest_handler, run_batch_handler, run_checks_handler
 from app.jobs.worker import JobWorker, recover_zombie_jobs
 from app.models.job import AI_JOB_KINDS, JobKind
 from app.routes.admin import router as admin_router
@@ -86,6 +86,10 @@ async def lifespan(app: FastAPI):
         pass  # idempotent: tests có thể đã register
     try:
         register_handler(JobKind.BATCH_RUN, run_batch_handler)
+    except ValueError:
+        pass
+    try:
+        register_handler(JobKind.INGEST, ingest_handler)
     except ValueError:
         pass
     try:

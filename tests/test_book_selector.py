@@ -21,6 +21,7 @@ from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.settings import settings
+from tests.helpers import drain_jobs, last_job_result
 
 # Header Mẫu 15 chuẩn nhưng cột xuất SX (col 8) nhãn không khớp từ khoá → cột dùng
 # riêng lẻ chỉ balance-checked → needs_review → cổng review bật (parse_detail có
@@ -89,6 +90,7 @@ def _upload_m15(client, codes: list[str], code="DN_SEL"):
         follow_redirects=False,
     )
     assert r.status_code == 303
+    drain_jobs()
 
 
 # ─────────────────────── normalize_book ───────────────────────
@@ -176,6 +178,7 @@ def test_confirm_writes_book_and_tags_balance(tmp_path):
             data=data, follow_redirects=False,
         )
         assert r.status_code == 303
+        drain_jobs()
 
         with dbmod.SessionLocal() as db:
             c = db.query(Company).filter_by(code="DN_SEL").first()
@@ -211,6 +214,7 @@ def test_two_books_tagged_via_browser_show_in_branch_a(tmp_path):
         # Analyze + commit + set parse_detail (form_signature) cho cả 2 file m15.
         client.post("/companies/DN_SEL/documents/ingest", data={"year": "2024"},
                     follow_redirects=False)
+        drain_jobs()
 
         with dbmod.SessionLocal() as db:
             c = db.query(Company).filter_by(code="DN_SEL").first()
@@ -230,6 +234,7 @@ def test_two_books_tagged_via_browser_show_in_branch_a(tmp_path):
                            data={**payload, "book": "GC"}, follow_redirects=False)
         assert r_epe.status_code == 303
         assert r_gc.status_code == 303
+        drain_jobs()
 
         with dbmod.SessionLocal() as db:
             c = db.query(Company).filter_by(code="DN_SEL").first()
@@ -261,6 +266,7 @@ def _seed_two_m15_on_disk(tmp_path: Path, client) -> tuple[int, int, dict]:
         sync_data_files(db, c)
     client.post("/companies/DN_SEL/documents/ingest", data={"year": "2024"},
                 follow_redirects=False)
+    drain_jobs()
 
     with dbmod.SessionLocal() as db:
         c = db.query(Company).filter_by(code="DN_SEL").first()
@@ -288,9 +294,10 @@ def test_confirm_stops_with_a_message_when_another_file_has_no_book(tmp_path):
                         data={**payload, "book": "EPE"}, follow_redirects=False)
 
         assert r.status_code == 303
-        loc = r.headers["location"]
-        assert "error=" in loc
-        assert "NVL_GC" in loc                       # báo đích danh file còn thiếu sổ
+        drain_jobs()
+        res = last_job_result("ingest")
+        assert res["status"] == "plan_error"
+        assert "NVL_GC" in res["note"]               # báo đích danh file còn thiếu sổ
 
         with dbmod.SessionLocal() as db:
             c = db.query(Company).filter_by(code="DN_SEL").first()
@@ -319,9 +326,10 @@ def test_ingest_year_stops_with_a_message_when_only_some_files_have_a_book(tmp_p
                         follow_redirects=False)
 
         assert r.status_code == 303
-        loc = r.headers["location"]
-        assert "error=" in loc
-        assert "NVL_GC" in loc
+        drain_jobs()
+        res = last_job_result("ingest")
+        assert res["status"] == "plan_error"
+        assert "NVL_GC" in res["note"]
 
         with dbmod.SessionLocal() as db:
             c = db.query(Company).filter_by(code="DN_SEL").first()

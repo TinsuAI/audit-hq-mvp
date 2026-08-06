@@ -10,6 +10,7 @@ from __future__ import annotations
 
 JOB_KIND_LABEL_VI: dict[str, str] = {
     "run_checks": "Chạy kiểm tra",
+    "ingest": "Nạp dữ liệu",
     "ingest_and_run": "Nạp dữ liệu và chạy kiểm tra",
     "batch_run": "Chạy kiểm tra mọi năm",
     "ai_overview": "Tạo tổng quan AI",
@@ -32,6 +33,19 @@ RESULT_LABEL_VI: dict[str, str] = {
     "risk_score": "Điểm rủi ro",
     "years_processed": "Các năm đã chạy",
     "per_year": "Chi tiết theo năm",
+    # ingest
+    "status": "Kết quả nạp",
+    "m15_rows": "Số dòng Mẫu 15 (NVL)",
+    "m15a_rows": "Số dòng Mẫu 15a (SP)",
+    "m16_rows": "Số dòng Mẫu 16 (định mức)",
+    "bcct_rows": "Số dòng tờ khai đã lưu",
+    "bcct_out_of_window": "Trong đó, dòng có ngày ngoài cửa sổ kỳ",
+    "bcct_undated": "Trong đó, dòng không có ngày tờ khai",
+    "bcct_skipped": "File trong thư mục tờ khai đã bỏ qua",
+    "period_window_rejected": "Cửa sổ kỳ suy từ tiêu đề file bị loại",
+    "diagnostics": "Chẩn đoán file",
+    "review_columns": "Cột cần xác nhận",
+    "checks_job_id": "Công việc kiểm tra nối tiếp",
     # ai_overview
     "check_code": "Mã kiểm tra",
     "chars": "Độ dài nhận định (ký tự)",
@@ -50,6 +64,12 @@ RESULT_LABEL_VI: dict[str, str] = {
 # ra thẳng `GIA_CONG` / `UNKNOWN` trên bảng nếu không tra ở đây. `DNCX`/`SXXK`
 # giữ nguyên vì là chữ viết tắt nghiệp vụ cán bộ đọc hằng ngày.
 RESULT_VALUE_LABEL_VI: dict[str, dict[str, str]] = {
+    "status": {
+        "ok": "Đã nạp dữ liệu",
+        "diagnosis_error": "Không nạp được — file sai mẫu / không đọc được",
+        "needs_review": "Dừng chờ xác nhận cột",
+        "plan_error": "Không nạp được — kế hoạch sổ quyết toán chưa hợp lệ",
+    },
     "company_type": {
         "DNCX": "DNCX (doanh nghiệp chế xuất)",
         "GIA_CONG": "Gia công",
@@ -60,6 +80,10 @@ RESULT_VALUE_LABEL_VI: dict[str, dict[str, str]] = {
 }
 
 EMPTY = "—"
+
+# Khoá có khối hiển thị RIÊNG trên trang công việc (danh sách chẩn đoán, danh sách
+# cột cần xác nhận). Ép vào một ô bảng thì thành một chuỗi dài không đọc được.
+BLOCK_KEYS: frozenset[str] = frozenset({"diagnostics", "review_columns"})
 
 
 def _scalar(value: object) -> str:
@@ -94,6 +118,8 @@ def describe_result(result: dict | None) -> list[dict[str, str]]:
         return []
     rows = []
     for key, value in result.items():
+        if key in BLOCK_KEYS:
+            continue
         values = RESULT_VALUE_LABEL_VI.get(key)
         text = values.get(str(value), _format(value)) if values else _format(value)
         rows.append({"label": RESULT_LABEL_VI.get(key, key), "value": text})
