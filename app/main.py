@@ -100,6 +100,12 @@ async def lifespan(app: FastAPI):
     except ValueError:
         pass
     try:
+        from app.ai.diagnose_job import run_diagnose_job
+
+        register_handler(JobKind.AI_DIAGNOSE, run_diagnose_job)
+    except ValueError:
+        pass
+    try:
         with SessionLocal() as db:
             n = recover_zombie_jobs(db)
             if n:

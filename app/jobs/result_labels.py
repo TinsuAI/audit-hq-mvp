@@ -15,6 +15,7 @@ JOB_KIND_LABEL_VI: dict[str, str] = {
     "batch_run": "Chạy kiểm tra mọi năm",
     "ai_overview": "Tạo tổng quan AI",
     "ai_overview_batch": "Tạo tổng quan AI hàng loạt",
+    "ai_diagnose": "AI chẩn đoán cấu trúc file",
 }
 
 RESULT_LABEL_VI: dict[str, str] = {
@@ -83,7 +84,7 @@ EMPTY = "—"
 
 # Khoá có khối hiển thị RIÊNG trên trang công việc (danh sách chẩn đoán, danh sách
 # cột cần xác nhận). Ép vào một ô bảng thì thành một chuỗi dài không đọc được.
-BLOCK_KEYS: frozenset[str] = frozenset({"diagnostics", "review_columns"})
+BLOCK_KEYS: frozenset[str] = frozenset({"diagnostics", "review_columns", "ai_result"})
 
 
 def _scalar(value: object) -> str:

@@ -54,6 +54,19 @@
   </div>
   {% endif %}
 
+  {% if res.get("ai_result") %}
+  <div class="diag-panel ai-diagnosis">
+    <div class="diag-head">
+      <span class="diag-icon">🤖</span>
+      <div>
+        <h3>AI chẩn đoán cấu trúc file</h3>
+        <p>Gợi ý của AI mang tính tham khảo — cán bộ tự kiểm chứng trước khi sửa file.</p>
+      </div>
+    </div>
+    <p class="diag-item-detail" style="white-space:pre-wrap">{{ res["ai_result"] }}</p>
+  </div>
+  {% endif %}
+
   {% if res.get("review_columns") %}
   <div class="diag-panel">
     <div class="diag-head">

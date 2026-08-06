@@ -85,7 +85,6 @@ from app.pipeline.period import (
     period_window_conflict,
     period_window_errors,
 )
-from app.pipeline.validate import diagnose_upload
 from app.scoping import allowed_company_ids, can_access_company_id, get_company_or_404
 from app.settings import settings
 from app.slugs import slugify_name, unique_slug
@@ -775,8 +774,14 @@ def diagnose_ai(
     year: int = Form(...),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
-) -> HTMLResponse:
-    """Nhờ AI chẩn đoán cấu trúc file khi nạp lỗi (escalation của validate)."""
+) -> RedirectResponse:
+    """Nhờ AI chẩn đoán cấu trúc file khi nạp lỗi (escalation của validate).
+
+    Xếp job rồi chuyển sang `/jobs/{id}`: lời gọi mất ~120 s với bộ file 006 còn
+    Cloudflare cắt ở 100 giây, chạy trong request là cầm chắc 524 (giống việc nạp
+    trước #74). Guard AI vẫn kiểm Ở ĐÂY, trước khi tạo job — hết hạn mức thì cán bộ
+    biết ngay chứ không phải mở trang công việc mới thấy.
+    """
     company = get_company_or_404(db, code, user)
 
     from app.ai.config import get_setting
@@ -787,23 +792,20 @@ def diagnose_ai(
     check_rate_limit(user.name, db)
     check_daily_budget(db)
 
-    raw_root = Path(settings.raw_data_path)
-    diagnosis = diagnose_upload(company.code, year, raw_root)
-    try:
-        from app.ai.ingest_doctor import diagnose_with_ai
-        ai_result = diagnose_with_ai(company.code, year, raw_root)
-    except Exception as e:  # noqa: BLE001 — AI lỗi không được làm sập trang
-        ai_result = f"Không gọi được AI: {type(e).__name__}: {e}"
+    from app.auth_users import get_user_by_username
+    from app.jobs import enqueue_job
+    from app.models.job import JobKind
 
-    return templates.TemplateResponse(
-        request, "upload_data.html",
-        {
-            "user": user, "company": company, "year": year,
-            "year_options": _year_options(year),
-            "year_min": YEAR_MIN, "year_max": YEAR_MAX, "error": None,
-            "diagnosis": diagnosis, "ai_enabled": True, "ai_result": ai_result,
-        },
+    ur = get_user_by_username(db, user.name)
+    job = enqueue_job(
+        db,
+        kind=JobKind.AI_DIAGNOSE,
+        payload={"company_code": company.code, "year": year, "username": user.name},
+        created_by=ur.id if ur else None,
+        company_id=company.id,
+        period_year=year,
     )
+    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------

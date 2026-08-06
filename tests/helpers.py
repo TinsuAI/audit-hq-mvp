@@ -16,6 +16,7 @@ def drain_jobs(max_rounds: int = 5) -> int:
     `ingest` xếp tiếp `run_checks` khi payload yêu cầu, nên phải lặp chứ không
     quét một lượt.
     """
+    from app.ai.diagnose_job import run_diagnose_job
     from app.jobs import HANDLERS, register_handler, run_job
     from app.jobs.handlers import ingest_handler, run_batch_handler, run_checks_handler
     from app.models.job import Job, JobKind, JobStatus
@@ -24,6 +25,7 @@ def drain_jobs(max_rounds: int = 5) -> int:
         (JobKind.RUN_CHECKS, run_checks_handler),
         (JobKind.BATCH_RUN, run_batch_handler),
         (JobKind.INGEST, ingest_handler),
+        (JobKind.AI_DIAGNOSE, run_diagnose_job),
     ):
         if kind.value not in HANDLERS:
             register_handler(kind, fn)
