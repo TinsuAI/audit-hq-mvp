@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
+from app.adapters.evidence import FIELD_LABEL_VI
 from app.adapters.layout import BALANCE_EXPECT, find_header_columns
 from app.adapters.sheet_select import SheetNotFound
 from app.pipeline.discover import DiscoveredFiles, discover
@@ -159,6 +160,17 @@ def _report_parse_issues(diag: UploadDiagnosis, slot: str, parsed) -> None:
             f"{issues.external_workbooks} liên kết tới workbook NGOÀI bộ dữ liệu. "
             "Giá trị đang đọc là bản cache của lần mở gần nhất; nếu liên kết gãy "
             "thì các ô đó lặng lẽ về 0 mà không có dấu hiệu nào."
+        )
+    if issues.formula_cells:
+        breakdown = ", ".join(
+            f"{FIELD_LABEL_VI.get(f, f)} ×{n}"
+            for f, n in sorted(issues.formula_cells.items())
+        )
+        parts.append(
+            f"{issues.formula_total} ô công thức ghi thành chuỗi thay vì số "
+            f"({breakdown}). Hệ thống lấy giá trị kết quả trong ô nên số liệu vẫn "
+            "đúng, nhưng file đã qua một công cụ gộp/xuất khác — đối chiếu lại tổng "
+            "với file gốc trước khi dùng."
         )
     diag.diagnostics.append(Diagnostic(
         slot, "warning", f"{label}: nguồn số liệu cần truy nguyên", " ".join(parts),

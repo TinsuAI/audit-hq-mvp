@@ -83,13 +83,13 @@
   </p>
 
   {% set slots = [
-    ('m15', 'Mẫu 15', 'Cân đối NVL / NPL', 'BCQT/NhapXuatTon_NVL_*.xlsx'),
-    ('m15a', 'Mẫu 15a', 'Cân đối thành phẩm', 'BCQT/NhapXuatTon_SP_*.xlsx'),
-    ('m16', 'Mẫu 16', 'Định mức thực tế', 'DINH_MUC/BCDM_TT39_*.xlsx'),
-    ('bcct', 'BCCT', 'Báo cáo hàng chi tiết (tờ khai)', 'HANG_CHI_TIET/BaoCaoHangChiTiet_*.xlsx')
+    ('m15', 'Mẫu 15', 'Cân đối NVL / NPL', 'BCQT/NhapXuatTon_NVL_*.xlsx', false),
+    ('m15a', 'Mẫu 15a', 'Cân đối thành phẩm', 'BCQT/NhapXuatTon_SP_*.xlsx', false),
+    ('m16', 'Mẫu 16', 'Định mức thực tế', 'DINH_MUC/BCDM_TT39_*.xlsx', false),
+    ('bcct', 'BCCT', 'Báo cáo hàng chi tiết (tờ khai)', 'HANG_CHI_TIET/BaoCaoHangChiTiet_*.xlsx', true)
   ] %}
   <div class="upload-slots">
-    {% for slot, code, label, sample in slots %}
+    {% for slot, code, label, sample, many in slots %}
     <label class="upload-slot" for="file_{{ slot }}" data-slot="{{ slot }}">
       <div class="upload-slot-info">
         <span class="upload-slot-code">{{ code }}</span>
@@ -97,15 +97,18 @@
         <span class="upload-slot-sample">{{ sample }}</span>
       </div>
       <div class="upload-slot-drop">
-        <span class="upload-slot-placeholder">Kéo thả hoặc bấm chọn file</span>
+        <span class="upload-slot-placeholder">{% if many %}Kéo thả hoặc bấm chọn file (chọn được nhiều file){% else %}Kéo thả hoặc bấm chọn file{% endif %}</span>
         <span class="upload-slot-filename" hidden></span>
       </div>
-      <input class="upload-slot-input" type="file" id="file_{{ slot }}" name="{{ slot }}" accept=".xls,.xlsx">
+      <input class="upload-slot-input" type="file" id="file_{{ slot }}" name="{{ slot }}" accept=".xls,.xlsx"{% if many %} multiple{% endif %}>
     </label>
     {% endfor %}
   </div>
 
-  <p class="form-hint">Giới hạn 100MB/file. Định dạng: <code>.xls</code> / <code>.xlsx</code>.</p>
+  <p class="form-hint">Giới hạn 100MB/file. Định dạng: <code>.xls</code> / <code>.xlsx</code>.
+    Ô <strong>BCCT</strong> nhận nhiều file cho cùng một năm — chọn hết các file rời của kỳ,
+    <strong>không gộp tay</strong>. File tải lên cộng thêm vào năm đó; bỏ file thừa bằng nút
+    xoá ở trang Tài liệu.</p>
 
   <div class="form-actions form-actions-split">
     <a href="/companies/{{ company.slug or company.code }}" class="btn btn-secondary">← Quay về</a>
@@ -121,7 +124,9 @@
     var ph = slot.querySelector('.upload-slot-placeholder');
     function show() {
       if (input.files && input.files.length) {
-        nameEl.textContent = input.files[0].name;
+        nameEl.textContent = input.files.length > 1
+          ? input.files.length + ' file: ' + Array.prototype.map.call(input.files, function (f) { return f.name; }).join(', ')
+          : input.files[0].name;
         nameEl.hidden = false; ph.hidden = true;
         slot.classList.add('has-file');
       } else {

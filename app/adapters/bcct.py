@@ -10,8 +10,10 @@ from pathlib import Path
 import pandas as pd
 
 from app.adapters._common import (
+    ParseIssues,
     ParseProvenance,
     ensure_excel,
+    formula_cell_result,
     normalize_code,
     normalize_name,
     safe_get,
@@ -54,6 +56,7 @@ class BcctFile:
     source_file: str
     sheet: str | None = None
     provenance: ParseProvenance = field(default_factory=ParseProvenance)
+    issues: ParseIssues = field(default_factory=ParseIssues)
 
 
 # BaoCaoHangChiTiet schema (HONG_AN 2024 sample, Sheet1):
@@ -301,9 +304,18 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
     company_name: str | None = None
     rows: list[BcctRow] = []
 
+    formula_cells: dict[str, int] = {}
+
     def cell(row: list, name: str):
         idx = col.get(name)
         return None if idx is None else safe_get(row, idx)
+
+    def number(row: list, name: str) -> float:
+        """`to_float` + đếm ô công thức bị ghi thành chuỗi JSON, theo tên trường."""
+        raw = cell(row, name)
+        if formula_cell_result(raw) is not None:
+            formula_cells[name] = formula_cells.get(name, 0) + 1
+        return to_float(raw)
 
     for raw in cells[data_start:]:
         declaration_no = normalize_code(to_str(cell(raw, "declaration_no")))
@@ -335,13 +347,13 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
                 item_name=item_name,
                 hs_code=normalize_code(to_str(cell(raw, "hs_code"))),
                 origin=normalize_code(to_str(cell(raw, "origin"))),
-                quantity=to_float(cell(raw, "quantity")) or None,
+                quantity=number(raw, "quantity") or None,
                 unit=normalize_code(to_str(cell(raw, "unit"))),
-                unit_price=to_float(cell(raw, "unit_price")) or None,
+                unit_price=number(raw, "unit_price") or None,
                 currency=normalize_code(to_str(cell(raw, "currency"))),
-                value_foreign=to_float(cell(raw, "value_foreign")) or None,
-                value_total=to_float(cell(raw, "value_total")) or None,
-                tax_total=to_float(cell(raw, "tax_total")) or None,
+                value_foreign=number(raw, "value_foreign") or None,
+                value_total=number(raw, "value_total") or None,
+                tax_total=number(raw, "tax_total") or None,
                 partner=normalize_name(to_str(cell(raw, "partner"))),
                 invoice_no=normalize_code(to_str(cell(raw, "invoice_no"))),
             )
@@ -364,4 +376,5 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
             },
             evidence=evidence,
         ),
+        issues=ParseIssues(formula_cells=formula_cells),
     )
