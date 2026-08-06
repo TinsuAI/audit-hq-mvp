@@ -3,6 +3,24 @@
 > Tính năng / cải thiện chờ schedule. Không thay STATUS.md (state hiện tại) hay
 > sessions/ (history). Mục nào đi vào sprint → chuyển sang STATUS / session log.
 
+## Thang điểm rủi ro khi có luật `not_evaluable` — CHỜ OWNER CHỐT
+
+> **Nguồn sự thật: issue #65.** Tách ra từ #56, không gộp vào PR #64.
+>
+> Điểm là một TRUNG BÌNH trên các luật chấm được, nên gỡ một luật `not_evaluable` khỏi
+> cả tử số lẫn trần kéo điểm về trung bình các luật còn lại — luật bị cổng đang chấm
+> cao hơn trung bình thì **điểm GIẢM**, tức thiếu dữ liệu làm DN trông sạch hơn. Đo trên
+> pilot 06/08: DN 10 kỳ 2024 3→2, 2025 3→1, 2026 8→6.
+>
+> Không phải lỗi của #58 — #58 giữ đúng hợp đồng "not_evaluable == luật vắng mặt".
+> Ghi bằng `test_norm_gate.py::test_gate_does_not_lower_the_risk_score` đánh
+> `xfail(strict=True)`. **Đừng hạ assertion đó.**
+>
+> PR #64 đã che chắn cách đọc sai (hiện "Đã đánh giá N/M bài" cạnh điểm + tách nhóm khi
+> xếp hạng) nhưng **chưa giải quyết thang điểm**. Ba hướng đã nêu ở #65, chưa chọn.
+>
+> **Chặn:** dùng điểm rủi ro để xếp hạng DN.
+
 ## Rà soát toàn bộ ngôn ngữ tiếng Việt trên giao diện — ĐÃ LÀM, CHỜ MERGE
 
 > Chốt 2026-07-27 (owner). Khởi từ badge tổng quan AI ghi "Cần đối chiếu số liệu" —
