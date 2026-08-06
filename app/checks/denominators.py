@@ -10,7 +10,7 @@ Rate = min(1, findings / denominator). Denominator=0 → rate=0 (không có cơ 
 
 from __future__ import annotations
 
-from sqlalchemy import distinct, func, select
+from sqlalchemy import distinct, select
 from sqlalchemy.orm import Session
 
 from app.checks.company_type import (
@@ -18,7 +18,7 @@ from app.checks.company_type import (
     IMPORT_CODES,
     detect_company_type,
 )
-from app.models import DeclarationLine, Norm, NvlBalance, SpBalance
+from app.models import DeclarationLine, NvlBalance, SpBalance
 
 # Mỗi check trong catalog 16 MVP map vào 1 scope.
 # Khi thêm check mới: phải add vào đây hoặc test_rule_scope_covers_all_known_checks sẽ fail.
@@ -99,11 +99,23 @@ def _count_distinct_tp(session: Session, company_id: int, year: int) -> int:
 
 
 def _count_distinct_m16(session: Session, company_id: int, year: int) -> int:
-    """Số mã NVL distinct trong định mức M16."""
-    return session.scalar(
-        select(func.count(distinct(Norm.material_code)))
-        .where(Norm.company_id == company_id, Norm.period_year == year)
-    ) or 0
+    """Số mã NVL distinct trong định mức HIỆU LỰC của kỳ.
+
+    Đếm theo định mức hiệu lực (bản khai gần nhất ≤ kỳ, issue #60) chứ KHÔNG theo
+    `period_year == year`. Mẫu 16 kế thừa giữa các kỳ, nên một kỳ không khai lại có
+    0 dòng `norms` mà C4.3 vẫn đánh giá được. Đếm theo kỳ thì mẫu số = 0,
+    `compute_rule_score` trả 0, và mọi phát hiện C4.3 của kỳ đó KHÔNG vào điểm rủi
+    ro — doanh nghiệp ngừng khai lại định mức thì điểm tự đẹp lên, đúng cái loạt
+    ticket #56 sinh ra để chặn. Mẫu số phải đếm đúng tập mà check đã chấm.
+    """
+    from app.checks.effective_norms import effective_norms
+
+    codes = {
+        material_code
+        for pairs in effective_norms(session, company_id, year).values()
+        for _product_code, material_code in pairs
+    }
+    return len(codes)
 
 
 def compute_denominators(session: Session, company_id: int, year: int) -> dict[str, int]:

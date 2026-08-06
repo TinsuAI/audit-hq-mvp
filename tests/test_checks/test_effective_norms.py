@@ -98,3 +98,24 @@ def test_products_without_norm_reports_a_product_never_declared(session, company
     add_norm(session, company.id, product_code="TP", material_code="A", norm_qty=1.0, year=2024)
     session.commit()
     assert products_without_norm(session, company.id, 2025) == {None: {"GHOST"}}
+
+
+def test_m16_denominator_counts_inherited_norms(session, company):
+    """Mẫu số `m16` phải đếm định mức HIỆU LỰC, không phải dòng khai đúng kỳ.
+
+    Kỳ không khai lại Mẫu 16 có 0 dòng `norms`; đếm theo kỳ thì mẫu số = 0,
+    `compute_rule_score` trả 0, và mọi phát hiện C4.3 của kỳ đó rơi khỏi điểm rủi ro
+    — DN ngừng khai lại định mức thì điểm tự đẹp lên.
+    """
+    from app.checks.denominators import compute_denominators
+
+    add_norm(session, company.id, product_code="TP", material_code="A", norm_qty=1.0, year=2024)
+    add_norm(session, company.id, product_code="TP", material_code="B", norm_qty=2.0, year=2024)
+    add_sp(session, company.id, product_code="TP", intake=100, year=2025)
+    session.commit()
+
+    # 2025 không có dòng norms nào, nhưng hai mã vẫn đang hiệu lực từ 2024.
+    assert compute_denominators(session, company.id, 2025)["m16"] == 2
+    assert compute_denominators(session, company.id, 2024)["m16"] == 2
+    # Trước kỳ khai đầu tiên thì đúng là 0.
+    assert compute_denominators(session, company.id, 2023)["m16"] == 0

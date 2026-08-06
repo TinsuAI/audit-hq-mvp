@@ -129,6 +129,9 @@ COLUMN_LABEL_OVERRIDES: dict[str, dict[str, str]] = {
     "C1.1": {"m15_import": "Số M15 đối chiếu"},
     "C1.3": {"m15_import": "Số M15 đối chiếu"},
     "C1.4": {"m15a_export": "Số M15a đối chiếu"},
+    # Nhãn đầy đủ ("Kỳ biên — có thể đã khai trước cửa sổ dữ liệu") đủ chỗ ở trang chi
+    # tiết, nhưng làm cột bảng rộng gấp đôi các cột số. Bảng rút gọn, chi tiết giữ đủ.
+    "C4.9": {"boundary_period": "Kỳ biên"},
 }
 
 # Khoá nào lên cột trên bảng phát hiện, theo thứ tự. Chọn lọc — cột nào cũng lên
