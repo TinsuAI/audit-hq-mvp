@@ -198,12 +198,15 @@ register(CheckSpec(
     group=3,
     title="Đơn vị tính không nhất quán",
     description=(
-        "Cùng mã NVL có ≥2 đơn vị khác nhau giữa M15 và BCCT. "
+        "Cùng mã NVL có ≥2 đơn vị khác nhau giữa M15, M16 và BCCT. "
         "Cùng họ (KG↔GAM, M↔CM) → Thông tin; "
-        "khác họ (sai ×1000) → Nghiêm trọng."
+        "khác họ (sai ×1000) → Nghiêm trọng. Đơn vị M16 lệch đơn vị M15 làm "
+        "tiêu hao lý thuyết của C4.3 sai đúng bằng hệ số quy đổi."
     ),
     default_severity=Severity.CRITICAL,
-    requires=frozenset({"bcct", "m15"}),
+    # Chỉ M15 là bắt buộc: vế đối chiếu là BCCT HOẶC M16, `requires` không khai được
+    # quan hệ HOẶC nên check tự trả `NotEvaluable` khi thiếu cả hai.
+    requires=frozenset({"m15"}),
 ))
 
 
@@ -230,7 +233,8 @@ register(CheckSpec(
         "Σ(định_mức × sản_lượng_sản_xuất_M15a) theo NVL > `xuất_sản_xuất` trong M15. "
         "Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 "
         "thuộc C4.1 (thiếu nguồn), không xét ở đây. Định mức lấy theo bản khai HIỆU "
-        "LỰC — kỳ lớn nhất ≤ kỳ đang xét của cùng cặp TP-NVL trong cùng sổ, vì M16 kế "
+        "LỰC — bản khai có kỳ lớn nhất ≤ kỳ đang xét của chính mã TP đó trong cùng sổ, "
+        "lấy trọn bản khai chứ không ghép từng cặp TP-NVL, vì M16 kế "
         "thừa giữa các kỳ. Vướng cổng độ phủ định mức (thiếu định mức của một TP đã "
         "sản xuất, hoặc kỳ biên chưa xác nhận năm đầu nộp BCQT) thì trả CHƯA ĐÁNH GIÁ "
         "ĐƯỢC cho cả kỳ, không trả 0 phát hiện."
@@ -274,7 +278,8 @@ register(CheckSpec(
     title="Tồn đầu kỳ N khác tồn cuối kỳ N-1 (NVL)",
     description=(
         "M15 tồn đầu kỳ N ≠ M15 tồn cuối kỳ N-1 theo từng mã NVL. "
-        "Cần ≥2 kỳ dữ liệu (tolerance ±0.01)."
+        "Cần ≥2 kỳ dữ liệu (tolerance ±0.01). Chưa nạp M15 kỳ N-1 thì trả "
+        "CHƯA ĐÁNH GIÁ ĐƯỢC, không trả 0 phát hiện."
     ),
     default_severity=Severity.CRITICAL,
     requires=frozenset({"m15"}),

@@ -7,10 +7,13 @@ cho kỳ N là bản khai có kỳ LỚN NHẤT mà ≤ N của cùng cặp (mã
 Gộp theo SỔ quyết toán: mỗi sổ là ledger riêng, định mức sổ này không kế thừa
 sang sổ kia (ADR #19).
 
-Kế thừa tính theo CẶP (mã SP, mã NVL), không theo mã SP. Nghĩa là một mã NVL bị
-bỏ khỏi định mức của một thành phẩm ở kỳ sau vẫn còn hiệu lực từ bản khai cũ.
-Đo trên pilot 05/08/2026: hai cách chênh nhau 451/86.111 cặp (0,5%) ở DN 8/2025 và
-302/44.480 (0,7%) ở DN 10/2026, 0 ở các (DN, kỳ) còn lại.
+Kế thừa theo THÀNH PHẨM, không theo cặp (mã SP, mã NVL): bản khai mới của một
+thành phẩm THAY TRỌN định mức cũ của chính nó. Thành phẩm A khai 2022, 2023 không
+khai lại thì 2023 dùng bản 2022; sang 2025 khai bản mới thì 2025 dùng ĐÚNG bản
+2025 — mã NVL có ở bản 2022 mà bản 2025 bỏ đi thì hết hiệu lực, không được sống
+tiếp. Ghép từng cặp sẽ trộn hai bản khai thành một định mức chưa từng được khai.
+Đo trên dữ liệu 06/08/2026: ghép theo cặp giữ thêm 774 cặp trên 126 mã TP ở 4 kỳ
+(DN 8/2025 451, DN 10/2026 302, DN 10/2025 19, DN 10/2024 2), 0 ở các kỳ còn lại.
 """
 
 from __future__ import annotations
@@ -45,10 +48,16 @@ EffectiveNormMap = dict[str | None, dict[tuple[str, str], EffectiveNorm]]
 def effective_norms(session: Session, company_id: int, year: int) -> EffectiveNormMap:
     """Định mức hiệu lực cho (DN, kỳ), gộp theo sổ.
 
-    Với mỗi (sổ, mã SP, mã NVL): lấy các dòng Mẫu 16 có `period_year` lớn nhất mà
-    ≤ `year`. Trong cùng kỳ nguồn đó, Mẫu 16 của một số DN lặp lại nguyên khối định
-    mức cho mỗi đợt sản xuất — gộp về MỘT giá trị bằng MAX, đúng như `check_c4_3`
-    vẫn làm, và bật cờ `divergent` khi các khối lặp không khớp nhau.
+    Hai bước, đúng thứ tự:
+
+    1. Với mỗi (sổ, mã SP): tìm kỳ khai gần nhất mà ≤ `year` — đó là BẢN KHAI đang
+       có hiệu lực của thành phẩm đó.
+    2. Lấy TRỌN các dòng của bản khai đó, không lấy dòng của kỳ nào khác. Mã NVL
+       chỉ có ở bản khai cũ hơn thì đã bị bản mới bỏ, không còn hiệu lực.
+
+    Trong cùng bản khai, Mẫu 16 của một số DN lặp lại nguyên khối định mức cho mỗi
+    đợt sản xuất — gộp về MỘT giá trị bằng MAX, đúng như `check_c4_3` vẫn làm, và
+    bật cờ `divergent` khi các khối lặp không khớp nhau.
     """
     rows = session.execute(
         select(
@@ -64,12 +73,22 @@ def effective_norms(session: Session, company_id: int, year: int) -> EffectiveNo
         )
     ).all()
 
+    # Bước 1 — kỳ của bản khai đang hiệu lực, theo (sổ, mã SP).
+    effective_year: dict[tuple[str | None, str], int] = {}
+    for book, product_code, _material_code, _qty, period_year, _note in rows:
+        key = (book, product_code)
+        if period_year > effective_year.get(key, -1):
+            effective_year[key] = period_year
+
+    # Bước 2 — chỉ giữ dòng thuộc chính bản khai đó.
     out: EffectiveNormMap = defaultdict(dict)
     for book, product_code, material_code, norm_qty, period_year, note in rows:
+        if period_year != effective_year[(book, product_code)]:
+            continue
         key = (product_code, material_code)
         qty = norm_qty or 0.0
         cur = out[book].get(key)
-        if cur is None or period_year > cur.source_year:
+        if cur is None:
             out[book][key] = EffectiveNorm(
                 product_code=product_code,
                 material_code=material_code,
@@ -78,8 +97,8 @@ def effective_norms(session: Session, company_id: int, year: int) -> EffectiveNo
                 divergent=False,
                 note=note,
             )
-        elif period_year == cur.source_year and abs(cur.norm_qty - qty) > 1e-9:
-            # Khối lặp lệch định mức trong cùng kỳ nguồn — lấy MAX, không chọn thầm.
+        elif abs(cur.norm_qty - qty) > 1e-9:
+            # Khối lặp lệch định mức trong cùng bản khai — lấy MAX, không chọn thầm.
             out[book][key] = EffectiveNorm(
                 product_code=product_code,
                 material_code=material_code,

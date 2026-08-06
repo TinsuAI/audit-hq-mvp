@@ -103,19 +103,27 @@ def test_column_keys_all_have_labels() -> None:
 def test_column_headers_are_vietnamese_with_alignment() -> None:
     headers = column_headers("C1.1")
     assert [h.label for h in headers] == [
-        "Số M15 đối chiếu", "Σ tờ khai", "Chênh lệch", "ĐVT", "Cột M15 đối chiếu",
+        "Giá trị chênh lệch", "Số M15 đối chiếu", "Σ tờ khai", "Chênh lệch", "ĐVT",
+        "Cột M15 đối chiếu",
     ]
-    assert [h.css for h in headers] == ["num", "num", "num", "", ""]
+    assert [h.css for h in headers] == ["num", "num", "num", "num", "", ""]
 
 
 def test_row_cells_format_numbers_by_kind() -> None:
     cells = row_cells("C1.1", {
+        "value_vnd": 500000.0,
         "m15_import": 1234.5, "bcct_sum": 1008.0, "diff_pct": 22.47, "unit": "kg",
         "m15_column": "import_qty",
     }, style="vi")
     assert [c.text for c in cells] == [
-        "1.234,50", "1.008", "+22,5 %", "kg", "Nhập trong kỳ",
+        "500.000 VND", "1.234,50", "1.008", "+22,5 %", "kg", "Nhập trong kỳ",
     ]
+
+
+def test_unpriced_finding_shows_an_empty_money_cell() -> None:
+    """`value_vnd` NULL = chưa quy ra tiền được, KHÔNG phải 0 đồng."""
+    cells = row_cells("C1.1", {"value_vnd": None, "m15_import": 10.0}, style="vi")
+    assert cells[0].text == "—"
 
 
 def test_header_does_not_claim_import_when_the_column_may_differ() -> None:

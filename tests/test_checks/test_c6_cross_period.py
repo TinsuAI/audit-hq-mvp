@@ -3,13 +3,25 @@
 from __future__ import annotations
 
 from app.checks.c6_cross_period import check_c6_1
+from app.checks.not_evaluable import NotEvaluable
 from tests.conftest import add_nvl
 
 
-def test_c6_1_skip_when_no_prev_year(session, company):
+def test_c6_1_not_evaluable_when_no_prev_year(session, company):
     add_nvl(session, company.id, material_code="A", opening=100, year=2024)
     session.commit()
-    # Không có dữ liệu 2023 → skip toàn rule
+    # Không có M15 kỳ 2023 → không có tồn cuối để đối chiếu. Trả 0 phát hiện ở đây
+    # đọc như "tồn đầu kỳ nào cũng khớp", trong khi thực tế chưa so gì cả.
+    result = check_c6_1(session, company.id, 2024)
+    assert isinstance(result, NotEvaluable)
+    assert "2023" in result.reason
+
+
+def test_c6_1_evaluates_when_prev_year_present(session, company):
+    # Có kỳ trước, mọi mã khớp → 'ok' kèm 0 phát hiện, KHÁC not_evaluable ở trên.
+    add_nvl(session, company.id, material_code="A", closing=10, year=2023)
+    add_nvl(session, company.id, material_code="A", opening=10, year=2024)
+    session.commit()
     assert check_c6_1(session, company.id, 2024) == []
 
 

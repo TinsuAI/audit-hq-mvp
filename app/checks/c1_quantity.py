@@ -21,6 +21,7 @@ from app.checks.company_type import (
 from app.checks.registry import Severity, severity_for
 from app.checks.scope import declaration_scope
 from app.checks.uom import normalize, resolve_canonical
+from app.checks.valuation import material_prices_vnd, money_value
 from app.models import DeclarationLine, Finding, NvlBalance, SpBalance
 
 
@@ -212,6 +213,9 @@ def _c1_1_scope(
     column = pairing.nvl_column
 
     bcct_sums = _sum_bcct_by_item(session, company_id, year, import_codes)
+    # Đơn giá lấy từ CHÍNH các tờ khai đang đem đối chiếu — cùng tập dòng, nên giá trị
+    # tiền và số lượng nói về cùng một thứ.
+    prices = material_prices_vnd(session, company_id, year, import_codes)
     q = select(NvlBalance).where(
         NvlBalance.company_id == company_id,
         NvlBalance.period_year == year,
@@ -259,6 +263,7 @@ def _c1_1_scope(
             sev = severity_for("C1.1", abs(diff_pct))
             if sev is None:
                 continue
+            value_vnd = money_value(prices, code, bcct_qty - imported)
             findings.append(Finding(
                 company_id=company_id,
                 period_year=year,
@@ -267,6 +272,7 @@ def _c1_1_scope(
                 subject_type="material_code",
                 subject_key=code,
                 book=book if scoped else None,
+                value_vnd=value_vnd,
                 title=(
                     f"Lệch nhập NVL {code}: "
                     f"M15={imported:.2f} vs BCCT={bcct_qty:.2f} ({diff_pct:+.1f}%)"
@@ -279,6 +285,7 @@ def _c1_1_scope(
                     "m15_import": imported,
                     "bcct_sum": bcct_qty,
                     "diff_pct": diff_pct,
+                    "value_vnd": value_vnd,
                 },
                 evidence_refs=_evidence_nvl(code, year, company_id, book if scoped else None)
                 + _evidence_decl(code, year, company_id, import_codes),

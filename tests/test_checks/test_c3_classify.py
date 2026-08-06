@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from app.checks.c3_classify import check_c3_1, check_c3_2, check_c3_3
-from tests.conftest import add_decl, add_nvl
+from app.checks.not_evaluable import NotEvaluable
+from tests.conftest import add_decl, add_norm, add_nvl
 
 # --- C3.1: NVL × MMTB mâu thuẫn ---
 
@@ -158,3 +159,61 @@ def test_c3_3_reports_every_m15_unit_it_saw(session, company):
     assert len(findings) == 1
     assert findings[0].details["m15_units"] == ["MTR", "PIECES"]
     assert "MTR" in findings[0].title and "PIECES" in findings[0].title
+
+
+# --- C3.3 vế M16 (sổ yêu cầu dòng 2.6) ---
+
+
+def test_c3_3_fires_when_m16_unit_differs_from_m15(session, company):
+    # Định mức khai KG, tồn kho khai PIECES: C4.3 nhân định mức rồi so với xuất SX
+    # của M15 — hai vế khác họ đơn vị thì con số đó vô nghĩa.
+    add_nvl(session, company.id, material_code="A", unit="KG")
+    add_norm(session, company.id, product_code="TP", material_code="A",
+             norm_qty=2.0, material_unit="PIECES")
+    session.commit()
+    findings = check_c3_3(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].severity == "critical"
+    assert findings[0].details["m16_units"] == ["PIECES"]
+    assert findings[0].details["diverging_sources"] == ["M16"]
+
+
+def test_c3_3_no_fire_when_m16_unit_is_an_alias(session, company):
+    add_nvl(session, company.id, material_code="A", unit="MTR")
+    add_norm(session, company.id, product_code="TP", material_code="A",
+             norm_qty=2.0, material_unit="METRES")
+    session.commit()
+    assert check_c3_3(session, company.id, 2024) == []
+
+
+def test_c3_3_names_both_sources_when_both_diverge(session, company):
+    add_nvl(session, company.id, material_code="A", unit="KG")
+    add_norm(session, company.id, product_code="TP", material_code="A",
+             norm_qty=2.0, material_unit="PIECES")
+    add_decl(session, company.id, declaration_no="1", customs_code="E31",
+             item_code="A", quantity=10, unit="MTR")
+    session.commit()
+    findings = check_c3_3(session, company.id, 2024)
+    assert len(findings) == 1
+    assert findings[0].details["diverging_sources"] == ["BCCT", "M16"]
+
+
+def test_c3_3_m16_compared_within_the_same_book(session, company):
+    # Định mức sổ EPE không đem so với tồn kho sổ GC (ADR #19).
+    add_nvl(session, company.id, material_code="X", unit="KG", book="EPE")
+    add_nvl(session, company.id, material_code="X", unit="PIECES", book="GC")
+    add_norm(session, company.id, product_code="TP", material_code="X",
+             norm_qty=1.0, material_unit="KG", book="EPE")
+    add_norm(session, company.id, product_code="TP", material_code="X",
+             norm_qty=1.0, material_unit="PIECES", book="GC")
+    session.commit()
+    assert check_c3_3(session, company.id, 2024) == []
+
+
+def test_c3_3_not_evaluable_without_bcct_and_m16(session, company):
+    # Chỉ có M15: không có vế nào để đối chiếu. 0 phát hiện ở đây đọc như
+    # "đơn vị nhất quán" trong khi chưa so gì.
+    add_nvl(session, company.id, material_code="A", unit="KG")
+    session.commit()
+    result = check_c3_3(session, company.id, 2024)
+    assert isinstance(result, NotEvaluable)

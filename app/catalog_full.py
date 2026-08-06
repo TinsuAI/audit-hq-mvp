@@ -167,8 +167,8 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry(
         phase=1, group=3, code="C3.3",
         title="Đơn vị tính không nhất quán (cùng mã vật tư)",
-        problem="≥2 đơn vị khác nhau giữa M15 và BCCT.",
-        risk="Sai đơn vị tính ×1000 khiến toàn bộ nhập/xuất/tồn sai hệ thống.",
+        problem="≥2 đơn vị khác nhau giữa M15, M16 và BCCT. Đơn vị M16 lấy ở cột đơn vị tính của chính dòng định mức NVL. Quy về đơn vị chuẩn: cùng đơn vị chuẩn dù viết khác → bỏ qua · cùng họ quy đổi được → Thông tin · khác họ hoặc không nhận dạng được → Nghiêm trọng.",
+        risk="Sai đơn vị tính ×1000 khiến toàn bộ nhập/xuất/tồn sai hệ thống. Đơn vị định mức lệch đơn vị tồn kho làm tiêu hao lý thuyết ở C4.3 sai đúng bằng hệ số quy đổi, không kiểm tra nào khác nhìn ra.",
         severities=("critical",), status="mvp",
     ),
     # --- Nhóm 4 — Định mức M16 ---
@@ -189,7 +189,7 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry(
         phase=1, group=4, code="C4.3",
         title="Tổng tiêu hao M16 vượt xuất sản xuất M15",
-        problem="Σ(`định_mức` × `sản_lượng_sản_xuất_M15a`) theo NVL > `xuất_sản_xuất` trong M15. Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 thuộc C4.1 (thiếu nguồn), không xét ở đây. **Định mức hiệu lực:** M16 kế thừa giữa các kỳ — định mức áp cho kỳ N là bản khai có kỳ lớn nhất ≤ N của cùng cặp TP-NVL trong cùng sổ, không riêng bản khai đúng kỳ N. **Cổng độ phủ định mức:** có mã TP sản xuất trong kỳ mà chưa từng khai định mức ở bất kỳ kỳ nào (xem C4.9), hoặc kỳ biên chưa xác nhận năm đầu nộp BCQT, thì kiểm tra này trả *chưa đánh giá được* cho cả kỳ — KHÔNG trả 0 phát hiện. Cổng là nhị phân, không có ngưỡng phần trăm.",
+        problem="Σ(`định_mức` × `sản_lượng_sản_xuất_M15a`) theo NVL > `xuất_sản_xuất` trong M15. Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 thuộc C4.1 (thiếu nguồn), không xét ở đây. **Định mức hiệu lực:** M16 kế thừa giữa các kỳ — định mức áp cho kỳ N là bản khai có kỳ lớn nhất ≤ N của chính mã TP đó trong cùng sổ, không riêng bản khai đúng kỳ N. Kế thừa theo TP, không ghép từng cặp TP-NVL: bản khai mới thay TRỌN bản cũ của TP đó, mã NVL bị bản mới bỏ thì hết hiệu lực. **Cổng độ phủ định mức:** có mã TP sản xuất trong kỳ mà chưa từng khai định mức ở bất kỳ kỳ nào (xem C4.9), hoặc kỳ biên chưa xác nhận năm đầu nộp BCQT, thì kiểm tra này trả *chưa đánh giá được* cho cả kỳ — KHÔNG trả 0 phát hiện. Cổng là nhị phân, không có ngưỡng phần trăm.",
         risk="Cách phổ biến nhất để lấy NVL miễn thuế ra bán nội địa — định mức ảo gồm cả thành phần không có thực trong sản phẩm, thổi phồng tiêu hao để hợp thức hoá NVL nhập khẩu dư.",
         severities=("warning", "critical"), status="mvp",
     ),

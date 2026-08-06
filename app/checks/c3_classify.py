@@ -10,11 +10,12 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.checks.not_evaluable import CheckResult, NotEvaluable
 from app.checks.registry import Severity
 from app.checks.scope import declaration_scope
 from app.checks.uom import UomMatch
 from app.checks.uom import compare as uom_compare
-from app.models import DeclarationLine, Finding, NvlBalance
+from app.models import DeclarationLine, Finding, Norm, NvlBalance
 
 # Loại hình NVL theo từng kiểu DN (§4.0 đề án).
 _NVL_CODES = {"E11", "E15", "E31", "E33", "E21", "E23"}
@@ -170,13 +171,20 @@ def check_c3_2(session: Session, company_id: int, year: int) -> list[Finding]:
 _MATCH_RANK = {UomMatch.EQUIVALENT: 0, UomMatch.SAME_FAMILY: 1, UomMatch.DIFFERENT: 2}
 
 
-def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
-    """Đơn vị tính không nhất quán giữa M15 và BCCT cùng mã NVL.
+def check_c3_3(session: Session, company_id: int, year: int) -> CheckResult:
+    """Đơn vị tính không nhất quán giữa M15, M16 và BCCT cùng mã NVL.
 
     Severity ladder (qua DB UOM canonical/alias):
     - Cùng canonical (alias resolve identical) → SKIP (không fire).
     - Cùng family (convertible, vd KG↔GAM, M↔CM) → 🔵 Thông tin.
     - Khác family hoặc unknown → 🔴 Nghiêm trọng (sai đơn vị ×1000 nguy hiểm).
+
+    Vế M16 (sổ yêu cầu dòng 2.6, ADR đề án 06/08): C4.3 nhân định mức với sản lượng
+    rồi so với `xuất_sản_xuất` của M15 — hai vế lệch đơn vị thì tiêu hao lý thuyết
+    sai đúng bằng hệ số quy đổi, C4.3 chỉ thấy một con số vượt ngưỡng.
+
+    Neo vẫn là mã CÓ dòng M15: mã chỉ có ở M16 mà không có dòng M15 là ca thiếu
+    nguồn của C4.1, không phải chuyện đơn vị tính.
     """
     m15_rows = session.execute(
         select(NvlBalance.book, NvlBalance.material_code, NvlBalance.unit).where(
@@ -206,51 +214,116 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
     for code, unit in bcct_rows:
         bcct_units[code].add(unit)
 
+    # Đơn vị M16 theo (SỔ, mã) — cùng khoá với M15: định mức của sổ nào chỉ so với
+    # tồn kho của sổ đó (ADR #19). Một mã khai ở nhiều dòng định mức có thể mang
+    # nhiều đơn vị, gom thành tập giống M15.
+    m16_units: dict[tuple[str | None, str], set[str]] = defaultdict(set)
+    for book, code, unit in session.execute(
+        select(Norm.book, Norm.material_code, Norm.material_unit).where(
+            Norm.company_id == company_id,
+            Norm.period_year == year,
+            Norm.material_unit.is_not(None),
+        ).distinct()
+    ).all():
+        m16_units[(book, code)].add(unit)
+
+    if not bcct_units and not m16_units:
+        # `requires` chỉ gác M15 (vế đối chiếu là HOẶC), nên phải tự chặn ở đây —
+        # không thì thiếu cả hai vế vẫn ra 0 phát hiện đọc như "đơn vị nhất quán".
+        return NotEvaluable(
+            "Kỳ này không có đơn vị tính nào để đối chiếu với Mẫu 15 — chưa có tờ "
+            "khai trong cửa sổ kỳ, cũng chưa có Mẫu 16."
+        )
+
     findings: list[Finding] = []
     for (book, code), unit_set in sorted(
         m15_units.items(), key=lambda kv: (kv[0][1], kv[0][0] is None, kv[0][0] or "")
     ):
         bcct_set = bcct_units.get(code, set())
-        if not bcct_set:
+        m16_set = m16_units.get((book, code), set())
+        if not bcct_set and not m16_set:
             continue
 
-        # Với TỪNG đơn vị M15: so với mọi đơn vị BCCT, lấy match yếu nhất (worst case).
-        # Giữa các đơn vị M15 của cùng một mã: lấy match TỐT NHẤT — chỉ cần một đơn vị
-        # khớp tờ khai là sổ đó nhất quán, các đơn vị còn lại ghi lại cùng lượng đó.
+        # Với TỪNG đơn vị M15: so với mọi đơn vị đối chiếu (tờ khai + định mức), lấy
+        # match yếu nhất (worst case). Giữa các đơn vị M15 của cùng một mã: lấy match
+        # TỐT NHẤT — chỉ cần một đơn vị khớp là sổ đó nhất quán, các đơn vị còn lại
+        # ghi lại cùng lượng đó.
+        def _worst_against(candidate: str, others: set[str]) -> UomMatch:
+            result = UomMatch.EQUIVALENT
+            for other in others:
+                m = uom_compare(session, candidate, other)
+                if m == UomMatch.DIFFERENT:
+                    return UomMatch.DIFFERENT
+                if m == UomMatch.SAME_FAMILY:
+                    result = UomMatch.SAME_FAMILY
+            return result
+
         worst_match = UomMatch.DIFFERENT
         m15_unit = sorted(unit_set)[0]
         for candidate in sorted(unit_set):
-            candidate_worst = UomMatch.EQUIVALENT
-            for bcct_unit in bcct_set:
-                m = uom_compare(session, candidate, bcct_unit)
-                if m == UomMatch.DIFFERENT:
-                    candidate_worst = UomMatch.DIFFERENT
-                    break
-                if m == UomMatch.SAME_FAMILY and candidate_worst == UomMatch.EQUIVALENT:
-                    candidate_worst = UomMatch.SAME_FAMILY
+            candidate_worst = _worst_against(candidate, bcct_set | m16_set)
             if _MATCH_RANK[candidate_worst] < _MATCH_RANK[worst_match]:
                 worst_match = candidate_worst
                 m15_unit = candidate
 
         if worst_match == UomMatch.EQUIVALENT:
-            continue  # Có đơn vị khớp tờ khai — skip.
+            continue  # Có đơn vị khớp cả tờ khai lẫn định mức — skip.
+
+        # Nguồn nào lệch với đơn vị đã chọn — tiêu đề phải chỉ đúng chỗ phải sửa.
+        diverging = [
+            label
+            for label, units in (("BCCT", bcct_set), ("M16", m16_set))
+            if units and _worst_against(m15_unit, units) != UomMatch.EQUIVALENT
+        ]
 
         # Mã ghi ở nhiều đơn vị thì nêu cả tập, đừng để tiêu đề chỉ hiện một đơn vị
         # trong khi bằng chứng trả về nhiều dòng khác đơn vị.
         m15_label = f"'{m15_unit}'" if len(unit_set) == 1 else str(sorted(unit_set))
+        others_label = ", ".join(
+            f"{label}={sorted(units)}"
+            for label, units in (("M16", m16_set), ("BCCT", bcct_set))
+            if units
+        )
 
         if worst_match == UomMatch.SAME_FAMILY:
             severity = Severity.INFO
             title = (
                 f"Đơn vị tính NVL {code} dùng nhiều đơn vị cùng họ "
-                f"(có thể quy đổi): M15={m15_label}, BCCT={sorted(bcct_set)}"
+                f"(có thể quy đổi): M15={m15_label}, {others_label}"
             )
         else:
             severity = Severity.CRITICAL
             title = (
-                f"Đơn vị tính NVL {code} không nhất quán: "
-                f"M15={m15_label}, BCCT={sorted(bcct_set)}"
+                f"Đơn vị tính NVL {code} không nhất quán "
+                f"({' và '.join(diverging)} lệch M15): M15={m15_label}, {others_label}"
             )
+
+        evidence_refs = [
+            {
+                "table": "nvl_balances",
+                "filter": (
+                    {"company_id": company_id, "period_year": year, "material_code": code}
+                    | ({"book": book} if book is not None else {})
+                ),
+            },
+        ]
+        if m16_set:
+            evidence_refs.append({
+                "table": "norms",
+                "filter": (
+                    {"company_id": company_id, "period_year": year, "material_code": code}
+                    | ({"book": book} if book is not None else {})
+                ),
+            })
+        if bcct_set:
+            evidence_refs.append({
+                "table": "declaration_lines",
+                "filter": {
+                    "company_id": company_id,
+                    "period_year": year,
+                    "item_code": code,
+                },
+            })
 
         findings.append(Finding(
             company_id=company_id,
@@ -264,26 +337,12 @@ def check_c3_3(session: Session, company_id: int, year: int) -> list[Finding]:
             details={
                 "m15_unit": m15_unit,
                 "m15_units": sorted(unit_set),
+                "m16_units": sorted(m16_set),
                 "bcct_units": sorted(bcct_set),
+                "diverging_sources": diverging,
                 "uom_match": worst_match.value,
             },
-            evidence_refs=[
-                {
-                    "table": "nvl_balances",
-                    "filter": (
-                        {"company_id": company_id, "period_year": year, "material_code": code}
-                        | ({"book": book} if book is not None else {})
-                    ),
-                },
-                {
-                    "table": "declaration_lines",
-                    "filter": {
-                        "company_id": company_id,
-                        "period_year": year,
-                        "item_code": code,
-                    },
-                },
-            ],
+            evidence_refs=evidence_refs,
         ))
     return findings
 

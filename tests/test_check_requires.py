@@ -50,7 +50,10 @@ def test_requires_matches_the_source_audit():
         "C2.4": {"m15a"},
         "C3.1": {"bcct"},               # mã loại hình trên tờ khai, thuần BCCT
         "C3.2": {"bcct"},               # mã HS trên tờ khai, thuần BCCT
-        "C3.3": {"bcct", "m15"},        # đơn vị M15 vs đơn vị tờ khai
+        # Đơn vị M15 vs đơn vị M16 và tờ khai. Vế đối chiếu là HOẶC (tờ khai HOẶC
+        # M16) mà `requires` chỉ khai được quan hệ VÀ → chỉ gác M15, thiếu cả hai vế
+        # thì chính check trả `NotEvaluable`.
+        "C3.3": {"m15"},
         "C4.1": {"m15", "m16"},
         "C4.3": {"m15", "m15a", "m16"},
         "C4.9": {"m15a", "m16"},        # M15a sản lượng → M16 định mức, không đọc M15

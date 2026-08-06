@@ -124,7 +124,14 @@ def test_published_check_counted_in_score_max_raw(session, company):
     )
     assert cys is not None
     evaluable = [c for c in ALL_CHECKS if not missing_sources(c, {"m15"})]
-    expected = (len(evaluable) + 1) * MAX_RULE_SCORE + COMBO_BONUS   # +1 = X.1
+    # Hai mã qua được cổng NGUỒN rồi vẫn tự trả `not_evaluable` trên fixture này:
+    # C6.1 (chưa có M15 kỳ 2023 để lấy tồn cuối) và C3.3 (không có tờ khai lẫn M16
+    # nào để đối chiếu đơn vị). Cổng nào gỡ mã khỏi trần cũng như nhau.
+    self_gated = {"C6.1", "C3.3"}
+    assert self_gated <= set(cys.breakdown["not_evaluable"])
+    expected = (
+        (len(set(evaluable) - self_gated) + 1) * MAX_RULE_SCORE + COMBO_BONUS
+    )   # +1 = X.1
     assert cys.breakdown["max_raw"] == expected
     assert "X.1" in cys.breakdown["rule_scores"]
     # X.1 (check tự do) KHÔNG khai requires → không bao giờ bị skip.

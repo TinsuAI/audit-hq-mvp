@@ -89,6 +89,10 @@ def _load_every_source(session, company_id: int, year: int = 2024) -> None:
     from tests.conftest import add_decl, add_sp
 
     add_nvl(session, company_id, material_code="SRC", imported=1, closing=1, year=year)
+    # C6.1 tự trả `NotEvaluable` khi thiếu M15 kỳ N-1. Nạp kỳ trước với tồn cuối = 0
+    # (khớp tồn đầu kỳ này) để nó chạy được mà không sinh phát hiện — nếu không, mọi
+    # test dưới đây đo lẫn một mã `not_evaluable` thứ hai không liên quan.
+    add_nvl(session, company_id, material_code="SRC", closing=0, year=year - 1)
     add_sp(session, company_id, product_code="SRC_P", export_qty=1, closing=0, year=year)
     session.add(Norm(company_id=company_id, period_year=year, product_code="SRC_P",
                      material_code="SRC", norm_qty=1.0))
