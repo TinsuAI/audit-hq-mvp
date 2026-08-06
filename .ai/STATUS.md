@@ -1,5 +1,67 @@
 # STATUS — Audit-HQ MVP
 
+> **DB DEV (2026-08-06, SAU khi viết handoff — mọi thứ dưới đây CHỈ Ở MÁY LOCAL,
+> demo `audit-hq-demo.tinsu.ai` vẫn chạy build `0b9e3b2` ngày 01/08, không đụng tới):**
+>
+> **Đã nạp HIEP_QUANG và HONG_AN** — hai DN mà #63 sinh ra để sửa. Chỉ nạp năm nào có thư mục
+> `HANG_CHI_TIET`: HIEP_QUANG 2021 + 2024, HONG_AN 2021 + 2022 + 2024 + 2025.
+> **Kiểm chứng #63 trên chính ba file từng đọc sai cột TRƯỚC khi ghi:** cả ba nay resolve
+> **19/19 trường theo nhãn, 0 rơi về `_COL`**; 100% dòng có `quantity > 0`, đơn vị là chữ, tên DN là
+> chữ (trước đó `quantity` lấy nhầm *Trị giá NT* / *Đơn giá tính thuế*, `unit` ra số, `company_name`
+> ra ngày hoặc mã số thuế).
+>
+> **Cổng #56 chạy đúng ngay lần đầu trên dữ liệu thật:** C4.3 trả `not_evaluable` ở kỳ 2021 của cả
+> hai DN mới (kỳ biên, chưa có `first_bcqt_year`). Đó là hai bản ghi `not_evaluable` thật đầu tiên.
+>
+> **HAI KỲ NẠP VÀO RẤT LỆCH, đọc số phải dè chừng:** HIEP_QUANG 2024 không có M15a và **toàn bộ
+> 3.110 dòng BCCT bị loại vì ngoài cửa sổ kỳ** → loại hình DN dò ra `UNKNOWN`, chỉ còn M15 (8 dòng)
+> + M16 (7.719); 8 phát hiện C4.1 sinh trên nền đó. Ngoài ra **M15 của HIEP_QUANG chỉ 8 dòng** ở cả
+> 2021 lẫn 2024 trong khi M16 có 854 / 7.719 dòng — 8 mã NVL cho một DN dệt may là con số đáng ngờ,
+> **chưa điều tra**: có thể chọn nhầm file M15, có thể DN khai đúng như vậy.
+> Các năm còn lại của HIEP_QUANG (2015–2020, 2022, 2023, 2025) **không có `HANG_CHI_TIET`** nên chưa nạp.
+>
+> **Đã chạy lại check 4 DN pilot** (trước đó là kết quả từ 24/07 và 04/08, tức trước T3/T4/C4.1/mẫu
+> số `m16`, và chỉ có 17 check). Delta:
+>
+> | DN : kỳ | phát hiện | điểm | C4.3 |
+> |---|---|---|---|
+> | PILOT_002 : 2025 | 48 → 21 | 7 → 3 | chặn (kỳ biên) |
+> | PILOT_006 : 2024 | 3.880 → 3.321 | 129 → **125** | chặn (kỳ biên) |
+> | PILOT_006 : 2025 | 10.996 → 11.077 | 54 → 51 | **CHẠY — 1.772 → 1.665** |
+> | PILOT_004 : 2025 | 74 → 68 | 30 → 26 | chặn (kỳ biên) |
+> | ZONSEN : 2023 | 135 → 141 | 8 → **11** | chặn (kỳ biên) |
+> | ZONSEN : 2024 | 404 → 166 | 6 → 3 | chặn — 5 mã |
+> | ZONSEN : 2025 | 149 → 57 | 2 → 2 | chặn — 15 mã |
+> | ZONSEN : 2026 | 1.086 → 543 | 16 → 8 | chặn — 17 mã |
+>
+> Mọi số khớp đo lúc làm: C4.9 ra 5/11/13/5/15/17 đúng bảng `grill-state.md`; PILOT_002 2025 và
+> PILOT_006 2025 ra **0** (bằng chứng luật kế thừa ăn vào); C4.1 ở PILOT_006 2025 đi **14 → 202**
+> (đúng 188 mã của khoảng hở), ZONSEN 2026 **0 → 8**. Chỉ PILOT_006 2025 qua cả hai cổng.
+>
+> **`combos_enabled` nay BẬT** (`app_settings`, trước đó bảng rỗng → chạy theo mặc định OFF).
+> Quan trọng cho việc quy nguyên nhân: PILOT_006 2024 lúc combo tắt ra **20** điểm, bật lại ra
+> **125**. Tức **cổng độ phủ chỉ làm tụt 4 điểm (129 → 125), không phải 109** — 105 điểm còn lại
+> là do combo tắt, là cấu hình chứ không phải hồi quy.
+>
+> **⚠ 12 KỲ ĐANG THIẾU COMBO — trạng thái không nhất quán.** Chúng được chạy lại lúc setting còn
+> OFF: PILOT_002 2025 · **PILOT_006 2025** · PILOT_004 2025 · ZONSEN 2023–2026 · HIEP_QUANG 2021,
+> 2024 · HONG_AN 2022, 2024, 2025. Combo là cờ TOÀN CỤC nên muốn nhất quán phải chạy lại cả 12.
+> Nặng nhất là PILOT_006 2025 (~4 phút), còn lại nhẹ.
+>
+> **⚠ ĐÃ ĐỔI ALEMBIC STAMP CỦA DB DEV.** Trước: `a9b0c1d2e3f4` (chỉ có trên nhánh chưa merge
+> `feat/adr23-ktstq-period-scope`) → `alembic current` fail nên không truy vấn `Company` được.
+> Đã `stamp --purge c5d6e7f8a9b0` rồi `upgrade head` → nay ở `d1e2f3a4b5c6`. Dữ liệu nguyên vẹn
+> (integrity ok), **giữ nguyên** `fiscal_start_month` / `audit_decision_date` của nhánh kia.
+> **Hệ quả:** DB đang MANG cột của cả hai nhánh nhưng `alembic_version` chỉ ghi nhánh này — khi
+> `feat/adr23-ktstq-period-scope` merge, 4 migration của nó sẽ đòi thêm cột đã tồn tại và sẽ nổ;
+> phải stamp qua hoặc viết migration chịu được cột có sẵn.
+>
+> **Backup (WAL-safe, dùng `sqlite3.backup`, KHÔNG phải `cp`):**
+> `audit_hq.sqlite.bak-pre-hq-ha-ingest-20260806` (trước khi nạp) ·
+> `audit_hq.sqlite.bak-pre-pilot-rerun-20260806` (trước khi ghi đè kết quả 4 pilot).
+>
+> **Không đổi gì trong repo ở bước này** — chỉ DB local. Code vẫn là PR #64 dưới đây.
+
 > **Trạng thái (2026-08-06 — BẢY TICKET #57–#63 XONG. [PR #64](https://github.com/TinsuAI/audit-hq-mvp/pull/64)
 > ĐÃ MỞ, ĐÃ PUSH, CHỜ REVIEW. Đề án đã push + publish):**
 > Suite **1028 pass + 1 xfail** (vào phiên 957). `ruff check app tests` sạch. Chưa merge.
@@ -68,18 +130,19 @@
 > **Còn mở:** (a) **#65 thang điểm** — mục trên, chặn xếp hạng DN; (b) **cổng review WS1 chưa bắn
 > cho BCCT** — `review_state` trả `verified` cho trường không có trong `CHECK_COLUMNS` mà registry
 > không có dòng BCCT, nên cột `position-only` hiện badge nhưng file vẫn "Đã kiểm"; vế "đọc đúng
-> cột" của dòng 0.2 xong, vế "cảnh báo tới cán bộ" chưa thông; (c) HIEP_QUANG + HONG_AN nạp được
-> rồi, chưa nạp; (d) **bản vá tạm ở prompt tổng quan AI** (ADR #18 `:513`) nay hết chặn — Tầng C đã
+> cột" của dòng 0.2 xong, vế "cảnh báo tới cán bộ" chưa thông; (c) ~~HIEP_QUANG + HONG_AN chưa nạp~~ **đã nạp
+> 06/08**, xem khối DB DEV trên cùng; (d) **bản vá tạm ở prompt tổng quan AI** (ADR #18 `:513`) nay hết chặn — Tầng C đã
 > có `not_evaluable`, gỡ được và nên cho prompt đọc trạng thái đó thay vì né mọi số 0; (e) việc (a)
-> của P-07 còn mở — tách cột (6) khỏi (7) ở `extended_layout.py`; (f) DB dev lệch schema,
-> `alembic current` fail (stamp `a9b0c1d2e3f4` chỉ có trên `feat/adr23-ktstq-period-scope`) →
-> `tests/test_smoke.py` bind vào đó nên suite đỏ ở máy dev, chạy sạch bằng
-> `DATABASE_URL="sqlite:////<scratch>/x.sqlite" pytest`; khi nhánh kia merge sẽ có hai alembic head,
-> cần revision merge; (g) nhánh `fix/c43-multiplier-p07` + `fix/bcct-label-columns` đã cherry-pick
+> của P-07 còn mở — tách cột (6) khỏi (7) ở `extended_layout.py`; (f) ~~DB dev lệch schema~~ **đã migrate 06/08** (nay
+> `d1e2f3a4b5c6`) nên `tests/test_smoke.py` hết đỏ ở máy dev — nhưng **phát sinh cạnh chặn mới**:
+> DB mang cột của cả hai nhánh mà `alembic_version` chỉ ghi nhánh này, khi
+> `feat/adr23-ktstq-period-scope` merge thì 4 migration của nó sẽ đòi thêm cột đã có. Vẫn nên chạy
+> suite bằng `DATABASE_URL="sqlite:////<scratch>/x.sqlite" pytest` để không phụ thuộc DB dev; (g) nhánh `fix/c43-multiplier-p07` + `fix/bcct-label-columns` đã cherry-pick
 > vào đây, xoá được.
 >
 > **Next: review + merge PR #64.** Sau merge: xoá hai nhánh ở (g), rồi chốt #65 trước khi bật
-> tính năng xếp hạng DN theo điểm.
+> tính năng xếp hạng DN theo điểm. Ở DB dev còn 12 kỳ thiếu combo (khối trên cùng) — chạy lại nếu
+> cần số nhất quán giữa các DN.
 > Session log: `.ai/sessions/2026-08-06-implement-issue-56-bay-ticket.md`.
 
 > **Trạng thái (2026-08-05 — ISSUE #56: SỔ YÊU CẦU → 7 TICKET #57–#63. PR #55 ĐÃ MERGE.
