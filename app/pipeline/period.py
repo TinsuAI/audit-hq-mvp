@@ -19,9 +19,15 @@ from sqlalchemy import select
 from app.adapters._common import CompanyHeader
 from app.models import Company, CompanyPeriod
 
-# Điểm a khoản 1 Điều 12 Luật Kế toán 88/2015: niên độ khác dương lịch phải tròn 12
-# tháng tính từ đầu một quý.
-FISCAL_START_MONTHS = (1, 4, 7, 10)
+# Bốn mốc điểm a khoản 1 Điều 12 Luật Kế toán 88/2015 cho phép cho niên độ khác dương
+# lịch. Owner chốt 06/08/2026: hệ NHẬN cả 12 tháng, bốn mốc này chỉ dùng để CẢNH BÁO —
+# cán bộ chịu trách nhiệm về kỳ, phần mềm không chặn (issue #66).
+QUARTER_START_MONTHS = (1, 4, 7, 10)
+FISCAL_START_MONTHS = tuple(range(1, 13))
+
+# Khoản 4 Điều 12, bản thay bởi khoản 4 Điều 2 Luật 56/2024 (hiệu lực 01/01/2025): kỳ
+# đầu tiên hoặc kỳ cuối cùng được gộp với kỳ kề, kỳ gộp KHÔNG QUÁ 15 tháng.
+MAX_PERIOD_MONTHS = 15
 
 
 def fiscal_bounds(period_year: int, fiscal_start_month: int) -> tuple[date, date]:
@@ -31,14 +37,72 @@ def fiscal_bounds(period_year: int, fiscal_start_month: int) -> tuple[date, date
     """
     if fiscal_start_month not in FISCAL_START_MONTHS:
         raise ValueError(
-            f"Tháng bắt đầu niên độ không hợp lệ: {fiscal_start_month} "
-            f"(chỉ nhận {', '.join(str(m) for m in FISCAL_START_MONTHS)})"
+            f"Tháng bắt đầu niên độ không hợp lệ: {fiscal_start_month} (chỉ nhận 1–12)"
         )
     period_from = date(period_year, fiscal_start_month, 1)
     if fiscal_start_month == 1:
         return period_from, date(period_year, 12, 31)
     end_year, end_month = period_year + 1, fiscal_start_month - 1
     return period_from, date(end_year, end_month, monthrange(end_year, end_month)[1])
+
+
+def period_span_months(period_from: date, period_to: date) -> int:
+    """Độ dài kỳ tính bằng tháng, tính CẢ tháng đầu và tháng cuối."""
+    return (
+        (period_to.year - period_from.year) * 12
+        + (period_to.month - period_from.month)
+        + 1
+    )
+
+
+def period_window_errors(
+    period_year: int, period_from: date, period_to: date
+) -> list[str]:
+    """Lý do cửa sổ KHÔNG dùng được cho kỳ mang nhãn `period_year`. Rỗng = hợp lệ.
+
+    Kiểm ở đây chứ không ở route, vì cửa sổ vào DB qua hai đường — cán bộ nhập tay và
+    hệ suy từ tiêu đề file. Ca HIEP_QUANG (#66) đến từ đường thứ hai.
+    """
+    errors: list[str] = []
+    if period_from > period_to:
+        errors.append("Từ ngày phải nhỏ hơn hoặc bằng đến ngày.")
+        return errors  # các phép đo dưới vô nghĩa khi cửa sổ ngược
+    if period_to < date(period_year, 1, 1) or period_from > date(period_year, 12, 31):
+        # GIAO, không phải "bắt đầu đúng năm": kỳ chuyển tiếp khi DN đổi niên độ được
+        # bắt đầu từ năm trước (#49 đã chốt cảnh-báo-không-chặn cho ca đó). Ràng buộc
+        # chỉ loại cửa sổ KHÔNG dính gì tới nhãn — đúng ca HIEP_QUANG nhãn 2024 mà cửa
+        # sổ nằm trọn trong 2021.
+        errors.append(
+            f"Kỳ mang nhãn {period_year} phải có phần nằm trong năm {period_year}, "
+            f"nhưng cửa sổ là {period_from.strftime('%d/%m/%Y')}"
+            f"–{period_to.strftime('%d/%m/%Y')}."
+        )
+    span = period_span_months(period_from, period_to)
+    if span > MAX_PERIOD_MONTHS:
+        errors.append(
+            f"Kỳ dài {span} tháng, vượt mức {MAX_PERIOD_MONTHS} tháng "
+            "(khoản 4 Điều 12 Luật Kế toán, bản sửa bởi Luật 56/2024)."
+        )
+    return errors
+
+
+def duplicate_period_windows(
+    session, company_id: int, period_year: int, period_from: date, period_to: date
+) -> list[int]:
+    """Nhãn các kỳ KHÁC của cùng DN đang mang ĐÚNG cửa sổ này.
+
+    Trùng khít là ca không cần định nghĩa ngưỡng cũng biết là sai: hai kỳ khác nhau
+    không thể cùng một khoảng ngày. Chồng lấn một phần thì #49 đã cảnh báo, không chặn.
+    """
+    rows = session.execute(
+        select(CompanyPeriod.period_year).where(
+            CompanyPeriod.company_id == company_id,
+            CompanyPeriod.period_year != period_year,
+            CompanyPeriod.period_from == period_from,
+            CompanyPeriod.period_to == period_to,
+        )
+    ).all()
+    return sorted(r[0] for r in rows)
 
 
 def default_bounds(
@@ -142,7 +206,13 @@ def resolve_period_bounds(
     company_id: int,
     period_year: int,
     header: CompanyHeader | None = None,
+    rejected: list[str] | None = None,
 ) -> tuple[date, date]:
+    """Cửa sổ dùng cho (DN, kỳ), upsert vào `company_periods`.
+
+    `rejected` (nếu truyền) nhận câu giải thích khi cửa sổ suy từ tiêu đề file bị loại
+    vì không hợp lệ — ingest in ra để cán bộ biết file nào lẫn kỳ (#66).
+    """
     existing = session.scalar(
         select(CompanyPeriod).where(
             CompanyPeriod.company_id == company_id,
@@ -152,9 +222,21 @@ def resolve_period_bounds(
     if existing is not None and existing.is_manual:
         return existing.period_from, existing.period_to
 
-    period_from, period_to = default_bounds(
-        header, period_year, company_fiscal_start_month(session, company_id)
-    )
+    month = company_fiscal_start_month(session, company_id)
+    period_from, period_to = default_bounds(header, period_year, month)
+
+    # Tiêu đề file nói một kỳ khác hẳn → KHÔNG nhận, quay về niên độ DN. Nhận nguyên
+    # là cách kỳ 2024 của HIEP_QUANG lấy cửa sổ 2021 (#66): lúc nạp bỏ sạch dòng ngày
+    # 2024, lúc truy vấn `declaration_scope` kéo dòng 2021 sang.
+    errors = period_window_errors(period_year, period_from, period_to)
+    if errors:
+        if rejected is not None:
+            rejected.append(
+                f"Cửa sổ suy từ tiêu đề file "
+                f"({period_from.strftime('%d/%m/%Y')}–{period_to.strftime('%d/%m/%Y')}) "
+                f"bị loại: {' '.join(errors)} Dùng niên độ doanh nghiệp thay thế."
+            )
+        period_from, period_to = fiscal_bounds(period_year, month)
 
     if existing is None:
         session.add(

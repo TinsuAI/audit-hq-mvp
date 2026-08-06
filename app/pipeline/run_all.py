@@ -80,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
                 f"  ✓ {c} {y}: M15={stats.m15_rows} M15a={stats.m15a_rows} "
                 f"M16={stats.m16_rows} BCCT={stats.bcct_rows}{other}"
             )
+            for line in stats.period_window_rejected or []:
+                print(f"    ⚠ {line}")
             ingested.append((c, y))
         except FileNotFoundError as e:
             print(f"  ✗ {c} {y}: {e}", file=sys.stderr)

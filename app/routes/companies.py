@@ -78,8 +78,12 @@ from app.pipeline.ingest import IngestPlanError
 from app.pipeline.ingest import ingest as run_ingest
 from app.pipeline.period import (
     FISCAL_START_MONTHS,
+    QUARTER_START_MONTHS,
+    duplicate_period_windows,
+    fiscal_bounds,
     load_period_windows,
     period_window_conflict,
+    period_window_errors,
 )
 from app.pipeline.validate import diagnose_upload
 from app.scoping import allowed_company_ids, can_access_company_id, get_company_or_404
@@ -289,13 +293,18 @@ YEAR_MIN, YEAR_MAX = 2015, 2030
 # Năm đầu nộp BCQT có thể sớm hơn cửa sổ dữ liệu đã nạp (YEAR_MIN), nên nới cận dưới.
 BCQT_YEAR_MIN = 2000
 
-# Niên độ kế toán cho màn cài đặt DN — đúng 4 mốc đầu quý mà luật cho phép.
-FISCAL_MONTH_OPTIONS = [
-    (1, "01/01 – 31/12 (dương lịch)"),
-    (4, "01/04 – 31/03 năm sau"),
-    (7, "01/07 – 30/06 năm sau"),
-    (10, "01/10 – 30/09 năm sau"),
-]
+# Niên độ kế toán cho màn cài đặt DN — cả 12 tháng (owner chốt 06/08/2026, #66). Bốn
+# mốc đầu quý là mốc luật cho phép; tháng khác vẫn chọn được, kèm cảnh báo không chặn.
+def _fiscal_month_label(month: int) -> str:
+    pf, pt = fiscal_bounds(2025, month)
+    span = f"{pf.strftime('%d/%m')} – {pt.strftime('%d/%m')}"
+    if month == 1:
+        return f"{span} (dương lịch)"
+    label = f"{span} năm sau"
+    return label if month in QUARTER_START_MONTHS else f"{label} — ngoài mốc đầu quý"
+
+
+FISCAL_MONTH_OPTIONS = [(m, _fiscal_month_label(m)) for m in FISCAL_START_MONTHS]
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB per file
 
 # Mỗi slot → (subdir, fixed filename stem). Stem để tên match discover() patterns.
@@ -566,12 +575,20 @@ def update_company(
     if month not in FISCAL_START_MONTHS:
         return RedirectResponse(
             url=f"/companies/{code}/edit?error="
-            + quote_plus(
-                "Tháng bắt đầu niên độ chỉ nhận 1, 4, 7 hoặc 10 "
-                "(điểm a khoản 1 Điều 12 Luật Kế toán 88/2015)"
-            ),
+            + quote_plus("Tháng bắt đầu niên độ chỉ nhận giá trị từ 1 đến 12"),
             status_code=303,
         )
+    # Tháng ngoài đầu quý được LƯU nhưng phải nói rõ là ngoài mốc luật (owner chốt
+    # 06/08/2026): điểm a khoản 1 Điều 12 Luật Kế toán 88/2015 chỉ cho 01/01, 01/04,
+    # 01/07, 01/10. Cán bộ chịu trách nhiệm về kỳ, phần mềm không chặn.
+    fiscal_notice = (
+        ""
+        if month in QUARTER_START_MONTHS
+        else (
+            f" Lưu ý: niên độ bắt đầu tháng {month} nằm ngoài bốn mốc đầu quý mà "
+            "điểm a khoản 1 Điều 12 Luật Kế toán 88/2015 cho phép."
+        )
+    )
 
     from datetime import date as _date
 
@@ -605,6 +622,11 @@ def update_company(
     company.audit_decision_date = decision_date
     db.commit()
 
+    if fiscal_notice:
+        return RedirectResponse(
+            url=f"/companies/{code}?msg=" + quote_plus("Đã lưu." + fiscal_notice),
+            status_code=303,
+        )
     return RedirectResponse(url=f"/companies/{code}", status_code=303)
 
 
@@ -1541,8 +1563,18 @@ def documents_set_period(
         pt = date.fromisoformat(period_to)
     except ValueError:
         return _redirect(error="Ngày không hợp lệ (định dạng YYYY-MM-DD)")
-    if pf > pt:
-        return _redirect(error="Từ ngày phải nhỏ hơn hoặc bằng đến ngày")
+
+    # Cùng bộ bất biến với đường hệ suy từ tiêu đề file (#66) — trước đây chỗ này chỉ
+    # kiểm `pf <= pt`, nên kỳ 2024 đặt cửa sổ 2022 vẫn lưu được.
+    errors = period_window_errors(year, pf, pt)
+    if errors:
+        return _redirect(error=" ".join(errors))
+    dups = duplicate_period_windows(db, company.id, year, pf, pt)
+    if dups:
+        return _redirect(
+            error=f"Cửa sổ này trùng khít kỳ {', '.join(str(y) for y in dups)}. "
+            "Hai kỳ khác nhau không thể cùng một khoảng ngày."
+        )
 
     if row is None:
         row = CompanyPeriod(company_id=company.id, period_year=year)

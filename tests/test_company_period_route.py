@@ -174,3 +174,84 @@ def test_unknown_company_404():
         assert r.status_code == 404
     finally:
         _teardown(new_engine)
+
+
+# --- #66: cửa sổ phải hợp lệ với nhãn kỳ -------------------------------------
+
+
+def test_window_from_another_year_is_rejected():
+    """Ca HIEP_QUANG: kỳ 2024 không được nhận cửa sổ nằm trọn trong 2022."""
+    new_engine, new_session = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.post(
+            "/companies/DN_077/documents/period",
+            data={"year": 2024, "period_from": "2022-01-01", "period_to": "2022-12-31"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "error" in r.headers["location"]
+        assert _period(new_session, "DN_077") is None
+    finally:
+        _teardown(new_engine)
+
+
+def test_window_longer_than_15_months_is_rejected():
+    new_engine, new_session = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.post(
+            "/companies/DN_077/documents/period",
+            data={"year": 2025, "period_from": "2025-01-01", "period_to": "2026-06-30"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "error" in r.headers["location"]
+        assert _period(new_session, "DN_077") is None
+    finally:
+        _teardown(new_engine)
+
+
+def test_merged_period_of_15_months_is_accepted():
+    """Kỳ đầu/cuối gộp tới 15 tháng là hợp pháp — không được chặn nhầm."""
+    new_engine, new_session = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.post(
+            "/companies/DN_077/documents/period",
+            data={"year": 2025, "period_from": "2025-10-01", "period_to": "2026-12-31"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "error" not in r.headers["location"]
+        cp = _period(new_session, "DN_077")
+        assert cp is not None and cp.period_to == date(2026, 12, 31)
+    finally:
+        _teardown(new_engine)
+
+
+def test_window_identical_to_another_period_is_rejected():
+    new_engine, new_session = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        client.post(
+            "/companies/DN_077/documents/period",
+            data={"year": 2025, "period_from": "2025-01-01", "period_to": "2025-12-31"},
+            follow_redirects=False,
+        )
+        r = client.post(
+            "/companies/DN_077/documents/period",
+            data={"year": 2026, "period_from": "2025-01-01", "period_to": "2025-12-31"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "error" in r.headers["location"]
+        with new_session() as db:
+            rows = db.query(CompanyPeriod).all()
+        assert [r.period_year for r in rows] == [2025]
+    finally:
+        _teardown(new_engine)

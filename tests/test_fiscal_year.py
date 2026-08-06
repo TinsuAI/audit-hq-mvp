@@ -21,6 +21,7 @@ from app.main import app
 from app.models import Company, CompanyPeriod
 from app.pipeline.period import (
     FISCAL_START_MONTHS,
+    QUARTER_START_MONTHS,
     default_bounds,
     fiscal_bounds,
     load_period_windows,
@@ -44,10 +45,17 @@ def test_july_and_october_fiscal_years():
     assert fiscal_bounds(2025, 10) == (date(2025, 10, 1), date(2026, 9, 30))
 
 
-def test_only_quarter_starts_are_accepted():
-    assert FISCAL_START_MONTHS == (1, 4, 7, 10)
+def test_every_month_is_accepted_quarter_starts_only_name_the_legal_marks():
+    """Owner chốt 06/08/2026 (#66): nhận cả 12 tháng, 4 mốc quý chỉ để CẢNH BÁO.
+
+    Điểm a khoản 1 Điều 12 Luật Kế toán 88/2015 chỉ cho 01/01, 01/04, 01/07, 01/10 —
+    hệ vẫn lưu tháng khác, cán bộ chịu trách nhiệm về kỳ.
+    """
+    assert FISCAL_START_MONTHS == tuple(range(1, 13))
+    assert QUARTER_START_MONTHS == (1, 4, 7, 10)
+    assert fiscal_bounds(2025, 2) == (date(2025, 2, 1), date(2026, 1, 31))
     with pytest.raises(ValueError):
-        fiscal_bounds(2025, 2)
+        fiscal_bounds(2025, 13)
 
 
 # --- Chuỗi ưu tiên ------------------------------------------------------------
@@ -169,7 +177,8 @@ def test_saving_fiscal_start_month_persists():
         _teardown(new_engine)
 
 
-def test_invalid_fiscal_start_month_is_rejected():
+def test_non_quarter_month_is_saved_with_a_notice():
+    """Tháng 2 ngoài mốc luật: LƯU được, nhưng phải nói rõ là ngoài mốc."""
     new_engine, new_session = _setup_db()
     try:
         client = TestClient(app)
@@ -178,6 +187,27 @@ def test_invalid_fiscal_start_month_is_rejected():
             "/companies/DN_077/edit",
             data={"name": "Cơ khí Test", "tax_id": "111", "address": "",
                   "industry": "", "fiscal_start_month": "2"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "error" not in r.headers["location"]
+        assert "msg" in r.headers["location"]
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_077"))
+            assert c.fiscal_start_month == 2
+    finally:
+        _teardown(new_engine)
+
+
+def test_invalid_fiscal_start_month_is_rejected():
+    new_engine, new_session = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.post(
+            "/companies/DN_077/edit",
+            data={"name": "Cơ khí Test", "tax_id": "111", "address": "",
+                  "industry": "", "fiscal_start_month": "13"},
             follow_redirects=False,
         )
         assert r.status_code == 303
