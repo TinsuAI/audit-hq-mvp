@@ -36,7 +36,7 @@ from app.checks.combos import COMBO_SPECS
 from app.checks.detail_labels import column_headers, describe_details, row_cells
 from app.checks.not_evaluable import load_not_evaluable
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
-from app.checks.scoring import tier_css_for, tier_for
+from app.checks.scoring import score_coverage, tier_css_for, tier_for
 from app.database import get_db
 from app.formatting import JINJA_GLOBALS as FORMAT_GLOBALS
 from app.formatting import fmt_date, fmt_price, fmt_qty
@@ -84,6 +84,8 @@ templates.env.globals["SPECS"] = {code: spec for code, spec in SPECS.items()}
 templates.env.globals["COMBO_SPECS"] = COMBO_SPECS
 templates.env.globals["tier_css_for"] = tier_css_for
 templates.env.globals["tier_for"] = tier_for
+# Độ phủ chấm điểm — mọi chỗ hiện điểm phải hiện kèm, xem `score_coverage`.
+templates.env.globals["score_coverage"] = score_coverage
 templates.env.globals["PERCENTILE_LABEL"] = PERCENTILE_LABEL_VI
 # Nhãn sổ quyết toán (book) — dùng ở company_detail (split line) + finding_detail (field).
 templates.env.globals["book_label"] = book_label
@@ -207,6 +209,19 @@ def list_companies(
             .group_by(CompanyYearScore.company_id)
         ).all()
     )
+    # Độ phủ chấm điểm của DN = kỳ có độ phủ THẤP NHẤT. Điểm hiển thị là max theo năm,
+    # nhưng độ phủ phải lấy trường hợp xấu nhất: một kỳ còn luật chưa đánh giá được là
+    # đủ để không so ngang DN này với DN đã đánh giá trọn (xem `score_coverage`).
+    coverage: dict[int, tuple[int, int]] = {}
+    for cid, breakdown in db.execute(
+        select(CompanyYearScore.company_id, CompanyYearScore.breakdown)
+    ).all():
+        done, total = score_coverage(breakdown)
+        if not total:
+            continue
+        cur = coverage.get(cid)
+        if cur is None or (done - total) < (cur[0] - cur[1]):
+            coverage[cid] = (done, total)
     summary = []
     for c in companies:
         counts_rows = db.execute(
@@ -218,12 +233,21 @@ def list_companies(
         for year, sev, n in counts_rows:
             if sev in years[year]:
                 years[year][sev] = n
+        done, total = coverage.get(c.id, (0, 0))
         summary.append({
             "company": c,
             "score": max_scores.get(c.id) or 0,
             "years": sorted(years.items(), reverse=True),
+            "coverage_done": done,
+            "coverage_total": total,
+            "full_coverage": bool(total) and done >= total,
         })
-    summary.sort(key=lambda s: (-s["score"], s["company"].code))
+    # Xếp hạng tách NHÓM: DN đã đánh giá trọn phạm vi đứng trước, DN còn luật chưa đánh
+    # giá được xuống nhóm sau. Điểm của hai nhóm KHÔNG so ngang được — điểm là trung
+    # bình trên các luật chấm được, nên kỳ thiếu độ phủ có thể ra điểm THẤP hơn chỉ vì
+    # luật đang gánh điểm bị gỡ (đo trên pilot: DN 10/2025 3→1). Xếp chung một cột thì
+    # DN thiếu dữ liệu trồi lên đầu danh sách "sạch".
+    summary.sort(key=lambda s: (not s["full_coverage"], -s["score"], s["company"].code))
 
     # Thang hạng cho thẻ giải thích — đọc ngưỡng runtime (admin có thể chỉnh),
     # không hardcode trong template để khỏi lệch khi đổi ngưỡng.

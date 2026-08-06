@@ -11,13 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.m16 import is_domestic_origin
+from app.books import book_label
 from app.checks.effective_norms import (
     consumed_materials,
     effective_norms,
     production_intake,
     products_without_norm,
 )
-from app.checks.norm_gate import norm_coverage_gate
+from app.checks.norm_gate import is_boundary_period, norm_coverage_gate
 from app.checks.not_evaluable import CheckResult
 from app.checks.registry import Severity, severity_for
 from app.models import Finding, Norm, NvlBalance, SpBalance
@@ -275,15 +276,34 @@ def check_c4_9(session: Session, company_id: int, year: int) -> list[Finding]:
     Chiều ngược của C4.2 (M16 → M15a): ở đây đi từ M15a sang M16.
 
     Gộp theo SỔ quyết toán: định mức khai ở sổ này không phủ sản lượng sản xuất
-    của sổ kia (ADR #19).
+    của sổ kia (ADR #19). Nhưng nếu mã CÓ định mức ở sổ khác thì nói đúng như vậy,
+    không nói "thiếu định mức": hồ sơ có tồn tại, câu hỏi là Mẫu 16 đã nộp vào sổ
+    nào. Nói thiếu sẽ đẩy cán bộ đi đòi doanh nghiệp một file đã nộp rồi.
+
+    KHÁC C4.3: ở kỳ biên (kỳ sớm nhất đang giữ, chưa xác nhận năm đầu nộp BCQT)
+    C4.3 dừng hẳn, còn C4.9 VẪN liệt kê — danh sách từng mã là thứ cán bộ cần —
+    nhưng gắn cờ `boundary_period` để không kết luận doanh nghiệp chưa khai khi có
+    thể họ đã khai trước cửa sổ dữ liệu đang có (issue #61 × #62, quyết định Q1).
     """
     missing = products_without_norm(session, company_id, year)
     intake = production_intake(session, company_id, year)
+    norms = effective_norms(session, company_id, year)
+    boundary = is_boundary_period(session, company_id, year)
+
+    # {mã TP: các sổ KHÁC có khai định mức cho mã đó}
+    books_with_norm: dict[str, set[str | None]] = defaultdict(set)
+    for book, pairs in norms.items():
+        for product_code, _material_code in pairs:
+            books_with_norm[product_code].add(book)
 
     findings: list[Finding] = []
     for book in sorted(missing, key=lambda b: (b is None, b or "")):
         for code in sorted(missing[book]):
             qty = intake.get(book, {}).get(code, 0.0)
+            other_books = sorted(
+                (b for b in books_with_norm.get(code, ()) if b != book),
+                key=lambda b: (b is None, b or ""),
+            )
             sp_filter = {"company_id": company_id, "period_year": year, "product_code": code}
             if book is not None:
                 sp_filter["book"] = book
@@ -297,12 +317,28 @@ def check_c4_9(session: Session, company_id: int, year: int) -> list[Finding]:
                 book=book,
                 title=(
                     f"TP {code}: sản xuất nhập kho {qty:.2f} trong kỳ "
-                    f"nhưng không có định mức M16 hiệu lực"
+                    + (
+                        "nhưng định mức M16 khai ở "
+                        + ", ".join(book_label(b) for b in other_books)
+                        if other_books
+                        else "nhưng không có định mức M16 hiệu lực"
+                    )
                 ),
-                details={"intake": qty},
-                # Không trỏ về `norms`: chính việc KHÔNG có dòng nào cho mã này là
-                # nội dung phát hiện. Chứng cứ là dòng M15a khai sản lượng.
-                evidence_refs=[{"table": "sp_balances", "filter": sp_filter}],
+                details={
+                    "intake": qty,
+                    "norm_in_other_book": [book_label(b) for b in other_books],
+                    "boundary_period": boundary,
+                },
+                # Trỏ về `norms` CHỈ KHI định mức nằm ở sổ khác — có dòng để mở ra.
+                # Ca thiếu hẳn thì chứng cứ là dòng M15a khai sản lượng: chính việc
+                # KHÔNG có dòng norms nào cho mã này là nội dung phát hiện.
+                evidence_refs=(
+                    [{"table": "sp_balances", "filter": sp_filter}]
+                    + ([{
+                        "table": "norms",
+                        "filter": {"company_id": company_id, "product_code": code},
+                    }] if other_books else [])
+                ),
             ))
     return findings
 

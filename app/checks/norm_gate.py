@@ -73,12 +73,23 @@ def _coverage_reason(missing: dict[str | None, set[str]]) -> str:
     )
 
 
-def norm_coverage_gate(session: Session, company_id: int, year: int) -> NotEvaluable | None:
-    """`NotEvaluable` kèm lý do nếu (DN, kỳ) vướng cổng; None nếu đánh giá được."""
+def is_boundary_period(session: Session, company_id: int, year: int) -> bool:
+    """Kỳ này là kỳ biên CHƯA được xác nhận là năm đầu nộp BCQT?
+
+    True nghĩa là không phân biệt được "chưa từng khai định mức" với "đã khai trước
+    cửa sổ dữ liệu đang có". C4.3 lấy đây làm điều kiện chặn; C4.9 vẫn liệt kê mã
+    nhưng gắn kèm cảnh báo này để cán bộ đi hỏi hồ sơ kỳ trước thay vì kết luận
+    doanh nghiệp không khai (issue #61 × #62).
+    """
     company = session.get(Company, company_id)
     first_bcqt_year = company.first_bcqt_year if company is not None else None
     earliest = earliest_period_held(session, company_id)
-    if earliest is not None and year == earliest and first_bcqt_year != year:
+    return earliest is not None and year == earliest and first_bcqt_year != year
+
+
+def norm_coverage_gate(session: Session, company_id: int, year: int) -> NotEvaluable | None:
+    """`NotEvaluable` kèm lý do nếu (DN, kỳ) vướng cổng; None nếu đánh giá được."""
+    if is_boundary_period(session, company_id, year):
         return NotEvaluable(_boundary_reason(year))
 
     missing = products_without_norm(session, company_id, year)
@@ -87,4 +98,4 @@ def norm_coverage_gate(session: Session, company_id: int, year: int) -> NotEvalu
     return None
 
 
-__all__ = ["earliest_period_held", "norm_coverage_gate"]
+__all__ = ["earliest_period_held", "is_boundary_period", "norm_coverage_gate"]

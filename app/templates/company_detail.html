@@ -11,6 +11,7 @@
 {% set ys_score = year_score.score if year_score else 0 %}
 {% set ys_tier = year_score.tier if year_score else tier_for(0) %}
 {% set ys_css = tier_css_for(ys_score) %}
+{% set ys_evaluated, ys_total = score_coverage(year_score.breakdown if year_score else None) %}
 
 <div class="page-header">
   <div class="page-title-group">
@@ -85,6 +86,15 @@
     {% if checks_run %}
       <span class="stat-value">{{ ys_score }}<span class="stat-unit">/1000</span></span>
       <span class="tier-label">{{ ys_tier }}</span>
+      {# Điểm là trung bình trên các luật CHẤM ĐƯỢC. Luật chưa đánh giá được bị gỡ khỏi
+         cả tử số lẫn trần, nên điểm có thể GIẢM dù biết ít hơn — con số không được
+         đứng một mình, phải kèm độ phủ. #}
+      {% if ys_total %}
+        <span class="tier-label score-coverage{% if ys_evaluated < ys_total %} score-coverage-partial{% endif %}"
+              title="{% if ys_evaluated < ys_total %}Còn kiểm tra chưa đánh giá được — điểm chỉ tính trên phần đã đánh giá, không so ngang được với kỳ đủ độ phủ.{% else %}Mọi kiểm tra trong phạm vi đều đã đánh giá.{% endif %}">
+          Đã đánh giá {{ ys_evaluated }}/{{ ys_total }} kiểm tra
+        </span>
+      {% endif %}
     {% else %}
       <span class="stat-value">—</span>
       <span class="tier-label">Chưa chạy kiểm tra</span>

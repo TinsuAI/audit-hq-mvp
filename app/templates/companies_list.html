@@ -89,6 +89,7 @@
       <tr>
         <th>Hạng</th>
         <th class="sortable" data-sort-key="score">Điểm rủi ro dữ liệu <small style="font-weight:normal">(0-1000)</small></th>
+        <th>Độ phủ</th>
         <th>Mức cảnh báo</th>
         <th class="sortable" data-sort-key="name">Doanh nghiệp</th>
         <th class="sortable" data-sort-key="industry">Ngành</th>
@@ -103,8 +104,9 @@
         {% set score = item.score %}
         {% set tier_css = tier_css_for(score) %}
         {% set tier_label = tier_for(score) %}
-      <tr class="dn-row"
+      <tr class="dn-row{% if not item.full_coverage %} dn-row-partial{% endif %}"
           data-score="{{ score }}"
+          data-full-coverage="{{ 1 if item.full_coverage else 0 }}"
           data-name="{{ (c.name or '') | lower }}"
           data-mst="{{ c.tax_id or '' }}"
           data-tier="{{ tier_label }}"
@@ -112,6 +114,16 @@
           data-search="{{ ((c.name or '') ~ ' ' ~ (c.slug or '') ~ ' ' ~ (c.tax_id or '')) | lower }}">
         <td class="rank"><span class="rank-badge {% if rank <= 3 %}rank-{{ rank }}{% endif %}">{{ rank }}</span></td>
         <td><span class="score-pill {{ tier_css }}">{{ score }}</span></td>
+        <td>
+          {% if item.coverage_total %}
+            <span class="coverage-pill{% if not item.full_coverage %} coverage-partial{% endif %}"
+                  title="{% if item.full_coverage %}Mọi kiểm tra trong phạm vi đều đã đánh giá.{% else %}Kỳ có độ phủ thấp nhất của doanh nghiệp này còn kiểm tra chưa đánh giá được — điểm chỉ tính trên phần đã đánh giá, không so ngang được với doanh nghiệp đủ độ phủ.{% endif %}">
+              {{ item.coverage_done }}/{{ item.coverage_total }}
+            </span>
+          {% else %}
+            <span class="text-subtle">—</span>
+          {% endif %}
+        </td>
         <td><span class="tier-pill {{ tier_css }}">{{ tier_label }}</span></td>
         <td>
           <div class="dn-cell">
@@ -207,8 +219,17 @@
     var ordered = visible.slice();
     if (sortKey) {
       ordered.sort(function (a, b) {
+        // Xếp theo ĐIỂM phải giữ hai nhóm độ phủ tách nhau: điểm là trung bình trên
+        // các luật chấm được, nên DN còn kiểm tra chưa đánh giá được có thể ra điểm
+        // thấp hơn chỉ vì luật đang gánh điểm bị gỡ. Trộn chung một cột thì DN thiếu
+        // dữ liệu trồi lên đầu danh sách "sạch". Các cột khác (tên, ngành, MST) không
+        // mang nghĩa rủi ro nên xếp thẳng.
+        if (sortKey === 'score') {
+          var af = a.dataset.fullCoverage === '1', bf = b.dataset.fullCoverage === '1';
+          if (af !== bf) return af ? -1 : 1;
+          return (parseInt(a.dataset.score, 10) - parseInt(b.dataset.score, 10)) * sortDir;
+        }
         var av = a.dataset[sortKey], bv = b.dataset[sortKey];
-        if (sortKey === 'score') return (parseInt(av, 10) - parseInt(bv, 10)) * sortDir;
         return (av || '').localeCompare(bv || '', 'vi') * sortDir;
       });
     }

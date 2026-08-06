@@ -77,6 +77,8 @@ DETAIL_FIELDS: dict[str, tuple[str, str]] = {
     "actual_m15_production_out": ("Xuất SX thực tế (M15)", "qty"),
     "divergent_norm_products": ("Mã SP có định mức lệch", "list"),
     "norm_source_years": ("Kỳ khai định mức đã dùng", "list"),
+    "norm_in_other_book": ("Định mức khai ở sổ khác", "list"),
+    "boundary_period": ("Kỳ biên — có thể đã khai trước cửa sổ dữ liệu", "bool"),
     # --- C6 liên kỳ ---
     "current_opening": ("Tồn đầu kỳ này", "qty"),
     "previous_closing": ("Tồn cuối kỳ trước", "qty"),
@@ -155,7 +157,7 @@ FINDING_COLUMNS: dict[str, tuple[str, ...]] = {
         "theoretical_consumption", "actual_m15_production_out", "diff_pct",
         "norm_source_years", "divergent_norm_products",
     ),
-    "C4.9": ("intake",),
+    "C4.9": ("intake", "norm_in_other_book", "boundary_period"),
     "C5.1": ("production_out", "import", "opening"),
     "C6.1": ("current_opening", "previous_closing", "diff"),
     "COMBO_FORGED_NORM": ("triggers",),

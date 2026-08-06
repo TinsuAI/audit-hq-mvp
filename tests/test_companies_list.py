@@ -79,3 +79,64 @@ def test_list_ranks_by_max_cys_not_risk_score():
         assert r.text.index("DN_HI") < r.text.index("DN_LO")
     finally:
         _teardown(new_engine)
+
+
+def test_list_buckets_partial_coverage_below_full_coverage():
+    """Điểm là trung bình trên các luật CHẤM ĐƯỢC, nên DN còn kiểm tra chưa đánh giá
+    được có thể ra điểm THẤP hơn chỉ vì luật đang gánh điểm bị gỡ (đo trên pilot:
+    DN 10/2025 3→1). Xếp chung một cột thì DN thiếu dữ liệu trồi lên đầu danh sách
+    "sạch" — phải tách nhóm, DN đủ độ phủ đứng trước dù điểm thấp hơn."""
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as db:
+            full = Company(code="DN_FULL", name="Full", tax_id="1")
+            partial = Company(code="DN_PARTIAL", name="Partial", tax_id="2")
+            db.add_all([full, partial])
+            db.flush()
+            db.add(CompanyYearScore(
+                company_id=full.id, period_year=2024, score=5, tier="t",
+                breakdown={"rule_count": 18, "not_evaluable": []},
+            ))
+            # Điểm CAO hơn nhưng thiếu độ phủ → vẫn phải xuống nhóm sau.
+            db.add(CompanyYearScore(
+                company_id=partial.id, period_year=2024, score=400, tier="t",
+                breakdown={"rule_count": 18, "not_evaluable": ["C4.3"]},
+            ))
+            db.commit()
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/companies")
+        assert r.status_code == 200
+        assert r.text.index("DN_FULL") < r.text.index("DN_PARTIAL")
+        assert "18/18" in r.text
+        assert "17/18" in r.text
+    finally:
+        _teardown(new_engine)
+
+
+def test_list_takes_the_worst_coverage_across_years():
+    """Điểm hiển thị là max theo năm, nhưng độ phủ phải lấy kỳ XẤU NHẤT: một kỳ còn
+    luật chưa đánh giá được là đủ để không so ngang DN này với DN đánh giá trọn."""
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as db:
+            c = Company(code="DN_MIX", name="Mix", tax_id="1")
+            db.add(c)
+            db.flush()
+            db.add(CompanyYearScore(
+                company_id=c.id, period_year=2024, score=10, tier="t",
+                breakdown={"rule_count": 18, "not_evaluable": []},
+            ))
+            db.add(CompanyYearScore(
+                company_id=c.id, period_year=2025, score=20, tier="t",
+                breakdown={"rule_count": 18, "not_evaluable": ["C4.3", "C4.9"]},
+            ))
+            db.commit()
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/companies")
+        assert r.status_code == 200
+        assert "16/18" in r.text
+        assert "18/18" not in r.text
+    finally:
+        _teardown(new_engine)

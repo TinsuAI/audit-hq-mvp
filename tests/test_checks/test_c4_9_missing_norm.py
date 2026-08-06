@@ -6,6 +6,7 @@ C4.1/C4.3 chứ không dùng chung dữ liệu dựng sẵn.
 
 from __future__ import annotations
 
+from app.books import book_label
 from app.checks.c4_norm import check_c4_9
 from tests.conftest import add_sp
 from tests.test_checks.test_c4_norm import add_norm
@@ -101,3 +102,63 @@ def test_registered_in_the_module_check_map(session, company):
     from app.checks.c4_norm import CHECKS
 
     assert CHECKS["C4.9"] is check_c4_9
+
+
+# --- Quyết định 06/08: định mức ở sổ khác, và cảnh báo kỳ biên ---
+
+
+def test_c4_9_says_the_norm_is_in_another_book(session, company):
+    # Sản xuất ở sổ GC, định mức khai ở sổ EPE. Hồ sơ CÓ tồn tại — nói "thiếu định
+    # mức" sẽ đẩy cán bộ đi đòi DN một file đã nộp rồi. Vẫn fire (ADR #19: không
+    # dùng định mức sổ EPE cho sản lượng sổ GC), nhưng nói đúng chuyện gì đang xảy ra.
+    add_sp(session, company.id, product_code="TP", intake=100, book="GC", year=2024)
+    add_norm(
+        session, company.id, product_code="TP", material_code="A",
+        norm_qty=1.0, book="EPE", year=2024,
+    )
+    session.commit()
+    findings = check_c4_9(session, company.id, 2024)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.book == "GC"
+    assert f.details["norm_in_other_book"] == [book_label("EPE")]
+    assert "sổ khác" not in f.title
+    assert book_label("EPE") in f.title
+    # Có dòng norms để mở ra → chứng cứ phải trỏ tới.
+    assert any(r["table"] == "norms" for r in f.evidence_refs)
+
+
+def test_c4_9_missing_everywhere_has_no_other_book_and_no_norm_evidence(session, company):
+    add_sp(session, company.id, product_code="TP", intake=100, book="GC", year=2024)
+    session.commit()
+    findings = check_c4_9(session, company.id, 2024)
+    assert findings[0].details["norm_in_other_book"] == []
+    # Không có dòng norms nào cho mã này — trỏ về `norms` là mở ra bảng rỗng.
+    assert [r["table"] for r in findings[0].evidence_refs] == ["sp_balances"]
+
+
+def test_c4_9_flags_a_boundary_period(session, company):
+    # Kỳ sớm nhất đang giữ, chưa ghi nhận năm đầu nộp BCQT → vẫn liệt kê (khác C4.3,
+    # dừng hẳn) nhưng gắn cờ để không kết luận DN chưa khai.
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    session.commit()
+    findings = check_c4_9(session, company.id, 2024)
+    assert findings[0].details["boundary_period"] is True
+
+
+def test_c4_9_does_not_flag_once_the_first_bcqt_year_is_confirmed(session, company):
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    company.first_bcqt_year = 2024
+    session.commit()
+    findings = check_c4_9(session, company.id, 2024)
+    assert findings[0].details["boundary_period"] is False
+
+
+def test_c4_9_does_not_flag_a_later_period(session, company):
+    add_sp(session, company.id, product_code="OLD", intake=5, year=2023)
+    add_norm(session, company.id, product_code="OLD", material_code="A", norm_qty=1.0, year=2023)
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    session.commit()
+    findings = check_c4_9(session, company.id, 2024)
+    assert [f.subject_key for f in findings] == ["TP"]
+    assert findings[0].details["boundary_period"] is False
