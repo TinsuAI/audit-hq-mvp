@@ -21,6 +21,7 @@ from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.pipeline.data_files import year_review_gate
 from app.pipeline.saved_map import load_column_map
 from app.settings import settings
+from tests.helpers import drain_jobs, last_job_result
 
 # Header Mẫu 15 bố cục chuẩn NHƯNG cột xuất SX (col 8) dùng nhãn không khớp từ khoá
 # → `production_out_qty` chỉ `balance-checked`; cột này dùng RIÊNG LẺ (C4.3/C5.1) nên
@@ -90,8 +91,11 @@ def _upload_needs_review(client) -> None:
         follow_redirects=False,
     )
     assert r.status_code == 303
-    # Dừng ở cổng review → redirect báo "cần xác nhận", KHÔNG tự nạp.
-    assert "x%C3%A1c+nh%E1%BA%ADn" in r.headers["location"]
+    # Nạp chạy ở hàng đợi → redirect tới trang công việc, chưa đọc file lúc request.
+    assert r.headers["location"].startswith("/jobs/")
+    drain_jobs()
+    # Dừng ở cổng review → job kết luận "cần xác nhận", KHÔNG tự nạp.
+    assert last_job_result("ingest")["status"] == "needs_review"
 
 
 def test_review_get_renders_map_and_badges(tmp_path):
@@ -142,8 +146,8 @@ def test_review_confirm_saves_map_and_advances_to_parsed(tmp_path):
             data=data, follow_redirects=False,
         )
         assert r.status_code == 303
-        assert "/documents" in r.headers["location"]
-        assert "msg=" in r.headers["location"]
+        assert r.headers["location"].startswith("/jobs/")
+        drain_jobs()
 
         with dbmod.SessionLocal() as db:
             c = db.query(Company).filter_by(code="DN_REV").first()

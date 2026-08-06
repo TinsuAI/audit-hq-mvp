@@ -971,3 +971,73 @@ không ship gì trong này — dùng đồ có sẵn (flow review cấu trúc l�
 Xem [[harness-baseline-methodology]] · [[parse-confidence-evidence-model]] ·
 [[checks-khong-doc-lap-khi-dem-gop]] · [[so-lieu-phai-co-mau-so-va-nguon-doc-lap]] ·
 [[trich-luat-phai-neu-ban-hop-nhat-va-hieu-luc]].
+
+## 2026-08-06 — Nạp dữ liệu chạy ở hàng đợi · parse một lần · trang tính chọn được
+
+Sự cố mở đầu: cán bộ tải bộ file 006 lên demo, Cloudflare trả **lỗi 524** (origin không trả lời
+trong 100 giây). Không phải do deploy: trang lỗi đóng dấu 09:29:24 UTC, lượt deploy trước xong
+09:20:49 và lượt sau tới 09:33 mới khởi động lại container, `/healthz` lúc đó vẫn phục vụ build
+`e0ca059`.
+
+**Đo trên chính file gây lỗi** (`PILOT_006/2025/.../BaoCaoToKhai 01.01.2025-31.12.2025 F1+F3.xlsx`,
+68,0 MB, 243.454 dòng chi tiết):
+
+| bước | thời gian | RSS đỉnh |
+|---|---|---|
+| `parse_bcct` riêng file này | 97,0 s | 770 MB |
+| `diagnose_upload(PILOT_006, 2025)` | 119,9 s | 904 MB |
+| `ingest(dry_run=True)` (270.505 dòng BCCT + 10.560 M15 + 501 M15a + 113.561 M16) | 116,1 s | 850 MB |
+| `ingest()` commit (đọc lại lần ba + ghi ~395k dòng) | ≥ 116 s | — |
+
+### 1. Mọi đường nạp đi qua job queue (`JobKind.INGEST`) — SỬA ADR #18 Revision WS2 mục (1)
+
+**Quyết định:** `POST /companies/{code}/upload`, `POST /documents/ingest` và
+`POST /documents/file/{id}/review` chỉ làm phần rẻ trong request (ghi file, `sync_data_files`, lưu
+map cột / sổ / trang tính) rồi enqueue job `ingest` và redirect `/jobs/{id}`. Handler chạy chuỗi
+chẩn đoán → xem trước → cổng review → nạp. Payload `gate` (True ở đường tải lên, False ở nạp lại
+và xác nhận cột) và `then_run_checks` — **handler tự enqueue** job kiểm tra nối tiếp, nên thứ tự
+đúng không phụ thuộc số worker và nạp hỏng thì không chạy kiểm tra trên dữ liệu cũ.
+
+**Lý do:** ADR #18 Revision WS2 chọn option A (re-ingest giữ đồng bộ, chỉ re-run vào hàng đợi) với
+lý do "áp map là ý nghĩa của confirm, không được kẹt ở `analyzed`". Số đo trên cho thấy option A
+không sống được với dữ liệu thật: một lượt tải lên tốn hơn 6 phút CPU trong khi biên là 100 giây,
+và giới hạn đó của Cloudflare chỉ Enterprise mới nới được. Cái giá của option B (file kẹt
+`analyzed` vài phút) nay hiện rõ trên trang công việc tự làm mới 2 giây, kèm kết luận
+`status = ok | diagnosis_error | needs_review | plan_error`, danh sách chẩn đoán và cột cần xác nhận.
+
+**Alternatives loại:** nới timeout (Cloudflare free/pro không cho); chỉ nạp nền cho file lớn (hai
+đường mã cho cùng một việc, ngưỡng nào cũng tuỳ tiện); giữ `INGEST_AND_RUN` (tên nói "nạp và chạy
+kiểm tra", còn đường tải lên KHÔNG tự chạy kiểm tra — thêm `INGEST` cho đúng nghĩa, enum cũ vẫn để trống).
+
+### 2. `parse_cache()` — mỗi file mở một lần trong một lượt nạp
+
+**Quyết định:** `app/adapters/parse_cache.py` nhớ kết quả `parse_m15/m15a/m16/bcct` theo
+`(hàm, đường dẫn, mtime, size, sheet, năm)` bên trong `with parse_cache():`; `app/adapters/__init__.py`
+xuất bản có nhớ. Handler bọc cả ba bước trong một phạm vi.
+
+**Lý do:** ba bước đọc cùng bộ file ba lần. Nhớ theo `(mtime, size)` để file tải lên đè vẫn parse lại.
+ContextVar chứ không phải biến module vì worker kiểm tra và worker AI là hai thread. Nhớ cả lỗi:
+`SheetNotFound` là kết luận về file, không phải sự cố nhất thời.
+
+**Alternatives loại:** cache toàn cục theo tiến trình (giữ ~900 MB kết quả parse của một kỳ sống
+giữa các job); truyền `ParsedSet` qua tham số (đổi chữ ký `diagnose_upload`/`ingest`/
+`_plan_settlement_files` và phải tự mang ngữ nghĩa lỗi của từng file).
+
+### 3. Trang tính: ghi lại, hiện ra, chọn lại được
+
+**Quyết định:** `IngestStats.sheets` (khoá `"slot:tên file"`) → `data_files.parse_detail.sheet`;
+màn xác nhận cột vẽ lưới của **trang được đọc** thay vì trang đầu workbook, kèm ô chọn trang; cột
+mới `data_files.sheet_override` (NULL = để hệ thống tự chọn) được `ingest` áp cho cả xem trước lẫn
+nạp thật. Đổi trang = chạy lại kiểm tra cả năm khi file đã `parsed` (như đổi sổ) vì đổi trang là
+đổi toàn bộ dòng đọc ra. `parse_bcct`/`parse_m16` khi nhận trang chỉ định thì **dò lại dòng dữ liệu
+đầu** (`find_data_start`) thay vì giữ hằng số của mẫu chuẩn.
+
+**Lý do:** `select_sheet` chấm điểm chọn trang mà không ghi lại đã chọn gì, còn màn review lại đọc
+trang chỉ số 0. File BCCT của 006 có 6 trang (`Tổng hợp`, `Chi tiết`, `Phí vận chuyển`, `lệ phí HQ`,
+`làm co`, `TK tại chỗ`): parser đọc `Chi tiết`, màn review vẽ `Tổng hợp` — cán bộ xác nhận chỉ số
+cột trên một bố cục khác hẳn cái đang được nạp. Trang tổng hợp cấp tờ khai cũng có "Số TK" ở cột 1
+nên chọn nhầm ra **dòng sai**, không phải 0 dòng.
+
+**Alternatives loại:** lưu trang trong `parse_layout`/provenance theo slot (một kỳ có nhiều file
+BCCT, mỗi file một trang — provenance chỉ giữ một bản cho cả slot); chỉ hiện trang mà không cho
+sửa (biết sai vẫn không sửa được, phải sửa file nguồn).

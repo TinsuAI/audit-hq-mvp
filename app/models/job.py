@@ -18,6 +18,7 @@ from app.database import Base
 
 class JobKind(StrEnum):
     RUN_CHECKS = "run_checks"
+    INGEST = "ingest"
     INGEST_AND_RUN = "ingest_and_run"
     BATCH_RUN = "batch_run"
     AI_OVERVIEW = "ai_overview"

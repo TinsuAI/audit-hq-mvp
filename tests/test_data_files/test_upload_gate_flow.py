@@ -22,6 +22,7 @@ from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.pipeline.data_files import _evidence_columns
 from app.settings import settings
+from tests.helpers import drain_jobs, last_job_result
 
 # Header bố cục chuẩn Mẫu 15 (cột đúng vị trí BALANCE_EXPECT: mã=1, tồn đầu=4,
 # nhập=5, xuất SX=8, tồn cuối=10) → mọi cột khớp tiêu đề → verified.
@@ -134,9 +135,10 @@ def test_verified_upload_auto_advances_to_parsed(tmp_path):
             follow_redirects=False,
         )
         assert r.status_code == 303
-        # Tự advance → redirect báo "nạp dữ liệu", KHÔNG phải "cần xác nhận".
-        assert "n%E1%BA%A1p+d%E1%BB%AF+li%E1%BB%87u" in r.headers["location"]
-        assert "x%C3%A1c+nh%E1%BA%ADn" not in r.headers["location"]
+        assert r.headers["location"].startswith("/jobs/")
+        drain_jobs()
+        # Tự advance → job kết luận đã nạp, KHÔNG dừng chờ xác nhận.
+        assert last_job_result("ingest")["status"] == "ok"
 
         with dbmod.SessionLocal() as db:
             c = db.query(Company).filter_by(code="DN_GATE").first()

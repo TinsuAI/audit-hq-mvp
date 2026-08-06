@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
@@ -52,6 +52,9 @@ class IngestStats:
     files: dict[str, str | None] | None = None
     # slot → ParseProvenance (cách đọc file: standard/extended/labeled + bằng chứng).
     provenance: dict | None = None
+    # "slot:tên file" → tên trang tính đã đọc. Theo TỪNG FILE chứ không theo slot:
+    # một kỳ có thể có nhiều file BCCT, mỗi file một trang khác nhau.
+    sheets: dict[str, str | None] = field(default_factory=dict)
 
 
 def _get_or_create_company(
@@ -71,6 +74,27 @@ def _get_or_create_company(
 
 
 _SETTLEMENT_PARSERS = {"m15": parse_m15, "m15a": parse_m15a, "m16": parse_m16}
+
+
+def sheet_overrides(company_code: str, year: int, raw_root: Path) -> dict[str, str]:
+    """{đường dẫn tuyệt đối: tên trang tính} theo chỉ định của cán bộ ở registry.
+
+    Đọc bằng session riêng để cả đường CLI lẫn dry-run (không có session) đều áp
+    cùng một lựa chọn — trang tính khác nhau cho ra bộ dòng khác nhau, xem trước mà
+    đọc trang khác lúc nạp thì bản xem trước vô nghĩa. DN chưa có trong DB → {}.
+    """
+    with SessionLocal() as session:
+        company = session.scalar(select(Company).where(Company.code == company_code))
+        if company is None:
+            return {}
+        rows = session.scalars(
+            select(DataFile).where(
+                DataFile.company_id == company.id,
+                DataFile.period_year == year,
+                DataFile.sheet_override.is_not(None),
+            )
+        ).all()
+        return {str(raw_root / r.stored_path): r.sheet_override for r in rows}
 
 
 class IngestPlanError(RuntimeError):
@@ -155,7 +179,7 @@ def _plan_settlement_files(
             continue
         parser = _SETTLEMENT_PARSERS[r.slot]
         try:
-            parsed = parser(path, year=year)
+            parsed = parser(path, r.sheet_override, year)
         except SheetNotFound:
             # File không phục vụ slot đã đăng ký (sync phân loại nhầm). Không nuốt lỗi
             # khác (bug parser phải nổ ra).
@@ -186,10 +210,13 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         },
     )
 
+    # Trang tính cán bộ đã chỉ định (registry) — None thì `select_sheet` tự chọn.
+    picked = sheet_overrides(company_code, year, Path(raw_root))
+
     # `year` để chọn sheet: hai sheet cùng bố cục khác kỳ chỉ phân biệt được bằng kỳ.
-    m15 = parse_m15(files.m15, year=year) if files.m15 else None
-    m15a = parse_m15a(files.m15a, year=year) if files.m15a else None
-    m16 = parse_m16(files.m16, year=year) if files.m16 else None
+    m15 = parse_m15(files.m15, picked.get(str(files.m15)), year) if files.m15 else None
+    m15a = parse_m15a(files.m15a, picked.get(str(files.m15a)), year) if files.m15a else None
+    m16 = parse_m16(files.m16, picked.get(str(files.m16)), year) if files.m16 else None
     # DN có thể tách tờ khai NK / XK thành nhiều file — parse + gộp tất cả. Thư mục
     # HANG_CHI_TIET đôi khi lẫn báo cáo KHÁC (vd "Báo cáo hàng hoá xuất khẩu" gộp theo
     # mã hàng, không có số tờ khai). Bỏ QUA từng file như vậy thay vì hỏng cả kỳ —
@@ -198,10 +225,19 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
     bcct_skipped: list[str] = []
     for bp in files.bcct:
         try:
-            bcct_files.append(parse_bcct(bp, year=year))
+            bcct_files.append(parse_bcct(bp, picked.get(str(bp)), year))
         except SheetNotFound:
             bcct_skipped.append(bp.name)
     stats.bcct_skipped = bcct_skipped
+    # Trang tính THỰC SỰ đã đọc mỗi file — trang tài liệu và màn review hiện lại đúng
+    # trang đó, thay vì mặc định xem trang đầu workbook.
+    stats.sheets = {
+        f"{slot}:{Path(parsed.source_file).name}": parsed.sheet
+        for slot, parsed in (
+            *((s, p) for s, p in (("m15", m15), ("m15a", m15a), ("m16", m16)) if p),
+            *(("bcct", b) for b in bcct_files),
+        )
+    }
 
     stats.m15_rows = len(m15.rows) if m15 else 0
     stats.m15a_rows = len(m15a.rows) if m15a else 0
@@ -276,6 +312,13 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         plan = _plan_settlement_files(
             session, company.id, year, {"m15": m15, "m15a": m15a, "m16": m16}, raw_root
         )
+        # Pháp nhân nhiều sổ nạp theo data_files chứ theo file discover: ghi thêm trang
+        # tính của những file đó, không thì chúng không có `sheet` trong registry.
+        stats.sheets.update({
+            f"{slot}:{Path(parsed.source_file).name}": parsed.sheet
+            for slot, items in plan.items()
+            for parsed, _book in items
+        })
 
         # Wipe previous data for this company × year so re-ingest is idempotent.
         for model in (NvlBalance, SpBalance, Norm, DeclarationLine):

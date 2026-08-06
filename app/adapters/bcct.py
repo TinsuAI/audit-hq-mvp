@@ -21,7 +21,7 @@ from app.adapters._common import (
 )
 from app.adapters.evidence import HEADER_MATCHED, POSITION_ONLY
 from app.adapters.form_signature import compute_form_signature
-from app.adapters.layout import norm
+from app.adapters.layout import find_data_start, norm
 from app.adapters.sheet_select import select_sheet
 
 
@@ -283,6 +283,7 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
     data_start = _DATA_START
+    picked = sheet is not None
     if sheet is None:
         # Sheet tổng hợp (cấp tờ khai) cũng có số tờ khai ở cột 1 nên khớp
         # `_DECLARATION_RE` — chọn nhầm nó sinh dòng SAI chứ không phải 0 dòng.
@@ -290,6 +291,10 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
         sheet, data_start = choice.name, choice.data_start
     df = pd.read_excel(xls, sheet_name=sheet, header=None)
     cells = df.values.tolist()
+    if picked:
+        # Trang tính do cán bộ chỉ định: dò dòng dữ liệu đầu ngay trên trang đó thay vì
+        # giữ hằng số của mẫu chuẩn — trang được chỉ định thường là trang lệch mẫu.
+        data_start = find_data_start(cells, "bcct")
     col, evidence, header_row = _resolve_columns(cells, data_start, p.name)
 
     company_tax_id: str | None = None

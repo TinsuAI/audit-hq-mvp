@@ -231,6 +231,7 @@ def record_parse_result(
         "bcct": getattr(stats, "bcct_rows", 0),
     }
     provenance = getattr(stats, "provenance", None) or {}
+    sheets = getattr(stats, "sheets", None) or {}
     diag_errors = diagnosis.errors if diagnosis else []
     diag_warnings = diagnosis.warnings if diagnosis else []
     # File nằm trong HANG_CHI_TIET nhưng không phải báo cáo chi tiết tờ khai đã bị bỏ
@@ -269,16 +270,23 @@ def record_parse_result(
             )
         # Ghi provenance cho MỌI file có bằng chứng cột (kể cả bố cục chuẩn) — badge
         # truy nguồn hiện nguồn + trạng thái review từng cột (WS1, ADR #18).
-        if prov is not None and (prov_layout != "standard" or prov_evidence):
-            detail = dict(prov.detail)
-            if prov_evidence:
-                columns = _evidence_columns(row.slot, prov_evidence)
-                detail["columns"] = columns
-                detail["review"] = (
-                    NEEDS_REVIEW if any(c["review"] == NEEDS_REVIEW for c in columns)
-                    else VERIFIED
-                )
-            row.parse_layout = prov_layout
+        has_prov = prov is not None and (prov_layout != "standard" or prov_evidence)
+        detail = dict(prov.detail) if has_prov else {}
+        if has_prov and prov_evidence:
+            columns = _evidence_columns(row.slot, prov_evidence)
+            detail["columns"] = columns
+            detail["review"] = (
+                NEEDS_REVIEW if any(c["review"] == NEEDS_REVIEW for c in columns)
+                else VERIFIED
+            )
+        # Trang tính đã đọc — theo TỪNG FILE. Không có nó thì màn review vẽ lưới ô của
+        # trang đầu workbook trong khi parser đọc trang khác (BCCT 006: `Tổng hợp` vs
+        # `Chi tiết`), cán bộ xác nhận chỉ số cột trên đúng cái lưới sai đó.
+        sheet = sheets.get(f"{row.slot}:{Path(row.stored_path).name}")
+        if sheet:
+            detail["sheet"] = sheet
+        if detail:
+            row.parse_layout = prov_layout if has_prov else None
             row.parse_detail = json.dumps(detail, ensure_ascii=False)
             # Họ biểu + cách chọn cột lên CỘT riêng (ADR #23 T3) — trang tài liệu lọc
             # và đếm theo hai giá trị này, không parse JSON để đọc.

@@ -23,6 +23,7 @@ from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company, DataFile, DataFileStatus, Finding
 from app.settings import settings
+from tests.helpers import drain_jobs, last_job_result
 
 # Header chuẩn NHƯNG cột xuất SX (col 8) nhãn không khớp từ khoá → needs_review → cổng
 # review bật (dừng ở `analyzed`), giống test màn review. Điều khiển production_out_qty.
@@ -103,6 +104,7 @@ def _upload_and_parse(client) -> tuple[int, dict]:
         follow_redirects=False,
     )
     assert r.status_code == 303
+    drain_jobs()
     with dbmod.SessionLocal() as db:
         c = db.query(Company).filter_by(code="DN_RERUN").first()
         row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
@@ -115,6 +117,7 @@ def _upload_and_parse(client) -> tuple[int, dict]:
         f"/companies/DN_RERUN/documents/file/{fid}/review", data=data, follow_redirects=False,
     )
     assert r.status_code == 303
+    drain_jobs()
     with dbmod.SessionLocal() as db:
         c = db.query(Company).filter_by(code="DN_RERUN").first()
         row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
@@ -138,26 +141,6 @@ def _by_check(company_id: int, db) -> dict[str, list[Finding]]:
     for f in db.query(Finding).filter_by(company_id=company_id, period_year=2024).all():
         out.setdefault(f.check_code, []).append(f)
     return out
-
-
-def _drain_jobs() -> None:
-    """Chạy các job queued (re-run scoped enqueue ở confirm-review, ADR #18 Rev — WS2).
-    TestClient không vào context manager → worker thread không chạy; drain thủ công."""
-    from app.jobs import HANDLERS, register_handler, run_job
-    from app.jobs.handlers import run_checks_handler
-    from app.models.job import Job, JobKind, JobStatus
-
-    if JobKind.RUN_CHECKS.value not in HANDLERS:
-        register_handler(JobKind.RUN_CHECKS, run_checks_handler)
-    with dbmod.SessionLocal() as db:
-        jobs = (
-            db.query(Job)
-            .filter_by(status=JobStatus.QUEUED.value)
-            .order_by(Job.id)
-            .all()
-        )
-        for job in jobs:
-            run_job(db, job)
 
 
 def test_edit_column_reruns_only_affected(tmp_path):
@@ -188,7 +171,7 @@ def test_edit_column_reruns_only_affected(tmp_path):
         assert r.status_code == 303
         # Re-confirm file đã `parsed` + cột đổi → enqueue re-run scoped → /jobs/{id}.
         assert r.headers["location"].startswith("/jobs/")
-        _drain_jobs()
+        drain_jobs()
 
         with dbmod.SessionLocal() as db:
             after = _by_check(cid, db)
@@ -237,7 +220,7 @@ def test_edit_key_column_reruns_balance_check(tmp_path):
         )
         assert r.status_code == 303
         assert r.headers["location"].startswith("/jobs/")
-        _drain_jobs()
+        drain_jobs()
 
         with dbmod.SessionLocal() as db:
             after = _by_check(cid, db)
@@ -269,6 +252,9 @@ def test_no_column_change_does_not_rerun(tmp_path):
             f"/companies/DN_RERUN/documents/file/{fid}/review", data=data, follow_redirects=False,
         )
         assert r.status_code == 303
+        # Job nạp lại vẫn chạy (áp map), nhưng KHÔNG nối job chạy kiểm tra.
+        drain_jobs()
+        assert last_job_result("ingest").get("checks_job_id") is None
 
         with dbmod.SessionLocal() as db:
             ids_after = {

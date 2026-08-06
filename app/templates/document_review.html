@@ -73,7 +73,10 @@
 {% else %}
 
 {% if preview and preview.rows and not preview.error %}
-<h2 style="font-size:var(--fs-md);margin:0 0 var(--space-2)">Nội dung file · đối chiếu chỉ số cột</h2>
+<h2 style="font-size:var(--fs-md);margin:0 0 var(--space-2)">
+  Nội dung file · đối chiếu chỉ số cột
+  {% if preview.selected_sheet_name %}<span class="text-muted" style="font-weight:400">· trang tính <strong>{{ preview.selected_sheet_name }}</strong></span>{% endif %}
+</h2>
 <div class="card" style="padding:0;overflow:auto;max-height:48vh;margin-bottom:var(--space-2)">
   <table class="data-table preview-table" id="review-grid">
     <thead>
@@ -104,6 +107,24 @@
 {% endif %}
 
 <form method="post" action="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/review">
+  <div class="card" style="margin-bottom:var(--space-4)">
+    <label for="sheet-input" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Trang tính (sheet) được đọc</label>
+    <p class="form-hint" style="margin:0 0 var(--space-2)">
+      Hệ thống đang đọc trang
+      <strong>{{ parsed_sheet or '(chưa xác định)' }}</strong>{% if sheet_override %} theo chỉ định của cán bộ{% else %} do tự nhận diện{% endif %}.
+      Một workbook kết xuất từ hải quan thường có cả trang tổng hợp cấp tờ khai lẫn trang chi tiết dòng hàng —
+      đọc nhầm trang ra <strong>dòng sai</strong> chứ không phải 0 dòng. Để trống = để hệ thống tự chọn.
+    </p>
+    <select id="sheet-input" name="sheet" class="form-select mono-input" style="max-width:320px">
+      <option value="">(tự nhận diện)</option>
+      {% for s in sheet_names %}
+      <option value="{{ s }}" {% if (sheet_override or parsed_sheet) == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    {% if sheet_names | length <= 1 %}
+    <p class="form-hint" style="margin:var(--space-2) 0 0">File này chỉ có một trang tính.</p>
+    {% endif %}
+  </div>
   {% if is_settlement %}
   <div class="card" style="margin-bottom:var(--space-4)">
     <label for="book-input" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Sổ quyết toán (loại hình)</label>
