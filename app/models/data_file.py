@@ -87,6 +87,12 @@ class DataFile(Base):
     # bố cục chuẩn — badge truy nguồn hiển thị để không "hộp đen".
     parse_layout: Mapped[str | None] = mapped_column(String(16), nullable=True)
     parse_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Họ biểu đã curate mà file này khớp vân tay, và bằng gì mà parser chọn được cột
+    # (`builtin-template` / `officer-map` / `keyword` / `default`) — ADR #23 T3.
+    # Cột riêng chứ không chỉ nằm trong `parse_detail` JSON: trang tài liệu lọc và
+    # đếm theo hai giá trị này.
+    template_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    match_source: Mapped[str | None] = mapped_column(String(24), nullable=True)
 
     __table_args__ = (
         Index("ix_data_files_company_year", "company_id", "period_year"),

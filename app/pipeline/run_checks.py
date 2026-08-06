@@ -27,6 +27,8 @@ from app.checks.not_evaluable import (
     load_not_evaluable,
     truncate_reason,
 )
+from app.checks.registry import missing_sources
+from app.checks.sources import available_sources, missing_sources_reason
 from app.checks.sql_runner import CheckRunError, run_check
 from app.database import SessionLocal
 from app.models import CheckRun, Company, Finding
@@ -123,16 +125,29 @@ def run_checks(
 
         all_codes = codes_to_run
 
+        # Nguồn Tầng 1 đã nạp cho (DN, kỳ) — cổng dispatch (ADR #23 T4). Check thiếu
+        # nguồn chạy ra join rỗng → 0 phát hiện, mà 0 phát hiện đọc như "sạch"; trả
+        # `not_evaluable` kèm lý do thay vì chạy.
+        present = available_sources(s, company.id, year)
+
         # Trạng thái mỗi check để ghi check_runs: 'ok' | 'error' (check ĐỘNG raise)
-        # | 'not_evaluable' (check trả `NotEvaluable` vì thiếu đầu vào bắt buộc).
+        # | 'not_evaluable' (thiếu nguồn Tầng 1, hoặc check trả `NotEvaluable`).
         run_status: dict[str, str] = {}
         run_reason: dict[str, str | None] = {}
         for code in sorted(all_codes):
             reason: str | None = None
             if code in ALL_CHECKS:
-                fn = ALL_CHECKS[code]
-                result: CheckResult = fn(s, company.id, year)
-                findings, status, reason = _split_result(result)
+                missing = missing_sources(code, present)
+                if missing:
+                    # Cùng đường với `NotEvaluable` các check tự trả: một trạng thái,
+                    # một cột lý do, một khối UI — và cùng bị loại khỏi cả tử số lẫn
+                    # trần điểm rủi ro.
+                    findings, status = [], STATUS_NOT_EVALUABLE
+                    reason = truncate_reason(missing_sources_reason(missing))
+                else:
+                    fn = ALL_CHECKS[code]
+                    result: CheckResult = fn(s, company.id, year)
+                    findings, status, reason = _split_result(result)
             elif code in dynamic_defs:
                 # Check tự do (SQL/Python) — lỗi 1 check không được làm hỏng cả run.
                 try:

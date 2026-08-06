@@ -10,6 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+# Re-export để nơi dùng registry không phải nhớ hai module cho cùng một khái niệm.
+from app.checks.sources import SOURCE_LABEL_VI, SOURCES  # noqa: F401
+
 
 class Severity(StrEnum):
     CRITICAL = "critical"  # 🔴 Nghiêm trọng
@@ -38,6 +41,11 @@ class CheckSpec:
     description: str             # Mô tả ngắn nghiệp vụ
     default_severity: Severity   # Mặc định khi finding fire (rule scale-based có thể override)
     enabled: bool = True
+    # Nguồn Tầng 1 check THỰC ĐỌC (fact-audit từ code, không đoán) — ADR #23 T4.
+    # Thiếu bất kỳ nguồn nào → `run_checks` trả `not_evaluable` kèm lý do ở
+    # `check_runs.status_reason`, thay vì chạy join rỗng rồi báo 0 phát hiện
+    # (đọc như "sạch"). Cùng đường với `NotEvaluable` các check tự trả (#58).
+    requires: frozenset[str] = frozenset()
 
 
 # Catalog 16 MVP checks. Bổ sung dần sang W.I.P khi đến tuần đề án quy định.
@@ -61,6 +69,7 @@ register(CheckSpec(
         "<5% Thông tin · 5–20% Cảnh báo · >20% Nghiêm trọng."
     ),
     default_severity=Severity.WARNING,
+    requires=frozenset({"bcct", "m15"}),
 ))
 register(CheckSpec(
     code="C1.2",
@@ -71,6 +80,7 @@ register(CheckSpec(
         "Bỏ sót NVL nhập khỏi BCQT."
     ),
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"bcct", "m15"}),
 ))
 register(CheckSpec(
     code="C1.3",
@@ -81,6 +91,7 @@ register(CheckSpec(
         "M15 không có căn cứ tờ khai."
     ),
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"bcct", "m15"}),
 ))
 register(CheckSpec(
     code="C1.4",
@@ -91,6 +102,7 @@ register(CheckSpec(
         "<1% Thông tin · 1–5% Cảnh báo · >5% Nghiêm trọng."
     ),
     default_severity=Severity.WARNING,
+    requires=frozenset({"bcct", "m15a"}),
 ))
 register(CheckSpec(
     code="C1.6",
@@ -101,6 +113,7 @@ register(CheckSpec(
         "Vi phạm điều kiện miễn thuế."
     ),
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"bcct", "m15"}),
 ))
 register(CheckSpec(
     code="C1.7",
@@ -111,6 +124,7 @@ register(CheckSpec(
         "≥10% Cảnh báo · ≥25% Nghiêm trọng."
     ),
     default_severity=Severity.WARNING,
+    requires=frozenset({"m15"}),
 ))
 
 
@@ -124,6 +138,7 @@ register(CheckSpec(
         "(tolerance ±0.01). Bao gồm trường hợp tồn ảo: tồn_đầu = 0 nhưng tồn_cuối > nhập."
     ),
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"m15"}),
 ))
 register(CheckSpec(
     code="C2.2",
@@ -134,6 +149,7 @@ register(CheckSpec(
         "(tolerance ±0.01)."
     ),
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"m15a"}),
 ))
 register(CheckSpec(
     code="C2.3",
@@ -141,6 +157,7 @@ register(CheckSpec(
     title="Tồn cuối NVL âm",
     description="Bất kỳ mã NVL nào có `closing_qty < 0` trên M15 (tolerance ±0.01).",
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"m15"}),
 ))
 register(CheckSpec(
     code="C2.4",
@@ -148,6 +165,7 @@ register(CheckSpec(
     title="Tồn cuối TP âm",
     description="Bất kỳ mã thành phẩm nào có `closing_qty < 0` trên M15a (tolerance ±0.01).",
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"m15a"}),
 ))
 
 
@@ -161,6 +179,7 @@ register(CheckSpec(
         "trong cùng kỳ. Cặp mâu thuẫn: E11+E13 · E31+E13 · E21+E13."
     ),
     default_severity=Severity.WARNING,
+    requires=frozenset({"bcct"}),
 ))
 register(CheckSpec(
     code="C3.2",
@@ -172,6 +191,7 @@ register(CheckSpec(
         "khác chương 2 số → Nghiêm trọng."
     ),
     default_severity=Severity.WARNING,
+    requires=frozenset({"bcct"}),
 ))
 register(CheckSpec(
     code="C3.3",
@@ -183,6 +203,7 @@ register(CheckSpec(
         "khác họ (sai ×1000) → Nghiêm trọng."
     ),
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"bcct", "m15"}),
 ))
 
 
@@ -199,6 +220,7 @@ register(CheckSpec(
         "phần C4.3 nhường lại, gắn với sản lượng sản xuất của kỳ."
     ),
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"m15", "m16"}),
 ))
 register(CheckSpec(
     code="C4.3",
@@ -214,6 +236,7 @@ register(CheckSpec(
         "ĐƯỢC cho cả kỳ, không trả 0 phát hiện."
     ),
     default_severity=Severity.WARNING,
+    requires=frozenset({"m15", "m15a", "m16"}),
 ))
 register(CheckSpec(
     code="C4.9",
@@ -225,6 +248,8 @@ register(CheckSpec(
         "từng mã thiếu định mức, không phải một con số tổng."
     ),
     default_severity=Severity.WARNING,
+    # Đi từ M15a (sản lượng) sang M16 (định mức) — KHÔNG đọc M15.
+    requires=frozenset({"m15a", "m16"}),
 ))
 
 
@@ -238,6 +263,7 @@ register(CheckSpec(
         "Tiêu hao từ nguồn không khai báo."
     ),
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"m15"}),
 ))
 
 
@@ -251,6 +277,7 @@ register(CheckSpec(
         "Cần ≥2 kỳ dữ liệu (tolerance ±0.01)."
     ),
     default_severity=Severity.CRITICAL,
+    requires=frozenset({"m15"}),
 ))
 
 
@@ -311,6 +338,14 @@ def severity_for(check_code: str, pct: float) -> Severity | None:
         if abs_pct < limit:
             return sev
     return scale.bands[-1][1]
+
+
+def missing_sources(check_code: str, available: set[str]) -> tuple[str, ...]:
+    """Nguồn check cần mà (DN, kỳ) chưa có. Check không khai `requires` → không bao giờ skip."""
+    spec = SPECS.get(check_code)
+    if spec is None:
+        return ()
+    return tuple(sorted(spec.requires - available))
 
 
 CheckFunction = Callable

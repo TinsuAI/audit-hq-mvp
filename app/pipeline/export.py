@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.checks.combos import COMBO_SPECS
 from app.checks.registry import SEVERITY_LABEL_VI, SPECS
+from app.checks.scope import declaration_scope
 from app.models import Company, DeclarationLine, Finding, Norm, NvlBalance, SpBalance
 
 _LEGAL_REFERENCES = [
@@ -58,9 +59,26 @@ def _severity_format(workbook: xlsxwriter.Workbook) -> dict:
     }
 
 
+def _period_label(session: Session, company: Company, year: int) -> str:
+    """Nhãn kỳ kèm khoảng ngày khi kỳ ≠ dương lịch (ADR #23 T2).
+
+    Pháp luật định danh kỳ CHỈ bằng khoảng ngày, nên bản xuất cho cán bộ không được
+    chỉ in "2025" khi kỳ thực là 01/04/2025 – 31/03/2026.
+    """
+    from app.pipeline.period import load_period_windows
+
+    window = load_period_windows(session, company.id, years=[year]).get(year)
+    if window is None:
+        return str(year)
+    return (
+        f"{year} (năm tài chính "
+        f"{window[0].strftime('%d/%m/%Y')} – {window[1].strftime('%d/%m/%Y')})"
+    )
+
+
 def _write_overview(
     wb: xlsxwriter.Workbook, ws, company: Company, year: int, findings: list[Finding],
-    only: set[str] | None = None,
+    only: set[str] | None = None, period_label: str | None = None,
 ) -> None:
     bold = wb.add_format({"bold": True})
     title = wb.add_format({
@@ -80,7 +98,7 @@ def _write_overview(
         ("Tên DN", company.name or "—"),
         ("MST", company.tax_id or "—"),
         ("Địa chỉ", company.address or "—"),
-        ("Kỳ báo cáo", str(year)),
+        ("Kỳ báo cáo", period_label or str(year)),
         ("Phạm vi xuất", scope_label),
         ("Điểm rủi ro DN", company.risk_score),
     ]
@@ -217,10 +235,11 @@ def build_export(
     ).all() if nvl_codes else []
 
     if all_codes_for_decl:
+        # Cùng selector với check (ADR #23 T1): sheet chứng cứ phải trả về ĐÚNG tập
+        # dòng phát hiện được tính trên, không phải tập theo nhãn nạp.
         decls = session.scalars(
             select(DeclarationLine).where(
-                DeclarationLine.company_id == company.id,
-                DeclarationLine.period_year == year,
+                declaration_scope(session, company.id, year),
                 DeclarationLine.item_code.in_(all_codes_for_decl),
             ).limit(500)
         ).all()
@@ -230,7 +249,10 @@ def build_export(
     buffer = BytesIO()
     wb = xlsxwriter.Workbook(buffer, {"in_memory": True})
 
-    _write_overview(wb, wb.add_worksheet("Tổng quan"), company, year, findings, only=only)
+    _write_overview(
+        wb, wb.add_worksheet("Tổng quan"), company, year, findings, only=only,
+        period_label=_period_label(session, company, year),
+    )
     _write_findings(wb, wb.add_worksheet("Phát hiện"), findings)
     _write_table(
         wb, wb.add_worksheet("Chứng cứ M15"), nvls,

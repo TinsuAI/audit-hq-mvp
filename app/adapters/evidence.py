@@ -2,6 +2,9 @@
 
 Mỗi cột đã đọc mang MỘT nguồn, mạnh→yếu:
 - ``officer-confirmed`` — cán bộ duyệt / map đã lưu (WS1-3, chưa có nguồn ở ticket này).
+- ``builtin-template`` — khớp vân tay một họ biểu đã curate trong code (ADR #23 T3):
+  cấu trúc đã được người xem lúc viết template, mạnh hơn khớp tiêu đề tại chỗ nhưng
+  yếu hơn map cán bộ tự xác nhận cho chính DN đó.
 - ``header-matched`` — tiêu đề tại ĐÚNG vị trí cột khớp nhãn mong đợi (pin đúng cột).
 - ``balance-checked`` — đẳng thức cân đối của biểu khớp nếu lấy cột này (số vouch). ĐỦ cho
   cột dùng dạng TỔNG; KHÔNG phân biệt hai cột cùng dấu.
@@ -22,11 +25,18 @@ from app.adapters.layout import norm
 
 # Nguồn bằng chứng — định danh tiếng Anh (KHÔNG dịch), mạnh→yếu.
 OFFICER_CONFIRMED = "officer-confirmed"
+BUILTIN_TEMPLATE = "builtin-template"
 HEADER_MATCHED = "header-matched"
 BALANCE_CHECKED = "balance-checked"
 POSITION_ONLY = "position-only"
 
-_RANK = {POSITION_ONLY: 0, BALANCE_CHECKED: 1, HEADER_MATCHED: 2, OFFICER_CONFIRMED: 3}
+_RANK = {
+    POSITION_ONLY: 0,
+    BALANCE_CHECKED: 1,
+    HEADER_MATCHED: 2,
+    BUILTIN_TEMPLATE: 3,
+    OFFICER_CONFIRMED: 4,
+}
 
 # Trạng thái review (badge gộp hai trạng thái cán bộ hành động).
 VERIFIED = "verified"
@@ -34,6 +44,7 @@ NEEDS_REVIEW = "needs_review"
 
 SOURCE_LABEL_VI = {
     OFFICER_CONFIRMED: "Cán bộ xác nhận",
+    BUILTIN_TEMPLATE: "Khớp mẫu có sẵn",
     HEADER_MATCHED: "Khớp tiêu đề",
     BALANCE_CHECKED: "Khớp đẳng thức",
     POSITION_ONLY: "Chỉ theo vị trí",

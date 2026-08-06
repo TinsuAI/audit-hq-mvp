@@ -52,8 +52,11 @@ def _write_unreadable(path: Path) -> None:
     path.write_bytes(buf.getvalue())
 
 
-def _write_bcct(path: Path, item_codes: list[str]) -> None:
-    """BCCT tối thiểu: header row 9 (Số TK/Ngày ĐK/Mã loại hình/Mã hiệu PTVC), data từ row 10."""
+def _write_bcct(path: Path, item_codes: list[str], dates: list[date] | None = None) -> None:
+    """BCCT tối thiểu: header row 9 (Số TK/Ngày ĐK/Mã loại hình/Mã hiệu PTVC), data từ row 10.
+
+    `dates` (song song `item_codes`) đặt ngày tờ khai từng dòng; mặc định 15/06/2024.
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = "Sheet1"
@@ -63,10 +66,10 @@ def _write_bcct(path: Path, item_codes: list[str]) -> None:
     header = [None] * width
     header[1], header[2], header[3], header[7] = "Số TK", "Ngày ĐK", "Mã loại hình", "Mã hiệu PTVC"
     ws.append(header)
-    for code in item_codes:
+    for i, code in enumerate(item_codes):
         row = [None] * width
-        row[1] = "1234567890"           # declaration_no (khớp ^\d{9,13}$)
-        row[2] = date(2024, 6, 15)      # declaration_date (trong kỳ dương lịch 2024)
+        row[1] = f"123456789{i}"        # declaration_no (khớp ^\d{9,13}$)
+        row[2] = dates[i] if dates else date(2024, 6, 15)   # declaration_date
         row[3] = "E11"
         row[20] = code                  # item_code
         row[26] = 50                    # quantity

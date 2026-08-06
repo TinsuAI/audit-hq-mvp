@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Phạm vi kiểm tra — {{ company.name or company.code }} — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  <a href="/companies/{{ company.slug or company.code }}">{{ company.name or company.code }}</a>
+  <span class="sep">›</span>
+  Phạm vi kiểm tra
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Phạm vi kiểm tra sau thông quan</h1>
+    <p class="page-subtitle">{{ audit_years }} năm trở về trước kể từ ngày quyết định kiểm tra, tính trên <strong>ngày đăng ký tờ khai</strong> (khoản 3 Điều 77 Luật Hải quan 54/2014).</p>
+  </div>
+  <div class="btn-group">
+    <a href="/companies/{{ company.slug or company.code }}" class="btn btn-secondary">← Về phát hiện</a>
+    <a href="/companies/{{ company.slug or company.code }}/edit" class="btn btn-secondary">✏️ Sửa ngày quyết định</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:var(--space-4)">
+  <p style="margin:0 0 var(--space-2)">
+    <strong>Theo khoảng ngày:</strong>
+    <span class="mono">{{ window[0].strftime('%d/%m/%Y') }} – {{ window[1].strftime('%d/%m/%Y') }}</span>
+    <span class="text-subtle">(ngày quyết định: {{ company.audit_decision_date.strftime('%d/%m/%Y') }})</span>
+  </p>
+  <p style="margin:0">
+    <strong>Theo kỳ quyết toán:</strong>
+    {% for r in rows %}<span class="mono">{{ r.period_year }}</span>{% if not loop.last %} · {% endif %}{% endfor %}
+  </p>
+  <p class="text-subtle" style="font-size:var(--fs-xs);margin:var(--space-2) 0 0">Mẫu 01/QĐKT để mục "Phạm vi kiểm tra" là dòng trống tự do — ghi theo cách nào cũng được, hai dòng trên là cùng một phạm vi.</p>
+</div>
+
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Kỳ</th>
+      <th>Khoảng ngày</th>
+      <th>So với phạm vi</th>
+      <th>BCQT</th>
+      <th>Kiểm tra</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r.period_year }}</td>
+      <td class="mono">{{ r.period_from.strftime('%d/%m/%Y') }} – {{ r.period_to.strftime('%d/%m/%Y') }}</td>
+      <td>
+        <span class="badge {% if r.status == 'inside' %}info{% else %}warning{% endif %}">{{ r.status_label }}</span>
+        {% if r.status in ('cut_start', 'cut_end', 'cut_both') %}
+        <div class="text-subtle" style="font-size:var(--fs-xs)">Kỳ quyết toán rộng hơn phạm vi kiểm tra — kiểm tra vẫn chạy trên TRỌN kỳ vì đẳng thức cân đối chỉ đúng trên trọn kỳ.</div>
+        {% endif %}
+      </td>
+      <td>
+        {% if r.has_bcqt %}<span class="badge info">Đã nạp</span>
+        {% else %}<span class="badge warning">chưa có BCQT</span>{% endif %}
+      </td>
+      <td>
+        {% if r.checks_run or r.checks_waiting %}
+        {{ r.checks_run }} đã chạy{% if r.checks_waiting %} · <strong>{{ r.checks_waiting }} chờ dữ liệu</strong>{% endif %}
+        {% else %}<span class="text-muted">chưa chạy</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p class="text-subtle" style="font-size:var(--fs-xs);margin-top:var(--space-3)">Phạm vi này là <strong>cách hiển thị</strong>: đổi ngày quyết định chỉ vẽ lại màn, không đụng dữ liệu đã nạp và không cần chạy lại kiểm tra.</p>
+
+{% endblock %}

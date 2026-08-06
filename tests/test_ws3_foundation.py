@@ -37,6 +37,11 @@ def _check_runs(session, company_id, year=2024):
 
 
 def test_check_run_written_for_every_code_incl_zero_finding(session, company):
+    """Kỳ chưa nạp nguồn nào: vẫn đủ dòng check_runs, nhưng `not_evaluable` không `ok`.
+
+    Dòng vẫn phải có (staleness WS3 đọc từ đây); trạng thái phân biệt "chưa chạy vì
+    thiếu nguồn" với "chạy rồi, 0 phát hiện" (#53).
+    """
     run_checks(company.code, 2024, session=session)
 
     runs = _check_runs(session, company.id)
@@ -44,9 +49,29 @@ def test_check_run_written_for_every_code_incl_zero_finding(session, company):
     for code in ALL_CHECKS:
         assert code in runs, f"{code} thiếu dòng check_runs"
         assert runs[code].ran_at is not None
-        assert runs[code].status == "ok"
+        assert runs[code].status == "not_evaluable"
+        assert runs[code].status_reason is not None
     # Không có dòng COMBO_* (combo LOẠI khỏi check_runs).
     assert not any(c.startswith("COMBO_") for c in runs)
+
+
+def test_check_run_status_is_ok_once_the_sources_are_loaded(session, company):
+    from tests.conftest import add_decl, add_sp
+
+    add_nvl(session, company.id, material_code="MAT_X", imported=10, closing=10)
+    add_sp(session, company.id, product_code="SP_X", export_qty=1)
+    add_decl(session, company.id, declaration_no="1", customs_code="E31",
+             item_code="MAT_X", quantity=10)
+    session.commit()
+
+    run_checks(company.code, 2024, session=session)
+
+    runs = _check_runs(session, company.id)
+    # Check chỉ đọc m15 / m15a / bcct đã chạy thật; nhóm M16 vẫn thiếu nguồn.
+    assert runs["C2.1"].status == "ok" and runs["C2.1"].status_reason is None
+    assert runs["C1.1"].status == "ok"
+    assert runs["C4.1"].status == "not_evaluable"
+    assert "Mẫu 16" in runs["C4.1"].status_reason
 
 
 def test_finding_count_matches_actual(session, company):

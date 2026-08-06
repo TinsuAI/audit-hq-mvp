@@ -17,6 +17,7 @@ from enum import StrEnum
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.checks.scope import declaration_scope
 from app.models import DeclarationLine, NvlBalance, SpBalance
 
 
@@ -99,10 +100,7 @@ def detect_company_type(session: Session, company_id: int, year: int) -> Company
     """Đếm số dòng BCCT theo mã loại hình; chọn nhóm có nhiều dòng nhất."""
     rows = session.execute(
         select(DeclarationLine.customs_code, func.count())
-        .where(
-            DeclarationLine.company_id == company_id,
-            DeclarationLine.period_year == year,
-        )
+        .where(declaration_scope(session, company_id, year))
         .group_by(DeclarationLine.customs_code)
     ).all()
     return _vote(rows)
@@ -158,8 +156,7 @@ def detect_book_types(
         rows = session.execute(
             select(DeclarationLine.customs_code, func.count())
             .where(
-                DeclarationLine.company_id == company_id,
-                DeclarationLine.period_year == year,
+                declaration_scope(session, company_id, year),
                 or_(
                     DeclarationLine.item_code.in_(nvl_codes),
                     DeclarationLine.item_code.in_(sp_codes),

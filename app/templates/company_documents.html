@@ -60,7 +60,9 @@
   <summary class="doc-year-summary">
     <span class="doc-year-name">Năm {{ yr.year }}</span>
     <span class="badge {{ status_badge[yr.status_kind] }}">{{ yr.status_label }}</span>
-    {% if yr.checks_run %}<span class="badge {{ tier_css_for(yr.score) }}">Rủi ro {{ yr.score }}/1000</span>{% endif %}
+    {# `checks_run` bật khi năm CÓ phát hiện, kể cả khi chưa có dòng điểm năm — đọc
+       `yr.score` = None ở đó làm `tier_css_for` nổ (500 cả trang). #}
+    {% if yr.checks_run and yr.score is not none %}<span class="badge {{ tier_css_for(yr.score) }}">Rủi ro {{ yr.score }}/1000</span>{% endif %}
     <span class="doc-caret" aria-hidden="true">▾</span>
   </summary>
 
@@ -93,7 +95,7 @@
         </details>
       </div>
       {% if yr.period_manual %}
-      <p class="doc-period-hint text-muted">⚠️ Kỳ đã sửa tay — bấm <strong>Nạp dữ liệu</strong> rồi <strong>Chạy kiểm tra</strong> để áp dụng cửa sổ kỳ mới.</p>
+      <p class="doc-period-hint text-muted">⚠️ Kỳ đã sửa tay — bấm <strong>Chạy kiểm tra</strong> để áp dụng cửa sổ kỳ mới (dữ liệu đã nạp không cần nạp lại).</p>
       {% endif %}
     </div>
 
@@ -111,6 +113,36 @@
       {% if yr.has_data %}<a href="/companies/{{ company.slug or company.code }}/data?year={{ yr.year }}&table=m15" class="btn btn-sm btn-secondary">📋 Dữ liệu gốc</a>{% endif %}
       {% if yr.checks_run %}<a href="/companies/{{ company.slug or company.code }}?year={{ yr.year }}" class="btn btn-sm btn-secondary">🔎 Phát hiện</a>{% endif %}
     </div>
+
+    {% if yr.coverage_gaps or yr.overlaps %}
+    <div class="alert alert-warning doc-coverage" role="status">
+      <ul class="doc-coverage-list">
+        {% for g in yr.coverage_gaps %}
+        <li>⚠️ Kỳ thiếu dữ liệu tờ khai từ <strong>{{ g[0].strftime('%d/%m/%Y') }} – {{ g[1].strftime('%d/%m/%Y') }}</strong> — nạp thêm file tờ khai của khoảng này (thường nằm ở file kết xuất theo năm dương lịch kề bên).</li>
+        {% endfor %}
+        {% if yr.overlaps %}
+        <li>⚠️ Cửa sổ kỳ năm {{ yr.year }} <strong>chồng lấn</strong> kỳ {{ yr.overlaps|join(', ') }} của cùng doanh nghiệp — một tờ khai có thể được đếm ở cả hai kỳ. Hợp lệ khi đây là kỳ chuyển tiếp đổi niên độ; nếu không, sửa lại cửa sổ.</li>
+        {% endif %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if yr.coverage and yr.coverage.has_warning %}
+    <div class="alert alert-warning doc-coverage" role="status">
+      <p class="doc-coverage-lead">⚠️ <strong>Dòng tờ khai lệch cửa sổ kỳ</strong> — mọi dòng đều đã lưu, không dòng nào bị bỏ. Cảnh báo để cán bộ soát lại file nguồn.</p>
+      <ul class="doc-coverage-list">
+        {% if yr.coverage.out_of_window %}
+        <li><strong>{{ yr.coverage.out_of_window }}</strong> dòng nạp ở nhãn năm {{ yr.year }} nhưng ngày tờ khai nằm ngoài kỳ {{ yr.period_from.strftime('%d/%m/%Y') }} – {{ yr.period_to.strftime('%d/%m/%Y') }} — các dòng này thuộc kỳ khác khi chạy kiểm tra.</li>
+        {% endif %}
+        {% if yr.coverage.undated %}
+        <li><strong>{{ yr.coverage.undated }}</strong> dòng không có ngày tờ khai — quy theo nhãn kỳ nạp.</li>
+        {% endif %}
+        {% if yr.coverage.cross_label_duplicates %}
+        <li><strong>{{ yr.coverage.cross_label_duplicates }}</strong> dòng trùng khoá (số tờ khai · dòng hàng) với nhãn kỳ khác của cùng doanh nghiệp — hai bản kết xuất chồng nhau. Hệ thống KHÔNG tự loại: số lượng có thể lệch giữa hai bản, cán bộ sửa file nguồn rồi nạp lại.</li>
+        {% endif %}
+      </ul>
+    </div>
+    {% endif %}
 
     {% if yr.review_gate %}
     <div class="alert alert-warning doc-review-gate" role="status">
@@ -142,6 +174,13 @@
             <span class="doc-file-item">
               <span class="badge {{ DATA_FILE_STATUS_BADGE[f.parse_status] }} doc-file-badge">{{ DATA_FILE_STATUS_LABEL[f.parse_status] }}</span>
               <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/preview" class="doc-file-name" title="Xem nội dung file">{{ f.original_filename }}</a>
+              {% if f.match_source == 'builtin-template' %}
+              <span class="badge info doc-file-badge" title="Cấu trúc file khớp một mẫu đã được kiểm và đưa vào hệ thống, nên không cần xác nhận lại vị trí cột.">📐 Khớp mẫu: {{ f.parse_detail_obj.template_name or f.template_id }}</span>
+              {% elif f.match_source == 'officer-map' %}
+              <span class="badge info doc-file-badge" title="Cán bộ đã xác nhận vị trí cột cho đúng cấu trúc này của doanh nghiệp — map lưu lại dùng cho các kỳ sau.">✅ Map đã xác nhận</span>
+              {% elif f.match_source %}
+              <span class="badge warning doc-file-badge" title="Không khớp mẫu nào có sẵn — vị trí cột đang suy từ từ khoá hoặc cột mặc định, cần cán bộ xác nhận.">❓ Không khớp — cần xác nhận cột</span>
+              {% endif %}
               {% if f.parse_layout %}{% set pd = f.parse_detail_obj %}
                 {% if pd.review %}
                 <span class="badge {{ 'info' if pd.review == 'verified' else 'warning' }} doc-file-badge" title="{% if pd.review == 'verified' %}Mọi cột đọc đều tin được (khớp tiêu đề/đẳng thức đủ).{% else %}Có cột dựa trên vị trí hoặc đẳng thức chưa đủ — cần cán bộ xác nhận cột.{% endif %}">{{ 'Đã kiểm' if pd.review == 'verified' else 'Cần xác nhận' }}</span>

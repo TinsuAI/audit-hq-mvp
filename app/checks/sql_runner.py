@@ -25,11 +25,13 @@ import json
 import logging
 import re
 import sqlite3
+from datetime import date
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.checks.scope import period_window
 from app.models.finding import Finding
 
 log = logging.getLogger(__name__)
@@ -243,14 +245,28 @@ def select_in_savepoint(session: Session, sql: str, params: dict) -> tuple[list[
     return cols, rows
 
 
+def check_params(session: Session, company_id: int, year: int) -> dict:
+    """Tham số bind cho SQL check tự do.
+
+    Ngoài `:company_id`/`:period_year` còn có `:period_from`/`:period_to` — cửa sổ
+    ngày của kỳ (ADR #23 T1), để check đọc BCCT lọc theo `declaration_date` thay vì
+    nhãn nạp. Chưa có cửa sổ → dương lịch của nhãn.
+    """
+    window = period_window(session, company_id, year) or (date(year, 1, 1), date(year, 12, 31))
+    return {
+        "company_id": company_id,
+        "period_year": year,
+        "period_from": window[0],
+        "period_to": window[1],
+    }
+
+
 def _run_sql_rows(session: Session, sql: str, company_id: int, year: int) -> list[dict]:
     deny = validate_sql_is_select_only(sql)
     if deny:
         raise CheckRunError(f"SQL bị chặn: {deny}")
     try:
-        cols, rows = select_in_savepoint(
-            session, sql, {"company_id": company_id, "period_year": year}
-        )
+        cols, rows = select_in_savepoint(session, sql, check_params(session, company_id, year))
     except SQLAlchemyError as exc:
         raise CheckRunError(f"Lỗi SQL: {exc}") from exc
     missing = [c for c in REQUIRED_COLUMNS if c not in set(cols)]
@@ -338,7 +354,7 @@ def dry_run(
         if deny is None:
             try:
                 matched_columns, rows = select_in_savepoint(
-                    session, detail_query, {"company_id": company_id, "period_year": year}
+                    session, detail_query, check_params(session, company_id, year)
                 )
                 matched_rows = rows[:5]
             except SQLAlchemyError as exc:

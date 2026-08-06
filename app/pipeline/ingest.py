@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from sqlalchemy import delete, select
@@ -40,8 +41,10 @@ class IngestStats:
     m15_rows: int = 0
     m15a_rows: int = 0
     m16_rows: int = 0
-    bcct_rows: int = 0
-    bcct_other_year: int = 0  # dòng BCCT bị loại vì ngày tờ khai ngoài cửa sổ kỳ
+    bcct_rows: int = 0  # dòng BCCT ĐÃ LƯU (từ #48: mọi dòng parse được, không loại dòng nào)
+    # Dòng đã lưu nhưng ngày tờ khai NGOÀI cửa sổ kỳ — thuộc kỳ khác lúc query, để BÁO.
+    bcct_out_of_window: int = 0
+    bcct_undated: int = 0  # dòng không có ngày tờ khai — quy theo nhãn nạp
     bcct_skipped: list[str] | None = None  # file trong HANG_CHI_TIET không phải BCCT
     files: dict[str, str | None] | None = None
     # slot → ParseProvenance (cách đọc file: standard/extended/labeled + bằng chứng).
@@ -214,16 +217,25 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         "m16": m16.provenance if m16 else None,
         "bcct": bcct_prov,
     }
-    # BCCT: giữ dòng có ngày tờ khai trong cửa sổ kỳ [period_from, period_to]
-    # (năm tài chính ≠ dương lịch). Dòng ngoài cửa sổ đếm vào bcct_other_year.
+    # BCCT: LƯU TRỌN mọi dòng parse được (#48, ADR #23 T1). Dòng có ngày ngoài cửa sổ
+    # kỳ vẫn lưu dưới nhãn nạp — tư cách thuộc kỳ tính lúc query (`declaration_scope`)
+    # nên dòng đó rơi vào kỳ đúng của nó thay vì biến mất. Chỉ ĐẾM để báo.
     bcct_all = [r for b in bcct_files for r in b.rows]
     company_meta = next((x.header for x in (m15, m15a, m16) if x is not None), None)
 
+    def _count_flags(period_from: date, period_to: date) -> None:
+        stats.bcct_rows = len(bcct_all)
+        stats.bcct_undated = sum(1 for r in bcct_all if r.declaration_date is None)
+        stats.bcct_out_of_window = sum(
+            1
+            for r in bcct_all
+            if r.declaration_date is not None
+            and not in_period(r.declaration_date, period_from, period_to)
+        )
+
     if dry_run:
         # Xem trước: cửa sổ suy tự động (bản sửa tay cần session, không xét ở dry-run).
-        pf, pt = default_bounds(company_meta, year)
-        stats.bcct_rows = sum(1 for r in bcct_all if in_period(r.declaration_date, pf, pt))
-        stats.bcct_other_year = len(bcct_all) - stats.bcct_rows
+        _count_flags(*default_bounds(company_meta, year))
         return stats
 
     bcct_tax = next((b.company_tax_id for b in bcct_files if b.company_tax_id), None)
@@ -249,10 +261,7 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         )
         if period_row is not None:
             period_row.data_version = (period_row.data_version or 0) + 1
-        stats.bcct_rows = sum(
-            1 for r in bcct_all if in_period(r.declaration_date, period_from, period_to)
-        )
-        stats.bcct_other_year = len(bcct_all) - stats.bcct_rows
+        _count_flags(period_from, period_to)
 
         # Kế hoạch nạp settlement theo SỔ: book per-file từ data_files (không có tag →
         # book=NULL, single-book giữ nguyên). Thay guard cũ — ghi lại mọi sổ một lượt.
@@ -330,15 +339,13 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
                 for r in parsed.rows
             )
 
-        # BCCT gán period_year = NHÃN kỳ (`year`), tách khỏi mốc giao dịch. Chỉ giữ
-        # dòng có ngày trong cửa sổ kỳ [period_from, period_to] — file gộp nhiều kỳ
-        # chỉ đóng góp phần đúng cửa sổ; phần ngoài do lần nạp kỳ đó xử lý. Dòng
-        # thiếu ngày → quy về kỳ đang nạp (không suy được năm).
+        # BCCT gán period_year = NHÃN NẠP (`year`) — provenance, KHÔNG phải tư cách
+        # thuộc kỳ. Lưu TRỌN mọi dòng: file gộp nhiều kỳ đóng góp cả phần ngoài cửa
+        # sổ, phần đó thuộc kỳ khác lúc query. Wipe re-ingest vẫn theo nhãn nạp
+        # ("lượt nạp này thay chính nó") nên vẫn idempotent.
         for bcct in bcct_files:
             to_add = []
             for r in bcct.rows:
-                if not in_period(r.declaration_date, period_from, period_to):
-                    continue
                 to_add.append(DeclarationLine(
                     company_id=company.id,
                     period_year=year,
@@ -392,8 +399,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  M15  (NVL):  {stats.m15_rows}")
     print(f"  M15a (SP):   {stats.m15a_rows}")
     print(f"  M16  (norm): {stats.m16_rows}")
-    other = f" (+{stats.bcct_other_year} kỳ khác bị loại)" if stats.bcct_other_year else ""
-    print(f"  BCCT:        {stats.bcct_rows}{other}")
+    flags = []
+    if stats.bcct_out_of_window:
+        flags.append(f"{stats.bcct_out_of_window} ngoài cửa sổ kỳ")
+    if stats.bcct_undated:
+        flags.append(f"{stats.bcct_undated} không có ngày")
+    note = f" ({', '.join(flags)} — vẫn lưu)" if flags else ""
+    print(f"  BCCT:        {stats.bcct_rows}{note}")
     if args.dry_run:
         print("(dry-run — chưa ghi DB)")
     else:

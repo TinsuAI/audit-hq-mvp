@@ -18,6 +18,7 @@ from app.checks.company_type import (
     IMPORT_CODES,
     detect_company_type,
 )
+from app.checks.scope import declaration_scope
 from app.models import DeclarationLine, NvlBalance, SpBalance
 
 # Mỗi check trong catalog 16 MVP map vào 1 scope.
@@ -55,8 +56,7 @@ def _count_distinct_nvl(session: Session, company_id: int, year: int) -> int:
         bcct_codes = set(session.scalars(
             select(distinct(DeclarationLine.item_code))
             .where(
-                DeclarationLine.company_id == company_id,
-                DeclarationLine.period_year == year,
+                declaration_scope(session, company_id, year),
                 DeclarationLine.customs_code.in_(import_codes),
             )
         ).all())
@@ -64,10 +64,7 @@ def _count_distinct_nvl(session: Session, company_id: int, year: int) -> int:
         # Loại hình unknown — count tất cả declaration codes làm fallback.
         bcct_codes = set(session.scalars(
             select(distinct(DeclarationLine.item_code))
-            .where(
-                DeclarationLine.company_id == company_id,
-                DeclarationLine.period_year == year,
-            )
+            .where(declaration_scope(session, company_id, year))
         ).all())
 
     return len(m15_codes | bcct_codes)
@@ -87,8 +84,7 @@ def _count_distinct_tp(session: Session, company_id: int, year: int) -> int:
         bcct_codes = set(session.scalars(
             select(distinct(DeclarationLine.item_code))
             .where(
-                DeclarationLine.company_id == company_id,
-                DeclarationLine.period_year == year,
+                declaration_scope(session, company_id, year),
                 DeclarationLine.customs_code.in_(export_codes),
             )
         ).all())

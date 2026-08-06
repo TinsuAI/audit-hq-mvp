@@ -36,6 +36,7 @@ from app.checks.combos import COMBO_SPECS
 from app.checks.detail_labels import column_headers, describe_details, row_cells
 from app.checks.not_evaluable import load_not_evaluable
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
+from app.checks.scope import declaration_scope
 from app.checks.scoring import score_coverage, tier_css_for, tier_for
 from app.database import get_db
 from app.formatting import JINJA_GLOBALS as FORMAT_GLOBALS
@@ -64,10 +65,22 @@ from app.models import (
     SpBalance,
 )
 from app.models.data_file import SETTLEMENT_SLOTS, SLOT_LABEL_VI, SLOT_ORDER
+from app.pipeline.audit_scope import (
+    AUDIT_YEARS,
+    audit_window,
+    declaration_spans,
+    finding_scope_tag,
+    scope_coverage,
+)
+from app.pipeline.coverage import bcct_coverage, coverage_gaps, overlapping_periods
 from app.pipeline.export import build_export
 from app.pipeline.ingest import IngestPlanError
 from app.pipeline.ingest import ingest as run_ingest
-from app.pipeline.period import load_period_windows
+from app.pipeline.period import (
+    FISCAL_START_MONTHS,
+    load_period_windows,
+    period_window_conflict,
+)
 from app.pipeline.validate import diagnose_upload
 from app.scoping import allowed_company_ids, can_access_company_id, get_company_or_404
 from app.settings import settings
@@ -275,6 +288,14 @@ DEMO_SUFFIX = "(Demo)"
 YEAR_MIN, YEAR_MAX = 2015, 2030
 # Năm đầu nộp BCQT có thể sớm hơn cửa sổ dữ liệu đã nạp (YEAR_MIN), nên nới cận dưới.
 BCQT_YEAR_MIN = 2000
+
+# Niên độ kế toán cho màn cài đặt DN — đúng 4 mốc đầu quý mà luật cho phép.
+FISCAL_MONTH_OPTIONS = [
+    (1, "01/01 – 31/12 (dương lịch)"),
+    (4, "01/04 – 31/03 năm sau"),
+    (7, "01/07 – 30/06 năm sau"),
+    (10, "01/10 – 30/09 năm sau"),
+]
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB per file
 
 # Mỗi slot → (subdir, fixed filename stem). Stem để tên match discover() patterns.
@@ -464,6 +485,7 @@ def create_company(
 def edit_company_form(
     code: str,
     request: Request,
+    error: str | None = Query(default=None),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -475,12 +497,17 @@ def edit_company_form(
         "address": company.address or "",
         "industry": company.industry or "",
         "first_bcqt_year": company.first_bcqt_year or "",
+        "fiscal_start_month": company.fiscal_start_month or 1,
+        "audit_decision_date": (
+            company.audit_decision_date.isoformat() if company.audit_decision_date else ""
+        ),
     }
     return templates.TemplateResponse(
         request, "edit_company.html",
         {
             "user": user, "company": company, "form": form_state, "error": None,
             "bcqt_year_min": BCQT_YEAR_MIN, "bcqt_year_max": YEAR_MAX,
+            "fiscal_options": FISCAL_MONTH_OPTIONS,
         },
     )
 
@@ -494,6 +521,8 @@ def update_company(
     address: str = Form(""),
     industry: str = Form(""),
     first_bcqt_year: str = Form(""),
+    fiscal_start_month: str = Form("1"),
+    audit_decision_date: str = Form(""),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -516,6 +545,8 @@ def update_company(
                 "address": address.strip(),
                 "industry": industry.strip(),
                 "first_bcqt_year": raw_year,
+                "fiscal_start_month": fiscal_start_month,
+                "audit_decision_date": audit_decision_date.strip(),
             }
             return templates.TemplateResponse(
                 request, "edit_company.html",
@@ -523,8 +554,36 @@ def update_company(
                     "user": user, "company": company, "form": form_state,
                     "error": f"Năm đầu nộp BCQT phải trong khoảng {BCQT_YEAR_MIN}-{YEAR_MAX}.",
                     "bcqt_year_min": BCQT_YEAR_MIN, "bcqt_year_max": YEAR_MAX,
+                    "fiscal_options": FISCAL_MONTH_OPTIONS,
                 },
                 status_code=400,
+            )
+
+    try:
+        month = int(fiscal_start_month)
+    except ValueError:
+        month = 0
+    if month not in FISCAL_START_MONTHS:
+        return RedirectResponse(
+            url=f"/companies/{code}/edit?error="
+            + quote_plus(
+                "Tháng bắt đầu niên độ chỉ nhận 1, 4, 7 hoặc 10 "
+                "(điểm a khoản 1 Điều 12 Luật Kế toán 88/2015)"
+            ),
+            status_code=303,
+        )
+
+    from datetime import date as _date
+
+    decision_date = None
+    if audit_decision_date.strip():
+        try:
+            decision_date = _date.fromisoformat(audit_decision_date.strip())
+        except ValueError:
+            return RedirectResponse(
+                url=f"/companies/{code}/edit?error="
+                + quote_plus("Ngày quyết định kiểm tra không hợp lệ (định dạng YYYY-MM-DD)"),
+                status_code=303,
             )
 
     # Mã DN cố định (dùng làm thư mục lưu file) — không nhận từ form.
@@ -538,6 +597,12 @@ def update_company(
     company.address = address.strip() or None
     company.industry = industry.strip() or None
     company.first_bcqt_year = parsed_year
+    # Đổi niên độ KHÔNG viết lại cửa sổ kỳ đã lưu: `company_periods` đã có là nguồn
+    # sự thật cho kỳ đó (kể cả bản tự suy), niên độ chỉ là mặc định cho kỳ chưa có.
+    company.fiscal_start_month = month
+    # Phạm vi KTSTQ là VIEW: chỉ lưu mốc ngày, KHÔNG dời `data_version`, không xếp job
+    # chạy lại — đổi ngày chỉ đổi cách hiển thị (ADR #23 T4).
+    company.audit_decision_date = decision_date
     db.commit()
 
     return RedirectResponse(url=f"/companies/{code}", status_code=303)
@@ -882,6 +947,12 @@ def company_documents(
         pf_disp = cp.period_from if (cp and cp.period_from) else _d(y, 1, 1)
         pt_disp = cp.period_to if (cp and cp.period_to) else _d(y, 12, 31)
         period_custom = (pf_disp, pt_disp) != (_d(y, 1, 1), _d(y, 12, 31))
+        # Độ phủ BCCT tính lúc render (#48): dòng ngoài cửa sổ / không ngày / trùng
+        # khoá chéo nhãn. Từ #48 mọi dòng đều được lưu nên ba số này là thứ duy nhất
+        # nói cho cán bộ biết dữ liệu nạp vào có lệch cửa sổ kỳ hay không.
+        coverage = bcct_coverage(db, company.id, y) if has_data else None
+        gaps = coverage_gaps(db, company.id, y) if has_data else []
+        overlaps = overlapping_periods(db, company.id, y) if cp is not None else []
         year_rows.append({
             "year": y,
             "slots": slots,
@@ -898,6 +969,9 @@ def company_documents(
             "period_to": pt_disp,
             "period_manual": cp.is_manual if cp else False,
             "period_custom": period_custom,
+            "coverage": coverage,
+            "coverage_gaps": gaps,
+            "overlaps": overlaps,
             # Mở sẵn: năm vừa thêm, hoặc năm mới nhất nếu không thêm.
             "open": (y == added_empty) if added_empty else (i == 0),
         })
@@ -1211,6 +1285,8 @@ def documents_review_file(
             "is_settlement": is_settlement,
             "book_options": book_options,
             "book_known": BOOK_LABELS,
+            # Cửa sổ kỳ đang dùng lệch niên độ DN (#50): CẢNH BÁO, không tự chọn hộ.
+            "period_conflict": period_window_conflict(db, company.id, row.period_year),
         },
     )
 
@@ -1429,7 +1505,13 @@ def documents_set_period(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     """Sửa kỳ báo cáo (từ ngày / đến ngày) cho 1 năm. Lưu `is_manual=True`; re-ingest
-    tôn trọng, không ghi đè. `reset=1` → về mặc định (`is_manual=False`), ingest sau tự suy."""
+    tôn trọng, không ghi đè. `reset=1` → về mặc định (`is_manual=False`), ingest sau tự suy.
+
+    Từ #49: cửa sổ kỳ là selector của vế BCCT (`declaration_scope`) nên sửa cửa sổ ĐỔI
+    kết quả kiểm tra mà KHÔNG qua ingest — đúng ca `data_version` sinh ra để bắt (WS3).
+    Bump trong CÙNG transaction với thay đổi cửa sổ. Không cần nạp lại dữ liệu nữa:
+    mọi dòng đã nằm trong DB (#48), chỉ cần chạy lại kiểm tra.
+    """
     from datetime import date
 
     company = get_company_or_404(db, code, user)
@@ -1448,8 +1530,11 @@ def documents_set_period(
     if reset:
         if row is not None:
             row.is_manual = False
+            row.data_version = (row.data_version or 0) + 1
             db.commit()
-        return _redirect(msg=f"Đã đặt kỳ năm {year} về mặc định — nạp lại dữ liệu để áp dụng")
+        return _redirect(
+            msg=f"Đã đặt kỳ năm {year} về mặc định — bấm Chạy kiểm tra để áp dụng"
+        )
 
     try:
         pf = date.fromisoformat(period_from)
@@ -1465,9 +1550,10 @@ def documents_set_period(
     row.period_from = pf
     row.period_to = pt
     row.is_manual = True
+    row.data_version = (row.data_version or 0) + 1
     db.commit()
     return _redirect(
-        msg=f"Đã lưu kỳ năm {year} — bấm Nạp dữ liệu rồi Chạy kiểm tra để áp dụng"
+        msg=f"Đã lưu kỳ năm {year} — bấm Chạy kiểm tra để áp dụng"
     )
 
 
@@ -1733,7 +1819,7 @@ def company_detail(
         )
     years = sorted(finding_years | data_years, reverse=True)
     selected_year = year if year is not None else (years[0] if years else None)
-    period_windows = load_period_windows(db, company.id)
+    period_windows = load_period_windows(db, company.id, years=years)
 
     # Pháp nhân nhiều sổ (004 EPE/GC): strip tổng quan theo sổ + gate chrome theo sổ
     # (ADR #19 Revision — UI). Một sổ (002/006) → book_strip=None, multi_book=False.
@@ -1914,6 +2000,30 @@ def company_detail(
             "total": combo_counts[ccode],
         })
 
+    # Tag phạm vi KTSTQ tính LÚC RENDER (#54) — không lưu state nào trên finding.
+    # Phát hiện neo được vào ngày (mã có dòng tờ khai) → so ngày với cửa sổ 5 năm;
+    # phát hiện thuần cân đối (tính trên trọn kỳ) → nói kỳ rộng hơn phạm vi.
+    scope_tags: dict[int, str] = {}
+    audit_scope_window = None
+    if company.audit_decision_date is not None and selected_year is not None:
+        audit_scope_window = audit_window(company.audit_decision_date)
+        displayed = [f for _, rows_, _, _ in ordered_groups for f in rows_]
+        period_status = "inside"
+        for r in scope_coverage(db, company) or []:
+            if r.period_year == selected_year:
+                period_status = r.status
+                break
+        spans = declaration_spans(
+            db, company.id, selected_year,
+            sorted({f.subject_key for f in displayed if f.subject_key}),
+        )
+        for f in displayed:
+            tag = finding_scope_tag(
+                audit_scope_window, spans.get(f.subject_key), period_status
+            )
+            if tag:
+                scope_tags[f.id] = tag
+
     # Toàn danh mục check (built-in + dynamic đã công bố) — cho modal "Chọn test chạy".
     # Khác export_options (chỉ mã ĐÃ có finding): chạy thì chọn từ danh mục đầy đủ.
     run_options = [{"code": c, "title": s.title} for c, s in sorted(all_specs.items())]
@@ -1973,6 +2083,8 @@ def company_detail(
             "all_specs": all_specs,
             "has_data": has_data,
             "checks_run": checks_run,
+            "scope_tags": scope_tags,
+            "audit_scope_window": audit_scope_window,
             "just_ingested": bool(ingested),
             "overviews": overviews,
             "ai_enabled": ai_enabled,
@@ -1996,13 +2108,21 @@ def _resolve_evidence(db: Session, ref: dict) -> tuple[list[tuple[str, str, str]
 
     rows_view: list dòng, mỗi dòng là list (display_value, css_class) đã format.
     Dùng đồng nhất với company_data view, có wrap/format số/date.
+
+    Với `declaration_lines`, cặp (`company_id`, `period_year`) trong filter được
+    dịch sang `declaration_scope` — bằng chứng phải trả về ĐÚNG tập dòng check đã
+    đọc, mà từ ADR #23 T1 tập đó chọn theo cửa sổ ngày chứ không theo nhãn nạp.
     """
     table = ref.get("table")
     model = _EVIDENCE_MODELS.get(table)
     if model is None:
         return [], []
-    filt = ref.get("filter") or {}
+    filt = dict(ref.get("filter") or {})
     stmt = select(model)
+    if model is DeclarationLine and "company_id" in filt and "period_year" in filt:
+        stmt = stmt.where(
+            declaration_scope(db, filt.pop("company_id"), filt.pop("period_year"))
+        )
     for key, value in filt.items():
         # Handle "key__in" syntax for IN clauses.
         if key.endswith("__in"):
@@ -2294,6 +2414,40 @@ def _parse_iso_date(raw: str) -> date | None:
         return date.fromisoformat(raw)
     except ValueError:
         return None
+
+
+@router.get("/companies/{code}/scope", response_class=HTMLResponse)
+def company_audit_scope(
+    code: str,
+    request: Request,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Màn độ phủ: chiếu cửa sổ kiểm tra 5 năm lên các kỳ quyết toán (ADR #23 T4).
+
+    Nói CẢ HAI ngôn ngữ — khoảng ngày và danh sách kỳ — vì mẫu 01/QĐKT (PL II TT
+    121/2025) để "Phạm vi kiểm tra" là dòng trống tự do, cán bộ có thể ghi theo cách
+    nào cũng được. Không có ngày quyết định → 404 (màn này không tồn tại cho DN đó).
+    """
+    company = get_company_or_404(db, code, user)
+    rows = scope_coverage(db, company)
+    if rows is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Doanh nghiệp chưa đặt ngày quyết định kiểm tra sau thông quan",
+        )
+    window = audit_window(company.audit_decision_date)
+    return templates.TemplateResponse(
+        request,
+        "company_scope.html",
+        {
+            "user": user,
+            "company": company,
+            "window": window,
+            "rows": rows,
+            "audit_years": AUDIT_YEARS,
+        },
+    )
 
 
 @router.get("/companies/{code}/data", response_class=HTMLResponse)
@@ -2597,7 +2751,7 @@ def item_detail(
             "kind_label": _KIND_LABEL_VI.get(effective_kind, effective_kind),
             "years": years,
             "selected_year": selected_year,
-            "period_windows": load_period_windows(db, company.id),
+            "period_windows": load_period_windows(db, company.id, years=years),
             "yearly": yearly,
             "selected_yearly": selected_yearly,
             "bcct_lines": bcct_lines,
@@ -2663,6 +2817,10 @@ def finding_detail(
             "show_book": show_book,
             "detail_rows": describe_details(finding.details),
             "evidence_blocks": evidence_blocks,
+            # Nhãn kỳ ≠ dương lịch phải in kèm khoảng ngày ở MỌI màn (ADR #23 T2).
+            "period_window": load_period_windows(
+                db, finding.company_id, years=[finding.period_year]
+            ).get(finding.period_year),
         },
     )
 

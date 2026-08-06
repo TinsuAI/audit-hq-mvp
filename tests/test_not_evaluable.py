@@ -76,6 +76,27 @@ def _patch_checks(monkeypatch, *, code: str, result_fn, in_scope: bool) -> None:
     monkeypatch.setattr(denom_mod, "RULE_SCOPE", scope)
 
 
+
+def _load_every_source(session, company_id: int, year: int = 2024) -> None:
+    """Nạp đủ bcct/m15/m15a/m16 để cổng nguồn (#53) không chặn check nào.
+
+    Các test trong nhóm này đo đường `NotEvaluable` do chính check trả về. Không có
+    dòng nguồn thì cổng nguồn chặn TOÀN BỘ check trước khi dispatch và mã đang đo
+    không bao giờ chạy — hai cổng dùng chung một trạng thái nên fixture phải nói rõ
+    đang đo cổng nào.
+    """
+    from app.models import Norm
+    from tests.conftest import add_decl, add_sp
+
+    add_nvl(session, company_id, material_code="SRC", imported=1, closing=1, year=year)
+    add_sp(session, company_id, product_code="SRC_P", export_qty=1, closing=0, year=year)
+    session.add(Norm(company_id=company_id, period_year=year, product_code="SRC_P",
+                     material_code="SRC", norm_qty=1.0))
+    add_decl(session, company_id, declaration_no="SRC1", customs_code="E31",
+             item_code="SRC", quantity=1, year=year)
+    session.commit()
+
+
 def _not_evaluable_check(_session, _company_id, _year):
     return NotEvaluable(REASON)
 
@@ -85,6 +106,7 @@ def _clean_check(_session, _company_id, _year):
 
 
 def test_run_checks_persists_status_and_reason(session, company, monkeypatch):
+    _load_every_source(session, company.id)
     _patch_checks(monkeypatch, code=GATED_CODE, result_fn=_not_evaluable_check, in_scope=True)
 
     stats = run_checks(company.code, 2024, session=session)
@@ -113,6 +135,7 @@ def test_run_checks_persists_status_and_reason(session, company, monkeypatch):
 
 
 def test_rerun_ok_clears_previous_reason(session, company, monkeypatch):
+    _load_every_source(session, company.id)
     _patch_checks(monkeypatch, code=GATED_CODE, result_fn=_not_evaluable_check, in_scope=True)
     run_checks(company.code, 2024, session=session)
 
@@ -192,6 +215,7 @@ def _seed(session, code: str) -> Company:
             production_out=200, closing=-5,
         )
     session.commit()
+    _load_every_source(session, c.id)
     return c
 
 
@@ -268,6 +292,7 @@ def test_recompute_after_status_change_keeps_gated_rule_out(session, company, mo
         add_nvl(session, company.id, material_code=f"MAT{i}", opening=10, imported=100,
                 production_out=200, closing=-5)
     session.commit()
+    _load_every_source(session, company.id)
 
     _patch_checks(monkeypatch, code=GATED_CODE, result_fn=_not_evaluable_check, in_scope=True)
     run_checks(company.code, 2024, session=session)

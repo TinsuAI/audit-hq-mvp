@@ -868,3 +868,106 @@ lục, không tràn ngang (`body.scrollWidth == clientWidth` ở cả hai bề r
 
 Xem [[pilot-004-epe-gc-merge]] · [[gan-nhan-to-khai-theo-so]] · [[public-showcase-and-no-edge-auth]] ·
 [[so-lieu-phai-co-mau-so-va-nguon-doc-lap]].
+
+## 2026-07-31 — KTSTQ 5 năm · kỳ quyết toán linh động · template cấu trúc lạ
+
+### 23. BCCT lưu trọn theo nhãn nạp — tư cách thuộc kỳ tính lúc QUERY; niên độ mức DN; template registry 2 tầng; phạm vi KTSTQ là VIEW (2026-07-31, grilling)
+
+**Bối cảnh:** KTSTQ chốt phạm vi = 5 năm kể từ **ngày đăng ký tờ khai** (khoản 3 Điều 77 Luật HQ
+54/2014, còn nguyên trong VBHN xác thực 23/3/2026) → không trùng trọn các kỳ quyết toán. Kỳ BCQT
+theo pháp luật là **năm tài chính**, hạn nộp 90 ngày sau kết thúc niên độ (Đ.60 TT 38 bản TT 39/2018;
+giữ nguyên ở khoản 32 Đ.1 TT 121/2025, hiệu lực 01/02/2026). Căn cứ + trích dẫn đầy đủ:
+`.ai/notes/2026-07-31-research-ky-ke-toan-bcqt-ktstq.md`. Phương án gốc + census cấu trúc file:
+`.ai/notes/2026-07-31-ktstq-5-nam-template-ky-quyet-toan.md`. Defect nền: `ingest.py:330` BỎ dòng
+BCCT ngoài cửa sổ kỳ ngay lúc nạp, đếm `bcct_other_year` chỉ in CLI — web UI không thấy, sửa cửa sổ
+sau nạp không phục hồi được.
+
+**T1 — Lưu trọn dòng BCCT, membership theo query (BLOCKING cho T4)**
+- `declaration_lines.period_year` = **NHÃN NẠP / provenance**, không còn là tư cách thuộc kỳ.
+  Ingest lưu ĐỦ mọi dòng parse được (bỏ nhánh drop). Wipe re-ingest giữ nguyên
+  (`delete where label == year` = "lượt nạp này thay chính nó"). ADR #13/#16 không đổi: `period_year`
+  vẫn là khoá join của các bảng BCQT.
+- **MỘT helper duy nhất** (vd `declaration_scope(company_id, year)`) là selector vế BCCT cho CẢ 17
+  check (hiện mỗi check tự filter `period_year == year` rải rác — phải quy về một chỗ): dòng CÓ ngày
+  → `declaration_date` trong cửa sổ `company_periods` của `year`, BẤT KỂ nhãn; dòng KHÔNG ngày →
+  fallback khớp nhãn (giữ nguyên hành vi `in_period` cũ) + đếm hiện ở banner độ phủ
+  ("N dòng không có ngày tờ khai — quy theo kỳ nạp").
+- **Trùng chéo nhãn: CẢNH BÁO, KHÔNG dedup, KHÔNG chặn.** Sau khi lưu, đếm dòng có khoá
+  (`declaration_no`, `line_no`; `line_no` NULL → (`declaration_no`, `item_code`)) đã tồn tại ở nhãn
+  khác cùng DN → banner trang tài liệu. Số lượng có thể lệch giữa hai bản export nên mọi auto-pick là
+  đoán — cán bộ sửa file nguồn. (Trùng chéo nhãn chỉ tồn tại SAU T1 — trước đây drop che mất.)
+- **Sửa cửa sổ kỳ = đổi kết quả check không qua ingest** → route sửa kỳ bump
+  `company_periods.data_version` TRONG cùng transaction (đúng ca `data_version` sinh ra để bắt —
+  WS3). Cửa sổ hai năm chồng lấn sau khi sửa → CẢNH BÁO (không chặn): kỳ chuyển tiếp khi đổi niên độ
+  là hợp pháp (từ 01/01/2025 theo khoản 4 Đ.2 Luật 56/2024: gộp ≤ 3 kỳ tháng liên tiếp, tối đa 15
+  tháng — thay quy tắc "<90 ngày" cũ).
+- **Cảnh báo độ phủ mỗi (DN, kỳ):** so cửa sổ với min/max `declaration_date` + đếm theo tháng →
+  "thiếu 01/01–31/03/2026 — nạp thêm file dương lịch 2026". Đây là câu trả lời cho "up BCCT dương
+  lịch vào DN niên độ lệch": cảnh báo thiếu + nạp file năm kề là lấp được, không dán nhãn lại.
+- **HAI cổng nghiệm thu tách bạch** (phương pháp delta, xem [[harness-baseline-methodology]]):
+  (1) đổi query trên DB HIỆN TRẠNG (không re-ingest) → delta finding = **0** trên 3 pilot;
+  (2) fresh re-ingest → delta CHỈ gồm dòng trước đây bị drop nay vào scope (006 "file gộp nhiều kỳ":
+  dòng dated 2024 nằm ở file nhãn 2025 sẽ vào scope 2024 — chủ ý, soát từng dòng).
+- Loại: (b) bỏ hẳn `period_year` khỏi `declaration_lines` (undated mất neo, churn evidence_refs/index
+  vô ích); (c) bảng phụ chứa dòng ngoài cửa sổ (mọi query phải union 2 bảng, dữ liệu "lẻ" thành hạng
+  hai — phá mục đích T4).
+
+**T2 — Niên độ: mức DN default + per-year override**
+- Cột `companies.fiscal_start_month` (int, default 1 = dương lịch — mọi DN hiện có giữ nguyên hành
+  vi, không backfill). UI cho đúng 4 giá trị {1, 4, 7, 10} (điểm a khoản 1 Đ.12 Luật Kế toán
+  88/2015: niên độ khác dương lịch phải 12 tháng tròn từ đầu quý). Kỳ lẻ (năm đầu/cuối, chuyển tiếp
+  đổi niên độ) dùng override per-year `company_periods` đã có.
+- **Nhãn năm = NĂM BẮT ĐẦU kỳ**: cửa sổ default của năm Y = [01/`fiscal_start_month`/Y → trước đó 1
+  ngày của năm sau]. Căn cứ research: pháp luật định danh kỳ CHỈ bằng khoảng ngày ("Từ ngày… đến
+  ngày…"), KHÔNG có quy ước tên "năm tài chính 20XX" chính thức → nhãn là khoá nội bộ, chọn năm bắt
+  đầu; bù lại **mọi màn hiện nhãn kỳ ≠ dương lịch phải in kèm khoảng ngày** (mở rộng cơ chế
+  `load_period_windows` ra mọi màn có nhãn kỳ, gồm cả export).
+- Thứ tự suy cửa sổ: `is_manual` > tiêu đề file (đủ 2 ngày) > **default từ `fiscal_start_month`** >
+  dương lịch. Tiêu đề file lệch với default niên độ DN → CẢNH BÁO trên màn review (không chặn, không
+  tự pick) — nhất quán triết lý cảnh-báo-không-đoán của T1.
+
+**T3 — Template registry 2 tầng + đánh dấu file khớp mẫu**
+- Tầng builtin: **sống trong CODE** (module cạnh `BALANCE_EXPECT`), mỗi entry = {id, tên hiển thị,
+  slot, tập vân tay `form_signature`, column map, data_start}; đổi qua PR + test fixture thật từng
+  template; seed từ census 2026-07-31 (BCCT chi tiết ECUS phủ 10/11 DN · BCCT tổng hợp · Mẫu 15a
+  chuẩn 8 DN · biến thể DN03/DN04). **YÊU CẦU TƯƠNG LAI đã chốt:** sau này phải quản lý template
+  qua UI (bảng DB seed từ code) — không ở lại code vĩnh viễn; chưa build bây giờ.
+- Thứ tự resolve khi parse: map officer-confirmed của DN → template builtin khớp vân tay → dò từ
+  khoá → cổng review. Không đường nào parse im lặng; fallback hằng số phải hiện nguồn "mặc định".
+- **Khớp template = TỰ QUA cổng review**: nguồn bằng chứng mới `builtin-template`, rank giữa
+  `header-matched` và `officer-confirmed`. Lý do: cổng review canh CẤU TRÚC chưa được người xem —
+  template là cấu trúc ĐÃ được mình xem lúc curate (code, PR, test); bắt mỗi DN click lại là re-review
+  cấu trúc, không thêm được kiểm tra nào cổng thực sự làm. Rủi ro chấp nhận: template curate sai áp
+  im lặng diện rộng — chặn bằng test fixture + badge "Khớp mẫu: <tên>" luôn hiển thị + officer
+  override ghi map per-DN (rank cao hơn, thắng template).
+- Ghi `template_id`/`match_source` vào `data_files` — trang tài liệu + màn review hiện
+  "Khớp mẫu: …" / "Map đã xác nhận …" / "Không khớp — cần xác nhận cột".
+
+**T4 — Phạm vi KTSTQ 5 năm là VIEW, không phải khoá dữ liệu**
+- `companies.audit_decision_date` (nullable, ngày quyết định thực tế/dự kiến). NULL → mọi màn như
+  cũ. Cửa sổ `[D − 5 năm, D]` **tính, không lưu**; lọc trên `declaration_date` (= "Ngày ĐK" — đúng
+  mốc neo pháp lý). Đổi ngày = re-render, không đụng dữ liệu, không tương tác staleness. Hình thái
+  tương lai đã ghi nhận: bảng `audit_engagements` nhiều đợt/DN — KHÔNG build bây giờ; không được
+  couple sâu hơn "đọc một cột date nullable".
+- **Màn độ phủ**: chiếu cửa sổ lên các kỳ quyết toán → mỗi kỳ: trọn trong phạm vi · cắt đầu · cắt
+  đuôi · chưa có BCQT. Nói CẢ HAI ngôn ngữ (khoảng ngày + danh sách kỳ) — mẫu 01/QĐKT (PL II TT
+  121/2025) để "Phạm vi kiểm tra" là dòng trống tự do nên hệ phải dịch được giữa hai cách ghi.
+- Kỳ đầu bị cắt: chạy ĐỦ check trên TRỌN kỳ (đẳng thức cân đối chỉ đúng trên trọn kỳ); tag hiển thị
+  tính lúc render từ `audit_decision_date`: finding có ngày → trong/ngoài phạm vi; finding cân đối →
+  "kỳ quyết toán rộng hơn phạm vi kiểm tra". KHÔNG lưu state cửa sổ trên finding.
+- **Đuôi chưa quyết toán — sửa luôn defect "0 finding = sạch giả"**: spec trong `registry.py` khai
+  `requires` (tập nguồn: bcct/m15/m15a/m16); `run_checks` kiểm presence per (DN, năm) trước khi
+  dispatch; thiếu nguồn → ghi `check_runs.skip_reason` (cột mới, vd `"no_bcqt"`) thay vì chạy join
+  rỗng. UI phân biệt rõ "Chưa chạy — chưa có BCQT (chưa đến hạn nộp)" với "chạy rồi, 0 phát hiện".
+  Defect này hôm nay đã có với BẤT KỲ năm nào chạy check trước khi up BCQT — không riêng đuôi.
+  Phân loại 17 check theo `requires` làm lúc implement, là fact-audit không phải đoán.
+- Loại: hardcode danh sách check "thuần BCCT" cho kỳ đuôi (mục rữa khi check đổi, không sửa được
+  ca "clean giả" ở năm thiếu dữ liệu khác).
+
+**Trình tự build:** T1 → T4 (T4 phụ thuộc T1); T2, T3 độc lập, song song được. Demo 2026-08-01
+không ship gì trong này — dùng đồ có sẵn (flow review cấu trúc lạ per-DN, sửa kỳ tay) + nói phương
+án; TRÁNH nạp live BCCT dương lịch vào DN đã set kỳ lệch (drop im lặng trên web còn nguyên tới T1).
+
+Xem [[harness-baseline-methodology]] · [[parse-confidence-evidence-model]] ·
+[[checks-khong-doc-lap-khi-dem-gop]] · [[so-lieu-phai-co-mau-so-va-nguon-doc-lap]] ·
+[[trich-luat-phai-neu-ban-hop-nhat-va-hieu-luc]].
