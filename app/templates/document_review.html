@@ -84,6 +84,7 @@
     <p class="form-hint" style="margin:0 0 var(--space-2)">
       {% if parsed_sheet %}Lượt nạp gần nhất đọc trang <strong>{{ parsed_sheet }}</strong>.
       {% else %}Hệ thống <strong>không tự nhận ra</strong> trang nào đúng biểu trong file này.{% endif %}
+      {% if preview and preview.skipped_reason %}<br><em>{{ preview.skipped_reason }}</em>{% endif %}
       Chọn đúng trang chứa dữ liệu chi tiết rồi bấm nạp lại — xem trước nội dung từng trang ở
       <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ file.id }}/preview">👁 Xem toàn bộ file</a>.
     </p>
