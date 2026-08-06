@@ -1,5 +1,33 @@
 # STATUS — Audit-HQ MVP
 
+> **PROD (2026-08-06 chiều — build `903685a`, alembic `d9e0f1a2b3c4`):** ba PR đã merge và
+> deploy trong ngày, khởi nguồn từ lỗi **524** khi cán bộ tải bộ file 006 lên demo.
+>
+> - **#74** — nạp dữ liệu chuyển sang hàng đợi (`JobKind.INGEST`), parse mỗi file một lần
+>   trong một lượt nạp (`parse_cache`), ghi + chọn được trang tính. Đo: một lượt tải lên
+>   trước đây > 6 phút trong request (chẩn đoán 120 s + xem trước 116 s + nạp lại lần ba),
+>   trong khi Cloudflare cắt ở 100 giây. Nay POST trả `/jobs/{id}` trong 0,38 s và job nạp
+>   trọn kỳ 2025 của 006 (94MB, 395k dòng) hết 179,7 s. **SỬA option A của ADR #18 Rev WS2** —
+>   xem `.ai/DECISIONS.md` mục `## 2026-08-06`.
+> - **#75** — file đọc hỏng vẫn ghim được trang tính, và `diagnose_upload` đọc đúng trang đã
+>   ghim. Cần vì file cán bộ tự gộp bị `select_sheet` chấm 0 điểm cho cả 8 trang.
+> - **#76** — hết 524 ở trang Tài liệu (index `declaration_lines(company_id, declaration_no,
+>   line_no)`: 125,4 s → 5,9 s với kỳ 270.505 dòng) và ở màn chọn trang tính (đọc tên sheet
+>   thẳng từ zip: 125,4 s → 0,52 s với file 68MB).
+>
+> **File gộp tay của 006 làm mất 28.563.550.970,35 đ im lặng** (2.076 ô công thức → 0), chi
+> tiết + số đo ở `.ai/notes/2026-08-06-006-f1-f2-f3-vs-file-gop.md`. Kết luận: nạp hai file
+> rời, đừng nạp bản gộp.
+>
+> **Còn treo:** `/diagnose-ai` vẫn đồng bộ (120 s với bộ 006 → vẫn 524) · form tải lên 4 ô
+> vẫn xoá file BCCT cũ khi tải file thứ hai (chính là lý do cán bộ phải gộp tay) · nửa còn
+> lại của 524 là thời gian truyền 68MB (cần ≥ 5,8 Mbps, hoặc làm tải lên theo mảnh) ·
+> `to_float` nuốt ô công thức thành 0 · hai DN tạm `zz-test-bo-file` / `zz-test-tonghop`
+> trên prod chưa xoá (mỗi DN 270.505 dòng).
+>
+> **DB DEV đang lệch schema**: ở `b7c8d9e0f1a2`, thiếu `data_files.sheet_override` → chạy
+> `alembic upgrade head` trước khi làm việc với `data_files`.
+
 > **DB DEV (2026-08-06, SAU khi viết handoff — mọi thứ dưới đây CHỈ Ở MÁY LOCAL,
 > demo `audit-hq-demo.tinsu.ai` vẫn chạy build `0b9e3b2` ngày 01/08, không đụng tới):**
 >
