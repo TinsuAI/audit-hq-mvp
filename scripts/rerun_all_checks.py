@@ -4,6 +4,10 @@ Khác `app.pipeline.run_all`: chỗ đó ingest lại từ `data/raw` theo white
 thật, không dùng được trên DB đã ẩn danh. Chỗ này chỉ chạy lại check trên dữ liệu
 đã nằm trong DB.
 
+Tập kỳ lấy theo HỢP của `check_runs` và `findings`: `check_runs` chỉ có từ WS3 nên kỳ
+chạy check trước đó mà chưa chạy lại thì có finding mà không có dòng run — lấy mình
+`check_runs` là bỏ sót đúng những kỳ đang giữ số cũ nhất.
+
 CẢNH BÁO — MẤT TRẠNG THÁI CÁN BỘ: `run_checks()` xoá cứng `Finding` của các mã sắp
 chạy rồi insert lại, và không check nào truyền `status=`/`notes=`. Mọi finding đang ở
 `confirmed` / `rejected` / `noted` và mọi ghi chú sẽ về `new`. Chạy `--report` trước
@@ -27,16 +31,43 @@ from app.database import SessionLocal
 from app.models import CheckRun, Company, Finding
 
 
-def _pairs(session, only_company: str | None) -> list[tuple[str, int]]:
-    """(mã DN, kỳ) đã từng chạy check — nguồn sự thật cho tập cần chạy lại."""
-    stmt = (
-        select(Company.code, CheckRun.period_year)
-        .join(CheckRun, CheckRun.company_id == Company.id)
-        .distinct()
+def pairs_to_run(session, only_company: str | None) -> list[tuple[str, int]]:
+    """(mã DN, kỳ) cần chạy lại = HỢP của kỳ có `check_runs` và kỳ có `finding`.
+
+    Lấy mình `check_runs` là thiếu: bảng đó chỉ có từ WS3, nên kỳ nào chạy check trước
+    đó mà chưa chạy lại thì có finding mà không có dòng run — lượt chạy bỏ qua và nó
+    giữ nguyên số sinh bởi code cũ. Đo trên prod 06/08/2026: 7 cặp lấy từ `check_runs`
+    phủ 13.409 finding, còn 3.928 finding nằm ngoài.
+    """
+    from_runs = select(Company.code, CheckRun.period_year).join(
+        CheckRun, CheckRun.company_id == Company.id
+    )
+    from_findings = select(Company.code, Finding.period_year).join(
+        Finding, Finding.company_id == Company.id
     )
     if only_company:
-        stmt = stmt.where(Company.code == only_company)
-    return sorted(session.execute(stmt).all())
+        from_runs = from_runs.where(Company.code == only_company)
+        from_findings = from_findings.where(Company.code == only_company)
+    return sorted(
+        set(session.execute(from_runs).all()) | set(session.execute(from_findings).all())
+    )
+
+
+def pairs_without_run_record(session, only_company: str | None) -> list[tuple[str, int]]:
+    """Cặp CÓ finding nhưng KHÔNG có dòng `check_runs` — đang giữ kết quả code cũ.
+
+    Trên màn hình chúng hiện độ phủ kiểu "17/17 bài kiểm tra", đọc như đã đánh giá
+    trọn trong khi là số cũ: `score_coverage` suy tổng số luật từ `max_raw` đã lưu, mà
+    breakdown cũ được tính khi catalog còn 17 check (chưa có C4.9).
+    """
+    runs = set(
+        session.execute(
+            select(Company.code, CheckRun.period_year).join(
+                CheckRun, CheckRun.company_id == Company.id
+            )
+        ).all()
+    )
+    return [p for p in pairs_to_run(session, only_company) if p not in runs]
 
 
 def _officer_marked(session) -> tuple[int, int]:
@@ -62,13 +93,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     with SessionLocal() as session:
-        pairs = _pairs(session, args.company)
+        pairs = pairs_to_run(session, args.company)
+        stale = pairs_without_run_record(session, args.company)
         marked, noted = _officer_marked(session)
         total_findings = session.scalar(select(func.count()).select_from(Finding)) or 0
 
     print(f"{len(pairs)} cặp (DN, kỳ) · {total_findings} finding hiện có")
     print(f"Trạng thái cán bộ sẽ MẤT nếu chạy lại: {marked} finding đã đánh dấu · "
           f"{noted} finding có ghi chú")
+    if stale:
+        print(f"{len(stale)} cặp CÓ finding nhưng KHÔNG có dòng check_runs — đang giữ "
+              f"kết quả code cũ, màn hình đọc như đã đánh giá trọn:")
+        for code, year in stale:
+            print(f"  ⚠ {code} {year}")
     if args.report:
         for code, year in pairs:
             print(f"  {code} {year}")
