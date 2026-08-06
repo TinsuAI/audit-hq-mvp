@@ -38,6 +38,9 @@ _EVIDENCE_ORDER: dict[str, tuple[str, ...]] = {
     "m15a": ("product_code", "opening_qty", "intake_qty", "repurpose_qty", "export_qty",
              "other_out_qty", "closing_qty"),
     "m16": ("material_code", "norm_qty"),
+    "bcct": ("declaration_no", "declaration_date", "customs_code", "item_code",
+             "hs_code", "quantity", "unit", "unit_price", "value_total",
+             "company_tax_id", "company_name"),
 }
 
 

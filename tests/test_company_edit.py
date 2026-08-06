@@ -79,6 +79,73 @@ def test_edit_updates_fields_and_keeps_demo_suffix():
         _teardown(new_engine)
 
 
+def test_edit_saves_first_bcqt_year():
+    new_engine, new_session = _setup_db()
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.post(
+            "/companies/DN_077/edit",
+            data={"name": "Tiên Phong", "first_bcqt_year": "2019"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_077"))
+            assert c.first_bcqt_year == 2019
+        # GET prefill lại đúng giá trị vừa lưu.
+        assert 'value="2019"' in client.get("/companies/DN_077/edit").text
+    finally:
+        _teardown(new_engine)
+
+
+def test_edit_blank_first_bcqt_year_saves_null():
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_077"))
+            c.first_bcqt_year = 2019
+            db.commit()
+        client = TestClient(app)
+        _login(client)
+        r = client.post(
+            "/companies/DN_077/edit",
+            data={"name": "Tiên Phong", "first_bcqt_year": "  "},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_077"))
+            # Trống nghĩa là "chưa biết" — NULL, không phải 0.
+            assert c.first_bcqt_year is None
+    finally:
+        _teardown(new_engine)
+
+
+def test_edit_rejects_invalid_first_bcqt_year():
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as db:
+            c = db.scalar(select(Company).where(Company.code == "DN_077"))
+            c.first_bcqt_year = 2019
+            db.commit()
+        client = TestClient(app)
+        _login(client)
+        for bad in ("hai nghìn", "19", "20255"):
+            r = client.post(
+                "/companies/DN_077/edit",
+                data={"name": "Tiên Phong", "first_bcqt_year": bad},
+                follow_redirects=False,
+            )
+            assert r.status_code == 400, bad
+            with new_session() as db:
+                c = db.scalar(select(Company).where(Company.code == "DN_077"))
+                assert c.first_bcqt_year == 2019, bad  # giá trị cũ không bị ghi đè
+                assert c.name == "Cũ (Demo)"
+    finally:
+        _teardown(new_engine)
+
+
 def test_edit_unknown_code_404():
     new_engine, _ = _setup_db()
     try:

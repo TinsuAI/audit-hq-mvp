@@ -1,8 +1,210 @@
 # STATUS — Audit-HQ MVP
 
+> **DB DEV (2026-08-06, SAU khi viết handoff — mọi thứ dưới đây CHỈ Ở MÁY LOCAL,
+> demo `audit-hq-demo.tinsu.ai` vẫn chạy build `0b9e3b2` ngày 01/08, không đụng tới):**
+>
+> **Đã nạp HIEP_QUANG và HONG_AN** — hai DN mà #63 sinh ra để sửa. Chỉ nạp năm nào có thư mục
+> `HANG_CHI_TIET`: HIEP_QUANG 2021 + 2024, HONG_AN 2021 + 2022 + 2024 + 2025.
+> **Kiểm chứng #63 trên chính ba file từng đọc sai cột TRƯỚC khi ghi:** cả ba nay resolve
+> **19/19 trường theo nhãn, 0 rơi về `_COL`**; 100% dòng có `quantity > 0`, đơn vị là chữ, tên DN là
+> chữ (trước đó `quantity` lấy nhầm *Trị giá NT* / *Đơn giá tính thuế*, `unit` ra số, `company_name`
+> ra ngày hoặc mã số thuế).
+>
+> **Cổng #56 chạy đúng ngay lần đầu trên dữ liệu thật:** C4.3 trả `not_evaluable` ở kỳ 2021 của cả
+> hai DN mới (kỳ biên, chưa có `first_bcqt_year`). Đó là hai bản ghi `not_evaluable` thật đầu tiên.
+>
+> **HAI KỲ NẠP VÀO RẤT LỆCH, đọc số phải dè chừng:** HIEP_QUANG 2024 không có M15a và **toàn bộ
+> 3.110 dòng BCCT bị loại vì ngoài cửa sổ kỳ** → loại hình DN dò ra `UNKNOWN`, chỉ còn M15 (8 dòng)
+> + M16 (7.719); 8 phát hiện C4.1 sinh trên nền đó. Ngoài ra **M15 của HIEP_QUANG chỉ 8 dòng** ở cả
+> 2021 lẫn 2024 trong khi M16 có 854 / 7.719 dòng — 8 mã NVL cho một DN dệt may là con số đáng ngờ,
+> **chưa điều tra**: có thể chọn nhầm file M15, có thể DN khai đúng như vậy.
+> Các năm còn lại của HIEP_QUANG (2015–2020, 2022, 2023, 2025) **không có `HANG_CHI_TIET`** nên chưa nạp.
+>
+> **Đã chạy lại check 4 DN pilot** (trước đó là kết quả từ 24/07 và 04/08, tức trước T3/T4/C4.1/mẫu
+> số `m16`, và chỉ có 17 check). Delta:
+>
+> | DN : kỳ | phát hiện | điểm | C4.3 |
+> |---|---|---|---|
+> | PILOT_002 : 2025 | 48 → 21 | 7 → 3 | chặn (kỳ biên) |
+> | PILOT_006 : 2024 | 3.880 → 3.321 | 129 → **125** | chặn (kỳ biên) |
+> | PILOT_006 : 2025 | 10.996 → 11.077 | 54 → 51 | **CHẠY — 1.772 → 1.665** |
+> | PILOT_004 : 2025 | 74 → 68 | 30 → 26 | chặn (kỳ biên) |
+> | ZONSEN : 2023 | 135 → 141 | 8 → **11** | chặn (kỳ biên) |
+> | ZONSEN : 2024 | 404 → 166 | 6 → 3 | chặn — 5 mã |
+> | ZONSEN : 2025 | 149 → 57 | 2 → 2 | chặn — 15 mã |
+> | ZONSEN : 2026 | 1.086 → 543 | 16 → 8 | chặn — 17 mã |
+>
+> Mọi số khớp đo lúc làm: C4.9 ra 5/11/13/5/15/17 đúng bảng `grill-state.md`; PILOT_002 2025 và
+> PILOT_006 2025 ra **0** (bằng chứng luật kế thừa ăn vào); C4.1 ở PILOT_006 2025 đi **14 → 202**
+> (đúng 188 mã của khoảng hở), ZONSEN 2026 **0 → 8**. Chỉ PILOT_006 2025 qua cả hai cổng.
+>
+> **`combos_enabled` nay BẬT** (`app_settings`, trước đó bảng rỗng → chạy theo mặc định OFF).
+> Quan trọng cho việc quy nguyên nhân: PILOT_006 2024 lúc combo tắt ra **20** điểm, bật lại ra
+> **125**. Tức **cổng độ phủ chỉ làm tụt 4 điểm (129 → 125), không phải 109** — 105 điểm còn lại
+> là do combo tắt, là cấu hình chứ không phải hồi quy.
+>
+> **⚠ 12 KỲ ĐANG THIẾU COMBO — trạng thái không nhất quán.** Chúng được chạy lại lúc setting còn
+> OFF: PILOT_002 2025 · **PILOT_006 2025** · PILOT_004 2025 · ZONSEN 2023–2026 · HIEP_QUANG 2021,
+> 2024 · HONG_AN 2022, 2024, 2025. Combo là cờ TOÀN CỤC nên muốn nhất quán phải chạy lại cả 12.
+> Nặng nhất là PILOT_006 2025 (~4 phút), còn lại nhẹ.
+>
+> **⚠ ĐÃ ĐỔI ALEMBIC STAMP CỦA DB DEV.** Trước: `a9b0c1d2e3f4` (chỉ có trên nhánh chưa merge
+> `feat/adr23-ktstq-period-scope`) → `alembic current` fail nên không truy vấn `Company` được.
+> Đã `stamp --purge c5d6e7f8a9b0` rồi `upgrade head` → nay ở `d1e2f3a4b5c6`. Dữ liệu nguyên vẹn
+> (integrity ok), **giữ nguyên** `fiscal_start_month` / `audit_decision_date` của nhánh kia.
+> **Hệ quả:** DB đang MANG cột của cả hai nhánh nhưng `alembic_version` chỉ ghi nhánh này — khi
+> `feat/adr23-ktstq-period-scope` merge, 4 migration của nó sẽ đòi thêm cột đã tồn tại và sẽ nổ;
+> phải stamp qua hoặc viết migration chịu được cột có sẵn.
+>
+> **Backup (WAL-safe, dùng `sqlite3.backup`, KHÔNG phải `cp`):**
+> `audit_hq.sqlite.bak-pre-hq-ha-ingest-20260806` (trước khi nạp) ·
+> `audit_hq.sqlite.bak-pre-pilot-rerun-20260806` (trước khi ghi đè kết quả 4 pilot).
+>
+> **Không đổi gì trong repo ở bước này** — chỉ DB local. Code vẫn là PR #64 dưới đây.
+
+> **Trạng thái (2026-08-06 — BẢY TICKET #57–#63 XONG. [PR #64](https://github.com/TinsuAI/audit-hq-mvp/pull/64)
+> ĐÃ MỞ, ĐÃ PUSH, CHỜ REVIEW. Đề án đã push + publish):**
+> Suite **1028 pass + 1 xfail** (vào phiên 957). `ruff check app tests` sạch. Chưa merge.
+> `feat/data-completeness-gate` @ `170692d`, 25 commit trên `origin/main`.
+> Repo đề án `TinsuAI/audit-hq` `main` @ `8fba236` đã push; `make publish` đã chạy —
+> `https://audit-hq.tinsu.ai/` verify được: C4.9 có mặt, "50 kiểm tra", md5 khớp file local.
+> T1 #57 `companies.first_bcqt_year` · T2 #58 `not_evaluable` thành trạng thái chạy thật ·
+> T3 #59 C4.3 nhường mã không có dòng M15 cho C4.1 · T4 #60 định mức hiệu lực (bản khai gần nhất
+> ≤ kỳ, gộp theo sổ) · T5 #61 check MỚI **C4.9** liệt kê mã TP thiếu định mức · T6 #62 cổng nhị
+> phân trên C4.3 · T7 #63 adapter BCCT đọc cột theo nhãn + `ParseProvenance`.
+> **Đã sửa repo đề án TRƯỚC** theo `AGENTS.md`: `audit-hq` @ `c5a5c3c` (thêm C4.9, danh mục
+> 49 → 50, Giai đoạn I 33 → 34) và `f7c638f` (mở phạm vi C4.1). ADR 05/08 ở
+> `audit-hq/.ai/DECISIONS.md`.
+>
+> **SỬA NGOÀI TICKET (owner duyệt trong phiên):** T3 cho C4.3 nhường mã không có dòng M15 sang
+> C4.1, nhưng C4.1 vẫn lọc `period_year == year` nên không thấy mã có định mức kế thừa — **196 mã**
+> không check nào báo (188 ở DN 8/2025, 8 ở DN 10/2026). Phạm vi C4.1 thành hợp của (mã khai đúng
+> kỳ) và (mã có tiêu hao lý thuyết > 0 theo định mức hiệu lực), vẫn gắn với sản xuất trong kỳ.
+> Khoảng hở nay = 0; C4.1 đi từ 36 lên 232 phát hiện trên pilot.
+>
+> **BA QUYẾT ĐỊNH OWNER CUỐI PHIÊN — ĐÃ CÀI XONG:**
+> (1) **Thang điểm giữ nguyên công thức, nhưng điểm không bao giờ đứng một mình** —
+> `score_coverage()` cho `(đã đánh giá, tổng)`, hiện cạnh điểm ở trang DN và thành cột
+> **"Đã đánh giá"** ở danh sách DN; **xếp hạng tách nhóm**, DN có kỳ nào chưa đánh giá đủ xuống
+> nhóm sau bất kể điểm (cả server lẫn sort client). Lấy theo **kỳ xấu nhất**.
+> `compute_company_year_score` lưu thêm `rule_count`. Không đổi logic check nào.
+> *(Chữ "độ phủ" đã bỏ khỏi giao diện — jargon, cán bộ không biết đang phủ cái gì. Giữ "độ phủ
+> định mức" trong code/nghiệp vụ vì đó là tên cái CỔNG, khác chuyện chấm được bao nhiêu bài.)*
+> (2) **Kỳ biên: C4.9 vẫn liệt kê**, mỗi phát hiện mang cờ `boundary_period` — C4.3 dừng hẳn còn
+> C4.9 thì không, vì danh sách từng mã là thứ cán bộ cần.
+> (3) **DN 9: định mức ở sổ khác thì nói đúng như vậy** — hành vi không đổi (ADR #19 giữ nguyên,
+> cổng vẫn bắn), chỉ đổi câu chữ + `evidence_refs` trỏ về dòng `norms` ở sổ kia. DN 9/2025 nay đọc
+> ra **11 = 9 thiếu hẳn + 2 khai ở sổ EPE**, khớp lại với con số 9 trong sổ yêu cầu.
+>
+> **Nền của quyết định (1) — mốc nghiệm thu #62 SAI về số học.** "Phát hiện biến mất không làm điểm
+> rủi ro giảm" không đạt được và **không thể** đạt: loại một luật khỏi cả tử số lẫn trần kéo điểm
+> về trung bình các luật còn lại, nên điểm GIẢM đúng khi C4.3 đang chấm cao hơn trung bình đó
+> (`điểm sau ≥ điểm trước ⟺ rule_score(C4.3) ≤ 10 × raw / max_raw`). Đo: DN 7/2025 6→4 ·
+> DN 8/2024 129→**132** · DN 9/2025 28→27 · DN 10/2024 3→2 · DN 10/2025 3→1 · DN 10/2026 8→6.
+> DN 10 có 16 luật khác gần như không bắn (`raw` = 0,486 trên trần 190) nên C4.3 đang gánh điểm.
+> Đây đúng là thứ loạt ticket sinh ra để chặn — thừa nhận không đánh giá được lại làm DN sạch hơn.
+> T2 KHÔNG sửa được: T2 bảo đảm "not_evaluable == luật vắng mặt", và giữ đúng lời; cái sai là điểm
+> vốn là một TRUNG BÌNH. Ghi bằng `test_norm_gate.py::test_gate_does_not_lower_the_risk_score`
+> đánh `xfail(strict=True)` mang đủ số đo, KHÔNG hạ assertion. **Đã tách thành issue #65 —
+> cần owner chốt thang điểm; CHẶN việc dùng điểm rủi ro để xếp hạng DN.** Ba hướng đã nêu ở #65,
+> chưa chọn. Biện pháp ở PR #64 chỉ che chắn cách đọc sai, không phải lời giải.
+>
+> **Kết quả cổng trên pilot:** chỉ **DN 8/2025** qua cả hai cổng, giữ 1.665/2.523 = 66%. Con số
+> 1.772/3.296 = 54% ở ticket không tái hiện vì nó đo TRƯỚC T3+T4 (10/2026 568→104, 10/2024 243→24).
+> Cả 8 DN đều có `first_bcqt_year = NULL` nên mọi kỳ biên đều vướng cổng B.
+>
+> **Lỗi thứ hai tự phát hiện — mẫu số `m16` = 0.** Bộ ảnh E2E seed một DN có định mức kế thừa
+> (0 dòng `norms` trong kỳ) và ra **điểm 0** dù có phát hiện Nghiêm trọng: `_count_distinct_m16`
+> đếm `period_year == year`, mà #60 vừa làm C4.3 đánh giá được ở kỳ không có dòng nào → mẫu số 0 →
+> `compute_rule_score` trả 0 → **DN ngừng khai lại định mức thì điểm tự đẹp lên**. Đã sửa: đếm theo
+> định mức hiệu lực. Trên pilot đổi mẫu số ở 4/8 (DN, kỳ) (8/2025 8.165→9.885 · 10/2024
+> 1.737→1.865 · 10/2025 2.662→2.995 · 10/2026 2.565→3.316), **không kỳ nào rơi về 0** nên chỉ ca
+> seed mới lộ ra.
+>
+> **Ảnh E2E:** 9 ảnh + `ui_smoke.py` + `brief.md` ở
+> `.ai/features/2026-08-05-issue-56-data-completeness/`. Ảnh là kết quả `run_checks()` chạy THẬT
+> trên hai DN seed bịa trong DB throwaway. Ảnh **không nhúng được vào mô tả PR** (repo private,
+> camo tải ẩn danh → 404; đo lại 06/08); PR #64 để gallery dạng liên kết, xem inline thì mở
+> `brief.md` trên github.com.
+>
+> **Còn mở:** (a) **#65 thang điểm** — mục trên, chặn xếp hạng DN; (b) **cổng review WS1 chưa bắn
+> cho BCCT** — `review_state` trả `verified` cho trường không có trong `CHECK_COLUMNS` mà registry
+> không có dòng BCCT, nên cột `position-only` hiện badge nhưng file vẫn "Đã kiểm"; vế "đọc đúng
+> cột" của dòng 0.2 xong, vế "cảnh báo tới cán bộ" chưa thông; (c) ~~HIEP_QUANG + HONG_AN chưa nạp~~ **đã nạp
+> 06/08**, xem khối DB DEV trên cùng; (d) **bản vá tạm ở prompt tổng quan AI** (ADR #18 `:513`) nay hết chặn — Tầng C đã
+> có `not_evaluable`, gỡ được và nên cho prompt đọc trạng thái đó thay vì né mọi số 0; (e) việc (a)
+> của P-07 còn mở — tách cột (6) khỏi (7) ở `extended_layout.py`; (f) ~~DB dev lệch schema~~ **đã migrate 06/08** (nay
+> `d1e2f3a4b5c6`) nên `tests/test_smoke.py` hết đỏ ở máy dev — nhưng **phát sinh cạnh chặn mới**:
+> DB mang cột của cả hai nhánh mà `alembic_version` chỉ ghi nhánh này, khi
+> `feat/adr23-ktstq-period-scope` merge thì 4 migration của nó sẽ đòi thêm cột đã có. Vẫn nên chạy
+> suite bằng `DATABASE_URL="sqlite:////<scratch>/x.sqlite" pytest` để không phụ thuộc DB dev; (g) nhánh `fix/c43-multiplier-p07` + `fix/bcct-label-columns` đã cherry-pick
+> vào đây, xoá được.
+>
+> **Next: review + merge PR #64.** Sau merge: xoá hai nhánh ở (g), rồi chốt #65 trước khi bật
+> tính năng xếp hạng DN theo điểm. Ở DB dev còn 12 kỳ thiếu combo (khối trên cùng) — chạy lại nếu
+> cần số nhất quán giữa các DN.
+> Session log: `.ai/sessions/2026-08-06-implement-issue-56-bay-ticket.md`.
+
+> **Trạng thái (2026-08-05 — ISSUE #56: SỔ YÊU CẦU → 7 TICKET #57–#63. PR #55 ĐÃ MERGE.
+> Nhánh `feat/data-completeness-gate`):**
+> **Bảy sub-issue của #56 đã mở**, gắn nhãn `ready-for-agent`, cạnh chặn khai bằng issue dependency
+> thật của GitHub — T1 #57 (`companies.first_bcqt_year`) · T2 #58 (`not_evaluable` thành trạng thái
+> chạy thật) · T3 #59 (C4.3 bỏ mã không có dòng M15) · T4 #60 (định mức hiệu lực, chặn bởi #59) ·
+> T5 #61 (bảng thừa/thiếu ĐM, chặn bởi #60 **và bởi một quyết định của owner**, xem dưới) ·
+> T6 #62 (cổng nhị phân, chặn bởi #57+#58+#60) · T7 #63 (mô hình bằng chứng WS1 cho BCCT, rời).
+> **Grab được ngay: #57, #58, #59, #63.** Mỗi ticket mang mốc nghiệm thu bằng số đo, không phải mô
+> tả suông. Chi tiết ở `.ai/features/2026-08-05-issue-56-data-completeness/tickets.md`.
+>
+> **#61 CHẶN BỞI OWNER:** check mới là chiều **M15a → M16** (có sản xuất mà thiếu định mức) — catalog
+> 49 không có mã cho chiều này (`C4.2` là chiều ngược, `C4.1` là M16 → M15). Theo `CLAUDE.md` phải
+> thêm mã vào `../audit-hq/de-an-audit-hq.md` TRƯỚC. Không tự đặt mã.
+>
+> **T7 #63 — lỗi mức 0 đang sống:** adapter BCCT ánh xạ cột theo vị trí cố định; file bố cục khác
+> đọc sai mọi trường mà **không báo lỗi**. Đo trên **38 file BCCT trong `data/`: 35 khớp, 3 lệch** —
+> HIEP_QUANG 2021 NK/XK (50 cột, 16 trường) và HONG_AN 2025 XK `__dup1` (55 cột, 11 trường). Ví dụ
+> HIEP_QUANG: `quantity` lấy nhầm sang cột *Trị giá NT*, `company_name` sang *Ngày hợp đồng*.
+> **10 check đọc `declaration_lines`** (C1.1–C1.7, C3.1–C3.3, C5.1) cộng `denominators.py` và
+> `company_type.py` → mức 3 (13.368 phát hiện) dựng trên bảng đó. DB hiện **sạch** (3 pilot +
+> ZONSEN đều đúng bố cục, `quantity IS NULL` = 0/2/0/0); HIEP_QUANG và HONG_AN **chưa nạp**.
+> **Thứ tự bắt buộc: sửa adapter TRƯỚC, nạp hai DN đó SAU** — dòng đã nạp không tự đổi khi luật dò
+> cột đổi. Code một phần ở nhánh `fix/bcct-label-columns` @ `06a9db5` (chưa test, chưa push).
+>
+> Phiên trước không sửa dòng code nào. **Toàn bộ sản phẩm ở
+> `.ai/features/2026-08-05-issue-56-data-completeness/`** — đọc theo thứ tự: `yeu-cau.md` (làm gì) →
+> `grill-state.md` (chốt gì + bằng chứng đo được) → `brief.md` (ghi chú kỹ thuật, chỉ đọc khi code)
+> → `officer-requirements.md` (nguyên văn yêu cầu anh Dũng).
+> **Gộp 3 tài liệu nguồn thành 29 yêu cầu** (bản ghi âm anh Dũng · notes chị Duyên 05/08 · đề xuất
+> chị Duyên 16/06) — trùng lặp nhiều: tờ khai huỷ/sửa nêu 3 lần, tiêu hao lý thuyết 3 lần, ĐM kế
+> thừa 4 lần. Xếp theo **bản đồ mức** owner đề xuất (mức 0 tiếp nhận file → 1 biểu tự đứng vững →
+> 2 đủ nguyên liệu để tính → 3 đối chiếu chéo nguồn → 4 suy diễn từ ĐM; nhánh liên kỳ riêng).
+> **BA QUYẾT ĐỊNH:** (1) kỳ sớm nhất mỗi DN mặc định `not_evaluable` cho check độ phủ ĐM, trừ khi
+> cán bộ xác nhận là **năm đầu nộp BCQT** → cần trường mới trên `companies`; (2) **định mức chuyển
+> tiếp ĐƯỢC đưa vào phép nhân C4.3** (bản khai gần nhất ≤ kỳ), bắt buộc ship kèm việc (b) của
+> `fix/c43-multiplier-p07` nếu không sinh **151 phát hiện Nghiêm trọng dán nhầm nhãn** C4.1;
+> (3) **cổng NHỊ PHÂN, không theo sản lượng** — có mã TP sản xuất mà chưa từng khai ĐM ở bất kỳ kỳ
+> nào thì nhóm 4 `not_evaluable`. Hệ quả đo được: **C4.3 còn 1.772/3.296 = 54%**, chỉ DN 8/2025 qua
+> cả hai cổng. Thêm 4 mục vào `GLOSSARY.md`.
+> **Tầng C KHÔNG CÒN CHỜ HỌP** — `not_evaluable` để dành từ ADR #18 `:467-471` chính là việc này,
+> issue #56 là buổi họp nó chờ.
+> **Mục "chặn bởi đề án" ở dưới ĐÃ STALE:** `../audit-hq/de-an-audit-hq.md` đã sửa C4.3 (số nhân =
+> sản lượng nhập kho), nên code hiện **chọi catalog**, không còn chờ owner chốt quy trình 3 repo.
+> **Còn treo:** (H1) ngữ nghĩa qua-mức cho các mức khác — nhiễm theo mã (khuyến nghị) hay chặn cả
+> mức; (H3) mã catalog cho check độ phủ M15a→M16 — nay là cạnh chặn của #61.
+> **H2 ĐÃ GỠ** (tiếp nhận file): không phải chọn giữa từ-chối và nhận-rồi-gắn-cờ. Sổ phân định sẵn
+> hai điều kiện khác nhau — dòng **0.1** *từ chối* khi không nhận ra là biểu nào (đã có một phần:
+> `select_sheet` ném `SheetNotFound`); dòng **0.2** *cảnh báo + gắn nhãn bằng chứng* khi nhận ra
+> được nhưng phải đoán cột theo vị trí. Kèm theo: dòng 0.2 trước đánh ✅ WS1 là **SAI** — WS1 chỉ
+> phủ M15/M15a/M16, `evidence.py` không có dòng nào cho BCCT. Đã hạ xuống 🔨 → T7 #63.
+> **Phạm vi #56 đã cắt:** 3/39 dòng trong phạm vi (2.1, 2.2, 0.2), 36 ngoài — chia theo cái đang
+> chặn: 6 đã có · 17 ship được xếp sau · 3 chặn bởi dữ liệu nguồn · 5 cần file mới · 5 ngoài phạm vi
+> kiểm tra. Xem mục "Phạm vi issue #56" trong `yeu-cau.md`.
+> ~~Next: `/implement` từng ticket ở SESSION MỚI~~ — **ĐÃ XONG 06/08/2026**, xem khối trên cùng.
+> Session log: `.ai/sessions/2026-08-05-issue-56-so-yeu-cau-cong-du-lieu.md` (phân tích) và
+> `.ai/sessions/2026-08-05-ticket-hoa-issue-56.md` (ticket hoá + T7).
+
 > **Trạng thái (2026-08-02 — BA PHẢN HỒI SAU DEMO ĐÃ CÀI XONG. NHÁNH
-> `feat/finding-columns-raw-data` TÁCH TỪ `main` @ `0b9e3b2`, 4 COMMIT, CHƯA PUSH /
-> CHƯA MERGE / CHƯA DEPLOY):** 956 test xanh, ruff sạch. Ba việc:
+> `feat/finding-columns-raw-data` — ĐÃ MERGE QUA PR #55 ngày 05/08, `main` nay ở
+> `d528b2f`):** 956 test xanh, ruff sạch. Ba việc:
 > (1) **Link vào dữ liệu gốc đã lọc sẵn** — từ mỗi dòng phát hiện, mỗi khối chứng cứ,
 > mỗi khối trên trang chi tiết mã. Bảng đích lấy theo `evidence_refs` **chứ không đoán
 > theo `subject_type`** (C1.2 subject là mã NVL nhưng bằng chứng ở tờ khai). Màn dữ
@@ -29,11 +231,11 @@
 > **E2E:** `.ai/features/2026-08-02-finding-columns-raw-data/` (brief + `ui_smoke.py`
 > + 9 ảnh), server throwaway 8332, tự dọn, kill theo PID. Ảnh là seed minh hoạ →
 > chứng minh RENDER, KHÔNG chứng minh adapter đọc đúng cột từ Excel thật.
-> **Next:** (1) mở PR + review + deploy — không có migration; (2) nhánh này **sẽ
-> conflict với `feat/adr23-ktstq-period-scope`** ở `companies.py` + 2 template, owner
-> đã biết khi chọn tách từ `main`; (3) bản xuất Excel kiến nghị chưa dùng lớp `fmt_*`
-> và chưa tách số ra cột — cùng vấn đề, khác mặt trận; (4) `app/adapters/bcct.py` vẫn
-> chưa commit (+71 dòng, dò cột theo nhãn tiêu đề) — việc khác, session này không đụng.
+> **Next:** (1) ~~mở PR + review~~ đã merge 05/08; **deploy vẫn chưa chạy** — không có
+> migration; (2) nhánh này **sẽ conflict với `feat/adr23-ktstq-period-scope`** ở
+> `companies.py` + 2 template, owner đã biết khi chọn tách từ `main`; (3) bản xuất Excel
+> kiến nghị chưa dùng lớp `fmt_*` và chưa tách số ra cột — cùng vấn đề, khác mặt trận;
+> (4) `app/adapters/bcct.py` nay ở nhánh `fix/bcct-label-columns` @ `06a9db5` → T7 #63.
 > Session log: `.ai/sessions/2026-08-02-demo-feedback-cot-so-nhan-du-lieu-goc.md`.
 
 > **Trạng thái (2026-07-27 — SINH TỔNG QUAN AI CHO CẢ 3 PHÁP NHÂN TRÊN PROD — CHỈ THAO TÁC DỮ LIỆU, build_sha vẫn `d7844b6`):**

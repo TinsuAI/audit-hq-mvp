@@ -49,6 +49,7 @@ def run_checks_handler(payload: dict, session: Session) -> dict:
         "only": sorted(only) if only else None,
         "total_findings": stats.total,
         "findings_per_check": stats.findings_per_check,
+        "not_evaluable": stats.not_evaluable,
         "combos_fired": stats.combos_fired,
         "risk_score": stats.risk_score,
     }

@@ -58,6 +58,26 @@ FIELD_LABEL_VI = {
     "other_out_qty": "Xuất khác",
     "closing_qty": "Tồn cuối",
     "norm_qty": "Định mức thực tế",
+    # BCCT (tờ khai) — tên field không trùng các slot cân đối ở trên.
+    "declaration_no": "Số tờ khai",
+    "declaration_date": "Ngày đăng ký",
+    "customs_code": "Mã loại hình",
+    "line_no": "STT hàng",
+    "item_code": "Mã NPL/SP",
+    "item_name": "Tên hàng",
+    "hs_code": "Mã HS",
+    "origin": "Xuất xứ",
+    "quantity": "Lượng tờ khai",
+    "unit": "Đơn vị tính",
+    "unit_price": "Đơn giá",
+    "currency": "Đơn vị tiền tệ",
+    "value_foreign": "Trị giá nguyên tệ",
+    "value_total": "Tổng trị giá",
+    "tax_total": "Tổng tiền thuế",
+    "partner": "Tên đối tác",
+    "invoice_no": "Số hoá đơn",
+    "company_tax_id": "Mã doanh nghiệp",
+    "company_name": "Tên doanh nghiệp",
 }
 
 

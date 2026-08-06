@@ -35,6 +35,16 @@ def _teardown(new_engine):
     dbmod.SessionLocal = SessionLocal
 
 
+def _coverage_cells(html: str) -> list[str]:
+    """Nội dung ô "Đã đánh giá" của TỪNG DÒNG, theo đúng thứ tự bảng.
+
+    Thẻ giải thích ở đầu trang cũng in "18/18" / "17/18" làm ví dụ, nên khẳng định
+    `"17/18" in r.text` là xanh giả — phải neo vào ô của dòng.
+    """
+    import re
+    return re.findall(r'class="coverage-pill[^"]*"[^>]*>\s*([\d]+/[\d]+)\s*<', html)
+
+
 def _login(client: TestClient) -> None:
     r = client.post("/login", data={"user": "admin", "password": "admin"}, follow_redirects=False)
     assert r.status_code == 303
@@ -77,5 +87,66 @@ def test_list_ranks_by_max_cys_not_risk_score():
         assert r.status_code == 200
         # DN_HI (max CYS 50) đứng trước DN_LO (10) bất kể risk_score cache.
         assert r.text.index("DN_HI") < r.text.index("DN_LO")
+    finally:
+        _teardown(new_engine)
+
+
+def test_list_buckets_partial_coverage_below_full_coverage():
+    """Điểm là trung bình trên các luật CHẤM ĐƯỢC, nên DN còn kiểm tra chưa đánh giá
+    được có thể ra điểm THẤP hơn chỉ vì luật đang gánh điểm bị gỡ (đo trên pilot:
+    DN 10/2025 3→1). Xếp chung một cột thì DN thiếu dữ liệu trồi lên đầu danh sách
+    "sạch" — phải tách nhóm, DN đủ độ phủ đứng trước dù điểm thấp hơn."""
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as db:
+            full = Company(code="DN_FULL", name="Full", tax_id="1")
+            partial = Company(code="DN_PARTIAL", name="Partial", tax_id="2")
+            db.add_all([full, partial])
+            db.flush()
+            db.add(CompanyYearScore(
+                company_id=full.id, period_year=2024, score=5, tier="t",
+                breakdown={"rule_count": 18, "not_evaluable": []},
+            ))
+            # Điểm CAO hơn nhưng thiếu độ phủ → vẫn phải xuống nhóm sau.
+            db.add(CompanyYearScore(
+                company_id=partial.id, period_year=2024, score=400, tier="t",
+                breakdown={"rule_count": 18, "not_evaluable": ["C4.3"]},
+            ))
+            db.commit()
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/companies")
+        assert r.status_code == 200
+        assert r.text.index("DN_FULL") < r.text.index("DN_PARTIAL")
+        # Neo vào Ô của từng dòng, KHÔNG phải toàn trang: thẻ giải thích ở đầu trang
+        # cũng in "18/18" và "17/18" làm ví dụ, nên `in r.text` cho xanh giả.
+        assert _coverage_cells(r.text) == ["18/18", "17/18"]
+    finally:
+        _teardown(new_engine)
+
+
+def test_list_takes_the_worst_coverage_across_years():
+    """Điểm hiển thị là max theo năm, nhưng độ phủ phải lấy kỳ XẤU NHẤT: một kỳ còn
+    luật chưa đánh giá được là đủ để không so ngang DN này với DN đánh giá trọn."""
+    new_engine, new_session = _setup_db()
+    try:
+        with new_session() as db:
+            c = Company(code="DN_MIX", name="Mix", tax_id="1")
+            db.add(c)
+            db.flush()
+            db.add(CompanyYearScore(
+                company_id=c.id, period_year=2024, score=10, tier="t",
+                breakdown={"rule_count": 18, "not_evaluable": []},
+            ))
+            db.add(CompanyYearScore(
+                company_id=c.id, period_year=2025, score=20, tier="t",
+                breakdown={"rule_count": 18, "not_evaluable": ["C4.3", "C4.9"]},
+            ))
+            db.commit()
+        client = TestClient(app)
+        _login(client)
+        r = client.get("/companies")
+        assert r.status_code == 200
+        assert _coverage_cells(r.text) == ["16/18"]
     finally:
         _teardown(new_engine)

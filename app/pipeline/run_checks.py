@@ -18,6 +18,15 @@ from sqlalchemy.orm import Session
 from app.checks import ALL_CHECKS
 from app.checks.combos import detect_combos
 from app.checks.company_type import CompanyType, detect_company_type
+from app.checks.not_evaluable import (
+    STATUS_ERROR,
+    STATUS_NOT_EVALUABLE,
+    STATUS_OK,
+    CheckResult,
+    NotEvaluable,
+    load_not_evaluable,
+    truncate_reason,
+)
 from app.checks.sql_runner import CheckRunError, run_check
 from app.database import SessionLocal
 from app.models import CheckRun, Company, Finding
@@ -33,10 +42,19 @@ class RunStats:
     findings_per_check: dict[str, int] = field(default_factory=dict)
     combos_fired: list[str] = field(default_factory=list)
     risk_score: int = 0
+    # {mã check → lý do} cho các check trả `NotEvaluable` ở LẦN CHẠY NÀY.
+    not_evaluable: dict[str, str] = field(default_factory=dict)
 
     @property
     def total(self) -> int:
         return sum(self.findings_per_check.values())
+
+
+def _split_result(result: CheckResult) -> tuple[list[Finding], str, str | None]:
+    """Tách giá trị check trả về thành (findings, status, reason)."""
+    if isinstance(result, NotEvaluable):
+        return [], STATUS_NOT_EVALUABLE, truncate_reason(result.reason)
+    return list(result), STATUS_OK, None
 
 
 def run_checks(
@@ -105,27 +123,41 @@ def run_checks(
 
         all_codes = codes_to_run
 
-        # Trạng thái mỗi check để ghi check_runs: 'ok' | 'error' (check ĐỘNG raise).
+        # Trạng thái mỗi check để ghi check_runs: 'ok' | 'error' (check ĐỘNG raise)
+        # | 'not_evaluable' (check trả `NotEvaluable` vì thiếu đầu vào bắt buộc).
         run_status: dict[str, str] = {}
+        run_reason: dict[str, str | None] = {}
         for code in sorted(all_codes):
+            reason: str | None = None
             if code in ALL_CHECKS:
                 fn = ALL_CHECKS[code]
-                findings = fn(s, company.id, year)
-                run_status[code] = "ok"
+                result: CheckResult = fn(s, company.id, year)
+                findings, status, reason = _split_result(result)
             elif code in dynamic_defs:
                 # Check tự do (SQL/Python) — lỗi 1 check không được làm hỏng cả run.
                 try:
-                    findings = run_check(dynamic_defs[code], s, company.id, year)
-                    run_status[code] = "ok"
+                    result = run_check(dynamic_defs[code], s, company.id, year)
+                    findings, status, reason = _split_result(result)
                 except CheckRunError as exc:
                     import logging
                     logging.getLogger(__name__).warning(
                         "Check mở rộng %s lỗi khi chạy, bỏ qua: %s", code, exc
                     )
-                    findings = []
-                    run_status[code] = "error"
+                    # KHÔNG lưu `str(exc)`: lỗi SQLAlchemy nhúng cả câu lệnh lẫn tham số
+                    # đã bind, tức là giá trị dòng dữ liệu thật. `check_runs.status_reason`
+                    # hiện ra UI cho cán bộ và nằm lại trong DB — AGENTS.md cấm đưa dữ liệu
+                    # thô ra ngoài. Chỉ giữ LOẠI lỗi; nội dung đầy đủ ở log hệ thống.
+                    findings, status = [], STATUS_ERROR
+                    reason = truncate_reason(
+                        f"Kiểm tra mở rộng lỗi khi chạy ({type(exc).__name__}). "
+                        "Xem nhật ký hệ thống để biết chi tiết."
+                    )
             else:
                 continue
+            run_status[code] = status
+            run_reason[code] = reason
+            if status == STATUS_NOT_EVALUABLE:
+                stats.not_evaluable[code] = reason or ""
             for f in findings:
                 s.add(f)
             stats.findings_per_check[code] = len(findings)
@@ -148,6 +180,52 @@ def run_checks(
                 s.add(f)
             stats.combos_fired = sorted({c.check_code for c in combos})
 
+        # WS3: upsert check_runs — 1 dòng mỗi (DN, năm, mã), MỌI check đã chạy kể cả
+        # 0 finding. Ghi TRONG run_checks() (không job handler) → CLI + fallback inline
+        # cũng dời `ran_at` (nếu không → false-stale). Combo LOẠI (chỉ check thật).
+        # Ghi TRƯỚC phần chấm điểm: điểm đọc lại `not_evaluable` từ chính bảng này.
+        ran_at = datetime.now(UTC).replace(tzinfo=None)
+        if all_codes:
+            existing_runs = {
+                r.check_code: r
+                for r in s.scalars(
+                    select(CheckRun).where(
+                        CheckRun.company_id == company.id,
+                        CheckRun.period_year == year,
+                        CheckRun.check_code.in_(all_codes),
+                    )
+                ).all()
+            }
+            for code in all_codes:
+                fc = stats.findings_per_check.get(code, 0)
+                st = run_status.get(code, STATUS_OK)
+                rs = run_reason.get(code)
+                row = existing_runs.get(code)
+                if row is None:
+                    s.add(CheckRun(
+                        company_id=company.id, period_year=year, check_code=code,
+                        ran_at=ran_at, finding_count=fc, status=st, status_reason=rs,
+                        data_version=data_version,
+                    ))
+                else:
+                    row.ran_at = ran_at
+                    row.finding_count = fc
+                    row.status = st
+                    row.status_reason = rs
+                    row.data_version = data_version
+
+        # Full run dọn check_runs orphan của mã X.* đã gỡ công bố (soi orphan finding
+        # ở trên). Không đụng khi chạy lẻ (`only=`).
+        if only is None:
+            s.execute(
+                delete(CheckRun).where(
+                    CheckRun.company_id == company.id,
+                    CheckRun.period_year == year,
+                    CheckRun.check_code.like("X.%"),
+                    CheckRun.check_code.not_in(list(all_codes)),
+                )
+            )
+
         # Tính điểm rate-based + lưu CompanyYearScore + cập nhật company.risk_score.
         s.flush()
         all_year_findings = s.scalars(
@@ -162,8 +240,11 @@ def run_checks(
         from app.models import CompanyYearScore
 
         denominators = compute_denominators(s, company.id, year)
+        # Đọc từ check_runs (đã upsert ở trên) chứ không từ `run_status`: chạy lẻ một
+        # mã vẫn phải giữ trạng thái `not_evaluable` các mã khác ghi ở lần chạy trước.
         breakdown = compute_company_year_score(
-            all_year_findings, denominators, rule_scope=extended_rule_scope(s)
+            all_year_findings, denominators, rule_scope=extended_rule_scope(s),
+            not_evaluable=load_not_evaluable(s, company.id, year),
         )
         year_score = breakdown["score"]
 
@@ -192,49 +273,6 @@ def run_checks(
         company.risk_score = max(all_scores_with_current) if all_scores_with_current else 0
         stats.risk_score = company.risk_score
 
-        # WS3: upsert check_runs — 1 dòng mỗi (DN, năm, mã), MỌI check đã chạy kể cả
-        # 0 finding. Ghi TRONG run_checks() (không job handler) → CLI + fallback inline
-        # cũng dời `ran_at` (nếu không → false-stale). Combo LOẠI (chỉ check thật).
-        ran_at = datetime.now(UTC).replace(tzinfo=None)
-        if all_codes:
-            existing_runs = {
-                r.check_code: r
-                for r in s.scalars(
-                    select(CheckRun).where(
-                        CheckRun.company_id == company.id,
-                        CheckRun.period_year == year,
-                        CheckRun.check_code.in_(all_codes),
-                    )
-                ).all()
-            }
-            for code in all_codes:
-                fc = stats.findings_per_check.get(code, 0)
-                st = run_status.get(code, "ok")
-                row = existing_runs.get(code)
-                if row is None:
-                    s.add(CheckRun(
-                        company_id=company.id, period_year=year, check_code=code,
-                        ran_at=ran_at, finding_count=fc, status=st,
-                        data_version=data_version,
-                    ))
-                else:
-                    row.ran_at = ran_at
-                    row.finding_count = fc
-                    row.status = st
-                    row.data_version = data_version
-
-        # Full run dọn check_runs orphan của mã X.* đã gỡ công bố (soi orphan finding
-        # ở trên). Không đụng khi chạy lẻ (`only=`).
-        if only is None:
-            s.execute(
-                delete(CheckRun).where(
-                    CheckRun.company_id == company.id,
-                    CheckRun.period_year == year,
-                    CheckRun.check_code.like("X.%"),
-                    CheckRun.check_code.not_in(list(all_codes)),
-                )
-            )
-
         s.commit()
         return stats
     finally:
@@ -260,6 +298,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Loại hình DN phát hiện: {stats.company_type.value}")
     print(f"Tổng findings: {stats.total}")
     for code in sorted(stats.findings_per_check):
+        if code in stats.not_evaluable:
+            print(f"  ⊘ {code}: chưa đánh giá được — {stats.not_evaluable[code]}")
+            continue
         n = stats.findings_per_check[code]
         marker = "▸" if n > 0 else " "
         print(f"  {marker} {code}: {n}")

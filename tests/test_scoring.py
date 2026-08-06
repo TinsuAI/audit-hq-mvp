@@ -126,3 +126,36 @@ def test_detect_combos_skips_existing_combo_findings(session, company):
     combos = detect_combos(session, company.id, 2024, findings)
     # COMBO_FORGED_NORM cần C2.3 + C4.3 — chỉ có C2.3, không fire.
     assert combos == []
+
+
+# --- Độ phủ chấm điểm (quyết định 06/08/2026) ---
+
+
+def test_score_coverage_counts_rules_removed_by_not_evaluable():
+    from app.checks.scoring import score_coverage
+    assert score_coverage({"rule_count": 18, "not_evaluable": ["C4.3"]}) == (17, 18)
+    assert score_coverage({"rule_count": 18, "not_evaluable": []}) == (18, 18)
+
+
+def test_score_coverage_reads_legacy_breakdown_without_rule_count():
+    """Breakdown lưu TRƯỚC khi có `rule_count` vẫn phải ra đúng, không thì mọi kỳ cũ
+    hiện độ phủ 0 và trông như chưa chạy kiểm tra."""
+    from app.checks.scoring import score_coverage
+    # max_raw 190 = 17 luật còn chấm được × 10 + 20, cộng 1 luật đã bị gỡ = 18.
+    assert score_coverage({"not_evaluable": ["C4.3"], "max_raw": 190}) == (17, 18)
+    assert score_coverage({"max_raw": 200}) == (18, 18)
+
+
+def test_score_coverage_is_zero_when_nothing_was_computed():
+    from app.checks.scoring import score_coverage
+    assert score_coverage(None) == (0, 0)
+    assert score_coverage({}) == (0, 0)
+
+
+def test_compute_company_year_score_records_the_full_rule_count():
+    """`max_raw` chỉ còn phần chấm được, nên mẫu số độ phủ phải lưu riêng."""
+    from app.checks.scoring import COMBO_BONUS, MAX_RULE_SCORE, compute_company_year_score
+    bd = compute_company_year_score([], {"nvl": 10, "tp": 10, "m16": 10}, not_evaluable=["C4.3"])
+    scored = (bd["max_raw"] - COMBO_BONUS) / MAX_RULE_SCORE  # luật còn chấm được
+    assert bd["rule_count"] == scored + len(bd["not_evaluable"])
+    assert bd["not_evaluable"] == ["C4.3"]

@@ -1,11 +1,11 @@
-"""Catalog đầy đủ 49 kiểm tra theo §4 đề án Audit-HQ.
+"""Catalog đầy đủ 50 kiểm tra theo §4 đề án Audit-HQ.
 
 Đây là snapshot từ `de-an-audit-hq.md` §4 — source of truth duy nhất.
 Khi đề án bump version, đồng bộ tay file này. Trang `/danh-muc-kiem-tra`
 đọc trực tiếp, không qua DB.
 
-Đối lập với `app/checks/registry.py` (17 check đã implement runnable),
-file này liệt kê toàn bộ 49 dự kiến, bao gồm WIP + conditional.
+Đối lập với `app/checks/registry.py` (18 check đã implement runnable),
+file này liệt kê toàn bộ 50 dự kiến, bao gồm WIP + conditional.
 """
 
 from __future__ import annotations
@@ -175,7 +175,7 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry(
         phase=1, group=4, code="C4.1",
         title="NVL trong M16 không có nhập khẩu và không có tồn đầu kỳ",
-        problem="`mã_NVL` trong M16 nhưng (không có dòng trong M15) HOẶC (cả `nhập_trong_kỳ` = 0 VÀ `tồn_đầu_kỳ` = 0). Loại trừ NVL còn tồn từ kỳ trước.",
+        problem="`mã_NVL` trong M16 nhưng (không có dòng trong M15) HOẶC (cả `nhập_trong_kỳ` = 0 VÀ `tồn_đầu_kỳ` = 0). Loại trừ NVL còn tồn từ kỳ trước. **Phạm vi** là hợp của hai tập: mã khai định mức đúng kỳ này, và mã có tiêu hao lý thuyết > 0 trong kỳ theo định mức hiệu lực kể cả bản khai kỳ trước (xem C4.3). Vế thứ hai là phần C4.3 nhường lại — mã không có dòng M15 thuộc về đây; nếu chỉ lọc đúng kỳ thì mã có định mức kế thừa không kiểm tra nào báo. Phạm vi gắn với sản xuất trong kỳ: thành phẩm không có sản lượng thì không kéo NVL của nó vào.",
         risk="NVL xuất hiện trong định mức nhưng không có nguồn nhập khẩu lẫn tồn đầu — không thể giải trình dòng vật tư từ tờ khai đến TP xuất khẩu.",
         severities=("critical",), status="mvp",
     ),
@@ -189,7 +189,7 @@ CATALOG: list[CatalogEntry] = [
     CatalogEntry(
         phase=1, group=4, code="C4.3",
         title="Tổng tiêu hao M16 vượt xuất sản xuất M15",
-        problem="Σ(`định_mức` × `xuất_khẩu_M15a`) theo NVL > `xuất_sản_xuất` trong M15. Vượt >5% Cảnh báo · >20% Nghiêm trọng.",
+        problem="Σ(`định_mức` × `sản_lượng_sản_xuất_M15a`) theo NVL > `xuất_sản_xuất` trong M15. Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 thuộc C4.1 (thiếu nguồn), không xét ở đây. **Định mức hiệu lực:** M16 kế thừa giữa các kỳ — định mức áp cho kỳ N là bản khai có kỳ lớn nhất ≤ N của cùng cặp TP-NVL trong cùng sổ, không riêng bản khai đúng kỳ N. **Cổng độ phủ định mức:** có mã TP sản xuất trong kỳ mà chưa từng khai định mức ở bất kỳ kỳ nào (xem C4.9), hoặc kỳ biên chưa xác nhận năm đầu nộp BCQT, thì kiểm tra này trả *chưa đánh giá được* cho cả kỳ — KHÔNG trả 0 phát hiện. Cổng là nhị phân, không có ngưỡng phần trăm.",
         risk="Cách phổ biến nhất để lấy NVL miễn thuế ra bán nội địa — định mức ảo gồm cả thành phần không có thực trong sản phẩm, thổi phồng tiêu hao để hợp thức hoá NVL nhập khẩu dư.",
         severities=("warning", "critical"), status="mvp",
     ),
@@ -227,6 +227,13 @@ CATALOG: list[CatalogEntry] = [
         problem="`tồn_đầu_kỳ + Σ(nhập NVL đến thời điểm t) − Σ(định_mức × TP xuất khẩu đến thời điểm t)` ở từng tháng/quý. Âm tại bất kỳ thời điểm nào → cảnh báo.",
         risk="Định mức M16 khai cao bất thường (lý do chính), hoặc khai thừa TP xuất khẩu, hoặc khai thiếu nhập NVL. Doanh nghiệp \"sản xuất nhiều hơn nguyên liệu thực có\" trên giấy tờ.",
         severities=("critical",), status="wip",
+    ),
+    CatalogEntry(
+        phase=1, group=4, code="C4.9",
+        title="Thành phẩm có sản xuất trong kỳ nhưng thiếu định mức",
+        problem="`mã_SP` có `sản_lượng_sản_xuất_nhập_kho` > 0 trong M15a mà không có định mức hiệu lực nào trong M16, kể cả bản khai của các kỳ trước (xem quy tắc định mức hiệu lực ở C4.3). Kết quả là danh sách từng mã thành phẩm thiếu định mức, không phải một con số tổng. Đây là chiều ngược của C4.2: C4.2 đi từ M16 sang M15a, C4.9 đi từ M15a sang M16.",
+        risk="Không có định mức thì không tính được tiêu hao lý thuyết cho phần sản lượng đó — mọi kiểm tra Nhóm 4 và Nhóm 5 dựng trên định mức đều thiếu cơ sở, và kết quả \"không phát hiện\" trở thành kết quả giả. Cũng là dấu hiệu doanh nghiệp nộp thiếu Mẫu 16.",
+        severities=("warning",), status="mvp",
     ),
     # --- Nhóm 5 — Truy nguồn NVL nhập khẩu ---
     CatalogEntry(

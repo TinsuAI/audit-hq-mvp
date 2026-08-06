@@ -186,14 +186,17 @@ register(CheckSpec(
 ))
 
 
-# --- Nhóm 4 — Định mức M16 (2 MVP, còn lại W.I.P) ---
+# --- Nhóm 4 — Định mức M16 (3 MVP, còn lại W.I.P) ---
 register(CheckSpec(
     code="C4.1",
     group=4,
     title="NVL trong M16 không có nguồn",
     description=(
         "Mã NVL có trong M16 nhưng không có dòng M15, "
-        "hoặc M15 có nhưng `nhập_trong_kỳ = 0` và `tồn_đầu_kỳ = 0`."
+        "hoặc M15 có nhưng `nhập_trong_kỳ = 0` và `tồn_đầu_kỳ = 0`. "
+        "Phạm vi là hợp của mã khai định mức đúng kỳ này và mã có tiêu hao lý thuyết "
+        "> 0 trong kỳ theo định mức HIỆU LỰC (kể cả bản khai kỳ trước) — vế sau là "
+        "phần C4.3 nhường lại, gắn với sản lượng sản xuất của kỳ."
     ),
     default_severity=Severity.CRITICAL,
 ))
@@ -202,8 +205,24 @@ register(CheckSpec(
     group=4,
     title="Tổng tiêu hao M16 vượt xuất sản xuất M15",
     description=(
-        "Σ(định_mức × xuất_khẩu_M15a) theo NVL > `xuất_sản_xuất` trong M15. "
-        "Vượt >5% Cảnh báo · >20% Nghiêm trọng."
+        "Σ(định_mức × sản_lượng_sản_xuất_M15a) theo NVL > `xuất_sản_xuất` trong M15. "
+        "Vượt >5% Cảnh báo · >20% Nghiêm trọng. Mã NVL không có dòng nào trong M15 "
+        "thuộc C4.1 (thiếu nguồn), không xét ở đây. Định mức lấy theo bản khai HIỆU "
+        "LỰC — kỳ lớn nhất ≤ kỳ đang xét của cùng cặp TP-NVL trong cùng sổ, vì M16 kế "
+        "thừa giữa các kỳ. Vướng cổng độ phủ định mức (thiếu định mức của một TP đã "
+        "sản xuất, hoặc kỳ biên chưa xác nhận năm đầu nộp BCQT) thì trả CHƯA ĐÁNH GIÁ "
+        "ĐƯỢC cho cả kỳ, không trả 0 phát hiện."
+    ),
+    default_severity=Severity.WARNING,
+))
+register(CheckSpec(
+    code="C4.9",
+    group=4,
+    title="TP có sản xuất trong kỳ nhưng thiếu định mức",
+    description=(
+        "Mã TP có `sản_lượng_sản_xuất_nhập_kho > 0` trong M15a mà không có định mức "
+        "hiệu lực nào trong M16, kể cả bản khai của các kỳ trước. Kết quả là danh sách "
+        "từng mã thiếu định mức, không phải một con số tổng."
     ),
     default_severity=Severity.WARNING,
 ))
@@ -361,7 +380,8 @@ def _dynamic_to_spec(row) -> CheckSpec:
 #   - ``sum`` — chỉ dùng cột như một SỐ HẠNG trong đẳng thức cân đối C2 tự tính lại
 #     (bất biến dưới hoán vị cột cùng dấu) → ``balance-checked`` là đủ.
 # Cột dùng riêng lẻ (đọc từ code check): production_out (C4.3/C5.1), repurpose M15
-# (C1.6/C1.7), export M15a (C1.4/C4.3), định mức thực tế M16 (C4.3). Xem GLOSSARY.
+# (C1.6/C1.7), export M15a (C1.4), intake M15a (C4.3 — P-07, số nhân là sản lượng
+# sản xuất chứ không phải xuất khẩu), định mức thực tế M16 (C4.3). Xem GLOSSARY.
 from app.adapters.evidence import (  # noqa: E402 — tránh cycle: evidence không import checks
     BALANCE_CHECKED,
     NEEDS_REVIEW,
@@ -403,8 +423,15 @@ CHECK_COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
     ),
     "C4.3": (
         ("m16", "material_code", INDIVIDUAL), ("m16", "norm_qty", INDIVIDUAL),
-        ("m15a", "product_code", INDIVIDUAL), ("m15a", "export_qty", INDIVIDUAL),
+        ("m15a", "product_code", INDIVIDUAL), ("m15a", "intake_qty", INDIVIDUAL),
         ("m15", "material_code", INDIVIDUAL), ("m15", "production_out_qty", INDIVIDUAL),
+    ),
+    # C4.9 đọc cột MÃ TP của M16 (mã nào đã có định mức) chứ không đọc trị định mức.
+    # `product_code` của slot m16 chưa có trong mô hình bằng chứng nên không sinh
+    # `review_state`; khai ở đây để đổi map cột M16 kéo C4.9 vào diện chạy lại.
+    "C4.9": (
+        ("m15a", "product_code", INDIVIDUAL), ("m15a", "intake_qty", INDIVIDUAL),
+        ("m16", "product_code", INDIVIDUAL),
     ),
     "C5.1": (
         ("m15", "material_code", INDIVIDUAL), ("m15", "production_out_qty", INDIVIDUAL),

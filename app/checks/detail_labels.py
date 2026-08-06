@@ -76,6 +76,9 @@ DETAIL_FIELDS: dict[str, tuple[str, str]] = {
     "theoretical_consumption": ("Tiêu hao lý thuyết (M16)", "qty"),
     "actual_m15_production_out": ("Xuất SX thực tế (M15)", "qty"),
     "divergent_norm_products": ("Mã SP có định mức lệch", "list"),
+    "norm_source_years": ("Kỳ khai định mức đã dùng", "list"),
+    "norm_in_other_book": ("Định mức khai ở sổ khác", "list"),
+    "boundary_period": ("Kỳ biên — có thể đã khai trước cửa sổ dữ liệu", "bool"),
     # --- C6 liên kỳ ---
     "current_opening": ("Tồn đầu kỳ này", "qty"),
     "previous_closing": ("Tồn cuối kỳ trước", "qty"),
@@ -126,6 +129,9 @@ COLUMN_LABEL_OVERRIDES: dict[str, dict[str, str]] = {
     "C1.1": {"m15_import": "Số M15 đối chiếu"},
     "C1.3": {"m15_import": "Số M15 đối chiếu"},
     "C1.4": {"m15a_export": "Số M15a đối chiếu"},
+    # Nhãn đầy đủ ("Kỳ biên — có thể đã khai trước cửa sổ dữ liệu") đủ chỗ ở trang chi
+    # tiết, nhưng làm cột bảng rộng gấp đôi các cột số. Bảng rút gọn, chi tiết giữ đủ.
+    "C4.9": {"boundary_period": "Kỳ biên"},
 }
 
 # Khoá nào lên cột trên bảng phát hiện, theo thứ tự. Chọn lọc — cột nào cũng lên
@@ -149,11 +155,12 @@ FINDING_COLUMNS: dict[str, tuple[str, ...]] = {
     "C3.1": ("nvl_codes", "mmtb_codes"),
     "C3.2": ("divergence", "hs_codes"),
     "C3.3": ("uom_match", "m15_units", "bcct_units"),
-    "C4.1": ("reason", "m15_import", "m15_opening"),
+    "C4.1": ("reason", "m15_import", "m15_opening", "norm_source_years"),
     "C4.3": (
         "theoretical_consumption", "actual_m15_production_out", "diff_pct",
-        "divergent_norm_products",
+        "norm_source_years", "divergent_norm_products",
     ),
+    "C4.9": ("intake", "norm_in_other_book", "boundary_period"),
     "C5.1": ("production_out", "import", "opening"),
     "C6.1": ("current_opening", "previous_closing", "diff"),
     "COMBO_FORGED_NORM": ("triggers",),

@@ -34,8 +34,9 @@ from app.books import (
 )
 from app.checks.combos import COMBO_SPECS
 from app.checks.detail_labels import column_headers, describe_details, row_cells
+from app.checks.not_evaluable import load_not_evaluable
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
-from app.checks.scoring import tier_css_for, tier_for
+from app.checks.scoring import score_coverage, tier_css_for, tier_for
 from app.database import get_db
 from app.formatting import JINJA_GLOBALS as FORMAT_GLOBALS
 from app.formatting import fmt_date, fmt_price, fmt_qty
@@ -83,6 +84,8 @@ templates.env.globals["SPECS"] = {code: spec for code, spec in SPECS.items()}
 templates.env.globals["COMBO_SPECS"] = COMBO_SPECS
 templates.env.globals["tier_css_for"] = tier_css_for
 templates.env.globals["tier_for"] = tier_for
+# Độ phủ chấm điểm — mọi chỗ hiện điểm phải hiện kèm, xem `score_coverage`.
+templates.env.globals["score_coverage"] = score_coverage
 templates.env.globals["PERCENTILE_LABEL"] = PERCENTILE_LABEL_VI
 # Nhãn sổ quyết toán (book) — dùng ở company_detail (split line) + finding_detail (field).
 templates.env.globals["book_label"] = book_label
@@ -206,6 +209,19 @@ def list_companies(
             .group_by(CompanyYearScore.company_id)
         ).all()
     )
+    # Độ phủ chấm điểm của DN = kỳ có độ phủ THẤP NHẤT. Điểm hiển thị là max theo năm,
+    # nhưng độ phủ phải lấy trường hợp xấu nhất: một kỳ còn luật chưa đánh giá được là
+    # đủ để không so ngang DN này với DN đã đánh giá trọn (xem `score_coverage`).
+    coverage: dict[int, tuple[int, int]] = {}
+    for cid, breakdown in db.execute(
+        select(CompanyYearScore.company_id, CompanyYearScore.breakdown)
+    ).all():
+        done, total = score_coverage(breakdown)
+        if not total:
+            continue
+        cur = coverage.get(cid)
+        if cur is None or (done - total) < (cur[0] - cur[1]):
+            coverage[cid] = (done, total)
     summary = []
     for c in companies:
         counts_rows = db.execute(
@@ -217,12 +233,21 @@ def list_companies(
         for year, sev, n in counts_rows:
             if sev in years[year]:
                 years[year][sev] = n
+        done, total = coverage.get(c.id, (0, 0))
         summary.append({
             "company": c,
             "score": max_scores.get(c.id) or 0,
             "years": sorted(years.items(), reverse=True),
+            "coverage_done": done,
+            "coverage_total": total,
+            "full_coverage": bool(total) and done >= total,
         })
-    summary.sort(key=lambda s: (-s["score"], s["company"].code))
+    # Xếp hạng tách NHÓM: DN đã đánh giá trọn phạm vi đứng trước, DN còn luật chưa đánh
+    # giá được xuống nhóm sau. Điểm của hai nhóm KHÔNG so ngang được — điểm là trung
+    # bình trên các luật chấm được, nên kỳ thiếu độ phủ có thể ra điểm THẤP hơn chỉ vì
+    # luật đang gánh điểm bị gỡ (đo trên pilot: DN 10/2025 3→1). Xếp chung một cột thì
+    # DN thiếu dữ liệu trồi lên đầu danh sách "sạch".
+    summary.sort(key=lambda s: (not s["full_coverage"], -s["score"], s["company"].code))
 
     # Thang hạng cho thẻ giải thích — đọc ngưỡng runtime (admin có thể chỉnh),
     # không hardcode trong template để khỏi lệch khi đổi ngưỡng.
@@ -248,6 +273,8 @@ def list_companies(
 
 DEMO_SUFFIX = "(Demo)"
 YEAR_MIN, YEAR_MAX = 2015, 2030
+# Năm đầu nộp BCQT có thể sớm hơn cửa sổ dữ liệu đã nạp (YEAR_MIN), nên nới cận dưới.
+BCQT_YEAR_MIN = 2000
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB per file
 
 # Mỗi slot → (subdir, fixed filename stem). Stem để tên match discover() patterns.
@@ -447,10 +474,14 @@ def edit_company_form(
         "tax_id": company.tax_id or "",
         "address": company.address or "",
         "industry": company.industry or "",
+        "first_bcqt_year": company.first_bcqt_year or "",
     }
     return templates.TemplateResponse(
         request, "edit_company.html",
-        {"user": user, "company": company, "form": form_state, "error": None},
+        {
+            "user": user, "company": company, "form": form_state, "error": None,
+            "bcqt_year_min": BCQT_YEAR_MIN, "bcqt_year_max": YEAR_MAX,
+        },
     )
 
 
@@ -462,10 +493,39 @@ def update_company(
     tax_id: str = Form(""),
     address: str = Form(""),
     industry: str = Form(""),
+    first_bcqt_year: str = Form(""),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     company = get_company_or_404(db, code, user)
+
+    # Trống = "chưa biết" (NULL), không phải 0 — T6 đọc NULL để coi kỳ sớm nhất là
+    # chưa đánh giá được. Nhập sai thì trả form kèm lỗi, không ghi đè giá trị cũ.
+    raw_year = first_bcqt_year.strip()
+    parsed_year: int | None = None
+    if raw_year:
+        try:
+            parsed_year = int(raw_year)
+        except ValueError:
+            parsed_year = None
+        if parsed_year is None or not (BCQT_YEAR_MIN <= parsed_year <= YEAR_MAX):
+            form_state = {
+                "code": company.code,
+                "name": name.strip(),
+                "tax_id": tax_id.strip(),
+                "address": address.strip(),
+                "industry": industry.strip(),
+                "first_bcqt_year": raw_year,
+            }
+            return templates.TemplateResponse(
+                request, "edit_company.html",
+                {
+                    "user": user, "company": company, "form": form_state,
+                    "error": f"Năm đầu nộp BCQT phải trong khoảng {BCQT_YEAR_MIN}-{YEAR_MAX}.",
+                    "bcqt_year_min": BCQT_YEAR_MIN, "bcqt_year_max": YEAR_MAX,
+                },
+                status_code=400,
+            )
 
     # Mã DN cố định (dùng làm thư mục lưu file) — không nhận từ form.
     name = name.strip()
@@ -477,6 +537,7 @@ def update_company(
     company.tax_id = tax_id.strip() or None
     company.address = address.strip() or None
     company.industry = industry.strip() or None
+    company.first_bcqt_year = parsed_year
     db.commit()
 
     return RedirectResponse(url=f"/companies/{code}", status_code=303)
@@ -1819,6 +1880,21 @@ def company_detail(
 
     all_specs = get_all_specs(db)
 
+    # Kiểm tra CHƯA ĐÁNH GIÁ ĐƯỢC — tách khỏi "đã đánh giá, 0 phát hiện". Cả hai đều
+    # không sinh nhóm phát hiện nào, nên nếu không liệt kê riêng thì trên trang chúng
+    # giống hệt nhau. Không phụ thuộc bộ lọc ?book= (trạng thái tính theo toàn pháp nhân).
+    not_evaluable_checks: list[dict] = []
+    if selected_year is not None:
+        for ccode, reason in sorted(
+            load_not_evaluable(db, company.id, selected_year).items()
+        ):
+            spec = all_specs.get(ccode) or SPECS.get(ccode)
+            not_evaluable_checks.append({
+                "code": ccode,
+                "title": spec.title if spec else ccode,
+                "reason": reason,
+            })
+
     # Danh sách mã có finding — cho panel "Xuất các test đã chọn" (WS2-3). Gồm mọi
     # mã regular (không phụ thuộc focus) + combo (mã như mọi check khi export).
     export_options: list[dict] = []
@@ -1888,6 +1964,7 @@ def company_detail(
             "books_list": books_list,
             "book_selected": book_selected,
             "book_empty": book_empty,
+            "not_evaluable_checks": not_evaluable_checks,
             "focus_check": focus,
             "page": page,
             "page_size": _PAGE_SIZE,
@@ -2113,8 +2190,11 @@ _EVIDENCE_FILTER_LABEL = {
     "book": "Sổ quyết toán",
     "declaration_no": "Số tờ khai",
     "id": "Mã phát hiện",
+    "period_year": "Kỳ khai",
 }
 # Khoá kỹ thuật, không nói thêm gì cho cán bộ (trang đã ghi rõ DN và kỳ).
+# `period_year__in` KHÔNG bị ẩn: định mức kế thừa (issue #60) nằm ở kỳ khác kỳ phát
+# hiện, và đó chính là thông tin cán bộ cần thấy.
 _EVIDENCE_FILTER_HIDDEN = {"company_id", "period_year"}
 
 
@@ -2123,7 +2203,7 @@ def _describe_evidence_filter(filt: dict) -> str:
     parts = []
     for key, value in filt.items():
         field = key[:-4] if key.endswith("__in") else key
-        if field in _EVIDENCE_FILTER_HIDDEN:
+        if key in _EVIDENCE_FILTER_HIDDEN:
             continue
         label = _EVIDENCE_FILTER_LABEL.get(field, field)
         text = ", ".join(str(v) for v in value) if isinstance(value, list | tuple) \

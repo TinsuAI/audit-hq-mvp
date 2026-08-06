@@ -17,6 +17,9 @@ class Company(Base):
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
     industry: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
+    # Năm đầu tiên DN nộp BCQT — cán bộ nhập tay, KHÔNG suy được từ dữ liệu đã nạp (kỳ sớm
+    # nhất trong hệ thống chỉ là biên cửa sổ nạp). NULL = chưa biết.
+    first_bcqt_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     risk_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
 
     def __repr__(self) -> str:
