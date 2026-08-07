@@ -76,6 +76,16 @@ def run_checks(
     own_session = session is None
     s = session or SessionLocal()
     try:
+        # Nạp ngưỡng hạng bằng CHÍNH session này TRƯỚC khi có write nào treo — cùng
+        # lý do đã ghi ở `app/pipeline/recompute.py`. Phần chấm điểm dưới đây gọi
+        # `tier_for` → `get_tiers()` không truyền db; cache trống thì nó tự mở
+        # `SessionLocal()`, và `close()` của session lồng phát ROLLBACK. Khi hai
+        # session dùng chung một connection (SQLite in-memory + StaticPool ở test),
+        # ROLLBACK đó huỷ luôn mọi Finding đang treo của lần chạy này: `s.commit()`
+        # cuối hàm ghi ra 0 dòng trong khi `stats` vẫn báo có phát hiện.
+        from app.app_settings import get_risk_tier_uppers
+        get_risk_tier_uppers(s)
+
         company = s.scalar(select(Company).where(Company.code == company_code))
         if company is None:
             raise ValueError(f"Không tìm thấy DN {company_code}. Chạy ingest trước.")
