@@ -1138,3 +1138,21 @@ Chi phí 130 trong 164,6 giây là **hai lượt đọc openpyxl** (60 giây l�
 - *Hạ ngưỡng chờ xuống 0, luôn trả 202* — rejected: mọi file khác trong kho xong dưới 10 giây, bắt chúng đi qua vòng hỏi lại là thêm độ trễ không đổi lấy gì.
 
 **Ghi chú:** con số 12 giây là cấu hình (`preview_wait_seconds`), không phải hằng số — chọn để mọi file trong kho trừ file 71,3MB vẫn xong trong đúng một request.
+
+### 27. LÀM RÕ ADR #24 mục (1) — mã "biết khi chạy" ở lại MẪU SỐ nhưng không khoá TỬ SỐ (2026-08-07, issue #103)
+
+**Quyết định:** Tách hai con số. `total_count` giữ nguyên nghĩa "mọi kiểm tra áp dụng cho DN". `predictable_count` = `total_count` trừ số mã **biết khi chạy** (kiểm tra động do admin viết, không khai `requires` nên không dự đoán được). Trạng thái **đủ** so `sufficient_count` với `predictable_count`, KHÔNG với `total_count`. Giao diện hiện cả hai: "Đủ nguồn cho N/M kiểm tra" cộng "K kiểm tra biết khi chạy", và M + K = tổng.
+
+**Lý do:** ADR #24 mục (1) viết "đủ dữ liệu = mọi kiểm tra áp dụng đều có đủ nguồn". Đọc sát chữ thì mã không dự đoán được cũng phải vào tử số mới đủ — mà nó **không bao giờ vào được**, vì bản chất là không dự đoán được. Hệ quả: chỉ cần admin công bố MỘT kiểm tra động, mọi kỳ của mọi DN **vĩnh viễn không bao giờ đọc là đủ**, kể cả khi cán bộ đã nạp hết mọi thứ nạp được. Triệu chứng im lặng: không báo lỗi, chỉ là con số không bao giờ đầy.
+
+Đo lúc phát hiện: bảng kiểm tra động có 1 bản nháp, 0 bản đã công bố — nên lỗi **tiềm ẩn**, bật lên ở lần công bố đầu tiên.
+
+Câu chuyện người dùng 51 chỉ đòi mã không dự đoán được **ở lại mẫu số**, để mẫu số không tự co lại làm DN trông sạch hơn (đúng sai lầm ghi ở issue #65). Nó không đòi tử số không bao giờ đóng được. Mục này giữ vế thứ nhất và bỏ ràng buộc thứ hai vốn không ai yêu cầu.
+
+**Alternatives loại:**
+
+- *Rút mã biết khi chạy khỏi mẫu số* — rejected: đúng sai lầm #65, mẫu số co lại làm DN trông sạch hơn thực tế.
+- *Coi mã biết khi chạy là đã đủ nguồn* — rejected: nói dối, hệ thống không biết nó đủ hay không.
+- *Giữ nguyên, coi là chấp nhận được* — rejected: cán bộ không bao giờ thấy kỳ nào xong là hỏng đúng thứ cả loạt vé này sinh ra để làm.
+
+**Ghi chú:** nếu MỌI kiểm tra đều là biết-khi-chạy thì `predictable_count` = 0 và trạng thái đọc là đủ. Không tới được chừng nào còn kiểm tra dựng sẵn, nên không có test cho ca đó — ghi lại để người sau khỏi tưởng là sót.
