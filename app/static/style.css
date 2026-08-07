@@ -2219,3 +2219,18 @@ p { margin: 0 0 var(--space-3); }
 .dn-row-partial td { background: color-mix(in srgb, var(--c-warn, #b45309) 4%, transparent); }
 .score-coverage { font-variant-numeric: tabular-nums; }
 .score-coverage-partial { color: var(--c-warn, #b45309); font-weight: 700; }
+
+/* — Trang lỗi dùng chung (issue #94) — */
+.error-page {
+  max-width: 640px;
+  margin: var(--space-6) auto;
+}
+.error-page .card { padding: var(--space-6); }
+.error-page h1 { font-size: var(--fs-xl); margin-bottom: var(--space-1); }
+.error-message {
+  margin: var(--space-4) 0;
+  color: var(--c-text-muted);
+  line-height: 1.6;
+}
+.error-detail { margin-bottom: var(--space-4); }
+.error-actions { margin-top: var(--space-5); }
