@@ -62,6 +62,8 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.current_timestamp(),
     )
+    # Lúc cán bộ thấy kết quả. Mở `/jobs/{id}` là một đường; với job `ingest` còn
+    # đường thứ hai là kết quả in ngay tại dòng kỳ — xem `ingest_status.mark_seen`.
     viewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
