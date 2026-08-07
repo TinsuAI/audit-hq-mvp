@@ -12,6 +12,8 @@ chạy được, chỉ là dữ liệu không còn khớp bộ file (ADR #24 m�
 from __future__ import annotations
 
 import json
+from types import UnionType
+from typing import get_args, get_type_hints
 
 from sqlalchemy import select
 
@@ -22,12 +24,14 @@ from app.checks.not_evaluable import (
     REMEDY_NOTHING_TO_LOAD,
     TARGET_DOCUMENT,
     TARGET_PERIOD,
+    NotEvaluable,
     RemedyTarget,
 )
 from app.checks.registry import SPECS
 from app.models import CheckDefinition, CheckRun, CheckStatus, CompanyPeriod, DataFile
 from app.models.data_file import DataFileStatus
 from app.pipeline.readiness import (
+    _EXTRA_GATES,
     BLOCKER_CHECK,
     BLOCKER_COVERAGE,
     BLOCKER_FILE,
@@ -686,3 +690,47 @@ def test_the_dynamic_check_is_the_only_thing_the_panel_declines_to_predict(sessi
     r = period_readiness(session, company.id, 2024)
     undecided = [c.code for c in r.checks if c.status == CHECK_RUN_TO_KNOW]
     assert undecided == ["X.1"]
+
+
+# --- Test canh: bảng cổng dự đoán không được đi lệch ----------------------------
+
+
+def _can_return_not_evaluable(fn) -> bool:
+    """Hàm kiểm tra có khai nhánh `NotEvaluable` ở kiểu trả về không.
+
+    Kiểm tra có cổng riêng khai `-> CheckResult` (`list[Finding] | NotEvaluable`);
+    kiểm tra không có cổng khai `-> list[Finding]`. Đọc chính chỗ hàm kiểm tra khai
+    "tôi có thể không kết luận được" thay vì chép tay danh sách mã lần thứ hai.
+
+    `from __future__ import annotations` làm chú thích thành chuỗi, nên phải
+    `get_type_hints` để dựng lại đối tượng kiểu; alias `CheckResult` giải ra
+    `types.UnionType`.
+    """
+    hint = get_type_hints(fn).get("return")
+    if hint is NotEvaluable:
+        return True
+    return isinstance(hint, UnionType) and NotEvaluable in get_args(hint)
+
+
+def test_every_check_with_a_gate_of_its_own_is_in_the_prediction_table():
+    """Kiểm tra thứ tư nhận thêm một cổng mà quên khai ở `_EXTRA_GATES` → ĐỎ ở đây.
+
+    Test đối chiếu dự đoán ↔ trạng thái đã lưu chỉ chạy trên các mã fixture dựng sẵn,
+    nên nó KHÔNG bắt được mã mới thiếu dòng trong bảng: mã đó không có kịch bản nào
+    kích cổng thì hai đường vẫn khớp. Test này đọc tập mã từ chính chú thích kiểu của
+    hàm kiểm tra, không phụ thuộc fixture nào.
+
+    So HAI CHIỀU: dòng thừa (kiểm tra bỏ cổng mà bảng còn giữ) làm bảng điều khiển
+    chạy một điều kiện không còn ai chạy, cũng là lệch.
+    """
+    gated = {code for code, fn in ALL_CHECKS.items() if _can_return_not_evaluable(fn)}
+    assert gated, (
+        "Không mã nào khai `-> CheckResult` — dấu hiệu nhận biết đã hỏng và test canh "
+        "này đang xanh vì không đọc được gì, không phải vì bảng đúng."
+    )
+    assert gated == set(_EXTRA_GATES), (
+        "`_EXTRA_GATES` lệch tập kiểm tra có cổng riêng — bảng điều khiển sẽ dự đoán "
+        "sai mà không báo. "
+        f"Có cổng nhưng thiếu ở bảng: {sorted(gated - set(_EXTRA_GATES))}; "
+        f"ở bảng nhưng không còn cổng: {sorted(set(_EXTRA_GATES) - gated)}."
+    )

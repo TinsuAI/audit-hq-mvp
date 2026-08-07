@@ -209,6 +209,15 @@ class PeriodReadiness:
 
 # {mã kiểm tra → hàm điều kiện CHÍNH kiểm tra đó gọi}. Mỗi hàm trả (lý do, (lớp, đích))
 # khi chặn, None khi không. Thêm mã vào đây là thêm một cổng, không phải chép logic.
+#
+# Bảng giữ TAY, nằm cách chỗ kiểm tra khai `requires` — nên có test canh giữ hai bên
+# khớp nhau: `tests/test_readiness.py::test_every_check_with_a_gate_of_its_own_is_in_
+# the_prediction_table` đọc chú thích kiểu trả về của từng hàm kiểm tra và bắt buộc mọi
+# mã khai `-> CheckResult` (tức có nhánh `NotEvaluable` của riêng nó) phải có mặt ở đây,
+# và ngược lại. Kiểm tra thứ tư nhận thêm một cổng mà quên dòng này thì test đó ĐỎ —
+# test đối chiếu dự đoán ↔ trạng thái đã lưu KHÔNG bắt được, vì nó chỉ chạy trên các mã
+# fixture dựng sẵn. Dấu hiệu nhận biết là chú thích kiểu, nên nó chỉ đúng khi hàm kiểm
+# tra khai thật: trả `NotEvaluable` dưới chú thích `-> list[Finding]` thì vẫn lọt.
 _EXTRA_GATES = {
     "C3.3": comparison_units_gate,
     "C4.3": norm_gate_outcome,
