@@ -15,16 +15,15 @@ import pandas as pd
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
 from app.adapters.evidence import FIELD_LABEL_VI
+from app.adapters.extended_layout import OfficerMapBalanceError
 from app.adapters.layout import BALANCE_EXPECT, find_header_columns
 from app.adapters.sheet_select import SheetNotFound
+from app.models.data_file import SLOT_LABEL_VI
 from app.pipeline.discover import DiscoveredFiles, discover
 
-SLOT_LABEL = {
-    "m15": "Mẫu 15 — Cân đối NVL",
-    "m15a": "Mẫu 15a — Cân đối SP",
-    "m16": "Mẫu 16 — Định mức",
-    "bcct": "BCCT — Báo cáo hàng chi tiết",
-}
+# Bí danh của bảng nhãn duy nhất (#98). Câu chẩn đoán đi vào `parse_message` rồi hiện
+# trên màn tài liệu cạnh chip loại file — hai tên khác nhau ở đó là nhiễu tự tạo.
+SLOT_LABEL = SLOT_LABEL_VI
 
 # Header mong đợi cho file cân đối — định nghĩa ở app/adapters/layout.py để adapter
 # và chẩn đoán dùng CHUNG một bộ từ khoá (adapter không import ngược được module này).
@@ -76,11 +75,11 @@ def _find_header_columns(
 
 def _check_balance(
     diag: UploadDiagnosis, slot: str, path: Path, parse_fn, year: int | None = None,
-    sheet: str | None = None,
+    sheet: str | None = None, officer_maps: dict | None = None,
 ) -> None:
     label = SLOT_LABEL[slot]
     try:
-        parsed = parse_fn(path, sheet, year)
+        parsed = parse_fn(path, sheet, year, officer_maps)
     except SheetNotFound as e:
         # Không sheet nào khớp bố cục. Vẫn dò tiêu đề để nói ĐƯỢC lệch ở đâu —
         # "không chọn được sheet" một mình thì cán bộ không sửa được gì.
@@ -94,6 +93,15 @@ def _check_balance(
         detail = _mismatch_detail(slot, hrow, hmap, exp) if hrow is not None else str(e)
         diag.diagnostics.append(Diagnostic(
             slot, "error", f"{label}: không chọn được sheet đúng biểu", detail,
+        ))
+        return
+    except OfficerMapBalanceError as e:
+        # Vị trí cột cán bộ vừa xác nhận không qua được đẳng thức của biểu (#95). File
+        # KHÔNG hỏng — nói đúng nguyên nhân và chỉ đúng chỗ sửa, nếu không cán bộ đi
+        # soi file trong khi chỗ sai là chỉ số cột họ vừa nhập.
+        diag.diagnostics.append(Diagnostic(
+            slot, "error", f"{label}: vị trí cột vừa xác nhận không khớp đẳng thức của biểu",
+            f"{e} Dữ liệu của kỳ giữ nguyên, lượt nạp này chưa ghi dòng nào.",
         ))
         return
     except Exception as e:  # noqa: BLE001 — surface parser error friendly
@@ -196,10 +204,11 @@ def _mismatch_detail(slot: str, hrow: int, hmap: dict, exp: dict) -> str:
 def _check_simple(
     diag: UploadDiagnosis, slot: str, path: Path, parse_fn,
     rows_attr: str = "rows", year: int | None = None, sheet: str | None = None,
+    officer_maps: dict | None = None,
 ) -> None:
     label = SLOT_LABEL[slot]
     try:
-        parsed = parse_fn(path, sheet, year)
+        parsed = parse_fn(path, sheet, year, officer_maps)
     except Exception as e:  # noqa: BLE001
         diag.diagnostics.append(Diagnostic(
             slot, "error", f"{label}: không đọc được file",
@@ -242,17 +251,25 @@ def diagnose_upload(code: str, year: int, raw_root: Path) -> UploadDiagnosis:
     # Trang tính cán bộ đã ghim — chẩn đoán PHẢI đọc đúng trang mà lượt nạp sẽ đọc.
     # Bỏ qua thì file được ghim trang vẫn trượt ở bước chẩn đoán và không bao giờ tới
     # được bước nạp: cán bộ ghim xong mà vẫn thấy nguyên lỗi cũ.
-    from app.pipeline.ingest import sheet_overrides
+    from app.pipeline.ingest import officer_column_maps, sheet_overrides
     picked = sheet_overrides(code, year, Path(raw_root))
+    # Map cột cán bộ đã xác nhận — chẩn đoán PHẢI đọc đúng cột mà lượt nạp sẽ đọc, nếu
+    # không nó kiểm đẳng thức trên bộ cột khác và mỗi file lại mở thêm một lần (khoá
+    # nhớ parse gồm cả map này).
+    officer = officer_column_maps(code)
 
     if files.m15:
-        _check_balance(diag, "m15", files.m15, parse_m15, year, picked.get(str(files.m15)))
+        _check_balance(diag, "m15", files.m15, parse_m15, year, picked.get(str(files.m15)),
+                       officer.get("m15"))
     if files.m15a:
-        _check_balance(diag, "m15a", files.m15a, parse_m15a, year, picked.get(str(files.m15a)))
+        _check_balance(diag, "m15a", files.m15a, parse_m15a, year, picked.get(str(files.m15a)),
+                       officer.get("m15a"))
     if files.m16:
-        _check_simple(diag, "m16", files.m16, parse_m16, year=year, sheet=picked.get(str(files.m16)))
+        _check_simple(diag, "m16", files.m16, parse_m16, year=year,
+                      sheet=picked.get(str(files.m16)), officer_maps=officer.get("m16"))
     for p in files.bcct:
-        _check_simple(diag, "bcct", p, parse_bcct, year=year, sheet=picked.get(str(p)))
+        _check_simple(diag, "bcct", p, parse_bcct, year=year, sheet=picked.get(str(p)),
+                      officer_maps=officer.get("bcct"))
 
     if not any(diag.discovered.values()):
         diag.diagnostics.append(Diagnostic(

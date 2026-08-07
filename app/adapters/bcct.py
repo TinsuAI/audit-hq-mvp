@@ -25,6 +25,11 @@ from app.adapters.evidence import HEADER_MATCHED, POSITION_ONLY
 from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start, norm
 from app.adapters.sheet_select import select_sheet
+from app.adapters.templates import (
+    apply_officer_evidence,
+    match_source_for,
+    officer_columns,
+)
 
 
 @dataclass
@@ -282,7 +287,15 @@ def _split_item_code_name(raw_name: str | None) -> tuple[str | None, str | None]
     return None, normalize_name(raw_name)
 
 
-def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = None) -> BcctFile:
+def parse_bcct(
+    path: str | Path,
+    sheet: str | None = None,
+    year: int | None = None,
+    officer_maps: dict[str, dict[str, int]] | None = None,
+) -> BcctFile:
+    """`officer_maps` = {vân tay form: {field: chỉ số cột}} cán bộ đã xác nhận cho DN
+    này ở slot này. Vị trí của cán bộ THẮNG cả bản đồ suy từ nhãn tiêu đề (ADR #24
+    mục 5). Tờ khai chưa có họ biểu curate nào, nên chỉ hai tầng: cán bộ > nhãn."""
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
     data_start = _DATA_START
@@ -299,6 +312,14 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
         # giữ hằng số của mẫu chuẩn — trang được chỉ định thường là trang lệch mẫu.
         data_start = find_data_start(cells, "bcct")
     col, evidence, header_row = _resolve_columns(cells, data_start, p.name)
+    form_sig = compute_form_signature(cells, "bcct", data_start)
+    officer = officer_columns(officer_maps, form_sig, col)
+    col.update(officer)
+    # Cổng trùng cột chạy LẠI sau khi áp map cán bộ (#95): lượt kiểm trong
+    # `_resolve_columns` chỉ soi bản đồ suy từ nhãn, nên một map lưu đưa hai trường về
+    # cùng một cột sẽ lọt qua và cả hai trường cùng đọc một cột, im lặng.
+    _reject_collisions(col, p.name)
+    apply_officer_evidence(evidence, officer)
 
     company_tax_id: str | None = None
     company_name: str | None = None
@@ -370,9 +391,11 @@ def parse_bcct(path: str | Path, sheet: str | None = None, year: int | None = No
             # vẫn để `standard` để badge bố cục không kêu ở 35/38 file bình thường.
             layout="standard" if col == _COL else "labeled",
             detail={
-                "form_signature": compute_form_signature(cells, "bcct", data_start),
+                "form_signature": form_sig,
                 "column_map": col,
                 "header_row": header_row,
+                "template_id": None,
+                "match_source": match_source_for(officer, None, evidence),
             },
             evidence=evidence,
         ),

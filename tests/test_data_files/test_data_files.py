@@ -90,6 +90,39 @@ class TestRecordParseResult:
         assert by_slot["m15"].row_count == 99
         assert by_slot["m16"].row_count == 476
 
+    def test_record_writes_match_source_for_every_slot(self, session, company, tmp_path):
+        """`match_source` phải xuống CỘT cho mọi slot, không chỉ Mẫu 15/15a (#84).
+
+        Trước đây Mẫu 16 và tờ khai không sinh khoá đó ở provenance, nên cột rỗng và
+        khối căn cứ đọc ở trang file không có gì để hiện.
+        """
+        from app.adapters._common import ParseProvenance
+        from app.adapters.evidence import HEADER_MATCHED
+
+        _touch(tmp_path, company.code, 2024, "DINH_MUC", "BCDM_TT39.xls")
+        _touch(tmp_path, company.code, 2024, "HANG_CHI_TIET", "BCCT_NK.xlsx")
+        sync_data_files(session, company, raw_root=tmp_path)
+
+        stats = IngestStats(company_code=company.code, period_year=2024,
+                            m16_rows=10, bcct_rows=20)
+        stats.provenance = {
+            "m16": ParseProvenance(
+                detail={"form_signature": "sig-m16", "column_map": {"norm_qty": 7},
+                        "template_id": None, "match_source": "keyword"},
+                evidence={"norm_qty": HEADER_MATCHED},
+            ),
+            "bcct": ParseProvenance(
+                detail={"form_signature": "sig-bcct", "column_map": {"quantity": 26},
+                        "template_id": None, "match_source": "keyword"},
+                evidence={"quantity": HEADER_MATCHED},
+            ),
+        }
+        record_parse_result(session, company, 2024, stats)
+
+        by_slot = {r.slot: r for r in session.query(DataFile).filter_by(company_id=company.id).all()}
+        assert by_slot["m16"].match_source == "keyword"
+        assert by_slot["bcct"].match_source == "keyword"
+
     def test_record_zero_rows_is_error(self, session, company, tmp_path):
         # WARNING không còn là status lifecycle (ADR #18): 0 dòng = chưa dùng được → error.
         _touch(tmp_path, company.code, 2024, "BCQT", "Mau15_NVL.xlsx")
@@ -111,24 +144,9 @@ def test_files_by_year_slot_groups(session, company, tmp_path):
     assert len(grouped[2024]["bcct"]) == 2  # nhiều file BCCT
 
 
-# --- _doc_year_status: 'Đã nạp' chỉ khi đủ loại, thiếu loại = 'một phần' ---
-
-def test_doc_year_status_partial_vs_full():
-    from app.routes.companies import _doc_year_status
-
-    # Nạp đủ 4/4 loại → 'Đã nạp' trơn.
-    label, kind = _doc_year_status(True, True, 896, loaded_types=4, total_types=4)
-    assert label == "Đã nạp · 896 dòng" and kind == "ok"
-
-    # Chỉ nạp 1/4 loại → 'một phần' (không hiểu nhầm là xong), badge warn.
-    label, kind = _doc_year_status(True, True, 99, loaded_types=1, total_types=4)
-    assert "một phần" in label and "1/4 loại" in label and kind == "warn"
-
-    # Có file chưa nạp / chưa có gì giữ nguyên.
-    assert _doc_year_status(True, False, 0)[1] == "pending"
-    assert _doc_year_status(False, False, 0)[1] == "empty"
-    # Đã nạp trước đó nhưng file gốc mất.
-    assert _doc_year_status(False, True, 50, loaded_types=2)[1] == "warn"
+# Nhãn "Đã nạp · X/4 loại" đã bị bỏ ở #86: đủ 4 loại không có nghĩa là kiểm tra chạy
+# được, nên thước đo là "đủ dữ liệu cho N/M kiểm tra" (ADR #24 mục 1). Bất biến thay
+# thế nằm ở `tests/test_data_screen.py` và `tests/test_readiness.py`.
 
 
 def test_one_workbook_registers_under_every_slot_it_serves(tmp_path):

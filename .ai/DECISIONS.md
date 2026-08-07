@@ -1041,3 +1041,118 @@ nên chọn nhầm ra **dòng sai**, không phải 0 dòng.
 **Alternatives loại:** lưu trang trong `parse_layout`/provenance theo slot (một kỳ có nhiều file
 BCCT, mỗi file một trang — provenance chỉ giữ một bản cho cả slot); chỉ hiện trang mà không cho
 sửa (biết sai vẫn không sửa được, phải sửa file nguồn).
+
+## 2026-08-07 — Thiết kế lại luồng tải lên → nạp dữ liệu
+
+### 24. Đủ dữ liệu đo theo kiểm tra chạy được; vướng mắc xếp theo cách gỡ; xem trước trích xuất một lần (2026-08-07, grill-with-docs; spec ở issue #80; SỬA ADR #18 mục nhãn truy nguồn)
+
+**Quyết định:**
+
+(1) **"Đủ dữ liệu" = mọi kiểm tra áp dụng cho DN đều có đủ nguồn Tầng 1 nó khai cần**, không phải "đủ 4 loại tài liệu". Phép đếm đo theo DÒNG đã nạp (kiểm tra đọc dòng), nhưng câu chữ cách gỡ tra `data_files` trước khi chọn động từ — nếu không hệ thống bảo cán bộ tải lên thứ vừa tải (ca lượt nạp dừng ở cổng review ghi 0 dòng trong khi file đã có).
+
+(2) **Vướng mắc xếp theo CÁCH GỠ, ba lớp:** `need-file-this-period` · `need-other-period-or-confirmation` · `nothing-to-load` (là phát hiện về DN, không phải lỗ hổng dữ liệu). Đo trên dữ liệu thật: 10 lần `not_evaluable` chia 1 / 6 / 3 — tức 9/10 vướng mắc KHÔNG gỡ bằng file của chính kỳ đó. Lớp là **trường bắt buộc trên `NotEvaluable`, per-instance**, không suy theo mã kiểm tra (C4.3 sinh cả ba lớp) và không gán tĩnh theo chỗ gọi (nhánh độ phủ ĐM sinh lớp 2 hay 3 tuỳ còn kỳ trước nào chưa nạp). **Có NĂM nguồn sinh, không phải bốn** — `run_checks` tự ghi trạng thái từ cổng thiếu nguồn mà không dựng đối tượng; đường đó phải dựng `NotEvaluable` và bỏ lệnh ghi thẳng, để còn đúng một kiểu và một đường lưu. Thêm cột `check_runs.remedy` (nullable, `op.add_column` thẳng). Ba cổng mà `requires` không diễn đạt được (C3.3 OR, C6.1 kỳ N−1, cổng ĐM xuyên kỳ) đánh giá bằng cách GỌI chính hàm điều kiện kiểm tra gọi, không viết lại song song.
+
+(3) **Vật chứa màn chuẩn bị dữ liệu = MỘT DN, các kỳ là dòng**, trường mức DN ở đầu màn. Tách khỏi màn phát hiện (giữ tab năm, một kỳ một lúc) — hai phạm vi kỳ khác nhau, gộp thì bộ chọn năm chỉ chi phối nửa trang. Phản hồi nạp hiện TẠI CHỖ, không chuyển sang trang công việc.
+
+(4) **Xem trước Excel: trích xuất một lần vào kho đệm SQLite mỗi (file, trang tính)**, mọi cửa sổ sau là truy vấn khoảng dòng. Ba bộ đọc nhận dạng theo BYTE ĐẦU chứ không theo đuôi file. Bỏ cả ba hạn mức 100 dòng / 40 cột / 25MB.
+
+(5) **Giữ khoá map cột `(DN, slot, chữ ký cấu trúc)`**, không mở rộng liên DN. **Map cán bộ thắng mẫu biểu curate ở mức từng trường, lúc đọc file.**
+
+**Lý do:**
+
+(1) Đủ 4 loại vẫn có thể thiếu ba tháng dòng tờ khai; thước đo phải gắn với thứ sản phẩm làm ra là kết luận kiểm tra. Nhưng `available_sources` trả lời "đã nạp dòng chưa" chứ không phải "đã có file chưa" — hai câu hỏi khác nhau, và trộn lẫn thì thông báo sai.
+
+(2) Cùng một câu lý do không nói được cách gỡ. Đo 9/10 không gỡ bằng file kỳ đó nghĩa là một danh sách phẳng khiến cán bộ đi tìm file không tồn tại. Gắn lớp tại chỗ QUYẾT ĐỊNH là cách duy nhất để bảng điều khiển (tính trước khi chạy) và trạng thái đã lưu (sinh lúc chạy) không lệch nhau.
+
+(3) Cách gỡ lớp 2 trỏ tới **kỳ khác** hoặc **trường của DN** — không cấu trúc theo kỳ đơn lẻ nào chứa được hai thứ đó. `first_bcqt_year` rỗng trên cả 7 DN, tức đang chặn kỳ sớm nhất của mọi DN, mà chỗ sửa nó lại nằm ngoài luồng nạp.
+
+(4) Đo: mở file 71,3MB ở chế độ đọc tuần tự chỉ 1,19 s — hạn mức 25MB là hệ quả của việc đọc trọn trang bằng pandas, không phải chi phí mở. Nhưng chế độ đó CHỈ ĐI TỚI: nhảy tới dòng 200.000 mất 3,87 s, nên cuộn một trang 270k dòng theo cửa sổ là ~1.000 lượt đọc với chi phí tăng dần. Trích xuất trả chi phí đúng một lần. Nhận dạng theo byte đầu vì đuôi file NÓI DỐI: đếm 493 file ra 268 xlsx thật · 185 xls thật · **38 file đuôi `.xls` thật ra là XML SpreadsheetML** (190,8MB) · 2 hỏng — khớp ghi chú "40 file không mở được" sẵn có trong mã. 38 file đó đọc bằng thư viện XML chuẩn hết 3,49 s cho file 64,5MB.
+
+(5) Chữ ký cấu trúc KHÔNG phải định danh đầy đủ của bố cục (chính hàm khớp mẫu từ chối ca cùng chữ ký khác dòng bắt đầu; chữ ký gộp hoa thường, bỏ dấu, bỏ chữ số năm). Tin nhau xuyên DN biến một lần xác nhận sai thành cột đọc lệch im lặng trên cả đội — đúng dạng lỗi đã làm mất 28,5 tỷ. Lợi ích gần bằng 0: bố cục dùng chung giữa các DN chính là 4 họ đã curate, vốn đã tự qua cổng.
+
+**Alternatives loại:**
+
+- *Giữ thước đo "đủ 4 loại"* — rejected: nói "Đã nạp" trong khi kiểm tra âm thầm bỏ qua hoặc chạy trên kỳ khuyết.
+- *Đếm cả lớp 3 vào bảng điều khiển* — rejected: "chưa từng khai ĐM" là kết luận về DN, đưa vào phép đếm thì con số không bao giờ đầy và cán bộ đi tìm file không có.
+- *Tự chạy lại kiểm tra sau mỗi lượt nạp* — rejected: `run_checks` xoá rồi dựng lại `Finding`, đưa `status`/`notes` cán bộ đã đánh về `new`. Hiện chưa lộ (15.356 finding đều `new`) nhưng lộ ngay khi thí điểm bắt đầu.
+- *Giấu điểm rủi ro khi kết quả cũ* — rejected: DN rơi khỏi bảng xếp hạng vì có người tải file lên, cùng dạng sai lầm với việc bỏ luật khỏi thang điểm làm DN sạch hơn (issue #65).
+- *Xoá file thì xoá luôn dòng của file đó* — rejected: bảng Tầng 1 không có tham chiếu file nguồn, cần đổi lược đồ. Thay bằng: xoá/thay file dời `data_version`, dòng kỳ báo "cần nạp lại".
+- *Đọc thẳng workbook mỗi cửa sổ, không kho đệm* — rejected: đọc tuần tự chỉ đi tới, nhảy sâu là O(n) từ dòng 0.
+- *Giữ handle mở xuyên request* — rejected: không giải quyết nhảy lùi, và rò handle.
+- *Chuyển 38 file XML bằng LibreOffice/ssconvert* — rejected: phụ thuộc ngoài nặng; thư viện XML chuẩn đủ và đo được 3,49 s.
+- *Mở rộng khoá map cột ra liên DN* — rejected, xem lý do (5). Đường tin nhau xuyên DN đã có và CÓ KIỂM DUYỆT: nâng thành mẫu biểu curate qua PR kèm fixture.
+- *Gộp màn dữ liệu vào màn phát hiện* — rejected: tab năm sẽ chỉ chi phối nửa dưới trang.
+- *Bỏ tab năm, màn phát hiện cũng liệt kê mọi kỳ* — rejected: viết lại 704 dòng template phát hiện, ngoài phạm vi luồng nạp.
+
+**SỬA ADR #18:** mục "nhãn truy nguồn hiện ngay trên dòng file để không hộp đen" — nay dòng file CHỈ hiện thứ có hệ quả (cần xác nhận cột · đọc hỏng · có cảnh báo), toàn bộ căn cứ đọc chuyển sang trang riêng của file. Truy nguồn cách một cú bấm chứ không mất. Nền của thay đổi: `match_source` đang RỖNG trên 15/15 file (đọc một khoá đường parse hiện tại không sinh ra) nên ba trong bốn nhãn đó chưa bao giờ hiện; `parse_layout` rỗng 11/15.
+
+**KHÔNG phải sửa ADR #18:** cổng review. Bản nháp spec ban đầu nói cổng dừng ở MỌI lượt nạp và đề xuất nối tham số `has_saved_map` — SAI. `record_parse_result` đã nâng cột có map lưu lên `officer-confirmed` → `verified` nên cổng trả rỗng và lượt nạp đi thẳng. `has_saved_map` là tham số CHẾT, không lời gọi nào trong sản phẩm. Hành vi "dừng lần đầu mỗi (DN × cấu trúc)" đã đúng như mong muốn.
+
+### 25. Map cột cán bộ áp được cho bố cục MỞ RỘNG — map diễn đạt nhóm cột, đẳng thức kiểm lại sau khi áp (2026-08-07, issue #95; SỬA giới hạn của #84 trong ADR #24 mục 5)
+
+**Bối cảnh:** ADR #24 mục (5) cho map cán bộ thắng mẫu biểu curate ở mức từng trường, nhưng #84 cố ý KHÔNG áp cho nhánh bố cục mở rộng: ở đó một trường đọc bằng TỔNG nhiều cột con `(6a)+(6b)`, còn map lưu chỉ giữ được một chỉ số cột. Hệ quả trên file của hai DN pilot: cán bộ sửa chỉ số cột thì không gì được áp, và theo cổng kiểm tra bằng nhau của #84 thì cột đó cũng không được gắn nhãn "cán bộ xác nhận" — file ở lại trạng thái cần xác nhận vĩnh viễn, không có đường ra.
+
+**Quyết định:**
+
+1. **Map lưu diễn đạt `trường → [cột…]`.** Giá trị JSON nhận cả `int` (một cột — mọi map cũ và toàn bộ bố cục chuẩn) lẫn `list[int]` (nhóm cột con). Không migration; một hàm chuẩn hoá duy nhất (`app.adapters.templates.column_groups`) dùng ở mọi chỗ đọc map.
+2. **Nhánh mở rộng ghi CẢ nhóm cột vào `parse_detail.column_map`**, không phải cột đầu nhóm như trước. Màn xác nhận dựng ô nhập từ chính giá trị này, nên ghi cột đầu là đưa cho cán bộ một bố cục sai để xác nhận.
+3. **Sau khi áp vị trí của cán bộ, đẳng thức cân đối của biểu được KIỂM LẠI trên map đã áp** (ADR #15). Không đạt ngưỡng 98% → ném `OfficerMapBalanceError`: không nạp dòng nào, chẩn đoán nói đúng nguyên nhân và chỉ chỗ sửa. KHÔNG có nhánh quay về map suy được. Đẳng thức viết lại theo TRƯỜNG (Mẫu 15 suy từ công thức trên file qua bảng số biểu→trường; Mẫu 15a theo đúng cách `resolve_m15a` chia vế cộng/vế trừ) để kiểm được sau khi thay vị trí cột.
+4. **Trang tính đã ghim vẫn dò lại bố cục mở rộng.** Lúc xác nhận, biểu mẫu ghim luôn trang tính đang đọc, mà nhánh mở rộng cũ chỉ chạy khi `sheet is None` — nên chính lượt nạp ngay sau khi cán bộ xác nhận sẽ đọc file mở rộng bằng cột cố định. Nay: trang đã ghim mà nhãn tiêu đề trên chính trang đó không xác nhận bố cục chuẩn (`standard_layout_colmap`) thì thử bố cục mở rộng.
+5. **Lượt nạp đọc hỏng KHÔNG xoá `parse_detail` cũ.** Căn cứ đọc của lượt trước là thứ duy nhất màn xác nhận dựng ô nhập từ đó; xoá đi là đổi một ngõ cụt lấy một ngõ cụt khác.
+6. **Một cột chỉ đọc cho một trường.** Biểu mẫu xác nhận từ chối gán cùng một chỉ số cột cho hai trường, và cổng trùng cột của BCCT chạy LẠI sau khi áp map cán bộ (trước đó chỉ soi bản đồ suy từ nhãn, nên map lưu đưa hai trường về một cột vẫn lọt).
+
+**Lý do:** kiểu hỏng cần chặn không phải "không đoán được bố cục" mà là "map trông hợp lý nhưng ra số sai, im lặng" (ADR #15) — repo này đã mất 28,5 tỷ vì một cột đọc sai không báo gì. Bố cục mở rộng không có nhãn tiêu đề để pin cột; thứ duy nhất chứng minh cách đọc là đẳng thức của chính biểu, nên map cán bộ phải qua đúng cổng đó chứ không được miễn.
+
+**Giới hạn còn ghi rõ:** đẳng thức là lưới chặn, KHÔNG phân biệt hai cột cùng dấu — đổi `export_qty` sang một cột trừ khác VÀ đổi cột kia ngược lại thì vế trừ không đổi và đẳng thức vẫn đúng. Đó đúng là mô hình bằng chứng của ADR #18, và cũng là lý do nhãn cuối cùng là "cán bộ xác nhận" chứ không phải "đã chứng minh". Đường bố cục CHUẨN vẫn chỉ đọc một cột mỗi trường: map nhiều cột ở đó không được áp (và biểu mẫu chặn từ đầu), vì đọc cột đầu nhóm là im lặng bỏ phần còn lại.
+
+**Alternatives loại:**
+
+- *Áp cột đầu nhóm cho gọn* — rejected: chính là lỗi #84 mô tả, im lặng bỏ mất các cột con còn lại.
+- *Áp map cán bộ rồi bỏ qua đẳng thức* — rejected: mất luôn thứ duy nhất chứng minh cách đọc ở bố cục mở rộng.
+- *Đẳng thức vỡ thì quay về map suy được và nạp tiếp* — rejected: cán bộ nhận một lượt nạp "thành công" đọc bằng bố cục họ không chọn.
+- *Sửa ở handler xác nhận (đừng ghim trang tính)* — rejected: ghim trang là quyết định đã có lý do riêng (2026-08-06 mục 3); chỗ sai là adapter hiểu "trang đã ghim" thành "đọc bằng cột cố định".
+
+### 26. SỬA ADR #24 mục (4) — trích xuất xem trước chạy ở LUỒNG NỀN, không trong request (2026-08-07, issue #91)
+
+**Quyết định:** Việc trích xuất trang tính vào kho đệm chạy ở **luồng nền**, sau một khoá chống dựng trùng. Request lấy cửa sổ ô chờ tối đa `preview_wait_seconds` (mặc định 12 giây); quá thì trả **202** kèm tiến độ, và lưới tự hỏi lại cho tới khi kho đệm sẵn sàng.
+
+ADR #24 mục (4) viết **"Dựng NGAY TRONG REQUEST đầu tiên… KHÔNG đẩy vào hàng đợi"**. Vế thứ hai giữ nguyên — vẫn không đẩy vào hàng đợi. Vế thứ nhất **sai** và mục này sửa nó.
+
+**Lý do:** số đo lúc cài #83, trên file thật:
+
+| file | trích xuất lần đầu | cửa sổ sau đó |
+|---|---|---|
+| xlsx 71,3MB | **164,6 giây** | 5 ms |
+| XML SpreadsheetML 64,5MB | 5,4 giây | 2 ms |
+| xls BIFF 39,3MB | 7,1 giây | 2 ms |
+
+164,6 giây **vượt ngưỡng cắt 100 giây của Cloudflare**. ADR #24 (4) dựng trên giả định trích xuất mất 10–15 giây; giả định đó đúng với mọi file trong kho **trừ một file**, và file đó lại đúng là loại cán bộ cần soát nhất. Giữ nguyên "dựng trong request" nghĩa là file đó không bao giờ xem được — đúng thứ hạn mức 25MB cũ đang gây ra và cả loạt vé này sinh ra để bỏ.
+
+Chi phí 130 trong 164,6 giây là **hai lượt đọc openpyxl** (60 giây lấy giá trị + 67 giây lấy công thức): chế độ đọc tuần tự chỉ lộ một trong hai mỗi lượt nên không gộp được.
+
+**Alternatives loại:**
+
+- *Giữ "dựng trong request"* — rejected: file 71,3MB đứt kết nối, không xem được.
+- *Đẩy vào hàng đợi job* — rejected, và ADR #24 (4) đã loại vì đúng lý do: hàng đợi chạy một việc nạp một lúc, nên một việc trích xuất xếp sau lượt nạp dài bắt cán bộ chờ vài phút chỉ để xem file.
+- *Chỉ trích xuất giá trị, bỏ công thức* — rejected: công tắc "hiện công thức trong ô" là thứ đáng lẽ đã bắt được 2.076 ô công thức đọc thành 0 làm mất 28,5 tỷ. Bỏ nó để nhanh hơn 67 giây một lần là đổi sai chiều.
+- *Hạ ngưỡng chờ xuống 0, luôn trả 202* — rejected: mọi file khác trong kho xong dưới 10 giây, bắt chúng đi qua vòng hỏi lại là thêm độ trễ không đổi lấy gì.
+
+**Ghi chú:** con số 12 giây là cấu hình (`preview_wait_seconds`), không phải hằng số — chọn để mọi file trong kho trừ file 71,3MB vẫn xong trong đúng một request.
+
+### 27. LÀM RÕ ADR #24 mục (1) — mã "biết khi chạy" ở lại MẪU SỐ nhưng không khoá TỬ SỐ (2026-08-07, issue #103)
+
+**Quyết định:** Tách hai con số. `total_count` giữ nguyên nghĩa "mọi kiểm tra áp dụng cho DN". `predictable_count` = `total_count` trừ số mã **biết khi chạy** (kiểm tra động do admin viết, không khai `requires` nên không dự đoán được). Trạng thái **đủ** so `sufficient_count` với `predictable_count`, KHÔNG với `total_count`. Giao diện hiện cả hai: "Đủ nguồn cho N/M kiểm tra" cộng "K kiểm tra biết khi chạy", và M + K = tổng.
+
+**Lý do:** ADR #24 mục (1) viết "đủ dữ liệu = mọi kiểm tra áp dụng đều có đủ nguồn". Đọc sát chữ thì mã không dự đoán được cũng phải vào tử số mới đủ — mà nó **không bao giờ vào được**, vì bản chất là không dự đoán được. Hệ quả: chỉ cần admin công bố MỘT kiểm tra động, mọi kỳ của mọi DN **vĩnh viễn không bao giờ đọc là đủ**, kể cả khi cán bộ đã nạp hết mọi thứ nạp được. Triệu chứng im lặng: không báo lỗi, chỉ là con số không bao giờ đầy.
+
+Đo lúc phát hiện: bảng kiểm tra động có 1 bản nháp, 0 bản đã công bố — nên lỗi **tiềm ẩn**, bật lên ở lần công bố đầu tiên.
+
+Câu chuyện người dùng 51 chỉ đòi mã không dự đoán được **ở lại mẫu số**, để mẫu số không tự co lại làm DN trông sạch hơn (đúng sai lầm ghi ở issue #65). Nó không đòi tử số không bao giờ đóng được. Mục này giữ vế thứ nhất và bỏ ràng buộc thứ hai vốn không ai yêu cầu.
+
+**Alternatives loại:**
+
+- *Rút mã biết khi chạy khỏi mẫu số* — rejected: đúng sai lầm #65, mẫu số co lại làm DN trông sạch hơn thực tế.
+- *Coi mã biết khi chạy là đã đủ nguồn* — rejected: nói dối, hệ thống không biết nó đủ hay không.
+- *Giữ nguyên, coi là chấp nhận được* — rejected: cán bộ không bao giờ thấy kỳ nào xong là hỏng đúng thứ cả loạt vé này sinh ra để làm.
+
+**Ghi chú:** nếu MỌI kiểm tra đều là biết-khi-chạy thì `predictable_count` = 0 và trạng thái đọc là đủ. Không tới được chừng nào còn kiểm tra dựng sẵn, nên không có test cho ca đó — ghi lại để người sau khỏi tưởng là sót.

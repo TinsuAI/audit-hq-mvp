@@ -10,7 +10,7 @@ from datetime import date
 
 from app.models import CompanyPeriod, DeclarationLine
 from app.pipeline.coverage import bcct_coverage
-from tests.conftest import add_decl
+from tests.conftest import AppDb, add_decl
 
 
 def set_period(session, company_id: int, year: int, pf: date, pt: date) -> None:
@@ -137,78 +137,62 @@ def test_coverage_never_counts_other_companies(session, company):
 # --- Ingest lưu trọn ----------------------------------------------------------
 
 
-def test_ingest_stores_rows_dated_outside_the_period_window(tmp_path):
+def test_ingest_stores_rows_dated_outside_the_period_window(app_db: AppDb, tmp_path):
     """Dòng ngoài cửa sổ KHÔNG bị bỏ nữa: lưu dưới nhãn nạp, đếm để báo."""
     from sqlalchemy import select
 
     from app.models import Company
     from app.pipeline.ingest import ingest
-    from app.settings import settings
-    from tests.test_ingest_book import _fresh_db, _restore_db, _write_bcct, _write_m15
+    from tests.test_ingest_book import _write_bcct, _write_m15
 
-    prev_root = settings.raw_data_path
-    new_engine, new_session = _fresh_db()
-    try:
-        base = tmp_path / "DN_WIN" / "2024"
-        _write_m15(base / "BCQT" / "NVL.xlsx", ["A"])
-        # Hai dòng: 15/06/2024 trong kỳ dương lịch 2024, 20/02/2025 ngoài kỳ.
-        _write_bcct(
-            base / "HANG_CHI_TIET" / "BCCT.xlsx", ["A", "B"],
-            dates=[date(2024, 6, 15), date(2025, 2, 20)],
-        )
-        settings.raw_data_path = str(tmp_path)
+    base = tmp_path / "DN_WIN" / "2024"
+    _write_m15(base / "BCQT" / "NVL.xlsx", ["A"])
+    # Hai dòng: 15/06/2024 trong kỳ dương lịch 2024, 20/02/2025 ngoài kỳ.
+    _write_bcct(
+        base / "HANG_CHI_TIET" / "BCCT.xlsx", ["A", "B"],
+        dates=[date(2024, 6, 15), date(2025, 2, 20)],
+    )
 
-        stats = ingest("DN_WIN", 2024, raw_root=tmp_path)
+    stats = ingest("DN_WIN", 2024, raw_root=tmp_path)
 
-        assert stats.bcct_rows == 2                # LƯU cả hai
-        assert stats.bcct_out_of_window == 1       # báo một dòng ngoài cửa sổ
-        assert stats.bcct_undated == 0
+    assert stats.bcct_rows == 2                # LƯU cả hai
+    assert stats.bcct_out_of_window == 1       # báo một dòng ngoài cửa sổ
+    assert stats.bcct_undated == 0
 
-        with new_session() as db:
-            c = db.scalar(select(Company).where(Company.code == "DN_WIN"))
-            rows = db.scalars(
-                select(DeclarationLine).where(DeclarationLine.company_id == c.id)
-            ).all()
-            assert len(rows) == 2
-            assert {r.period_year for r in rows} == {2024}   # cùng nhãn nạp
-            assert bcct_coverage(db, c.id, 2024).out_of_window == 1
-            # Dòng ngoài cửa sổ không thuộc kỳ 2024 lúc query.
-            assert bcct_coverage(db, c.id, 2024).in_scope == 1
-    finally:
-        settings.raw_data_path = prev_root
-        _restore_db(new_engine)
+    with app_db.SessionLocal() as db:
+        c = db.scalar(select(Company).where(Company.code == "DN_WIN"))
+        rows = db.scalars(
+            select(DeclarationLine).where(DeclarationLine.company_id == c.id)
+        ).all()
+        assert len(rows) == 2
+        assert {r.period_year for r in rows} == {2024}   # cùng nhãn nạp
+        assert bcct_coverage(db, c.id, 2024).out_of_window == 1
+        # Dòng ngoài cửa sổ không thuộc kỳ 2024 lúc query.
+        assert bcct_coverage(db, c.id, 2024).in_scope == 1
 
 
-def test_reingest_is_still_idempotent_after_storing_everything(tmp_path):
+def test_reingest_is_still_idempotent_after_storing_everything(app_db: AppDb, tmp_path):
     from sqlalchemy import func, select
 
     from app.models import Company
     from app.pipeline.ingest import ingest
-    from app.settings import settings
-    from tests.test_ingest_book import _fresh_db, _restore_db, _write_bcct, _write_m15
+    from tests.test_ingest_book import _write_bcct, _write_m15
 
-    prev_root = settings.raw_data_path
-    new_engine, new_session = _fresh_db()
-    try:
-        base = tmp_path / "DN_IDEM" / "2024"
-        _write_m15(base / "BCQT" / "NVL.xlsx", ["A"])
-        _write_bcct(
-            base / "HANG_CHI_TIET" / "BCCT.xlsx", ["A", "B"],
-            dates=[date(2024, 6, 15), date(2025, 2, 20)],
-        )
-        settings.raw_data_path = str(tmp_path)
+    base = tmp_path / "DN_IDEM" / "2024"
+    _write_m15(base / "BCQT" / "NVL.xlsx", ["A"])
+    _write_bcct(
+        base / "HANG_CHI_TIET" / "BCCT.xlsx", ["A", "B"],
+        dates=[date(2024, 6, 15), date(2025, 2, 20)],
+    )
 
-        ingest("DN_IDEM", 2024, raw_root=tmp_path)
-        ingest("DN_IDEM", 2024, raw_root=tmp_path)
+    ingest("DN_IDEM", 2024, raw_root=tmp_path)
+    ingest("DN_IDEM", 2024, raw_root=tmp_path)
 
-        with new_session() as db:
-            c = db.scalar(select(Company).where(Company.code == "DN_IDEM"))
-            n = db.scalar(
-                select(func.count()).select_from(DeclarationLine).where(
-                    DeclarationLine.company_id == c.id
-                )
+    with app_db.SessionLocal() as db:
+        c = db.scalar(select(Company).where(Company.code == "DN_IDEM"))
+        n = db.scalar(
+            select(func.count()).select_from(DeclarationLine).where(
+                DeclarationLine.company_id == c.id
             )
-            assert n == 2
-    finally:
-        settings.raw_data_path = prev_root
-        _restore_db(new_engine)
+        )
+        assert n == 2

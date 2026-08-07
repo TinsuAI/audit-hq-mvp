@@ -31,6 +31,7 @@ from app.models import (
 from app.models.data_file import SETTLEMENT_SLOTS
 from app.pipeline.discover import DiscoveredFiles, discover
 from app.pipeline.period import default_bounds, in_period, resolve_period_bounds
+from app.pipeline.saved_map import officer_maps as saved_officer_maps
 from app.settings import settings
 
 
@@ -97,6 +98,19 @@ def sheet_overrides(company_code: str, year: int, raw_root: Path) -> dict[str, s
         return {str(raw_root / r.stored_path): r.sheet_override for r in rows}
 
 
+def officer_column_maps(company_code: str) -> dict[str, dict[str, dict[str, int]]]:
+    """`{slot: {vân tay: {field: cột}}}` map cán bộ đã xác nhận của DN — cho parser.
+
+    Đọc bằng phiên riêng như ``sheet_overrides`` và ở ĐÚNG chỗ đó: bước parse chạy
+    trước khi `ingest` mở phiên ghi. Chỉ đọc, không ghi. DN chưa có trong DB → {}.
+    """
+    with SessionLocal() as session:
+        company = session.scalar(select(Company).where(Company.code == company_code))
+        if company is None:
+            return {}
+        return saved_officer_maps(session, company.id)
+
+
 class IngestPlanError(RuntimeError):
     """Kế hoạch nạp sẽ làm mất sổ quyết toán — dừng TRƯỚC khi xoá dữ liệu cũ.
 
@@ -124,8 +138,49 @@ def _books_already_stored(session, company_id: int, year: int) -> set[str]:
     return books
 
 
+def book_assignment_error(session, company_id: int, year: int) -> str | None:
+    """Lý do kế hoạch nạp settlement bị chặn vì gán sổ chưa đủ; None nếu qua được.
+
+    Hai điều kiện, cả hai đều dẫn tới gộp sổ im lặng nếu cho đi tiếp. Tách khỏi
+    `_plan_settlement_files` để màn dữ liệu hỏi được "kỳ này còn vướng gán sổ không"
+    mà không phải mở file nào, và hỏi bằng CHÍNH đoạn mã chặn lượt nạp.
+    """
+    rows = session.scalars(
+        select(DataFile).where(
+            DataFile.company_id == company_id,
+            DataFile.period_year == year,
+            DataFile.slot.in_(SETTLEMENT_SLOTS),
+        )
+    ).all()
+    if not any(r.book for r in rows):
+        # Tag book chỉ sống trong data_files, mà `sync_data_files` prune dòng khi file
+        # vắng trên đĩa. Mất tag + nạp tiếp = dựng lại pháp nhân nhiều sổ thành MỘT sổ
+        # gộp, im lặng. Đối chiếu với sổ đang có trong DB trước khi cho đi tiếp.
+        prior = _books_already_stored(session, company_id, year)
+        if prior:
+            return (
+                f"DN đang có sổ {', '.join(sorted(prior))} trong kỳ {year} nhưng không "
+                f"file nào còn nhãn sổ — nạp tiếp sẽ gộp tất cả thành một sổ. Hãy đồng "
+                f"bộ lại danh sách file rồi gán nhãn sổ cho từng file quyết toán và nạp lại."
+            )
+        return None
+
+    # Gán sổ phải là tất-cả-hoặc-không. Dòng của file chưa gán rơi vào book=NULL, mà ở
+    # pháp nhân nhiều sổ NULL nghĩa là "liên sổ" — C4.1/C4.3/C6.1 gom NULL thành sổ thứ
+    # ba và đối chiếu định mức/tồn kho bên trong cái sổ không tồn tại đó.
+    untagged = [f"{r.slot}: {r.stored_path}" for r in rows if not r.book]
+    if untagged:
+        return (
+            "Một số file quyết toán đã gán sổ, số khác chưa: "
+            + "; ".join(sorted(untagged))
+            + ". Gán sổ cho MỌI file quyết toán của kỳ rồi nạp lại."
+        )
+    return None
+
+
 def _plan_settlement_files(
-    session, company_id: int, year: int, discovered_parsed: dict, raw_root: Path
+    session, company_id: int, year: int, discovered_parsed: dict, raw_root: Path,
+    officer: dict[str, dict[str, dict[str, int]]] | None = None,
 ) -> dict[str, list[tuple]]:
     """Kế hoạch nạp settlement theo SỔ (ADR #19 Revision — UI + upload).
 
@@ -144,30 +199,12 @@ def _plan_settlement_files(
             DataFile.slot.in_(SETTLEMENT_SLOTS),
         )
     ).all()
+    problem = book_assignment_error(session, company_id, year)
+    if problem:
+        raise IngestPlanError(problem)
     if not any(r.book for r in rows):
-        # Tag book chỉ sống trong data_files, mà `sync_data_files` prune dòng khi file
-        # vắng trên đĩa. Mất tag + nạp tiếp = dựng lại pháp nhân nhiều sổ thành MỘT sổ
-        # gộp, im lặng. Đối chiếu với sổ đang có trong DB trước khi cho đi tiếp.
-        prior = _books_already_stored(session, company_id, year)
-        if prior:
-            raise IngestPlanError(
-                f"DN đang có sổ {', '.join(sorted(prior))} trong kỳ {year} nhưng không "
-                f"file nào còn nhãn sổ — nạp tiếp sẽ gộp tất cả thành một sổ. Hãy đồng "
-                f"bộ lại danh sách file rồi gán nhãn sổ cho từng file quyết toán và nạp lại."
-            )
         # Single-book / CLI: file discover đã parse sẵn, book=NULL (hành vi cũ).
         return {slot: ([(obj, None)] if obj else []) for slot, obj in discovered_parsed.items()}
-
-    # Gán sổ phải là tất-cả-hoặc-không. Dòng của file chưa gán rơi vào book=NULL, mà ở
-    # pháp nhân nhiều sổ NULL nghĩa là "liên sổ" — C4.1/C4.3/C6.1 gom NULL thành sổ thứ
-    # ba và đối chiếu định mức/tồn kho bên trong cái sổ không tồn tại đó.
-    untagged = [f"{r.slot}: {r.stored_path}" for r in rows if not r.book]
-    if untagged:
-        raise IngestPlanError(
-            "Một số file quyết toán đã gán sổ, số khác chưa: "
-            + "; ".join(sorted(untagged))
-            + ". Gán sổ cho MỌI file quyết toán của kỳ rồi nạp lại."
-        )
 
     plan: dict[str, list[tuple]] = {"m15": [], "m15a": [], "m16": []}
     unusable: list[str] = []
@@ -179,7 +216,7 @@ def _plan_settlement_files(
             continue
         parser = _SETTLEMENT_PARSERS[r.slot]
         try:
-            parsed = parser(path, r.sheet_override, year)
+            parsed = parser(path, r.sheet_override, year, (officer or {}).get(r.slot))
         except SheetNotFound:
             # File không phục vụ slot đã đăng ký (sync phân loại nhầm). Không nuốt lỗi
             # khác (bug parser phải nổ ra).
@@ -212,11 +249,22 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
 
     # Trang tính cán bộ đã chỉ định (registry) — None thì `select_sheet` tự chọn.
     picked = sheet_overrides(company_code, year, Path(raw_root))
+    # Map cột cán bộ đã xác nhận — thắng template lẫn cột mặc định ở TỪNG trường.
+    officer = officer_column_maps(company_code)
 
     # `year` để chọn sheet: hai sheet cùng bố cục khác kỳ chỉ phân biệt được bằng kỳ.
-    m15 = parse_m15(files.m15, picked.get(str(files.m15)), year) if files.m15 else None
-    m15a = parse_m15a(files.m15a, picked.get(str(files.m15a)), year) if files.m15a else None
-    m16 = parse_m16(files.m16, picked.get(str(files.m16)), year) if files.m16 else None
+    m15 = (
+        parse_m15(files.m15, picked.get(str(files.m15)), year, officer.get("m15"))
+        if files.m15 else None
+    )
+    m15a = (
+        parse_m15a(files.m15a, picked.get(str(files.m15a)), year, officer.get("m15a"))
+        if files.m15a else None
+    )
+    m16 = (
+        parse_m16(files.m16, picked.get(str(files.m16)), year, officer.get("m16"))
+        if files.m16 else None
+    )
     # DN có thể tách tờ khai NK / XK thành nhiều file — parse + gộp tất cả. Thư mục
     # HANG_CHI_TIET đôi khi lẫn báo cáo KHÁC (vd "Báo cáo hàng hoá xuất khẩu" gộp theo
     # mã hàng, không có số tờ khai). Bỏ QUA từng file như vậy thay vì hỏng cả kỳ —
@@ -225,7 +273,7 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
     bcct_skipped: list[str] = []
     for bp in files.bcct:
         try:
-            bcct_files.append(parse_bcct(bp, picked.get(str(bp)), year))
+            bcct_files.append(parse_bcct(bp, picked.get(str(bp)), year, officer.get("bcct")))
         except SheetNotFound:
             bcct_skipped.append(bp.name)
     stats.bcct_skipped = bcct_skipped
@@ -310,7 +358,8 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         # Kế hoạch nạp settlement theo SỔ: book per-file từ data_files (không có tag →
         # book=NULL, single-book giữ nguyên). Thay guard cũ — ghi lại mọi sổ một lượt.
         plan = _plan_settlement_files(
-            session, company.id, year, {"m15": m15, "m15a": m15a, "m16": m16}, raw_root
+            session, company.id, year, {"m15": m15, "m15a": m15a, "m16": m16}, raw_root,
+            saved_officer_maps(session, company.id),
         )
         # Pháp nhân nhiều sổ nạp theo data_files chứ theo file discover: ghi thêm trang
         # tính của những file đó, không thì chúng không có `sheet` trong registry.

@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import importlib
+import random
+import sys
+from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.database import Base
+from app.database import SessionLocal as _default_session
 from app.database import engine as _default_engine
 from app.models import (
     Company,
@@ -19,6 +28,125 @@ from app.models import (
     UomAlias,
     UomCanonical,
 )
+from app.settings import settings
+
+# --------------------------------------------------------------------------
+# Xáo thứ tự chạy test (`--shuffle`, `--shuffle-seed=N`)
+#
+# Bộ test chạy cố định một thứ tự thì lỗi phụ thuộc trạng thái giữa các test
+# không bao giờ lộ ra (vé #81 tìm được 10 lỗi loại này chỉ vì tình cờ chạy khác
+# đi). Hook dưới đây xáo thứ tự ngay trong repo, không thêm phụ thuộc vào
+# `.venv` — `.venv` dùng chung nhiều worktree, mà `pytest-randomly` một khi cài
+# vào là xáo mặc định cho MỌI lượt chạy của mọi người.
+# --------------------------------------------------------------------------
+
+_SEED_ATTR = "_audit_hq_shuffle_seed"
+_SEED_MAX = 2**32
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    group = parser.getgroup("audit-hq")
+    group.addoption(
+        "--shuffle",
+        action="store_true",
+        default=False,
+        help="Xáo thứ tự chạy test bằng seed sinh ngẫu nhiên (seed được in ra để tái hiện).",
+    )
+    group.addoption(
+        "--shuffle-seed",
+        action="store",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Xáo thứ tự chạy test bằng đúng seed N — dùng để chạy lại y hệt một lượt đỏ.",
+    )
+
+
+def _group_in_order(items: list, key) -> list[list]:
+    """Gom item theo `key`, giữ nguyên thứ tự nhóm xuất hiện lần đầu.
+
+    Không dùng `set` ở bất kỳ đâu trong đường đi này: thứ tự lặp của `set` phụ
+    thuộc hash randomization của Python, seed sẽ không tái hiện được.
+    """
+    buckets: dict[object, list] = {}
+    for item in items:
+        buckets.setdefault(key(item), []).append(item)
+    return list(buckets.values())
+
+
+def _shuffled_order(items: list, seed: int) -> list:
+    """Trả về `items` đã xáo theo tầng, quyết định hoàn toàn bởi `seed`.
+
+    Xáo theo tầng chứ không xáo phẳng: thứ tự module được xáo, trong mỗi module
+    thì mỗi class là một khối và mỗi hàm mức module là một khối, các khối được
+    xáo, rồi mới xáo các item bên trong từng class. Giữ item cùng module liền
+    nhau để fixture `scope="module"` (vd `tests/test_smoke.py`) không bị dựng đi
+    dựng lại xen kẽ giữa các module khác.
+    """
+    rng = random.Random(seed)
+    modules = _group_in_order(items, lambda it: it.nodeid.split("::")[0])
+    rng.shuffle(modules)
+
+    ordered: list = []
+    for module_items in modules:
+        blocks: list[list] = []
+        class_block: dict[str, list] = {}
+        for item in module_items:
+            parts = item.nodeid.split("::")
+            # nodeid có >= 3 phần nghĩa là item nằm trong class:
+            # "tests/test_x.py::TestC::test_foo". Hàm mức module chỉ có 2 phần.
+            if len(parts) >= 3:
+                block = class_block.get(parts[1])
+                if block is None:
+                    block = []
+                    class_block[parts[1]] = block
+                    blocks.append(block)
+                block.append(item)
+            else:
+                blocks.append([item])
+        rng.shuffle(blocks)
+        for block in blocks:
+            rng.shuffle(block)
+            ordered.extend(block)
+    return ordered
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Chốt seed ở đây chứ không ở `pytest_collection_modifyitems`.
+
+    `pytest_report_header` chạy TRƯỚC lúc thu thập test, nên seed chốt lúc sửa
+    danh sách item thì dòng header không bao giờ thấy nó.
+    """
+    seed = config.getoption("shuffle_seed")
+    if seed is None and config.getoption("shuffle"):
+        seed = random.Random().randrange(_SEED_MAX)
+    setattr(config, _SEED_ATTR, seed)
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
+    seed = getattr(config, _SEED_ATTR, None)
+    if seed is None:
+        return
+    items[:] = _shuffled_order(items, seed)
+
+
+def pytest_report_header(config: pytest.Config) -> str | None:
+    seed = getattr(config, _SEED_ATTR, None)
+    if seed is None:
+        return None
+    return f"thứ tự test đã xáo — seed={seed} (chạy lại: --shuffle-seed={seed})"
+
+
+def pytest_terminal_summary(terminalreporter) -> None:
+    """In lại seed ở cuối lượt chạy.
+
+    `addopts = "-ra -q"` nên `pytest_report_header` bị nuốt; phần tóm tắt cuối
+    thì không. Seed phải nằm cạnh danh sách test đỏ, chỗ người đọc log tìm nó.
+    """
+    seed = getattr(terminalreporter.config, _SEED_ATTR, None)
+    if seed is None:
+        return
+    terminalreporter.write_line(f"thứ tự test đã xáo — seed={seed} (chạy lại: --shuffle-seed={seed})")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -31,6 +159,106 @@ def _ensure_default_schema():
     """
     import app.models  # noqa: F401  load all models metadata trước create_all
     Base.metadata.create_all(_default_engine)
+
+
+@pytest.fixture(scope="session")
+def default_engine() -> Engine:
+    """Engine trỏ vào DB của máy (`DATABASE_URL`) — engine mà `app.database` dựng lúc import.
+
+    Chỉ để test bảo vệ ĐỌC và khẳng định không có bản ghi nào rơi vào đây. Không
+    ghi gì qua engine này.
+    """
+    return _default_engine
+
+
+@dataclass
+class AppDb:
+    """DB tạm của một test đi qua tầng ứng dụng (route, hàng đợi, pipeline)."""
+
+    engine: Engine
+    SessionLocal: sessionmaker
+    raw_root: Path
+
+
+# Module `app.*` giữ sẵn một bản sao `SessionLocal` từ lúc import. Nạp trước để
+# lần quét `sys.modules` bên dưới thấy được chúng kể cả khi test chưa import.
+_SESSION_HOLDER_MODULES = (
+    "app.database",
+    "app.main",
+    "app.ai.config",
+    "app.pipeline.ingest",
+    "app.pipeline.run_checks",
+)
+
+
+def _rebind_session_holders(session_factory: sessionmaker) -> None:
+    """Trỏ `SessionLocal` của mọi module `app.*` về `session_factory`.
+
+    `from app.database import SessionLocal` chụp đối tượng ngay lúc import, nên
+    vá `app.database.SessionLocal` KHÔNG đổi được bản sao đã nằm trong module
+    khác. Quét giới hạn trong `app.*`: nhiều file test giữ `SessionLocal` gốc ở
+    mức module làm mốc khôi phục, quét trúng chúng là hỏng teardown của chúng.
+    """
+    for name in _SESSION_HOLDER_MODULES:
+        importlib.import_module(name)
+    for name, module in list(sys.modules.items()):
+        if name != "app" and not name.startswith("app."):
+            continue
+        if isinstance(getattr(module, "SessionLocal", None), sessionmaker):
+            module.SessionLocal = session_factory
+
+
+@pytest.fixture
+def app_db(tmp_path: Path) -> Iterator[AppDb]:
+    """DB tạm dùng chung cho mọi test đi qua route hoặc chạy hàng đợi.
+
+    Vá ba điểm cùng lúc: `app.database.engine`, `app.database.SessionLocal`, và
+    bản sao `SessionLocal` đã import vào `app.pipeline.ingest` (cùng mọi module
+    `app.*` khác giữ bản sao). Thiếu điểm thứ ba thì job nạp dữ liệu ghi dòng
+    Tầng 1 vào DB thật của máy, và khẳng định "chưa có dòng nào" trong test hoá
+    ra XANH VÌ LÝ DO SAI.
+
+    Kèm sẵn: schema đầy đủ, một admin `admin/admin` để đăng nhập, và
+    `settings.raw_data_path` trỏ vào `tmp_path` để file tải lên không đụng
+    thư mục dữ liệu thật.
+    """
+    import app.database as dbmod
+    from app.ai.config import bust_cache as bust_ai_cache
+    from app.app_settings import invalidate_cache as invalidate_app_settings
+    from app.auth_users import seed_default_admin
+
+    new_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        future=True,
+    )
+    new_session = sessionmaker(bind=new_engine, autoflush=False, autocommit=False, future=True)
+    Base.metadata.create_all(new_engine)
+
+    prev_raw_root = settings.raw_data_path
+    dbmod.engine = new_engine
+    _rebind_session_holders(new_session)
+    settings.raw_data_path = str(tmp_path)
+    invalidate_app_settings()
+    bust_ai_cache()
+
+    with new_session() as db:
+        seed_default_admin(db, "admin", "admin")
+
+    try:
+        yield AppDb(engine=new_engine, SessionLocal=new_session, raw_root=tmp_path)
+    finally:
+        settings.raw_data_path = prev_raw_root
+        new_engine.dispose()
+        # Trả về bản gốc chụp lúc import conftest, KHÔNG phải giá trị đọc được lúc
+        # setup: vài file test khôi phục `app.database.SessionLocal` bằng import
+        # muộn nên để lại chính sessionmaker của chúng ở đó. Lấy giá trị ấy làm
+        # mốc là phát tán một engine đã dispose sang mọi module `app.*`.
+        dbmod.engine = _default_engine
+        _rebind_session_holders(_default_session)
+        invalidate_app_settings()
+        bust_ai_cache()
 
 
 @pytest.fixture

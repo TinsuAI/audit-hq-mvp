@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Tài liệu — {{ company.name or company.code }} — Audit-HQ{% endblock %}
+{% block title %}Dữ liệu — {{ company.name or company.code }} — Audit-HQ{% endblock %}
 {% block content %}
 
 <nav class="breadcrumbs">
@@ -7,19 +7,18 @@
   <span class="sep">›</span>
   <a href="/companies/{{ company.slug or company.code }}">{{ company.name or company.code }}</a>
   <span class="sep">›</span>
-  Tài liệu
+  Dữ liệu
 </nav>
 
 <div class="page-header">
   <div class="page-title-group">
-    <h1>Tài liệu BCQT</h1>
+    <h1>Chuẩn bị dữ liệu</h1>
     <p class="page-subtitle">
       {{ company.name or company.code }}{% if company.tax_id %} · MST <span class="text-mono">{{ company.tax_id }}</span>{% endif %}
     </p>
   </div>
   <div class="btn-group">
-    <a href="/companies/{{ company.slug or company.code }}" class="btn btn-secondary">← Về trang DN</a>
-    <a href="/companies/{{ company.slug or company.code }}/upload" class="btn btn-secondary">📥 Tải lên nhiều file</a>
+    <a href="/companies/{{ company.slug or company.code }}" class="btn btn-secondary">← Về trang doanh nghiệp</a>
   </div>
 </div>
 
@@ -30,202 +29,390 @@
 <div class="form-alert form-alert-error" role="alert"><span class="form-alert-icon">⚠️</span><div>{{ error }}</div></div>
 {% endif %}
 
+<section class="card ds-fields" id="{{ screen.fields.anchor }}">
+  <h2 class="ds-section-title">Thuộc tính doanh nghiệp</h2>
+  <p class="form-hint">
+    Ba mục này thuộc về doanh nghiệp, không thuộc kỳ nào. Năm đầu nộp báo cáo quyết toán
+    quyết định kỳ sớm nhất có được đánh giá định mức hay không.
+  </p>
+  <form method="post" action="{{ screen.fields.url }}" class="ds-fields-form">
+    <label class="ds-field">
+      <span class="form-label">Năm đầu nộp báo cáo quyết toán</span>
+      <input type="number" class="form-input mono-input" name="first_bcqt_year"
+             min="{{ bcqt_year_min }}" max="{{ bcqt_year_max }}" placeholder="chưa biết"
+             value="{{ screen.fields.first_bcqt_year or '' }}">
+      {% if screen.fields.missing_first_bcqt_year %}
+      <span class="ds-field-note">Để trống nghĩa là chưa biết — kỳ sớm nhất sẽ không đánh giá được định mức.</span>
+      {% endif %}
+    </label>
+    <label class="ds-field">
+      <span class="form-label">Niên độ kế toán</span>
+      <select class="form-select" name="fiscal_start_month">
+        {% for m, label in fiscal_options %}
+        <option value="{{ m }}" {% if m == screen.fields.fiscal_start_month %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="ds-field">
+      <span class="form-label">Ngày quyết định kiểm tra sau thông quan</span>
+      <input type="date" class="form-input" name="audit_decision_date"
+             value="{{ screen.fields.audit_decision_date.isoformat() if screen.fields.audit_decision_date else '' }}">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Lưu</button>
+  </form>
+</section>
+
 <div class="doc-bar">
   <p class="form-hint" style="margin:0">
-    Mỗi năm gồm 4 loại tài liệu. Tải file lên → bấm <strong>Nạp dữ liệu</strong> → <strong>Chạy kiểm tra</strong>.
-    Mẫu 15/15a/16 mỗi loại một file (tải lại sẽ thay); BCCT có thể nhiều file.
+    Mỗi kỳ là một dòng. Tải file lên → bấm <strong>Nạp dữ liệu</strong> → <strong>Chạy kiểm tra</strong>.
   </p>
-  {% if add_years %}
+  {% if screen.add_years %}
   <form method="get" action="/companies/{{ company.slug or company.code }}/documents" class="doc-addyear">
-    <label class="form-label" for="add">Thêm năm:</label>
+    <label class="form-label" for="add">Thêm kỳ:</label>
     <select class="form-select mono-input" id="add" name="add" style="max-width:120px">
-      {% for y in add_years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+      {% for y in screen.add_years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
     </select>
-    <button type="submit" class="btn btn-secondary btn-sm">+ Thêm</button>
+    <button type="submit" class="btn btn-secondary btn-sm">Thêm</button>
   </form>
   {% endif %}
 </div>
 
-{% if not year_rows %}
-<div class="card doc-empty-state">
-  <p class="text-muted">DN này chưa có tài liệu nào.</p>
-  <a href="/companies/{{ company.slug or company.code }}/upload" class="btn btn-primary">📥 Tải lên dữ liệu BCQT</a>
+{% if screen.invite %}
+<div class="card ds-invite">
+  <p><strong>Doanh nghiệp này chưa có kỳ nào.</strong></p>
+  <p class="text-muted">Chọn một kỳ ở ô <em>Thêm kỳ</em> bên trên để bắt đầu, rồi tải bộ file quyết toán của kỳ đó lên.</p>
 </div>
 {% endif %}
 
-{% set status_badge = {'ok':'info','warn':'warning','pending':'muted','empty':'muted'} %}
+{% for p in screen.periods %}
+<section class="card ds-period" id="{{ p.anchor }}">
 
-{% for yr in year_rows %}
-<details class="doc-year card" {% if yr.open %}open{% endif %}>
-  <summary class="doc-year-summary">
-    <span class="doc-year-name">Năm {{ yr.year }}</span>
-    <span class="badge {{ status_badge[yr.status_kind] }}">{{ yr.status_label }}</span>
-    {# `checks_run` bật khi năm CÓ phát hiện, kể cả khi chưa có dòng điểm năm — đọc
-       `yr.score` = None ở đó làm `tier_css_for` nổ (500 cả trang). #}
-    {% if yr.checks_run and yr.score is not none %}<span class="badge {{ tier_css_for(yr.score) }}">Rủi ro {{ yr.score }}/1000</span>{% endif %}
-    <span class="doc-caret" aria-hidden="true">▾</span>
-  </summary>
+  <header class="ds-period-head">
+    <h2 class="ds-period-year">Kỳ {{ p.year }}</h2>
+    <span class="badge {% if p.ready %}info{% else %}warning{% endif %}"
+          title="Đếm trên {{ p.predictable_count }} kiểm tra dự đoán trước được. Kỳ này có tất cả {{ p.total_count }} kiểm tra áp dụng.">
+      Đủ nguồn cho {{ p.sufficient_count }}/{{ p.predictable_count }} kiểm tra
+    </span>
+    {% if p.run_to_know_codes %}
+    <span class="badge muted" title="{{ p.run_to_know_codes|join(', ') }} — kiểm tra mở rộng không khai nguồn cần, chỉ biết đủ dữ liệu hay không sau khi chạy. Vẫn tính trong {{ p.total_count }} kiểm tra của kỳ.">
+      {{ p.run_to_know_codes|length }} kiểm tra biết khi chạy
+    </span>
+    {% endif %}
+    {% if p.stale %}
+    <span class="badge warning" title="Dữ liệu đã nạp không còn khớp bộ file của kỳ.">Dữ liệu đã cũ — cần nạp lại</span>
+    {% endif %}
+    {% if p.checks_run and p.score is not none %}
+    <span class="badge {{ tier_css_for(p.score) }}" data-results-stale="{{ 1 if p.results_stale else 0 }}">Rủi ro {{ p.score }}/1000</span>
+    {% endif %}
+    {% if p.results_stale %}
+    <span class="badge warning" title="Dữ liệu kỳ đã đổi sau lần chạy kiểm tra gần nhất. Hệ thống không tự chạy lại: lượt chạy dựng lại danh sách phát hiện nên trạng thái và ghi chú cán bộ đã đánh sẽ về “mới”.">Kết quả cũ — chạy lại kiểm tra</span>
+    {% endif %}
+  </header>
 
-  <div class="doc-year-body">
-    <div class="doc-period">
-      <div class="doc-period-view">
-        <span class="doc-period-label">Kỳ báo cáo:</span>
-        {% if yr.period_custom %}
-        <strong class="mono">{{ yr.period_from.strftime('%d/%m/%Y') }} – {{ yr.period_to.strftime('%d/%m/%Y') }}</strong>
-        <span class="badge {% if yr.period_manual %}warning{% else %}info{% endif %}">
-          {% if yr.period_manual %}sửa tay{% else %}tự đọc từ file{% endif %}</span>
-        {% else %}
-        <strong>Năm {{ yr.year }}</strong> <span class="text-muted">(dương lịch 01/01–31/12)</span>
-        {% endif %}
-        <details class="doc-period-edit">
-          <summary class="doc-period-toggle">✏️ Sửa kỳ</summary>
-          <form method="post" action="/companies/{{ company.slug or company.code }}/documents/period" class="doc-period-form">
-            <input type="hidden" name="year" value="{{ yr.year }}">
-            <label>Từ ngày <input type="date" name="period_from" value="{{ yr.period_from.isoformat() }}" required></label>
-            <label>Đến ngày <input type="date" name="period_to" value="{{ yr.period_to.isoformat() }}" required></label>
-            <button type="submit" class="btn btn-sm btn-primary">Lưu kỳ</button>
-          </form>
-          {% if yr.period_manual %}
-          <form method="post" action="/companies/{{ company.slug or company.code }}/documents/period" class="doc-period-reset">
-            <input type="hidden" name="year" value="{{ yr.year }}">
-            <input type="hidden" name="reset" value="1">
-            <button type="submit" class="btn btn-sm btn-secondary">↺ Về mặc định</button>
-          </form>
-          {% endif %}
-        </details>
-      </div>
-      {% if yr.period_manual %}
-      <p class="doc-period-hint text-muted">⚠️ Kỳ đã sửa tay — bấm <strong>Chạy kiểm tra</strong> để áp dụng cửa sổ kỳ mới (dữ liệu đã nạp không cần nạp lại).</p>
+  {% if p.window_custom %}
+  <div class="ds-window" id="{{ p.window_anchor }}">
+    <span class="ds-window-label">Kỳ báo cáo:</span>
+    <strong class="mono">{{ p.window_from.strftime('%d/%m/%Y') }} – {{ p.window_to.strftime('%d/%m/%Y') }}</strong>
+    <span class="badge {% if p.window_manual %}warning{% else %}info{% endif %}">
+      {% if p.window_manual %}sửa tay{% else %}theo niên độ doanh nghiệp{% endif %}
+    </span>
+    <details class="ds-window-edit">
+      <summary class="ds-window-toggle">Sửa cửa sổ kỳ</summary>
+      <form method="post" action="{{ p.window_url }}" class="ds-window-form">
+        <input type="hidden" name="year" value="{{ p.year }}">
+        <label>Từ ngày <input type="date" name="period_from" value="{{ p.window_from.isoformat() }}" required></label>
+        <label>Đến ngày <input type="date" name="period_to" value="{{ p.window_to.isoformat() }}" required></label>
+        <button type="submit" class="btn btn-sm btn-primary">Lưu kỳ</button>
+      </form>
+      {% if p.window_manual %}
+      <form method="post" action="{{ p.window_url }}" class="ds-window-reset">
+        <input type="hidden" name="year" value="{{ p.year }}">
+        <input type="hidden" name="reset" value="1">
+        <button type="submit" class="btn btn-sm btn-secondary">Về mặc định</button>
+      </form>
       {% endif %}
-    </div>
+    </details>
+  </div>
+  {% else %}
+  <details class="ds-window-edit ds-window" id="{{ p.window_anchor }}">
+    <summary class="ds-window-toggle">Kỳ báo cáo trùng năm dương lịch — sửa cửa sổ kỳ</summary>
+    <form method="post" action="{{ p.window_url }}" class="ds-window-form">
+      <input type="hidden" name="year" value="{{ p.year }}">
+      <label>Từ ngày <input type="date" name="period_from" value="{{ p.window_from.isoformat() }}" required></label>
+      <label>Đến ngày <input type="date" name="period_to" value="{{ p.window_to.isoformat() }}" required></label>
+      <button type="submit" class="btn btn-sm btn-primary">Lưu kỳ</button>
+    </form>
+  </details>
+  {% endif %}
 
-    <div class="doc-year-actions">
-      <form method="post" action="/companies/{{ company.slug or company.code }}/documents/ingest">
-        <input type="hidden" name="year" value="{{ yr.year }}">
-        <button type="submit" class="btn btn-sm {% if yr.has_files and not yr.has_data %}btn-primary{% else %}btn-secondary{% endif %}"
-                {% if not yr.has_files %}disabled title="Chưa có file để nạp"{% endif %}>⤵️ Nạp dữ liệu</button>
-      </form>
-      <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks">
-        <input type="hidden" name="year" value="{{ yr.year }}">
-        <button type="submit" class="btn btn-sm {% if yr.has_data and not yr.checks_run %}btn-primary{% else %}btn-secondary{% endif %}"
-                {% if not yr.has_data %}disabled title="Cần nạp dữ liệu trước"{% endif %}>▶️ Chạy kiểm tra</button>
-      </form>
-      {% if yr.has_data %}<a href="/companies/{{ company.slug or company.code }}/data?year={{ yr.year }}&table=m15" class="btn btn-sm btn-secondary">📋 Dữ liệu gốc</a>{% endif %}
-      {% if yr.checks_run %}<a href="/companies/{{ company.slug or company.code }}?year={{ yr.year }}" class="btn btn-sm btn-secondary">🔎 Phát hiện</a>{% endif %}
+  {# Ô thả file của kỳ (#88): một ô nhận MỌI file. Thuộc tính `multiple` là bắt buộc —
+     thiếu nó thì trình duyệt chỉ gửi một file và mọi sửa đổi phía máy chủ thành vô ích. #}
+  <form method="post" action="{{ p.upload_url }}" enctype="multipart/form-data" class="ds-drop" id="tha-{{ p.year }}">
+    <input type="hidden" name="year" value="{{ p.year }}">
+    <label class="ds-drop-zone" for="tha-file-{{ p.year }}">
+      <span class="ds-drop-title">Thả cả bộ file của kỳ {{ p.year }} vào đây</span>
+      <span class="ds-drop-hint text-muted">
+        Chọn được nhiều file cùng lúc. Hệ thống gợi ý loại cho từng file và nêu căn cứ;
+        cán bộ sửa lại trước khi nạp. Định dạng <code>.xls</code> / <code>.xlsx</code>.
+      </span>
+      <span class="ds-drop-chosen" hidden></span>
+      <input type="file" id="tha-file-{{ p.year }}" name="files" accept=".xls,.xlsx" multiple class="ds-drop-input">
+    </label>
+    <div class="ds-drop-actions">
+      <button type="submit" class="btn btn-sm btn-primary">Tải lên</button>
     </div>
+  </form>
 
-    {% if yr.coverage_gaps or yr.overlaps %}
-    <div class="alert alert-warning doc-coverage" role="status">
-      <ul class="doc-coverage-list">
-        {% for g in yr.coverage_gaps %}
-        <li>⚠️ Kỳ thiếu dữ liệu tờ khai từ <strong>{{ g[0].strftime('%d/%m/%Y') }} – {{ g[1].strftime('%d/%m/%Y') }}</strong> — nạp thêm file tờ khai của khoảng này (thường nằm ở file kết xuất theo năm dương lịch kề bên).</li>
-        {% endfor %}
-        {% if yr.overlaps %}
-        <li>⚠️ Cửa sổ kỳ năm {{ yr.year }} <strong>chồng lấn</strong> kỳ {{ yr.overlaps|join(', ') }} của cùng doanh nghiệp — một tờ khai có thể được đếm ở cả hai kỳ. Hợp lệ khi đây là kỳ chuyển tiếp đổi niên độ; nếu không, sửa lại cửa sổ.</li>
-        {% endif %}
-      </ul>
-    </div>
-    {% endif %}
-
-    {% if yr.coverage and yr.coverage.has_warning %}
-    <div class="alert alert-warning doc-coverage" role="status">
-      <p class="doc-coverage-lead">⚠️ <strong>Dòng tờ khai lệch cửa sổ kỳ</strong> — mọi dòng đều đã lưu, không dòng nào bị bỏ. Cảnh báo để cán bộ soát lại file nguồn.</p>
-      <ul class="doc-coverage-list">
-        {% if yr.coverage.out_of_window %}
-        <li><strong>{{ yr.coverage.out_of_window }}</strong> dòng nạp ở nhãn năm {{ yr.year }} nhưng ngày tờ khai nằm ngoài kỳ {{ yr.period_from.strftime('%d/%m/%Y') }} – {{ yr.period_to.strftime('%d/%m/%Y') }} — các dòng này thuộc kỳ khác khi chạy kiểm tra.</li>
-        {% endif %}
-        {% if yr.coverage.undated %}
-        <li><strong>{{ yr.coverage.undated }}</strong> dòng không có ngày tờ khai — quy theo nhãn kỳ nạp.</li>
-        {% endif %}
-        {% if yr.coverage.cross_label_duplicates %}
-        <li><strong>{{ yr.coverage.cross_label_duplicates }}</strong> dòng trùng khoá (số tờ khai · dòng hàng) với nhãn kỳ khác của cùng doanh nghiệp — hai bản kết xuất chồng nhau. Hệ thống KHÔNG tự loại: số lượng có thể lệch giữa hai bản, cán bộ sửa file nguồn rồi nạp lại.</li>
-        {% endif %}
-      </ul>
-    </div>
-    {% endif %}
-
-    {% if yr.review_gate %}
-    <div class="alert alert-warning doc-review-gate" role="status">
-      <p class="doc-review-gate-lead">⚠️ <strong>Cần xác nhận cột trước khi nạp</strong> — có cột đọc theo vị trí hoặc đẳng thức chưa đủ để phân biệt. Cảnh báo, KHÔNG chặn: bấm <strong>⤵️ Nạp dữ liệu</strong> để tiếp tục; kiểm tra vẫn chạy và phát hiện sẽ kèm cờ "dựa trên cột chưa xác nhận".</p>
-      <ul class="doc-review-gate-cols">
-        {% for c in yr.review_gate.columns %}
-        <li><span class="doc-review-gate-slot">{{ SLOT_LABEL_VI[c.slot].split(' — ')[0] }}</span> · <strong>{{ c.label }}</strong>{% if c.checks %} — ảnh hưởng: {{ c.checks|join(', ') }}{% endif %}</li>
-        {% endfor %}
-      </ul>
-      <div class="doc-review-gate-actions">
-        {% set ns = namespace(seen=[]) %}
-        {% for c in yr.review_gate.columns if c.file_id and c.file_id not in ns.seen %}
-        {% set ns.seen = ns.seen + [c.file_id] %}
-        <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ c.file_id }}/review" class="btn btn-sm btn-primary">🔎 Xem &amp; xác nhận cột ({{ SLOT_LABEL_VI[c.slot].split(' — ')[0] }})</a>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-
-    <ul class="doc-files">
-      {% for slot in SLOT_ORDER %}
-      {% set files = yr.slots[slot] %}
-      {% set is_bcct = slot == 'bcct' %}
-      <li class="doc-file-row">
-        <span class="doc-file-type">{{ SLOT_LABEL_VI[slot].split(' — ')[0] }}</span>
-        <div class="doc-file-items">
-          {% if files %}
-            {% for f in files %}
-            <span class="doc-file-item">
-              <span class="badge {{ DATA_FILE_STATUS_BADGE[f.parse_status] }} doc-file-badge">{{ DATA_FILE_STATUS_LABEL[f.parse_status] }}</span>
-              <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/preview" class="doc-file-name" title="Xem nội dung file">{{ f.original_filename }}</a>
-              {% if f.match_source == 'builtin-template' %}
-              <span class="badge info doc-file-badge" title="Cấu trúc file khớp một mẫu đã được kiểm và đưa vào hệ thống, nên không cần xác nhận lại vị trí cột.">📐 Khớp mẫu: {{ f.parse_detail_obj.template_name or f.template_id }}</span>
-              {% elif f.match_source == 'officer-map' %}
-              <span class="badge info doc-file-badge" title="Cán bộ đã xác nhận vị trí cột cho đúng cấu trúc này của doanh nghiệp — map lưu lại dùng cho các kỳ sau.">✅ Map đã xác nhận</span>
-              {% elif f.match_source %}
-              <span class="badge warning doc-file-badge" title="Không khớp mẫu nào có sẵn — vị trí cột đang suy từ từ khoá hoặc cột mặc định, cần cán bộ xác nhận.">❓ Không khớp — cần xác nhận cột</span>
-              {% endif %}
-              {% if f.parse_layout %}{% set pd = f.parse_detail_obj %}
-                {% if pd.review %}
-                <span class="badge {{ 'info' if pd.review == 'verified' else 'warning' }} doc-file-badge" title="{% if pd.review == 'verified' %}Mọi cột đọc đều tin được (khớp tiêu đề/đẳng thức đủ).{% else %}Có cột dựa trên vị trí hoặc đẳng thức chưa đủ — cần cán bộ xác nhận cột.{% endif %}">{{ 'Đã kiểm' if pd.review == 'verified' else 'Cần xác nhận' }}</span>
-                {% endif %}
-                {% if f.parse_layout == 'extended' %}
-                <span class="badge info doc-file-badge" title="Đọc theo bố cục mở rộng: suy vị trí cột từ dòng đánh số, chứng minh bằng đẳng thức {{ pd.formula }} (khớp {{ pd.matched }}/{{ pd.checked }} dòng).{% if pd.export_label %} Cột xuất khẩu chọn theo nhãn: “{{ pd.export_label|replace('\n',' ')|trim }}”.{% endif %}">🧭 bố cục mở rộng · đẳng thức {{ pd.matched }}/{{ pd.checked }}{% if pd.export_col is defined %} · XK cột {{ pd.export_col }}{% endif %}</span>
-                {% elif f.parse_layout == 'labeled' %}
-                <span class="badge info doc-file-badge" title="Chọn cột định mức theo nhãn: “{{ pd.norm_label|replace('\n',' ')|trim }}” (cột {{ pd.norm_col }}), thay cho cột định mức kỹ thuật (cột {{ pd.technical_col }}).">🧭 ĐM thực tế · cột {{ pd.norm_col }}</span>
-                {% endif %}
-              {% endif %}
-              <span class="doc-file-meta">{{ human_size(f.size_bytes) }}{% if f.row_count is not none %} · {{ fmt_int(f.row_count) }} dòng{% endif %}</span>
-              {% if f.parse_message %}<span class="doc-file-msg" title="{{ f.parse_message }}">⚠️</span>{% endif %}
-              <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/preview" class="doc-mini-btn" title="Xem nội dung">👁</a>
-              <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/download" class="doc-mini-btn" title="Tải xuống">↓</a>
-              {% if f.parse_status == 'ok' and f.parse_detail_obj.get('column_map') %}
-              <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/review" class="doc-mini-btn" title="Sửa vị trí cột — chạy lại các kiểm tra đọc cột đã đổi">✏️ Sửa cột</a>
-              {% elif f.parse_status == 'error' %}
-              {# Đọc hỏng thường là chọn nhầm/không nhận ra trang tính. Không có lối vào màn
-                 này thì file bế tắc: không có bố cục cột để sửa, cũng không chỉ được trang. #}
-              <a href="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/review" class="doc-mini-btn" title="Hệ thống không đọc được file — chỉ đúng trang tính cần đọc rồi nạp lại">📄 Chọn trang tính</a>
-              {% endif %}
-              <form method="post" action="/companies/{{ company.slug or company.code }}/documents/file/{{ f.id }}/delete"
-                    class="doc-mini-form" onsubmit="return confirm('Xoá file {{ f.original_filename }}?');">
-                <button type="submit" class="doc-mini-btn" title="Xoá">🗑</button>
-              </form>
-            </span>
-            {% endfor %}
-          {% else %}
-            <span class="doc-file-none">— chưa có file —</span>
-          {% endif %}
+  {% if p.pending %}
+  <div class="ds-part ds-pending">
+    <h3 class="ds-part-title">Chờ cán bộ chọn loại <span class="badge muted">{{ p.pending|length }}</span></h3>
+    <p class="ds-part-hint text-muted">
+      Tên file không suy được loại — file quá nặng để mở ra dò, hoặc đã mở mà không khớp
+      biểu quyết toán nào. Chọn loại thì file mới vào hệ thống.
+    </p>
+    <ul class="ds-file-list">
+      {% for w in p.pending %}
+      <li class="ds-file ds-file-flagged">
+        <div class="ds-file-main">
+          <span class="ds-file-name">{{ w.name }}</span>
+          <span class="ds-file-size text-muted mono">{{ human_size(w.size_bytes) }}</span>
         </div>
-        <form method="post" action="/companies/{{ company.slug or company.code }}/documents/upload"
-              enctype="multipart/form-data" class="doc-upload-inline">
-          <input type="hidden" name="year" value="{{ yr.year }}">
-          <input type="hidden" name="slot" value="{{ slot }}">
-          <label class="doc-upload-link">
-            {% if files and not is_bcct %}↻ Thay{% elif is_bcct %}+ Thêm tờ khai{% else %}📤 Tải lên{% endif %}
-            <input type="file" name="file" accept=".xls,.xlsx" class="doc-upload-input" onchange="this.form.submit()">
-          </label>
+        <form method="post" action="{{ p.type_url }}" class="ds-file-assign">
+          <input type="hidden" name="year" value="{{ p.year }}">
+          <input type="hidden" name="path" value="{{ w.rel_path }}">
+          <select name="slot" class="form-select form-select-sm" aria-label="Loại tài liệu">
+            {% for slot in SLOT_ORDER %}<option value="{{ slot }}">{{ SLOT_LABEL_VI[slot].split(' — ')[0] }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="btn btn-sm btn-primary">Đặt loại</button>
         </form>
       </li>
       {% endfor %}
     </ul>
   </div>
-</details>
+  {% endif %}
+
+  {% if p.ingest_locked %}
+  <p class="ds-lock" role="alert">{{ p.ingest_lock_message }}</p>
+  {% endif %}
+
+  <div class="ds-period-actions">
+    <form method="post" action="{{ p.ingest_url }}">
+      <input type="hidden" name="year" value="{{ p.year }}">
+      <button type="submit" class="btn btn-sm {% if p.has_files and not p.has_data and not p.ingest_locked %}btn-primary{% else %}btn-secondary{% endif %}"
+              {% if not p.has_files %}disabled title="Chưa có file để nạp"
+              {% elif p.ingest_locked %}disabled title="{{ p.ingest_lock_message }}"{% endif %}>Nạp dữ liệu</button>
+    </form>
+    <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks">
+      <input type="hidden" name="year" value="{{ p.year }}">
+      <button type="submit" class="btn btn-sm {% if p.has_data and not p.checks_run %}btn-primary{% else %}btn-secondary{% endif %}"
+              {% if not p.has_data %}disabled title="Cần nạp dữ liệu trước"{% endif %}>Chạy kiểm tra</button>
+    </form>
+    {% if p.has_data %}<a href="/companies/{{ company.slug or company.code }}/data?year={{ p.year }}&table=m15" class="btn btn-sm btn-secondary">Dữ liệu gốc</a>{% endif %}
+    <a href="{{ p.findings_url }}" class="btn btn-sm btn-secondary">Phát hiện kỳ {{ p.year }}</a>
+  </div>
+
+  {# Phản hồi lượt nạp ở lại đây (#89) — không chuyển hướng sang trang hàng đợi.
+     Bộ đếm poll (ingest-poll.js) đổ lại đúng khối này khi trạng thái đổi. #}
+  {% set ing = ingests.get(p.year) %}
+  <div class="ds-ingest-slot" data-ingest-year="{{ p.year }}"
+       data-ingest-active="{{ 1 if (ing and ing.active) else 0 }}">
+    {% if ing and ing.visible %}
+    <div class="ds-ingest ds-ingest-{{ ing.tone }}">
+      <p class="ds-ingest-title">
+        {% if ing.active %}<span class="ds-ingest-spin" aria-hidden="true"></span>{% endif %}
+        {{ ing.title }}
+      </p>
+      <p class="ds-ingest-detail">{{ ing.detail }}</p>
+      {% if ing.notes %}
+      <ul class="ds-ingest-notes">
+        {% for note in ing.notes %}<li>{{ note }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if ing.actions %}
+      <div class="ds-ingest-actions">
+        {% for a in ing.actions %}
+          {% if a.kind == 'post' %}
+          <form method="post" action="{{ a.url }}">
+            <input type="hidden" name="year" value="{{ a.year }}">
+            <button type="submit" class="btn btn-sm btn-primary">{{ a.label }}</button>
+          </form>
+          {% else %}
+          <a href="{{ a.url }}" class="btn btn-sm btn-primary">{{ a.label }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if p.files %}
+  <div class="ds-part ds-types">
+    <h3 class="ds-part-title">Số dòng theo loại tài liệu</h3>
+    <ul class="ds-type-list">
+      {% for d in p.doc_types %}
+      <li class="ds-type{% if not d.file_count %} ds-type-absent{% endif %}">
+        <span class="ds-type-label">{{ d.short_label }}</span>
+        <span class="ds-type-count mono">
+          {%- if d.row_count is none %}chưa nạp{% else %}{{ fmt_int(d.row_count) }} dòng{% endif -%}
+        </span>
+        {% if d.row_count is not none and not d.has_rows %}
+        {# Lượt nạp dừng ở cổng xác nhận cột vẫn ghi số dòng đọc được lên bản ghi
+           file, trong khi kỳ chưa nhận dòng nào. Không nói rõ thì con số này mâu
+           thuẫn với chính câu vướng mắc bên dưới. #}
+        <span class="ds-type-pending">đã đọc, chưa ghi vào kỳ</span>
+        {% endif %}
+        <span class="ds-type-files text-muted">
+          {%- if d.file_count %}{{ d.file_count }} file{% else %}chưa có file{% endif -%}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="ds-part-hint text-muted">
+      Số dòng là của cả kỳ cho từng loại, không của từng file — một loại tách làm nhiều
+      file vẫn là một con số.
+    </p>
+  </div>
+
+  <div class="ds-part ds-files">
+    <h3 class="ds-part-title">File của kỳ <span class="badge muted">{{ p.files|length }}</span></h3>
+    <ul class="ds-file-list">
+      {% for f in p.files %}
+      <li class="ds-file{% if not f.plain %} ds-file-flagged{% endif %}">
+        <div class="ds-file-main">
+          <a href="{{ f.open_url }}" class="ds-file-name">{{ f.name }}</a>
+          <span class="ds-file-size text-muted mono">{{ human_size(f.size_bytes) }}</span>
+          {% for label in f.slot_labels %}<span class="badge muted ds-file-slot">{{ label }}</span>{% endfor %}
+        </div>
+        {% if not f.plain %}
+        <div class="ds-file-notes">
+          {% if f.unreadable %}<p class="ds-file-note ds-file-note-error">Hệ thống đọc không được file này.</p>{% endif %}
+          {% if f.needs_column_review %}<p class="ds-file-note">Còn cột cần xác nhận — mở trang file để xác nhận vị trí cột rồi nạp lại.</p>{% endif %}
+          {% for note in f.notes %}<p class="ds-file-note">{{ note }}</p>{% endfor %}
+        </div>
+        {% endif %}
+        <div class="ds-file-assigns">
+          {# Gợi ý loại kèm CĂN CỨ. "Nhận ra" chỉ dành cho file đã mở và khớp bố cục;
+             khớp tên là gợi ý, vì tên do người gõ. #}
+          <form method="post" action="{{ p.type_url }}" class="ds-file-assign">
+            <input type="hidden" name="year" value="{{ p.year }}">
+            <input type="hidden" name="path" value="{{ f.rel_path }}">
+            <label class="ds-assign-label">Loại
+              <select name="slot" class="form-select form-select-sm">
+                {% for slot in SLOT_ORDER %}
+                <option value="{{ slot }}"{% if slot in f.slots %} selected{% endif %}>{{ SLOT_LABEL_VI[slot].split(' — ')[0] }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            {% if f.basis_label %}<span class="ds-assign-basis text-muted">{{ f.basis_label }}</span>{% endif %}
+            <button type="submit" class="btn btn-sm btn-secondary">Đổi loại</button>
+          </form>
+          {% if p.multi_book and f.is_settlement %}
+          <form method="post" action="{{ p.book_url }}" class="ds-file-assign">
+            <input type="hidden" name="year" value="{{ p.year }}">
+            <input type="hidden" name="path" value="{{ f.rel_path }}">
+            <label class="ds-assign-label">Sổ quyết toán
+              <select name="book" class="form-select form-select-sm">
+                <option value="">— chưa gán —</option>
+                {% for b in p.book_options %}
+                <option value="{{ b }}"{% if f.book == b %} selected{% endif %}>{{ book_label(b) }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit" class="btn btn-sm {% if not f.book %}btn-primary{% else %}btn-secondary{% endif %}">Gán sổ</button>
+          </form>
+          {% endif %}
+        </div>
+        <div class="ds-file-actions">
+          <a href="{{ f.open_url }}" class="btn btn-sm btn-secondary">Mở</a>
+          <a href="{{ f.download_url }}" class="btn btn-sm btn-secondary">Tải xuống</a>
+          <form method="post" action="{{ f.delete_url }}"
+                onsubmit="return confirm('Xoá file {{ f.name }} khỏi hệ thống?');">
+            <button type="submit" class="btn btn-sm btn-secondary ds-file-delete">Xoá</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% for g in p.groups %}{% if g.items %}
+  <div class="ds-group ds-group-{{ 'counted' if g.counted else 'uncounted' }}">
+    <h3 class="ds-group-title">
+      {{ g.title }} <span class="badge muted">{{ g.items|length }}</span>
+    </h3>
+    <p class="ds-group-hint text-muted">{{ g.hint }}</p>
+    <ul class="ds-blockers">
+      {% for item in g.items %}
+      <li class="ds-blocker">
+        <div class="ds-blocker-text">
+          <span>{{ item.message }}</span>
+          {% if item.check_codes %}
+          <span class="ds-blocker-codes text-muted">Ảnh hưởng: {{ item.check_codes|join(', ') }}</span>
+          {% endif %}
+        </div>
+        <div class="ds-blocker-action">
+          {% if item.action.kind == 'upload' %}
+          <form method="post" action="{{ item.action.url }}" enctype="multipart/form-data" class="ds-upload">
+            <input type="hidden" name="year" value="{{ item.action.year }}">
+            <input type="hidden" name="slot" value="{{ item.action.slot }}">
+            <label class="btn btn-sm btn-primary ds-upload-pick">
+              {{ item.action.label }}
+              <input type="file" name="file" accept=".xls,.xlsx" class="ds-upload-input" onchange="this.form.submit()">
+            </label>
+          </form>
+          {% elif item.action.kind == 'ingest' %}
+          <form method="post" action="{{ item.action.url }}">
+            <input type="hidden" name="year" value="{{ item.action.year }}">
+            <button type="submit" class="btn btn-sm btn-primary">{{ item.action.label }}</button>
+          </form>
+          {% elif item.action.url %}
+          <a href="{{ item.action.url }}" class="btn btn-sm {% if g.counted %}btn-primary{% else %}btn-secondary{% endif %}">{{ item.action.label }}</a>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}{% endfor %}
+
+</section>
 {% endfor %}
+
+<div id="documents-root"
+     data-ingest-url="/companies/{{ company.slug or company.code }}/documents/ingest.json"></div>
+<script src="/static/ingest-poll.js?v={{ app_version_string | urlencode }}" defer></script>
+
+<script>
+// Ô thả file (#88): kéo thả và hiện tên file đã chọn. Không phân loại ở đây — việc
+// gán loại chạy phía máy chủ, viết lại logic bằng JS là dựng đường thứ hai lệch được.
+(function () {
+  document.querySelectorAll('.ds-drop').forEach(function (form) {
+    var zone = form.querySelector('.ds-drop-zone');
+    var input = form.querySelector('.ds-drop-input');
+    var chosen = form.querySelector('.ds-drop-chosen');
+    function show() {
+      var n = input.files ? input.files.length : 0;
+      if (!n) { chosen.hidden = true; zone.classList.remove('has-file'); return; }
+      chosen.textContent = n + ' file: ' + Array.prototype.map.call(
+        input.files, function (f) { return f.name; }).join(', ');
+      chosen.hidden = false;
+      zone.classList.add('has-file');
+    }
+    input.addEventListener('change', show);
+    zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', function () { zone.classList.remove('dragover'); });
+    zone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        input.files = e.dataTransfer.files;
+        show();
+      }
+    });
+  });
+})();
+</script>
 
 {% endblock %}

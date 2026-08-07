@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 # Re-export để nơi dùng registry không phải nhớ hai module cho cùng một khái niệm.
-from app.checks.sources import SOURCE_LABEL_VI, SOURCES  # noqa: F401
+# Nhãn hiển thị KHÔNG re-export ở đây: nguồn duy nhất là `SLOT_LABEL_VI` (#98).
+from app.checks.sources import SOURCES  # noqa: F401
 
 
 class Severity(StrEnum):

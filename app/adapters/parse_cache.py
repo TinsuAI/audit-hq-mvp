@@ -39,8 +39,28 @@ def parse_cache() -> Iterator[None]:
         _CACHE.reset(token)
 
 
+def _map_key(officer_maps: dict[str, dict[str, Any]] | None) -> tuple:
+    """Khoá theo NỘI DUNG map cột, không theo danh tính dict.
+
+    Một lượt nạp nạp map cán bộ ở hai chỗ (trước phiên DB của `ingest`, rồi trong
+    phiên khi lập kế hoạch theo sổ). Hai dict khác danh tính mà cùng nội dung phải
+    trúng cùng một ô nhớ, nếu không mỗi file lại mở hai lần — đúng thứ ADR #24 sửa.
+
+    Giá trị mỗi trường có thể là danh sách cột (bố cục mở rộng, #95) — đổi sang tuple
+    thì khoá mới băm được.
+    """
+    if not officer_maps:
+        return ()
+    return tuple(
+        (sig, tuple(sorted(
+            (f, tuple(v) if isinstance(v, list | tuple) else v) for f, v in cols.items()
+        )))
+        for sig, cols in sorted(officer_maps.items())
+    )
+
+
 def memoize_parse(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Nhớ kết quả parse theo (hàm, đường dẫn, mtime, size, sheet, năm).
+    """Nhớ kết quả parse theo (hàm, đường dẫn, mtime, size, sheet, năm, map cán bộ).
 
     Ngoài phạm vi ``parse_cache()`` thì gọi thẳng — CLI và test không đổi hành vi.
     Lỗi cũng được nhớ: `SheetNotFound` là kết luận về file, không phải sự cố nhất
@@ -48,19 +68,22 @@ def memoize_parse(fn: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     @functools.wraps(fn)
-    def wrapper(path, sheet=None, year=None):
+    def wrapper(path, sheet=None, year=None, officer_maps=None):
         cache = _CACHE.get()
         if cache is None:
-            return fn(path, sheet, year)
+            return fn(path, sheet, year, officer_maps)
         try:
             st = Path(path).stat()
         except OSError:
-            return fn(path, sheet, year)
-        key = (fn.__name__, str(path), st.st_mtime_ns, st.st_size, sheet, year)
+            return fn(path, sheet, year, officer_maps)
+        key = (
+            fn.__name__, str(path), st.st_mtime_ns, st.st_size, sheet, year,
+            _map_key(officer_maps),
+        )
         hit = cache.get(key)
         if hit is None:
             try:
-                hit = ("ok", fn(path, sheet, year))
+                hit = ("ok", fn(path, sheet, year, officer_maps))
             except Exception as e:  # noqa: BLE001 — nhớ lỗi để bước sau không mở lại file
                 hit = ("err", e)
             cache[key] = hit

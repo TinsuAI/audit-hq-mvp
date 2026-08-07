@@ -29,6 +29,10 @@ FISCAL_START_MONTHS = tuple(range(1, 13))
 # đầu tiên hoặc kỳ cuối cùng được gộp với kỳ kề, kỳ gộp KHÔNG QUÁ 15 tháng.
 MAX_PERIOD_MONTHS = 15
 
+# Khoảng nhãn kỳ hệ thống nhận. Không phải giới hạn nghiệp vụ, chỉ là biên chặn gõ
+# nhầm (năm đầu nộp BCQT có cận dưới riêng, sớm hơn khoảng này).
+YEAR_MIN, YEAR_MAX = 2015, 2030
+
 
 def fiscal_bounds(period_year: int, fiscal_start_month: int) -> tuple[date, date]:
     """Cửa sổ mặc định của kỳ mang nhãn `period_year` theo niên độ DN.
@@ -199,6 +203,29 @@ def current_data_version(session, company_id: int, period_year: int) -> int:
         )
     )
     return row if row is not None else 0
+
+
+def bump_data_version(session, company_id: int, period_year: int) -> int:
+    """Dời `data_version` của (DN, kỳ) lên một, trả giá trị mới. KHÔNG commit.
+
+    Người gọi commit — bump nằm CÙNG transaction với thay đổi sinh ra nó (xoá file,
+    thay file, sửa cửa sổ kỳ, ingest), như ràng buộc nguyên tử của WS3.
+
+    Kỳ chưa có dòng `company_periods` vẫn dời được: tạo dòng với cửa sổ để rỗng
+    (`resolve_period_bounds` suy sau), nếu không thì xoá file ở một kỳ chưa từng nạp
+    không để lại dấu vết nào.
+    """
+    row = session.scalar(
+        select(CompanyPeriod).where(
+            CompanyPeriod.company_id == company_id,
+            CompanyPeriod.period_year == period_year,
+        )
+    )
+    if row is None:
+        row = CompanyPeriod(company_id=company_id, period_year=period_year)
+        session.add(row)
+    row.data_version = (row.data_version or 0) + 1
+    return row.data_version
 
 
 def resolve_period_bounds(

@@ -10,9 +10,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
 
-from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company
 
@@ -46,20 +44,16 @@ def _boom_http_for_tests() -> dict:
     raise HTTPException(status_code=500, detail=BOOM_SECRET)
 
 
-def _setup():
-    import app.database as dbmod
-    from app.auth_users import create_user, seed_default_admin
+@pytest.fixture
+def seeded_db(app_db):
+    """DN trong/ngoài phạm vi + một cán bộ chỉ được gán DN trong phạm vi.
+
+    Admin `admin/admin` do `app_db` seed sẵn.
+    """
+    from app.auth_users import create_user
     from app.models import user_companies
 
-    eng = dbmod.create_engine(
-        "sqlite://", connect_args={"check_same_thread": False},
-        poolclass=StaticPool, future=True,
-    )
-    ses = dbmod.sessionmaker(bind=eng, autoflush=False, autocommit=False, future=True)
-    dbmod.engine, dbmod.SessionLocal = eng, ses
-    Base.metadata.create_all(eng)
-    with ses() as db:
-        seed_default_admin(db, "admin", "admin")
+    with app_db.SessionLocal() as db:
         off = create_user(db, "canbo", "matkhau123", "officer")
         trong = Company(code="DN_TRONG", tax_id="1000000001", name="DN trong phạm vi")
         ngoai = Company(code="DN_NGOAI", tax_id="1000000002", name="DN ngoài phạm vi")
@@ -67,23 +61,7 @@ def _setup():
         db.flush()
         db.execute(user_companies.insert().values(user_id=off.id, company_id=trong.id))
         db.commit()
-    return eng
-
-
-def _teardown(eng):
-    import app.database as dbmod
-
-    eng.dispose()
-    dbmod.engine, dbmod.SessionLocal = engine, SessionLocal
-
-
-@pytest.fixture
-def db_engine():
-    eng = _setup()
-    try:
-        yield eng
-    finally:
-        _teardown(eng)
+    return app_db
 
 
 def _login(client: TestClient, user: str = "admin", password: str = "admin") -> None:
@@ -92,14 +70,14 @@ def _login(client: TestClient, user: str = "admin", password: str = "admin") -> 
 
 
 @pytest.fixture
-def client(db_engine):
+def client(seeded_db):
     c = TestClient(app)
     _login(c)
     return c
 
 
 @pytest.fixture
-def officer(db_engine):
+def officer(seeded_db):
     c = TestClient(app)
     _login(c, "canbo", "matkhau123")
     return c
@@ -268,7 +246,7 @@ def test_chat_api_keeps_json_on_error(client):
 # --- Lỗi 500 ------------------------------------------------------------------
 
 
-def test_internal_error_hides_details_from_browser(db_engine):
+def test_internal_error_hides_details_from_browser(seeded_db):
     c = TestClient(app, raise_server_exceptions=False)
     _login(c)
     r = c.get(BOOM_PATH, headers=BROWSER)
@@ -279,7 +257,7 @@ def test_internal_error_hides_details_from_browser(db_engine):
     assert 'href="/companies"' in r.text
 
 
-def test_internal_error_hides_details_from_api_client(db_engine):
+def test_internal_error_hides_details_from_api_client(seeded_db):
     c = TestClient(app, raise_server_exceptions=False)
     _login(c)
     r = c.get(BOOM_PATH, headers=API)
@@ -308,7 +286,7 @@ def test_http_exception_500_does_not_show_its_detail_to_the_api_client(client):
 # --- Chuyển hướng đăng nhập không được biến thành trang lỗi -------------------
 
 
-def test_anonymous_request_still_redirects_to_login(db_engine):
+def test_anonymous_request_still_redirects_to_login(seeded_db):
     c = TestClient(app)
     r = c.get("/companies/DN_TRONG", headers=BROWSER, follow_redirects=False)
     assert r.status_code == 303

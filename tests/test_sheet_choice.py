@@ -20,8 +20,9 @@ import app.database as dbmod
 from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
+from app.pipeline.file_page import file_page_url
 from app.settings import settings
-from tests.helpers import drain_jobs
+from tests.helpers import drain_jobs, upload_and_ingest
 
 _M15_HEADER = [
     "STT", "Mã NVL", "Tên NVL", "Đơn vị tính", "Tồn đầu kỳ", "Nhập trong kỳ",
@@ -92,15 +93,22 @@ def _login(client):
 
 
 def _upload(client):
-    r = client.post(
-        "/companies/DN_SHEET/upload",
-        data={"year": "2024"},
-        files={"m15": ("Mau15_NVL.xlsx", _two_sheet_m15(),
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        follow_redirects=False,
-    )
+    r = upload_and_ingest(client, "DN_SHEET", "Mau15_NVL.xlsx", _two_sheet_m15())
     assert r.status_code == 303
     drain_jobs()
+
+
+def _grid_mount(text: str) -> dict[str, str]:
+    """Thuộc tính `data-*` của điểm neo lưới — hợp đồng giữa trang và lưới cuộn."""
+    import html as _html
+    import re
+
+    tag = re.search(r"<div[^>]*id=\"cell-grid\"[^>]*>", text)
+    assert tag, "trang không có điểm neo lưới"
+    return {
+        m.group(1): _html.unescape(m.group(3))
+        for m in re.finditer(r"data-([a-z-]+)=([\"'])(.*?)\2", tag.group(0))
+    }
 
 
 def _m15_row():
@@ -142,14 +150,21 @@ def test_review_screen_previews_the_parsed_sheet_and_offers_the_others(tmp_path)
         _upload(client)
         fid, _detail, _ = _m15_row()
 
-        html = client.get(f"/companies/DN_SHEET/documents/file/{fid}/review").text
+        html = client.get(file_page_url("DN_SHEET", fid)).text
         assert 'name="sheet"' in html
         assert "Trang tính (sheet) được đọc" in html
-        # Lưới xem trước là trang ĐƯỢC ĐỌC, và mọi trang đều chọn lại được.
-        assert "trang tính <strong>BCQT_NVL</strong>" in html
+        # Lưới mở ở trang ĐƯỢC ĐỌC, và mọi trang đều chọn lại được.
+        attrs = _grid_mount(html)
+        assert attrs["parsed-sheet"] == "BCQT_NVL"
+        assert attrs["sheet"] == "1"           # "Phụ lục" đứng trước trong workbook
         assert '<option value="Phụ lục"' in html
         assert '<option value="BCQT_NVL_KY_SAU"' in html
-        assert "MAT0" in html                  # ô dữ liệu của trang được đọc
+        # Ô của trang được đọc đi qua điểm cuối cửa sổ, không dựng sẵn trong HTML.
+        cells = client.get(
+            f"/companies/DN_SHEET/documents/file/{fid}/cells?sheet=1"
+        ).json()
+        assert cells["sheet_name"] == "BCQT_NVL"
+        assert any("MAT0" in [str(v) for v in row] for row in cells["rows"])
         assert "Trang phụ, không phải biểu Mẫu 15" not in html
     finally:
         _teardown(new_engine, prev_root)
@@ -207,13 +222,7 @@ def test_unreadable_file_still_offers_the_sheet_picker(tmp_path):
     try:
         client = TestClient(app)
         _login(client)
-        client.post(
-            "/companies/DN_SHEET/upload",
-            data={"year": "2024"},
-            files={"m15": ("Mau15_NVL.xlsx", _unreadable_m15(),
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-            follow_redirects=False,
-        )
+        upload_and_ingest(client, "DN_SHEET", "Mau15_NVL.xlsx", _unreadable_m15())
         drain_jobs()
 
         with dbmod.SessionLocal() as db:
@@ -224,8 +233,8 @@ def test_unreadable_file_still_offers_the_sheet_picker(tmp_path):
 
         # Trang tài liệu phải có lối vào, và màn review phải có ô chọn trang.
         docs = client.get("/companies/DN_SHEET/documents").text
-        assert f"/documents/file/{fid}/review" in docs
-        html = client.get(f"/companies/DN_SHEET/documents/file/{fid}/review").text
+        assert f'href="{file_page_url("DN_SHEET", fid)}"' in docs
+        html = client.get(file_page_url("DN_SHEET", fid)).text
         assert 'name="sheet"' in html
         assert "không tự nhận ra" in html
         assert '<option value="Dữ liệu"' in html
@@ -234,7 +243,7 @@ def test_unreadable_file_still_offers_the_sheet_picker(tmp_path):
         r = client.post(f"/companies/DN_SHEET/documents/file/{fid}/review",
                         data={"sheet": "Dữ liệu"}, follow_redirects=False)
         assert r.status_code == 303
-        assert r.headers["location"].startswith("/jobs/")
+        assert r.headers["location"].endswith("/documents#ky-2024")
         drain_jobs()
 
         with dbmod.SessionLocal() as db:

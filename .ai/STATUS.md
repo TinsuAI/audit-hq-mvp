@@ -1,5 +1,62 @@
 # STATUS — Audit-HQ MVP
 
+> **(2026-08-07 — THIẾT KẾ LẠI LUỒNG TẢI LÊN → NẠP DỮ LIỆU. XONG TOÀN BỘ.
+> [PR #105](https://github.com/TinsuAI/audit-hq-mvp/pull/105) mở, chưa merge ·
+> [PR #96](https://github.com/TinsuAI/audit-hq-mvp/pull/96) tách riêng, deploy độc lập được):**
+>
+> Spec **issue #80** · **ADR #24, #25, #26, #27** · 21 vé đóng: #81–#95, #97–#104, #106, #107.
+> Nhánh `feat/upload-ingest-wave1`, suite xanh, ruff sạch, **một alembic head `f3a4b5c6d7e8`**.
+> **Thứ tự merge bắt buộc: #96 TRƯỚC, #105 SAU** — commit trang lỗi nằm ở cả hai.
+>
+> **ĐỔI ĐỊNH NGHĨA NỀN:** "đủ dữ liệu" = **mọi kiểm tra áp dụng được đều có đủ nguồn Tầng 1**,
+> không phải "đủ 4 loại". Nhãn `Đã nạp · X/4 loại` bị xoá. Vướng mắc xếp theo **cách gỡ** (3 lớp),
+> không theo lý do. Đo: 10 lần `not_evaluable` chia **1 / 6 / 3** — 9/10 KHÔNG gỡ bằng file kỳ đó.
+>
+> **NĂM LỖI IM LẶNG ĐANG SỐNG TRÊN PROD, bắt được khi làm:**
+> 1. **Không có trình xử lý lỗi nào** (`grep exception_handler app/` rỗng) — mọi lỗi đổ JSON thô;
+>    500 lộ dấu vết ngăn xếp. → PR #96, đã đo trên server thật.
+> 2. **Ghim trang tính làm hỏng bố cục mở rộng** — nhánh đọc mở rộng chỉ chạy khi chưa ghim trang,
+>    mà xác nhận cột thì ghim. Lượt nạp NGAY SAU khi cán bộ xác nhận đọc lệch mọi trường, im lặng.
+> 3. **`match_source` rỗng 15/15 file** — 3/4 nhãn truy nguồn chưa bao giờ hiện.
+> 4. **Xoá file không dời `data_version`** — kỳ phục vụ số của bộ file đã biến mất.
+> 5. **Rò teardown giữa test** (`_restore_db` import trong hàm → khôi phục chính object đã vá lên
+>    chính nó sau `dispose()`). Thứ tự chữ cái che nó; xáo seed 777777 lộ ra. → #107.
+>
+> **BA GIẢ ĐỊNH BỊ SỐ ĐO LẬT:** cổng review **đã** dừng đúng một lần mỗi (DN × cấu trúc),
+> `has_saved_map` là tham số chết — KHÔNG phải sửa ADR #18 · hạn mức 25MB **không** do chi phí mở
+> file (`load_workbook(read_only)` 71,3MB = **1,19 s**) mà do đọc tuần tự **chỉ đi tới** (dòng
+> 200.000 = **3,87 s**) · **đuôi file nói dối**: 493 file = 268 xlsx thật · 185 xls thật ·
+> **38 file đuôi `.xls` thật ra là XML SpreadsheetML** (190,8MB) · 2 hỏng.
+>
+> **LỖI TRONG PHƯƠNG PHÁP KIỂM CHỨNG CỦA CHÍNH TÔI:** `.venv` **không có `pytest-randomly`**, mà
+> `pytest -p no:<plugin-không-có>` được nhận **im lặng**. Chỉ thị "chạy cả hai thứ tự" ở #99/#101
+> thực chất là **một kiểu chạy hai lần**. → #106 thêm `--shuffle` / `--shuffle-seed=N` viết trong
+> repo (KHÔNG đổi `.venv`), in seed để tái hiện. Ghi vào `AGENTS.md` cả cái bẫy đó.
+>
+> **THAY ĐỔI HỢP ĐỒNG:** `POST /documents/ingest` nay `gate=True` (từ khi ô thả không tự xếp job,
+> đây là đường nạp duy nhất trên web) · nạp xong về **dòng kỳ**, không sang `/jobs/{id}` · hai
+> trang mỗi file **gộp làm một**, hai địa chỉ cũ 302 · 2 migration mới.
+>
+> **CỐ Ý KHÔNG LÀM:** không tự chạy lại kiểm tra sau khi nạp (`run_checks` xoá rồi dựng lại
+> `Finding` → `status`/`notes` cán bộ về `new`; phơi nhiễm hiện = 0 vì 15.356 finding đều `new`,
+> thành thật khi thí điểm bắt đầu) · không giấu điểm rủi ro khi kết quả cũ (DN rơi khỏi bảng xếp
+> hạng vì có người tải file lên = đúng sai lầm #65).
+>
+> **ẢNH E2E:** 8 ảnh `.ai/features/2026-08-07-upload-ingest-redesign/` + 8 ảnh
+> `.ai/features/2026-08-07-luoi-cuon-xem-truoc/`, đều **dữ liệu bịa**, có `ui_smoke.py` sinh lại.
+>
+> **CÒN MỞ:** **#108** hai file test vá `app.database` không khôi phục — **rò IM LẶNG, không nổ**
+> (không `dispose()` nên engine rò vẫn giữ bảng, test sau đọc/ghi nhầm DB mà vẫn xanh) ·
+> **#93 cần người chạy**: DB dev phải `alembic upgrade head`, và phải dựng thư mục
+> `data/PILOT_004/2025/` trước khi gán lại sổ — xem `docs/gan-lai-so-quyet-toan.md`.
+>
+> **DB DEV** đã migrate `e2f3a4b5c6d7` (backup WAL-safe `audit_hq.sqlite.bak-pre-remedy-*`,
+> integrity ok, 7 DN, 15.356 finding nguyên vẹn). **CHƯA** có `f3a4b5c6d7e8`.
+> **28 worktree cũ đã dọn**, giữ nguyên toàn bộ nhánh (mọi nhánh đều còn commit chưa merge).
+> **DB DEV đã migrate** lên `e2f3a4b5c6d7` (backup WAL-safe `audit_hq.sqlite.bak-pre-remedy-*`,
+> integrity ok, 7 DN, 15.356 finding nguyên vẹn). **28 worktree cũ đã dọn**, giữ nguyên toàn bộ
+> nhánh — mọi nhánh đều còn commit chưa merge, nặng nhất 48/43/43 commit.
+
 > **PROD (2026-08-06 chiều — build `903685a`, alembic `d9e0f1a2b3c4`):** ba PR đã merge và
 > deploy trong ngày, khởi nguồn từ lỗi **524** khi cán bộ tải bộ file 006 lên demo.
 >

@@ -28,7 +28,11 @@ from app.checks.not_evaluable import (
     truncate_reason,
 )
 from app.checks.registry import missing_sources
-from app.checks.sources import available_sources, missing_sources_reason
+from app.checks.sources import (
+    available_sources,
+    classify_missing_sources,
+    missing_sources_reason,
+)
 from app.checks.sql_runner import CheckRunError, run_check
 from app.database import SessionLocal
 from app.models import CheckRun, Company, Finding
@@ -52,11 +56,15 @@ class RunStats:
         return sum(self.findings_per_check.values())
 
 
-def _split_result(result: CheckResult) -> tuple[list[Finding], str, str | None]:
-    """Tách giá trị check trả về thành (findings, status, reason)."""
+def _split_result(result: CheckResult) -> tuple[list[Finding], str, str | None, str | None]:
+    """Tách giá trị check trả về thành (findings, status, reason, remedy).
+
+    ĐƯỜNG DUY NHẤT dựng trạng thái `not_evaluable`: cổng thiếu nguồn bên dưới cũng
+    dựng `NotEvaluable` rồi đi qua đây, không tự ghi trạng thái nữa (ADR #24 mục 2).
+    """
     if isinstance(result, NotEvaluable):
-        return [], STATUS_NOT_EVALUABLE, truncate_reason(result.reason)
-    return list(result), STATUS_OK, None
+        return [], STATUS_NOT_EVALUABLE, truncate_reason(result.reason), result.remedy
+    return list(result), STATUS_OK, None, None
 
 
 def run_checks(
@@ -68,6 +76,16 @@ def run_checks(
     own_session = session is None
     s = session or SessionLocal()
     try:
+        # Nạp ngưỡng hạng bằng CHÍNH session này TRƯỚC khi có write nào treo — cùng
+        # lý do đã ghi ở `app/pipeline/recompute.py`. Phần chấm điểm dưới đây gọi
+        # `tier_for` → `get_tiers()` không truyền db; cache trống thì nó tự mở
+        # `SessionLocal()`, và `close()` của session lồng phát ROLLBACK. Khi hai
+        # session dùng chung một connection (SQLite in-memory + StaticPool ở test),
+        # ROLLBACK đó huỷ luôn mọi Finding đang treo của lần chạy này: `s.commit()`
+        # cuối hàm ghi ra 0 dòng trong khi `stats` vẫn báo có phát hiện.
+        from app.app_settings import get_risk_tier_uppers
+        get_risk_tier_uppers(s)
+
         company = s.scalar(select(Company).where(Company.code == company_code))
         if company is None:
             raise ValueError(f"Không tìm thấy DN {company_code}. Chạy ingest trước.")
@@ -134,25 +152,29 @@ def run_checks(
         # | 'not_evaluable' (thiếu nguồn Tầng 1, hoặc check trả `NotEvaluable`).
         run_status: dict[str, str] = {}
         run_reason: dict[str, str | None] = {}
+        run_remedy: dict[str, str | None] = {}
         for code in sorted(all_codes):
             reason: str | None = None
+            remedy: str | None = None
             if code in ALL_CHECKS:
                 missing = missing_sources(code, present)
                 if missing:
-                    # Cùng đường với `NotEvaluable` các check tự trả: một trạng thái,
-                    # một cột lý do, một khối UI — và cùng bị loại khỏi cả tử số lẫn
-                    # trần điểm rủi ro.
-                    findings, status = [], STATUS_NOT_EVALUABLE
-                    reason = truncate_reason(missing_sources_reason(missing))
+                    # Dựng CHÍNH `NotEvaluable` các check tự trả rồi đi cùng một
+                    # đường: một kiểu mang (lý do, lớp), một cột trạng thái, một
+                    # khối UI — và cùng bị loại khỏi cả tử số lẫn trần điểm rủi ro.
+                    gate_remedy, _ = classify_missing_sources(missing)
+                    findings, status, reason, remedy = _split_result(
+                        NotEvaluable(missing_sources_reason(missing), remedy=gate_remedy)
+                    )
                 else:
                     fn = ALL_CHECKS[code]
                     result: CheckResult = fn(s, company.id, year)
-                    findings, status, reason = _split_result(result)
+                    findings, status, reason, remedy = _split_result(result)
             elif code in dynamic_defs:
                 # Check tự do (SQL/Python) — lỗi 1 check không được làm hỏng cả run.
                 try:
                     result = run_check(dynamic_defs[code], s, company.id, year)
-                    findings, status, reason = _split_result(result)
+                    findings, status, reason, remedy = _split_result(result)
                 except CheckRunError as exc:
                     import logging
                     logging.getLogger(__name__).warning(
@@ -171,6 +193,7 @@ def run_checks(
                 continue
             run_status[code] = status
             run_reason[code] = reason
+            run_remedy[code] = remedy
             if status == STATUS_NOT_EVALUABLE:
                 stats.not_evaluable[code] = reason or ""
             for f in findings:
@@ -215,18 +238,22 @@ def run_checks(
                 fc = stats.findings_per_check.get(code, 0)
                 st = run_status.get(code, STATUS_OK)
                 rs = run_reason.get(code)
+                # Ghi VÔ ĐIỀU KIỆN cả khi None: check chuyển `not_evaluable` → `ok`
+                # phải mất lớp cũ, y như `status_reason`.
+                rm = run_remedy.get(code)
                 row = existing_runs.get(code)
                 if row is None:
                     s.add(CheckRun(
                         company_id=company.id, period_year=year, check_code=code,
                         ran_at=ran_at, finding_count=fc, status=st, status_reason=rs,
-                        data_version=data_version,
+                        remedy=rm, data_version=data_version,
                     ))
                 else:
                     row.ran_at = ran_at
                     row.finding_count = fc
                     row.status = st
                     row.status_reason = rs
+                    row.remedy = rm
                     row.data_version = data_version
 
         # Full run dọn check_runs orphan của mã X.* đã gỡ công bố (soi orphan finding

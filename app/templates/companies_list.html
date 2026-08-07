@@ -116,6 +116,7 @@
         {% set tier_label = tier_for(score) %}
       <tr class="dn-row{% if not item.full_coverage %} dn-row-partial{% endif %}"
           data-score="{{ score }}"
+          data-stale="{{ 1 if item.results_stale else 0 }}"
           data-full-coverage="{{ 1 if item.full_coverage else 0 }}"
           data-name="{{ (c.name or '') | lower }}"
           data-mst="{{ c.tax_id or '' }}"
@@ -123,7 +124,16 @@
           data-industry="{{ c.industry or '' }}"
           data-search="{{ ((c.name or '') ~ ' ' ~ (c.slug or '') ~ ' ' ~ (c.tax_id or '')) | lower }}">
         <td class="rank"><span class="rank-badge {% if rank <= 3 %}rank-{{ rank }}{% endif %}">{{ rank }}</span></td>
-        <td><span class="score-pill {{ tier_css }}">{{ score }}</span></td>
+        <td>
+          <span class="score-pill {{ tier_css }}">{{ score }}</span>
+          {% if item.results_stale %}
+          {# Điểm vẫn ở nguyên bảng xếp hạng, chỉ mang thêm nhãn: gỡ doanh nghiệp khỏi
+             bảng vì có người tải file lên là cùng dạng sai lầm với việc bỏ luật khỏi
+             thang điểm (#65). #}
+          <span class="badge warning"
+                title="Dữ liệu kỳ {{ item.stale_years|join(', ') }} đã đổi sau lần chạy kiểm tra gần nhất — điểm này tính trên bộ dữ liệu trước. Mở doanh nghiệp và chạy lại kiểm tra để cập nhật.">kết quả cũ</span>
+          {% endif %}
+        </td>
         <td>
           {% if item.coverage_total %}
             <span class="coverage-pill{% if not item.full_coverage %} coverage-partial{% endif %}"

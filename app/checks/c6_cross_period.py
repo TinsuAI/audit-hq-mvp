@@ -9,11 +9,49 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.checks.not_evaluable import CheckResult, NotEvaluable
+from app.checks.not_evaluable import (
+    REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION,
+    TARGET_PERIOD,
+    CheckResult,
+    NotEvaluable,
+    RemedyClassification,
+    RemedyTarget,
+)
 from app.checks.registry import Severity
 from app.models import Finding, NvlBalance
 
 _TOLERANCE = 0.01
+
+
+def classify_missing_prev_period(prev_year: int) -> RemedyClassification:
+    """(lớp, đích) khi thiếu Mẫu 15 kỳ N−1 — lớp 2, đích là chính kỳ N−1 (ADR #24).
+
+    File của kỳ đang xét không gỡ được: thứ thiếu là dữ liệu của một kỳ khác.
+    """
+    return REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION, RemedyTarget(TARGET_PERIOD, prev_year)
+
+
+def previous_period_gate(
+    session: Session, company_id: int, year: int
+) -> tuple[str, RemedyClassification] | None:
+    """(lý do, (lớp, đích)) khi chưa có Mẫu 15 kỳ N−1; None nếu có.
+
+    Hỏi "có dòng nào không" bằng `LIMIT 1` — cổng chỉ cần biết có hay không, còn
+    `check_c6_1` mới đọc trọn dòng để đối chiếu. Màn dữ liệu gọi CHÍNH hàm này, nên
+    dự đoán của nó không thể lệch với trạng thái check ghi.
+    """
+    prev_year = year - 1
+    if session.scalar(
+        select(NvlBalance.id)
+        .where(NvlBalance.company_id == company_id, NvlBalance.period_year == prev_year)
+        .limit(1)
+    ):
+        return None
+    reason = (
+        f"Chưa có Mẫu 15 của kỳ {prev_year} — không có tồn cuối kỳ trước để "
+        f"đối chiếu với tồn đầu kỳ {year}."
+    )
+    return reason, classify_missing_prev_period(prev_year)
 
 
 def check_c6_1(session: Session, company_id: int, year: int) -> CheckResult:
@@ -25,17 +63,17 @@ def check_c6_1(session: Session, company_id: int, year: int) -> CheckResult:
     "sạch giả", khác trục.
     """
     prev_year = year - 1
+    gated = previous_period_gate(session, company_id, year)
+    if gated is not None:
+        reason, (remedy, _target) = gated
+        return NotEvaluable(reason, remedy=remedy)
+
     prev_rows = session.scalars(
         select(NvlBalance).where(
             NvlBalance.company_id == company_id,
             NvlBalance.period_year == prev_year,
         )
     ).all()
-    if not prev_rows:
-        return NotEvaluable(
-            f"Chưa có Mẫu 15 của kỳ {prev_year} — không có tồn cuối kỳ trước để "
-            f"đối chiếu với tồn đầu kỳ {year}."
-        )
     # Khoá theo (SỔ, mã): mỗi sổ quyết toán là ledger tồn kho riêng — tồn cuối kỳ N-1
     # của một sổ chỉ so với tồn đầu kỳ N CÙNG SỔ (xem ADR #19). book=None (một sổ) là
     # một nhóm → hành vi cũ không đổi.
@@ -117,3 +155,10 @@ def check_c6_1(session: Session, company_id: int, year: int) -> CheckResult:
 CHECKS = {
     "C6.1": check_c6_1,
 }
+
+__all__ = [
+    "CHECKS",
+    "check_c6_1",
+    "classify_missing_prev_period",
+    "previous_period_gate",
+]

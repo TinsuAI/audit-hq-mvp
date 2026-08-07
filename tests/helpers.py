@@ -7,7 +7,55 @@ tự chạy job đã xếp thì mới thấy trạng thái sau khi nạp.
 
 from __future__ import annotations
 
+import io
+
 import app.database as dbmod
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+M15_HEADER = [
+    "STT", "Mã NVL", "Tên NVL", "Đơn vị tính", "Tồn đầu kỳ", "Nhập trong kỳ",
+    "Tái xuất", "Chuyển mục đích sử dụng", "Xuất sản xuất", "Xuất khác", "Tồn cuối kỳ",
+]
+
+
+def m15_xlsx_bytes(header: list[str] = M15_HEADER, rows: int = 3) -> bytes:
+    """Workbook Mẫu 15 tối thiểu: 8 dòng đầu trống, dòng tiêu đề, rồi `rows` dòng NVL."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "BCQT_NVL"
+    for _ in range(8):
+        ws.append([None] * len(header))
+    ws.append(header)
+    for i in range(rows):
+        ws.append([i + 1, f"MAT{i}", "Tên", "KG", 10, 100, 0, 0, 80, 0, 30])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def upload_and_ingest(
+    client, code: str, name: str, content: bytes, year: int = 2024, mime: str = XLSX_MIME
+):
+    """Đường nạp qua web sau #88: thả file vào ô thả, RỒI bấm nút nạp.
+
+    Ô thả không xếp việc nạp — cán bộ còn phải sửa loại và gán sổ trước. Trả phản hồi
+    của bước nạp (303 về trang công việc), người gọi tự `drain_jobs()`.
+    """
+    r = client.post(
+        f"/companies/{code}/upload",
+        data={"year": str(year)},
+        files=[("files", (name, content, mime))],
+        follow_redirects=False,
+    )
+    assert r.status_code == 303, r.text
+    return client.post(
+        f"/companies/{code}/documents/ingest",
+        data={"year": str(year)},
+        follow_redirects=False,
+    )
 
 
 def drain_jobs(max_rounds: int = 5) -> int:

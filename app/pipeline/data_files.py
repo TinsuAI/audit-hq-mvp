@@ -234,7 +234,7 @@ def record_parse_result(
     sheets = getattr(stats, "sheets", None) or {}
     diag_errors = diagnosis.errors if diagnosis else []
     diag_warnings = diagnosis.warnings if diagnosis else []
-    # File nằm trong HANG_CHI_TIET nhưng không phải báo cáo chi tiết tờ khai đã bị bỏ
+    # File nằm trong HANG_CHI_TIET nhưng không phải báo cáo hàng chi tiết đã bị bỏ
     # qua lúc nạp — không được hiển thị "ok" kèm số dòng của các file khác.
     skipped = set(getattr(stats, "bcct_skipped", None) or ())
 
@@ -248,7 +248,7 @@ def record_parse_result(
         if row.slot == "bcct" and row.original_filename in skipped:
             row.parse_status = DataFileStatus.ERROR
             row.parse_message = (
-                "Không phải báo cáo chi tiết tờ khai (thiếu số tờ khai / ngày ĐK) — "
+                "Không phải báo cáo hàng chi tiết (thiếu số tờ khai / ngày ĐK) — "
                 "đã bỏ qua khi nạp, không đóng góp dòng nào."
             )
             row.row_count = 0
@@ -263,10 +263,14 @@ def record_parse_result(
         prov_layout = getattr(prov, "layout", "standard") if prov is not None else "standard"
         # Map đã lưu cho (DN, slot, vân tay form) khớp → các cột resolve
         # `officer-confirmed` → `verified`, cổng review tự advance (WS1-3, ADR #18).
+        # Chỉ nâng cột mà lượt đọc ĐÃ DÙNG đúng vị trí trong map lưu — dán nhãn lên một
+        # cột parser đọc ở chỗ khác là nói sai. So sánh theo NHÓM cột: bố cục mở rộng
+        # đọc một trường bằng tổng nhiều cột con (#95).
         if prov_evidence:
-            form_sig = (getattr(prov, "detail", None) or {}).get("form_signature")
+            prov_detail = getattr(prov, "detail", None) or {}
             prov_evidence = resolve_officer_confirmed(
-                session, company.id, row.slot, form_sig, prov_evidence,
+                session, company.id, row.slot, prov_detail.get("form_signature"),
+                prov_evidence, prov_detail.get("column_map"),
             )
         # Ghi provenance cho MỌI file có bằng chứng cột (kể cả bố cục chuẩn) — badge
         # truy nguồn hiện nguồn + trạng thái review từng cột (WS1, ADR #18).
@@ -296,6 +300,12 @@ def record_parse_result(
                 if any(src == OFFICER_CONFIRMED for src in (prov_evidence or {}).values())
                 else detail.get("match_source")
             )
+        elif prov is None and row.parse_detail:
+            # Lượt nạp này KHÔNG đọc được file (vd vị trí cột cán bộ vừa xác nhận làm vỡ
+            # đẳng thức của biểu, #95). Giữ căn cứ đọc của lượt trước: màn xác nhận dựng
+            # ô nhập từ chính nó, xoá đi là cán bộ mất luôn đường sửa lại chỉ số cột và
+            # file kẹt ở "đọc hỏng" không lối ra.
+            pass
         else:
             row.parse_layout = None
             row.parse_detail = None

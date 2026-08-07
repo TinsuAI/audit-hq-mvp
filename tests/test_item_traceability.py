@@ -8,6 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.database import SessionLocal as _ORIGINAL_SESSION
+from app.database import engine as _ORIGINAL_ENGINE
 from tests.conftest import add_decl, add_nvl, add_sp
 
 # ─────────────────────────── operation classifier ───────────────────────────
@@ -331,13 +333,19 @@ def _setup_db():
 
 
 def _teardown(new_engine):
+    """Khôi phục bản CHỤP LÚC IMPORT, không phải giá trị đọc được lúc teardown.
+
+    `from app.database import SessionLocal` đặt bên trong hàm này phân giải lúc chạy,
+    tức là đọc lại đúng sessionmaker mà `_setup_db` vừa gán vào `app.database` — nên
+    "khôi phục" chỉ ghi lại chính engine tạm sắp bị dispose, và mọi test chạy sau
+    dùng phải nó. Module này được import lúc pytest collect, trước khi bất kỳ fixture
+    nào vá `app.database`, nên hai hằng dưới đây là bản gốc.
+    """
     import app.database as dbmod
-    from app.database import SessionLocal as OriginalSession
-    from app.database import engine as original_engine
 
     new_engine.dispose()
-    dbmod.engine = original_engine
-    dbmod.SessionLocal = OriginalSession
+    dbmod.engine = _ORIGINAL_ENGINE
+    dbmod.SessionLocal = _ORIGINAL_SESSION
 
 
 def _login(client):

@@ -1,7 +1,8 @@
 """T2 (#58) — `not_evaluable` là trạng thái chạy thật.
 
 Ba mặt:
-- GHI: check trả `NotEvaluable(reason)` → `check_runs.status` + `.status_reason`.
+- GHI: check trả `NotEvaluable(reason, remedy=...)` → `check_runs.status` +
+  `.status_reason` + `.remedy` (lớp cách gỡ, #82).
 - ĐIỂM: mã đó bị loại khỏi CẢ `rule_scores` LẪN `max_raw`. Nghiệm thu: điểm và hạng
   bằng đúng lần chạy mà mã đó không có trong tập luật, KHÔNG so với số cứng.
 - UI: phân biệt "đã đánh giá, 0 phát hiện" với "chưa đánh giá được", kèm lý do.
@@ -12,17 +13,16 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.pool import StaticPool
 
 from app.checks.denominators import RULE_SCOPE
 from app.checks.not_evaluable import (
+    REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION,
     STATUS_NOT_EVALUABLE,
     NotEvaluable,
     load_not_evaluable,
     truncate_reason,
 )
 from app.checks.scoring import compute_company_year_score
-from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import CheckRun, Company, CompanyYearScore, Finding
 from app.pipeline.run_checks import run_checks
@@ -44,9 +44,9 @@ def _make_finding(check_code: str, severity: str, subject_key: str) -> Finding:
 
 def test_not_evaluable_requires_reason():
     with pytest.raises(ValueError):
-        NotEvaluable("")
+        NotEvaluable("", remedy=REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION)
     with pytest.raises(ValueError):
-        NotEvaluable("   ")
+        NotEvaluable("   ", remedy=REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION)
 
 
 def test_truncate_reason_fits_column():
@@ -102,7 +102,8 @@ def _load_every_source(session, company_id: int, year: int = 2024) -> None:
 
 
 def _not_evaluable_check(_session, _company_id, _year):
-    return NotEvaluable(REASON)
+    # Lý do là ca kỳ biên → lớp cách gỡ 2 (cần kỳ khác hoặc một xác nhận).
+    return NotEvaluable(REASON, remedy=REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION)
 
 
 def _clean_check(_session, _company_id, _year):
@@ -311,23 +312,13 @@ def test_recompute_after_status_change_keeps_gated_rule_out(session, company, mo
 # --- UI: phân biệt "0 phát hiện" với "chưa đánh giá được" ---
 
 
-def _setup_ui_db():
-    import app.database as dbmod
-    from app.auth_users import seed_default_admin
+def _seed_ui_db(app_db) -> None:
+    from datetime import datetime
 
-    eng = dbmod.create_engine(
-        "sqlite://", connect_args={"check_same_thread": False},
-        poolclass=StaticPool, future=True,
-    )
-    ses = dbmod.sessionmaker(bind=eng, autoflush=False, autocommit=False, future=True)
-    dbmod.engine, dbmod.SessionLocal = eng, ses
-    Base.metadata.create_all(eng)
-    with ses() as db:
-        seed_default_admin(db, "admin", "admin")
+    with app_db.SessionLocal() as db:
         c = Company(code="DN_NE", tax_id="9999999999", name="DN cổng dữ liệu")
         db.add(c)
         db.flush()
-        from datetime import datetime
 
         ran_at = datetime(2026, 8, 5, 9, 0, 0)
         db.add(CheckRun(
@@ -350,28 +341,22 @@ def _setup_ui_db():
             },
         ))
         db.commit()
-    return eng
 
 
-def _teardown_ui_db(eng):
-    eng.dispose()
-    import app.database as dbmod
-    dbmod.engine, dbmod.SessionLocal = engine, SessionLocal
+def test_company_page_shows_not_evaluable_with_reason(app_db):
+    _seed_ui_db(app_db)
 
+    # `with TestClient(...)` chạy lifespan → `app/main.py` dựng JobWorker và gọi
+    # `recover_zombie_jobs` qua `SessionLocal` của chính nó. `app_db` đã trỏ tên đó
+    # vào DB tạm, nên vòng đời này không đụng hàng đợi thật của máy dev.
+    with TestClient(app) as client:
+        client.post("/login", data={"user": "admin", "password": "admin"},
+                    follow_redirects=False)
+        html = client.get("/companies/DN_NE?year=2024").text
 
-def test_company_page_shows_not_evaluable_with_reason():
-    eng = _setup_ui_db()
-    try:
-        with TestClient(app) as client:
-            client.post("/login", data={"user": "admin", "password": "admin"},
-                        follow_redirects=False)
-            html = client.get("/companies/DN_NE?year=2024").text
-
-        assert "Chưa đánh giá được" in html
-        assert REASON in html
-        assert GATED_CODE in html
-        # Check 'ok' 0 phát hiện không bị gán nhãn chưa đánh giá được.
-        ne_block = html.split("Chưa đánh giá được", 1)[1].split("</section>", 1)[0]
-        assert "C5.1" not in ne_block
-    finally:
-        _teardown_ui_db(eng)
+    assert "Chưa đánh giá được" in html
+    assert REASON in html
+    assert GATED_CODE in html
+    # Check 'ok' 0 phát hiện không bị gán nhãn chưa đánh giá được.
+    ne_block = html.split("Chưa đánh giá được", 1)[1].split("</section>", 1)[0]
+    assert "C5.1" not in ne_block

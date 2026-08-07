@@ -86,6 +86,20 @@ nạp ĐẾM severity + top-N `subject_key`, KHÔNG nạp dòng. Chỉ mặt tr�
 `based_on_data_version` snapshot trên dòng overview. Xử lý FLAG-ONLY: hiện text xám + badge "đã cũ" +
 nút "Tạo lại", KHÔNG auto-regenerate lúc load. Combo (`COMBO_*`) KHÔNG có check-run lẫn overview.
 
+**Staleness (kết quả)** — phát hiện + điểm rủi ro của (DN, kỳ) tính trên bộ dữ liệu cũ.
+**Stale ⇔ `min(check_runs.data_version) < CompanyPeriod.data_version`** (`app/pipeline/staleness.py`,
+#90) — cùng phép so phiên bản mà overview dùng, nay áp cho cả ba nơi có số: dòng kỳ · màn phát hiện ·
+cột điểm ở bảng danh sách DN. `min` chứ không `max`: chạy lại một mã lẻ để lại điểm gộp phát hiện của
+hai phiên bản. Kỳ KHÔNG có dòng `check_runs` = "chưa rõ", KHÔNG stale. Nguồn dời phiên bản: `ingest()`,
+lưu cửa sổ kỳ, **xoá file, thay file** (#90). Xử lý FLAG-ONLY: KHÔNG tự chạy lại (chạy lại dựng lại
+`Finding`, đưa `status`/`notes` cán bộ về `new`) và KHÔNG giấu số (DN vẫn nằm trong bảng xếp hạng).
+
+**Trục bộ file vs trục kết quả** — hai dấu hiệu cũ KHÁC nhau, không gộp. Trục bộ file
+(`readiness.stale`: có dòng Tầng 1 mà bản ghi file mất hoặc chưa đọc xong) → **nạp lại**. Trục kết quả
+(trên) → **chạy lại kiểm tra**. Xoá file bật cả hai; nạp lại tắt trục bộ file, trục kết quả còn tới khi
+chạy kiểm tra. Không trục nào vào phép đếm "đủ dữ liệu cho N/M kiểm tra" (#85). Dòng vướng mắc của trục
+bộ file gộp CẢ KỲ thành MỘT dòng kể tên các loại tài liệu — ba loại cùng cũ vẫn là một việc.
+
 ## Pháp nhân · loại hình · sổ quyết toán (004 hai loại hình)
 
 **Pháp nhân (legal entity)** — thực thể pháp lý, định danh bằng MST (`tax_id`). Một pháp nhân có thể
@@ -195,3 +209,35 @@ bộ nhập.
 phát hiện, nghĩa là đã đánh giá và không thấy sai phạm. Kiểm tra ở trạng thái này KHÔNG tham gia
 vào điểm rủi ro — cả phần cộng điểm lẫn phần trần — vì nếu tham gia thì dữ liệu thiếu đi lại làm
 điểm đẹp lên. Ví dụ: độ phủ định mức của kỳ sớm nhất khi chưa biết năm đầu nộp BCQT.
+
+## Gán loại file khi nạp (thiết kế lại luồng nạp)
+
+**Tên loại tài liệu** — tên tiếng Việt hiển thị cho mỗi slot, dạng `NGẮN — DÀI`: `Mẫu 15 — Cân đối
+NVL` · `Mẫu 15a — Cân đối thành phẩm` · `Mẫu 16 — Định mức` · `BCCT — Báo cáo hàng chi tiết`. Phần
+trước dấu gạch dài là dạng ngắn dùng cho chip và tiêu đề cột; bảng dạng ngắn SUY từ bảng dạng dài,
+không gõ tay lần hai. MỘT bảng duy nhất — `SLOT_LABEL_VI` ở `app/models/data_file.py` — cho mọi màn
+hình cán bộ; module khác lấy nhãn bằng cách import, không tự khai bảng.
+
+BCCT chốt là **"Báo cáo hàng chi tiết"**. Ba lý do: (1) đây là tên đã dùng ở tài liệu đào tạo, trang
+hướng dẫn, màn tải lên, docstring adapter và model — biến thể "Báo cáo chi tiết tờ khai" chỉ có ở
+một bảng nhãn nay đã xoá; (2) tên file nguồn do Hải quan kết xuất là `BaoCaoHangChiTiet_*.xlsx`,
+thư mục lưu là `HANG_CHI_TIET`; (3) chỉ dạng `NGẮN — DÀI` mới tách được dạng ngắn cho chip, biến thể
+kia đặt `(BCCT)` ở cuối nên không tách được. Cùng lý do đó, các biến thể `Cân đối SP` / `Cân đối TP`
+của Mẫu 15a và `Tờ khai chi tiết` của BCCT đã bỏ (#98).
+
+**Gán loại (slot assignment)** — kết luận rằng một file đã tải phục vụ slot nào (`m15` · `m15a` ·
+`m16` · `bcct`). Là một PHÉP GÁN, không phải một sự thật đọc được từ file: cùng một file có thể
+được gán bằng ba đường khác nhau với độ tin cậy khác hẳn nhau, nên phép gán luôn đi kèm nguồn bằng
+chứng. Cùng cấu trúc với evidence source của việc gán CỘT (ADR #18), khác cấp: cột ↔ file.
+
+**Slot evidence source** — nguồn bằng chứng cho MỘT phép gán loại file. Ba nguồn, mạnh→yếu:
+- `officer-assigned` — cán bộ tự chọn loại cho file này.
+- `content-matched` — đã MỞ file và `select_sheet` khớp bố cục slot đó. Chỉ có cho `m15`/`m15a`/
+  `m16`; `bcct` KHÔNG có đường này.
+- `name-matched` — chỉ tên file + thư mục khớp mẫu đặt tên. Là PHỎNG ĐOÁN: tên do người gõ, file
+  006 gộp tay mang tên hợp lệ mà cấu trúc sai.
+
+**"Nhận ra" (đã xác nhận đọc được)** — CHỈ dùng cho file đã mở và khớp bố cục, tức
+`content-matched` hoặc đã qua `diagnose_upload` trong lượt nạp. KHÔNG dùng cho `name-matched`:
+nói "nhận ra" về một phép đoán theo tên là nói với cán bộ rằng file đã hợp lệ trong khi hệ thống
+chưa mở file lần nào. Từ dùng cho `name-matched` là **gợi ý** / **gán tạm**.
