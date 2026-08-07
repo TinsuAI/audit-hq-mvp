@@ -167,6 +167,65 @@
     <a href="{{ p.findings_url }}" class="btn btn-sm btn-secondary">Phát hiện kỳ {{ p.year }}</a>
   </div>
 
+  {% if p.files %}
+  <div class="ds-part ds-types">
+    <h3 class="ds-part-title">Số dòng theo loại tài liệu</h3>
+    <ul class="ds-type-list">
+      {% for d in p.doc_types %}
+      <li class="ds-type{% if not d.file_count %} ds-type-absent{% endif %}">
+        <span class="ds-type-label">{{ d.short_label }}</span>
+        <span class="ds-type-count mono">
+          {%- if d.row_count is none %}chưa nạp{% else %}{{ fmt_int(d.row_count) }} dòng{% endif -%}
+        </span>
+        {% if d.row_count is not none and not d.has_rows %}
+        {# Lượt nạp dừng ở cổng xác nhận cột vẫn ghi số dòng đọc được lên bản ghi
+           file, trong khi kỳ chưa nhận dòng nào. Không nói rõ thì con số này mâu
+           thuẫn với chính câu vướng mắc bên dưới. #}
+        <span class="ds-type-pending">đã đọc, chưa ghi vào kỳ</span>
+        {% endif %}
+        <span class="ds-type-files text-muted">
+          {%- if d.file_count %}{{ d.file_count }} file{% else %}chưa có file{% endif -%}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="ds-part-hint text-muted">
+      Số dòng là của cả kỳ cho từng loại, không của từng file — một loại tách làm nhiều
+      file vẫn là một con số.
+    </p>
+  </div>
+
+  <div class="ds-part ds-files">
+    <h3 class="ds-part-title">File của kỳ <span class="badge muted">{{ p.files|length }}</span></h3>
+    <ul class="ds-file-list">
+      {% for f in p.files %}
+      <li class="ds-file{% if not f.plain %} ds-file-flagged{% endif %}">
+        <div class="ds-file-main">
+          <a href="{{ f.open_url }}" class="ds-file-name">{{ f.name }}</a>
+          <span class="ds-file-size text-muted mono">{{ human_size(f.size_bytes) }}</span>
+          {% for label in f.slot_labels %}<span class="badge muted ds-file-slot">{{ label }}</span>{% endfor %}
+        </div>
+        {% if not f.plain %}
+        <div class="ds-file-notes">
+          {% if f.unreadable %}<p class="ds-file-note ds-file-note-error">Hệ thống đọc không được file này.</p>{% endif %}
+          {% if f.needs_column_review %}<p class="ds-file-note">Còn cột cần xác nhận — mở trang file để xác nhận vị trí cột rồi nạp lại.</p>{% endif %}
+          {% for note in f.notes %}<p class="ds-file-note">{{ note }}</p>{% endfor %}
+        </div>
+        {% endif %}
+        <div class="ds-file-actions">
+          <a href="{{ f.open_url }}" class="btn btn-sm btn-secondary">Mở</a>
+          <a href="{{ f.download_url }}" class="btn btn-sm btn-secondary">Tải xuống</a>
+          <form method="post" action="{{ f.delete_url }}"
+                onsubmit="return confirm('Xoá file {{ f.name }} khỏi hệ thống?');">
+            <button type="submit" class="btn btn-sm btn-secondary ds-file-delete">Xoá</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   {% for g in p.groups %}{% if g.items %}
   <div class="ds-group ds-group-{{ 'counted' if g.counted else 'uncounted' }}">
     <h3 class="ds-group-title">

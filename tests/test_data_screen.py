@@ -5,8 +5,8 @@ chuỗi tiếng Việt trong HTML. Một test dò chữ vẫn xanh sau khi màn 
 nghĩa, nên nó thôi kiểm thứ nó khai là đang kiểm.
 
 Ranh giới của vé: khung màn + dòng kỳ + phép đếm + danh sách vướng mắc. Phần mở
-rộng dòng kỳ (số dòng theo loại, danh sách file thật) là #87; ô thả file là #88;
-phản hồi nạp tại chỗ là #89.
+rộng dòng kỳ (số dòng theo loại, danh sách file thật) là #87 — test của nó nằm ở
+`tests/test_period_files.py`; ô thả file là #88; phản hồi nạp tại chỗ là #89.
 """
 
 from __future__ import annotations
