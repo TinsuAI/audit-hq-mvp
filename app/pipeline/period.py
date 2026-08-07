@@ -29,6 +29,10 @@ FISCAL_START_MONTHS = tuple(range(1, 13))
 # đầu tiên hoặc kỳ cuối cùng được gộp với kỳ kề, kỳ gộp KHÔNG QUÁ 15 tháng.
 MAX_PERIOD_MONTHS = 15
 
+# Khoảng nhãn kỳ hệ thống nhận. Không phải giới hạn nghiệp vụ, chỉ là biên chặn gõ
+# nhầm (năm đầu nộp BCQT có cận dưới riêng, sớm hơn khoảng này).
+YEAR_MIN, YEAR_MAX = 2015, 2030
+
 
 def fiscal_bounds(period_year: int, fiscal_start_month: int) -> tuple[date, date]:
     """Cửa sổ mặc định của kỳ mang nhãn `period_year` theo niên độ DN.
