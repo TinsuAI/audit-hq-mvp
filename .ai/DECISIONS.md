@@ -1111,3 +1111,30 @@ sửa (biết sai vẫn không sửa được, phải sửa file nguồn).
 - *Áp map cán bộ rồi bỏ qua đẳng thức* — rejected: mất luôn thứ duy nhất chứng minh cách đọc ở bố cục mở rộng.
 - *Đẳng thức vỡ thì quay về map suy được và nạp tiếp* — rejected: cán bộ nhận một lượt nạp "thành công" đọc bằng bố cục họ không chọn.
 - *Sửa ở handler xác nhận (đừng ghim trang tính)* — rejected: ghim trang là quyết định đã có lý do riêng (2026-08-06 mục 3); chỗ sai là adapter hiểu "trang đã ghim" thành "đọc bằng cột cố định".
+
+### 26. SỬA ADR #24 mục (4) — trích xuất xem trước chạy ở LUỒNG NỀN, không trong request (2026-08-07, issue #91)
+
+**Quyết định:** Việc trích xuất trang tính vào kho đệm chạy ở **luồng nền**, sau một khoá chống dựng trùng. Request lấy cửa sổ ô chờ tối đa `preview_wait_seconds` (mặc định 12 giây); quá thì trả **202** kèm tiến độ, và lưới tự hỏi lại cho tới khi kho đệm sẵn sàng.
+
+ADR #24 mục (4) viết **"Dựng NGAY TRONG REQUEST đầu tiên… KHÔNG đẩy vào hàng đợi"**. Vế thứ hai giữ nguyên — vẫn không đẩy vào hàng đợi. Vế thứ nhất **sai** và mục này sửa nó.
+
+**Lý do:** số đo lúc cài #83, trên file thật:
+
+| file | trích xuất lần đầu | cửa sổ sau đó |
+|---|---|---|
+| xlsx 71,3MB | **164,6 giây** | 5 ms |
+| XML SpreadsheetML 64,5MB | 5,4 giây | 2 ms |
+| xls BIFF 39,3MB | 7,1 giây | 2 ms |
+
+164,6 giây **vượt ngưỡng cắt 100 giây của Cloudflare**. ADR #24 (4) dựng trên giả định trích xuất mất 10–15 giây; giả định đó đúng với mọi file trong kho **trừ một file**, và file đó lại đúng là loại cán bộ cần soát nhất. Giữ nguyên "dựng trong request" nghĩa là file đó không bao giờ xem được — đúng thứ hạn mức 25MB cũ đang gây ra và cả loạt vé này sinh ra để bỏ.
+
+Chi phí 130 trong 164,6 giây là **hai lượt đọc openpyxl** (60 giây lấy giá trị + 67 giây lấy công thức): chế độ đọc tuần tự chỉ lộ một trong hai mỗi lượt nên không gộp được.
+
+**Alternatives loại:**
+
+- *Giữ "dựng trong request"* — rejected: file 71,3MB đứt kết nối, không xem được.
+- *Đẩy vào hàng đợi job* — rejected, và ADR #24 (4) đã loại vì đúng lý do: hàng đợi chạy một việc nạp một lúc, nên một việc trích xuất xếp sau lượt nạp dài bắt cán bộ chờ vài phút chỉ để xem file.
+- *Chỉ trích xuất giá trị, bỏ công thức* — rejected: công tắc "hiện công thức trong ô" là thứ đáng lẽ đã bắt được 2.076 ô công thức đọc thành 0 làm mất 28,5 tỷ. Bỏ nó để nhanh hơn 67 giây một lần là đổi sai chiều.
+- *Hạ ngưỡng chờ xuống 0, luôn trả 202* — rejected: mọi file khác trong kho xong dưới 10 giây, bắt chúng đi qua vòng hỏi lại là thêm độ trễ không đổi lấy gì.
+
+**Ghi chú:** con số 12 giây là cấu hình (`preview_wait_seconds`), không phải hằng số — chọn để mọi file trong kho trừ file 71,3MB vẫn xong trong đúng một request.
