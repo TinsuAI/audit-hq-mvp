@@ -13,7 +13,8 @@
 > | #114 cột (9) theo kỳ | đã gộp `main` | `f12bd25` | 1340095647 |
 > | #113 S3 cổng trường vắng | **chưa làm** | — | — |
 >
-> Bộ test 1.662, xanh cả thứ tự thường lẫn `--shuffle`, `ruff` sạch.
+> Bộ test **1.724** trên `main` đã gộp, xanh cả thứ tự thường lẫn `--shuffle`
+> (`PYTEST_EXIT=0`, seed hợp nhất **331433647**), `ruff` sạch.
 > **DB dev `audit_hq.sqlite` không bị đụng** — đo trên bản sao lấy bằng `.backup`.
 >
 > **#111 đóng luôn #109**, và trong lúc cài lộ ra chỗ giấu THỨ HAI: `_EVIDENCE_ORDER`
