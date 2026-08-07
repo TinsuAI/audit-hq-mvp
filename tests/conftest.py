@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import importlib
+import sys
+from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.database import Base
+from app.database import SessionLocal as _default_session
 from app.database import engine as _default_engine
 from app.models import (
     Company,
@@ -19,6 +27,7 @@ from app.models import (
     UomAlias,
     UomCanonical,
 )
+from app.settings import settings
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -31,6 +40,106 @@ def _ensure_default_schema():
     """
     import app.models  # noqa: F401  load all models metadata trước create_all
     Base.metadata.create_all(_default_engine)
+
+
+@pytest.fixture(scope="session")
+def default_engine() -> Engine:
+    """Engine trỏ vào DB của máy (`DATABASE_URL`) — engine mà `app.database` dựng lúc import.
+
+    Chỉ để test bảo vệ ĐỌC và khẳng định không có bản ghi nào rơi vào đây. Không
+    ghi gì qua engine này.
+    """
+    return _default_engine
+
+
+@dataclass
+class AppDb:
+    """DB tạm của một test đi qua tầng ứng dụng (route, hàng đợi, pipeline)."""
+
+    engine: Engine
+    SessionLocal: sessionmaker
+    raw_root: Path
+
+
+# Module `app.*` giữ sẵn một bản sao `SessionLocal` từ lúc import. Nạp trước để
+# lần quét `sys.modules` bên dưới thấy được chúng kể cả khi test chưa import.
+_SESSION_HOLDER_MODULES = (
+    "app.database",
+    "app.main",
+    "app.ai.config",
+    "app.pipeline.ingest",
+    "app.pipeline.run_checks",
+)
+
+
+def _rebind_session_holders(session_factory: sessionmaker) -> None:
+    """Trỏ `SessionLocal` của mọi module `app.*` về `session_factory`.
+
+    `from app.database import SessionLocal` chụp đối tượng ngay lúc import, nên
+    vá `app.database.SessionLocal` KHÔNG đổi được bản sao đã nằm trong module
+    khác. Quét giới hạn trong `app.*`: nhiều file test giữ `SessionLocal` gốc ở
+    mức module làm mốc khôi phục, quét trúng chúng là hỏng teardown của chúng.
+    """
+    for name in _SESSION_HOLDER_MODULES:
+        importlib.import_module(name)
+    for name, module in list(sys.modules.items()):
+        if name != "app" and not name.startswith("app."):
+            continue
+        if isinstance(getattr(module, "SessionLocal", None), sessionmaker):
+            module.SessionLocal = session_factory
+
+
+@pytest.fixture
+def app_db(tmp_path: Path) -> Iterator[AppDb]:
+    """DB tạm dùng chung cho mọi test đi qua route hoặc chạy hàng đợi.
+
+    Vá ba điểm cùng lúc: `app.database.engine`, `app.database.SessionLocal`, và
+    bản sao `SessionLocal` đã import vào `app.pipeline.ingest` (cùng mọi module
+    `app.*` khác giữ bản sao). Thiếu điểm thứ ba thì job nạp dữ liệu ghi dòng
+    Tầng 1 vào DB thật của máy, và khẳng định "chưa có dòng nào" trong test hoá
+    ra XANH VÌ LÝ DO SAI.
+
+    Kèm sẵn: schema đầy đủ, một admin `admin/admin` để đăng nhập, và
+    `settings.raw_data_path` trỏ vào `tmp_path` để file tải lên không đụng
+    thư mục dữ liệu thật.
+    """
+    import app.database as dbmod
+    from app.ai.config import bust_cache as bust_ai_cache
+    from app.app_settings import invalidate_cache as invalidate_app_settings
+    from app.auth_users import seed_default_admin
+
+    new_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        future=True,
+    )
+    new_session = sessionmaker(bind=new_engine, autoflush=False, autocommit=False, future=True)
+    Base.metadata.create_all(new_engine)
+
+    prev_raw_root = settings.raw_data_path
+    dbmod.engine = new_engine
+    _rebind_session_holders(new_session)
+    settings.raw_data_path = str(tmp_path)
+    invalidate_app_settings()
+    bust_ai_cache()
+
+    with new_session() as db:
+        seed_default_admin(db, "admin", "admin")
+
+    try:
+        yield AppDb(engine=new_engine, SessionLocal=new_session, raw_root=tmp_path)
+    finally:
+        settings.raw_data_path = prev_raw_root
+        new_engine.dispose()
+        # Trả về bản gốc chụp lúc import conftest, KHÔNG phải giá trị đọc được lúc
+        # setup: vài file test khôi phục `app.database.SessionLocal` bằng import
+        # muộn nên để lại chính sessionmaker của chúng ở đó. Lấy giá trị ấy làm
+        # mốc là phát tán một engine đã dispose sang mọi module `app.*`.
+        dbmod.engine = _default_engine
+        _rebind_session_holders(_default_session)
+        invalidate_app_settings()
+        bust_ai_cache()
 
 
 @pytest.fixture

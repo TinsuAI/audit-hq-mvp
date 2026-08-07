@@ -16,15 +16,13 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy.pool import StaticPool
 
-import app.database as dbmod
-from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company, DataFile
-from app.settings import settings
+from tests.conftest import AppDb
+from tests.helpers import XLSX_MIME
 
-_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_CODE = "DN_MULTI"
 
 
 def _xlsx_bytes(marker: str) -> bytes:
@@ -35,157 +33,110 @@ def _xlsx_bytes(marker: str) -> bytes:
     return buf.getvalue()
 
 
-def _setup(tmp_path: Path):
-    new_engine = dbmod.create_engine(
-        "sqlite://", connect_args={"check_same_thread": False},
-        poolclass=StaticPool, future=True,
-    )
-    new_session = dbmod.sessionmaker(bind=new_engine, autoflush=False, autocommit=False, future=True)
-    dbmod.engine = new_engine
-    dbmod.SessionLocal = new_session
-    Base.metadata.create_all(new_engine)
-    with new_session() as db:
-        from app.auth_users import seed_default_admin
-        seed_default_admin(db, "admin", "admin")
-        db.add(Company(code="DN_MULTI", name="Multi", tax_id="1"))
+def _client(app_db: AppDb) -> TestClient:
+    with app_db.SessionLocal() as db:
+        db.add(Company(code=_CODE, name="Multi", tax_id="1"))
         db.commit()
-    prev_root = settings.raw_data_path
-    settings.raw_data_path = str(tmp_path)
-    return new_engine, prev_root
-
-
-def _teardown(new_engine, prev_root):
-    settings.raw_data_path = prev_root
-    new_engine.dispose()
-    dbmod.engine = engine
-    dbmod.SessionLocal = SessionLocal
-
-
-def _client(tmp_path: Path) -> TestClient:
     c = TestClient(app)
     c.post("/login", data={"user": "admin", "password": "admin"}, follow_redirects=False)
     return c
 
 
-def _bcct_dir(tmp_path: Path) -> Path:
-    return tmp_path / "DN_MULTI" / "2024" / "HANG_CHI_TIET"
+def _bcct_dir(app_db: AppDb) -> Path:
+    return app_db.raw_root / _CODE / "2024" / "HANG_CHI_TIET"
 
 
-def _names(tmp_path: Path) -> set[str]:
-    d = _bcct_dir(tmp_path)
+def _names(app_db: AppDb) -> set[str]:
+    d = _bcct_dir(app_db)
     return {p.name for p in d.glob("*.xlsx")} if d.exists() else set()
 
 
-def test_two_bcct_files_in_one_submit_both_land_on_disk(tmp_path):
-    new_engine, prev_root = _setup(tmp_path)
-    try:
-        client = _client(tmp_path)
+def test_two_bcct_files_in_one_submit_both_land_on_disk(app_db: AppDb):
+    client = _client(app_db)
+    r = client.post(
+        f"/companies/{_CODE}/upload",
+        data={"year": "2024"},
+        files=[
+            ("bcct", ("BCCT_F1.xlsx", _xlsx_bytes("F1"), XLSX_MIME)),
+            ("bcct", ("BCCT_F3.xlsx", _xlsx_bytes("F3"), XLSX_MIME)),
+        ],
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert _names(app_db) == {"BCCT_F1.xlsx", "BCCT_F3.xlsx"}
+
+
+def test_a_second_submit_adds_a_bcct_file_instead_of_replacing(app_db: AppDb):
+    client = _client(app_db)
+    for name in ("BCCT_F1.xlsx", "BCCT_F3.xlsx"):
         r = client.post(
-            "/companies/DN_MULTI/upload",
+            f"/companies/{_CODE}/upload",
             data={"year": "2024"},
-            files=[
-                ("bcct", ("BCCT_F1.xlsx", _xlsx_bytes("F1"), _XLSX)),
-                ("bcct", ("BCCT_F3.xlsx", _xlsx_bytes("F3"), _XLSX)),
-            ],
+            files=[("bcct", (name, _xlsx_bytes(name), XLSX_MIME))],
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert _names(tmp_path) == {"BCCT_F1.xlsx", "BCCT_F3.xlsx"}
-    finally:
-        _teardown(new_engine, prev_root)
+    assert _names(app_db) == {"BCCT_F1.xlsx", "BCCT_F3.xlsx"}
 
 
-def test_a_second_submit_adds_a_bcct_file_instead_of_replacing(tmp_path):
-    new_engine, prev_root = _setup(tmp_path)
-    try:
-        client = _client(tmp_path)
-        for name in ("BCCT_F1.xlsx", "BCCT_F3.xlsx"):
-            r = client.post(
-                "/companies/DN_MULTI/upload",
-                data={"year": "2024"},
-                files=[("bcct", (name, _xlsx_bytes(name), _XLSX))],
-                follow_redirects=False,
-            )
-            assert r.status_code == 303
-        assert _names(tmp_path) == {"BCCT_F1.xlsx", "BCCT_F3.xlsx"}
-    finally:
-        _teardown(new_engine, prev_root)
+def test_both_bcct_files_are_registered_as_documents(app_db: AppDb):
+    client = _client(app_db)
+    client.post(
+        f"/companies/{_CODE}/upload",
+        data={"year": "2024"},
+        files=[
+            ("bcct", ("BCCT_F1.xlsx", _xlsx_bytes("F1"), XLSX_MIME)),
+            ("bcct", ("BCCT_F3.xlsx", _xlsx_bytes("F3"), XLSX_MIME)),
+        ],
+        follow_redirects=False,
+    )
+    with app_db.SessionLocal() as db:
+        c = db.query(Company).filter_by(code=_CODE).first()
+        rows = db.query(DataFile).filter_by(company_id=c.id, slot="bcct").all()
+        assert {r.original_filename for r in rows} == {"BCCT_F1.xlsx", "BCCT_F3.xlsx"}
 
 
-def test_both_bcct_files_are_registered_as_documents(tmp_path):
-    new_engine, prev_root = _setup(tmp_path)
-    try:
-        client = _client(tmp_path)
+def test_upload_form_lets_the_officer_pick_several_bcct_files(app_db: AppDb):
+    """Không có `multiple` trên ô BCCT thì trình duyệt chỉ gửi 1 file — sửa backend vô ích."""
+    client = _client(app_db)
+    html = client.get(f"/companies/{_CODE}/upload?year=2024").text
+
+    bcct_input = next(
+        line for line in html.splitlines()
+        if 'name="bcct"' in line and "type=\"file\"" in line
+    )
+    assert "multiple" in bcct_input
+    for slot in ("m15", "m15a", "m16"):
+        other = next(
+            line for line in html.splitlines()
+            if f'name="{slot}"' in line and "type=\"file\"" in line
+        )
+        assert "multiple" not in other
+
+
+def test_m15_still_replaces_the_previous_file(app_db: AppDb):
+    client = _client(app_db)
+    for name in ("Mau15_cu.xlsx", "Mau15_moi.xlsx"):
         client.post(
-            "/companies/DN_MULTI/upload",
+            f"/companies/{_CODE}/upload",
             data={"year": "2024"},
-            files=[
-                ("bcct", ("BCCT_F1.xlsx", _xlsx_bytes("F1"), _XLSX)),
-                ("bcct", ("BCCT_F3.xlsx", _xlsx_bytes("F3"), _XLSX)),
-            ],
+            files=[("m15", (name, _xlsx_bytes(name), XLSX_MIME))],
             follow_redirects=False,
         )
-        with dbmod.SessionLocal() as db:
-            c = db.query(Company).filter_by(code="DN_MULTI").first()
-            rows = db.query(DataFile).filter_by(company_id=c.id, slot="bcct").all()
-            assert {r.original_filename for r in rows} == {"BCCT_F1.xlsx", "BCCT_F3.xlsx"}
-    finally:
-        _teardown(new_engine, prev_root)
+    bcqt = app_db.raw_root / _CODE / "2024" / "BCQT"
+    assert {p.name for p in bcqt.glob("*.xlsx")} == {"M15_NVL_2024.xlsx"}
 
 
-def test_upload_form_lets_the_officer_pick_several_bcct_files(tmp_path):
-    """Không có `multiple` trên ô BCCT thì trình duyệt chỉ gửi 1 file — sửa backend vô ích."""
-    new_engine, prev_root = _setup(tmp_path)
-    try:
-        client = _client(tmp_path)
-        html = client.get("/companies/DN_MULTI/upload?year=2024").text
-
-        bcct_input = next(
-            line for line in html.splitlines()
-            if 'name="bcct"' in line and "type=\"file\"" in line
-        )
-        assert "multiple" in bcct_input
-        for slot in ("m15", "m15a", "m16"):
-            other = next(
-                line for line in html.splitlines()
-                if f'name="{slot}"' in line and "type=\"file\"" in line
-            )
-            assert "multiple" not in other
-    finally:
-        _teardown(new_engine, prev_root)
-
-
-def test_m15_still_replaces_the_previous_file(tmp_path):
-    new_engine, prev_root = _setup(tmp_path)
-    try:
-        client = _client(tmp_path)
-        for name in ("Mau15_cu.xlsx", "Mau15_moi.xlsx"):
-            client.post(
-                "/companies/DN_MULTI/upload",
-                data={"year": "2024"},
-                files=[("m15", (name, _xlsx_bytes(name), _XLSX))],
-                follow_redirects=False,
-            )
-        bcqt = tmp_path / "DN_MULTI" / "2024" / "BCQT"
-        assert {p.name for p in bcqt.glob("*.xlsx")} == {"M15_NVL_2024.xlsx"}
-    finally:
-        _teardown(new_engine, prev_root)
-
-
-def test_uploading_the_same_bcct_name_twice_replaces_that_one_file(tmp_path):
+def test_uploading_the_same_bcct_name_twice_replaces_that_one_file(app_db: AppDb):
     """Tải lại đúng tên cũ = sửa file đó, không sinh bản thứ hai."""
-    new_engine, prev_root = _setup(tmp_path)
-    try:
-        client = _client(tmp_path)
-        for marker in ("cu", "moi"):
-            client.post(
-                "/companies/DN_MULTI/upload",
-                data={"year": "2024"},
-                files=[("bcct", ("BCCT_F1.xlsx", _xlsx_bytes(marker), _XLSX))],
-                follow_redirects=False,
-            )
-        assert _names(tmp_path) == {"BCCT_F1.xlsx"}
-        wrote = (_bcct_dir(tmp_path) / "BCCT_F1.xlsx").read_bytes()
-        assert wrote == _xlsx_bytes("moi")
-    finally:
-        _teardown(new_engine, prev_root)
+    client = _client(app_db)
+    for marker in ("cu", "moi"):
+        client.post(
+            f"/companies/{_CODE}/upload",
+            data={"year": "2024"},
+            files=[("bcct", ("BCCT_F1.xlsx", _xlsx_bytes(marker), XLSX_MIME))],
+            follow_redirects=False,
+        )
+    assert _names(app_db) == {"BCCT_F1.xlsx"}
+    wrote = (_bcct_dir(app_db) / "BCCT_F1.xlsx").read_bytes()
+    assert wrote == _xlsx_bytes("moi")

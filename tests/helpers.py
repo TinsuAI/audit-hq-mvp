@@ -7,7 +7,33 @@ tự chạy job đã xếp thì mới thấy trạng thái sau khi nạp.
 
 from __future__ import annotations
 
+import io
+
 import app.database as dbmod
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+M15_HEADER = [
+    "STT", "Mã NVL", "Tên NVL", "Đơn vị tính", "Tồn đầu kỳ", "Nhập trong kỳ",
+    "Tái xuất", "Chuyển mục đích sử dụng", "Xuất sản xuất", "Xuất khác", "Tồn cuối kỳ",
+]
+
+
+def m15_xlsx_bytes(header: list[str] = M15_HEADER, rows: int = 3) -> bytes:
+    """Workbook Mẫu 15 tối thiểu: 8 dòng đầu trống, dòng tiêu đề, rồi `rows` dòng NVL."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "BCQT_NVL"
+    for _ in range(8):
+        ws.append([None] * len(header))
+    ws.append(header)
+    for i in range(rows):
+        ws.append([i + 1, f"MAT{i}", "Tên", "KG", 10, 100, 0, 0, 80, 0, 30])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def drain_jobs(max_rounds: int = 5) -> int:
