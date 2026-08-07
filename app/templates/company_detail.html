@@ -278,24 +278,32 @@
   </section>
   {% endif %}
 
-  {% if not_evaluable_checks %}
+  {% if not_evaluable_groups %}
   <section class="card not-evaluable-section" style="border-left:4px solid var(--c-warn,#b45309);margin-bottom:var(--space-4)">
-    <h2 style="margin:0 0 var(--space-2);font-size:var(--fs-md)">⊘ Chưa đánh giá được ({{ not_evaluable_checks | length }})</h2>
-    <p class="text-subtle" style="margin:0 0 var(--space-2)">
+    <h2 style="margin:0 0 var(--space-2);font-size:var(--fs-md)">⊘ Chưa đánh giá được ({{ not_evaluable_count }})</h2>
+    <p class="text-subtle" style="margin:0 0 var(--space-3)">
       Các kiểm tra dưới đây <strong>không đưa ra kết luận</strong> cho năm {{ selected_year }} vì
       thiếu đầu vào bắt buộc. Đây <strong>không phải</strong> "đã đánh giá, 0 phát hiện" — chưa có
       cơ sở để kết luận. Các kiểm tra này không tham gia điểm rủi ro, cả phần cộng điểm lẫn phần
-      trần, để dữ liệu thiếu không làm điểm đẹp lên.
+      trần, để dữ liệu thiếu không làm điểm đẹp lên. Xếp theo <strong>cách gỡ</strong>, không theo
+      lý do.
     </p>
-    <ul class="not-evaluable-list" style="margin:0;padding-left:var(--space-4)">
-      {% for ne in not_evaluable_checks %}
-      <li style="margin-bottom:var(--space-1)">
-        <span class="badge muted text-mono">{{ ne.code }}</span>
-        <strong>{{ ne.title }}</strong>
-        {% if ne.reason %}<span class="text-subtle">— {{ ne.reason }}</span>{% endif %}
-      </li>
-      {% endfor %}
-    </ul>
+    {% for group in not_evaluable_groups %}
+    <div class="ne-group" style="margin-bottom:var(--space-3)">
+      <h3 style="margin:0;font-size:var(--fs-sm)">{{ group.title }} ({{ group.items | length }})</h3>
+      <p class="text-subtle" style="margin:0 0 var(--space-1);font-size:var(--fs-xs)">{{ group.hint }}</p>
+      <ul class="not-evaluable-list" style="margin:0;padding-left:var(--space-4)">
+        {% for ne in group.items %}
+        <li style="margin-bottom:var(--space-1)">
+          <span class="badge muted text-mono">{{ ne.code }}</span>
+          <strong>{{ ne.title }}</strong>
+          {% if ne.reason %}<span class="text-subtle">— {{ ne.reason }}</span>{% endif %}
+          {% if ne.url %}<a class="btn btn-sm btn-secondary" href="{{ ne.url }}" style="margin-left:var(--space-1)">{{ ne.action_label }} →</a>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
   </section>
   {% endif %}
 
@@ -315,7 +323,7 @@
     </div>
     {% else %}
     <div class="card">
-      <p class="text-muted">Năm {{ selected_year }} không có phát hiện nào{% if not_evaluable_checks %} ở các kiểm tra đã đánh giá — {{ not_evaluable_checks | length }} kiểm tra chưa đánh giá được, xem phần trên{% endif %}.</p>
+      <p class="text-muted">Năm {{ selected_year }} không có phát hiện nào{% if not_evaluable_count %} ở các kiểm tra đã đánh giá — {{ not_evaluable_count }} kiểm tra chưa đánh giá được, xem phần trên{% endif %}.</p>
     </div>
     {% endif %}
   {% endif %}

@@ -116,17 +116,36 @@ def truncate_reason(reason: str) -> str:
     return text if len(text) <= REASON_MAX_LEN else text[: REASON_MAX_LEN - 1] + "…"
 
 
-def load_not_evaluable(session: Session, company_id: int, year: int) -> dict[str, str]:
-    """{mã check → lý do} cho các check đang ở `not_evaluable` của (DN, năm).
+@dataclass(frozen=True)
+class NotEvaluableRun:
+    """Trạng thái ĐÃ LƯU của một mã: lý do hiện cho cán bộ + lớp cách gỡ.
+
+    `remedy` rỗng ở dòng ghi trước migration cột `check_runs.remedy` — chỗ đọc phải
+    dựng được cả ca đó, không suy lớp thay nó.
+    """
+
+    code: str
+    reason: str
+    remedy: str | None
+
+
+def load_not_evaluable(
+    session: Session, company_id: int, year: int
+) -> dict[str, NotEvaluableRun]:
+    """{mã check → (lý do, lớp cách gỡ)} cho các check `not_evaluable` của (DN, năm).
 
     Đọc từ `check_runs` chứ không từ lần chạy hiện tại: chạy lẻ một mã vẫn phải
     thấy trạng thái các mã khác đã ghi ở lần chạy trước, nếu không thì điểm rủi ro
     nhảy qua lại giữa chạy lẻ và chạy đủ.
+
+    Hai chỗ đọc, hai nhu cầu: điểm rủi ro chỉ cần TẬP MÃ (duyệt map ra khoá), màn
+    phát hiện cần cả lý do lẫn lớp đã lưu (ADR #24 mục 2 — một phân loại, hai nơi
+    đọc).
     """
     return {
-        code: (reason or "")
-        for code, reason in session.execute(
-            select(CheckRun.check_code, CheckRun.status_reason).where(
+        code: NotEvaluableRun(code=code, reason=reason or "", remedy=remedy)
+        for code, reason, remedy in session.execute(
+            select(CheckRun.check_code, CheckRun.status_reason, CheckRun.remedy).where(
                 CheckRun.company_id == company_id,
                 CheckRun.period_year == year,
                 CheckRun.status == STATUS_NOT_EVALUABLE,
@@ -151,6 +170,7 @@ __all__ = [
     "TARGET_PERIOD",
     "CheckResult",
     "NotEvaluable",
+    "NotEvaluableRun",
     "RemedyClassification",
     "RemedyTarget",
     "load_not_evaluable",
