@@ -38,6 +38,10 @@ class ParseIssues:
     error_cells: dict[str, int] = field(default_factory=dict)
     external_workbooks: int = 0
     formula_cells: dict[str, int] = field(default_factory=dict)
+    # Giá trị cột (9) Mẫu 16 ngoài bộ mã của KỲ đó, đếm theo giá trị đã chuẩn hoá
+    # (#114). Không đổi số liệu đã nạp — chỉ thôi nuốt im lặng: trước đây mọi mã ≠ "x"
+    # được xử lý y hệt ô để trống, tức "nhập khẩu, có định mức bình thường".
+    unknown_note_codes: dict[str, int] = field(default_factory=dict)
     scanned: bool = False
 
     @property
@@ -48,11 +52,16 @@ class ParseIssues:
     def formula_total(self) -> int:
         return sum(self.formula_cells.values())
 
+    @property
+    def unknown_note_total(self) -> int:
+        return sum(self.unknown_note_codes.values())
+
     def __bool__(self) -> bool:
         return (
             bool(self.error_cells)
             or self.external_workbooks > 0
             or bool(self.formula_cells)
+            or bool(self.unknown_note_codes)
         )
 
 

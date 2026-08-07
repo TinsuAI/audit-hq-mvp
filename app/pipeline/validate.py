@@ -17,6 +17,7 @@ from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
 from app.adapters.declared_fields import FIELD_LABEL_VI
 from app.adapters.extended_layout import OfficerMapBalanceError
 from app.adapters.layout import BALANCE_EXPECT, find_header_columns
+from app.adapters.m16_note import NOTE_LABEL_VI
 from app.adapters.sheet_select import SheetNotFound
 from app.models.data_file import SLOT_LABEL_VI
 from app.pipeline.discover import DiscoveredFiles, discover
@@ -150,6 +151,13 @@ def _check_balance(
     _report_parse_issues(diag, slot, parsed)
 
 
+def _note_code_hint() -> str:
+    """Bộ mã cột (9) nêu kèm nhãn tiếng Việt, cả hai thế hệ văn bản (#114)."""
+    return "; ".join(
+        f"«{code}» {label.lower()}" for code, label in NOTE_LABEL_VI.items()
+    ) + "; để trống = nhập khẩu"
+
+
 def _report_parse_issues(diag: UploadDiagnosis, slot: str, parsed) -> None:
     """Ô lỗi Excel + liên kết ngoài — cảnh báo, KHÔNG đổi số liệu đã nạp."""
     issues = getattr(parsed, "issues", None)
@@ -179,6 +187,16 @@ def _report_parse_issues(diag: UploadDiagnosis, slot: str, parsed) -> None:
             f"({breakdown}). Hệ thống lấy giá trị kết quả trong ô nên số liệu vẫn "
             "đúng, nhưng file đã qua một công cụ gộp/xuất khác — đối chiếu lại tổng "
             "với file gốc trước khi dùng."
+        )
+    if issues.unknown_note_codes:
+        breakdown = ", ".join(
+            f"«{v}» ×{n}" for v, n in sorted(issues.unknown_note_codes.items())
+        )
+        parts.append(
+            f"{issues.unknown_note_total} dòng có ghi chú cột (9) ngoài bộ mã của kỳ "
+            f"này ({breakdown}). Bộ mã hợp lệ: {_note_code_hint()}. Hệ thống đọc các "
+            "giá trị này y hệt ô để trống, tức 'nhập khẩu, có định mức bình thường' — "
+            "kiểm tra lại trước khi kết luận theo kết quả Nhóm 4."
         )
     diag.diagnostics.append(Diagnostic(
         slot, "warning", f"{label}: nguồn số liệu cần truy nguyên", " ".join(parts),
