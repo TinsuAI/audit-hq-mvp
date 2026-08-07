@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -24,6 +25,7 @@ from app.adapters._common import (
 from app.adapters.evidence import evidence_m16
 from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
+from app.adapters.m16_note import is_domestic_origin, is_unknown_note, normalize_note
 from app.adapters.sheet_select import SheetNotFound, select_sheet
 from app.adapters.templates import (
     apply_officer_evidence,
@@ -44,12 +46,9 @@ class M16Row:
     note: str | None = None
 
 
-def is_domestic_origin(note: str | None) -> bool:
-    """Ghi chú "x" ở Mẫu 16 = NVL xuất xứ trong nước (không nhập khẩu).
-
-    Hàng xuất xứ VN không có tờ khai nhập nên không đối chiếu lệch nhập khẩu.
-    """
-    return bool(note) and note.strip().lower() == "x"
+# Bộ mã cột (9) phụ thuộc kỳ — `app/adapters/m16_note.py` (#114). Tái xuất ở đây để
+# `from app.adapters.m16 import is_domestic_origin` (c4_norm.py) không đổi.
+__all__ = ["M16File", "M16Row", "is_domestic_origin", "parse_m16"]
 
 
 @dataclass
@@ -139,10 +138,17 @@ def parse_m16(
     sheet: str | None = None,
     year: int | None = None,
     officer_maps: dict[str, dict[str, int]] | None = None,
+    period_to: date | None = None,
 ) -> M16File:
     """`officer_maps` = {vân tay form: {field: chỉ số cột}} cán bộ đã xác nhận cho DN
     này ở slot này. Vị trí của cán bộ THẮNG cả cột ĐM chọn theo nhãn (ADR #24 mục 5).
-    Mẫu 16 chưa có họ biểu curate nào, nên chỉ còn hai tầng: cán bộ > dò từ khoá."""
+    Mẫu 16 chưa có họ biểu curate nào, nên chỉ còn hai tầng: cán bộ > dò từ khoá.
+
+    `period_to` = ngày KẾT THÚC kỳ, quyết định bộ mã cột (9) hợp lệ (#114). Không
+    truyền thì suy theo dương lịch (`31/12/year`) — đúng cho mọi DN niên độ dương lịch,
+    tức toàn bộ kho hiện tại. DN niên độ lệch mà kỳ kết thúc trong khoảng 01/01–31/01
+    /2026 sẽ bị xếp nhầm sang TT 39; người gọi có cửa sổ kỳ thật thì truyền vào.
+    """
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
     cols = _M16_TT39_COLS
@@ -219,6 +225,10 @@ def parse_m16(
     current_product_name: str | None = None
     current_product_unit: str | None = None
     rows: list[M16Row] = []
+    # Kỳ quyết định bộ mã cột (9) hợp lệ. Không biết kỳ → không kết luận giá trị nào là
+    # lạ (thà im còn hơn báo sai), nhưng vẫn đọc và ghi `note` như thường.
+    period_end = period_to or (date(year, 12, 31) if year else None)
+    unknown_notes: dict[str, int] = {}
 
     def cell(row: list, name: str):
         idx = cols.get(name)
@@ -240,6 +250,11 @@ def parse_m16(
         if norm_qty == 0:
             continue
 
+        note = (to_str(cell(raw, "note")) or None) if "note" in cols else None
+        if period_end is not None and is_unknown_note(note, period_end):
+            key = normalize_note(note)
+            unknown_notes[key] = unknown_notes.get(key, 0) + 1
+
         rows.append(
             M16Row(
                 product_code=current_product_code,
@@ -249,7 +264,7 @@ def parse_m16(
                 material_name=normalize_name(to_str(cell(raw, "material_name"))),
                 material_unit=normalize_code(to_str(cell(raw, "material_unit"))),
                 norm_qty=norm_qty,
-                note=(to_str(cell(raw, "note")) or None) if "note" in cols else None,
+                note=note,
             )
         )
 
@@ -258,6 +273,7 @@ def parse_m16(
         issues=ParseIssues(
             error_cells=scan_error_cells(p, sheet, data_start, cols.values()),
             external_workbooks=count_external_workbooks(p),
+            unknown_note_codes=unknown_notes,
             scanned=True,
         ),
         provenance=provenance,
