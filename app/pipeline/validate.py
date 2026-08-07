@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
-from app.adapters.evidence import FIELD_LABEL_VI
+from app.adapters.declared_fields import FIELD_LABEL_VI
 from app.adapters.extended_layout import OfficerMapBalanceError
 from app.adapters.layout import BALANCE_EXPECT, find_header_columns
 from app.adapters.sheet_select import SheetNotFound

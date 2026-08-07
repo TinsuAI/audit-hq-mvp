@@ -55,42 +55,6 @@ REVIEW_LABEL_VI = {
     NEEDS_REVIEW: "Cần xác nhận",
 }
 
-# Nhãn tiếng Việt cho từng field khi hiện ở badge.
-FIELD_LABEL_VI = {
-    "material_code": "Mã NVL",
-    "product_code": "Mã SP",
-    "opening_qty": "Tồn đầu",
-    "import_qty": "Nhập trong kỳ",
-    "intake_qty": "Nhập kho",
-    "reexport_qty": "Tái xuất",
-    "repurpose_qty": "Chuyển MĐSD",
-    "production_out_qty": "Xuất sản xuất",
-    "export_qty": "Xuất khẩu",
-    "other_out_qty": "Xuất khác",
-    "closing_qty": "Tồn cuối",
-    "norm_qty": "Định mức thực tế",
-    # BCCT (tờ khai) — tên field không trùng các slot cân đối ở trên.
-    "declaration_no": "Số tờ khai",
-    "declaration_date": "Ngày đăng ký",
-    "customs_code": "Mã loại hình",
-    "line_no": "STT hàng",
-    "item_code": "Mã NPL/SP",
-    "item_name": "Tên hàng",
-    "hs_code": "Mã HS",
-    "origin": "Xuất xứ",
-    "quantity": "Lượng tờ khai",
-    "unit": "Đơn vị tính",
-    "unit_price": "Đơn giá",
-    "currency": "Đơn vị tiền tệ",
-    "value_foreign": "Trị giá nguyên tệ",
-    "value_total": "Tổng trị giá",
-    "tax_total": "Tổng tiền thuế",
-    "partner": "Tên đối tác",
-    "invoice_no": "Số hoá đơn",
-    "company_tax_id": "Mã doanh nghiệp",
-    "company_name": "Tên doanh nghiệp",
-}
-
 
 def strongest(*sources: str) -> str:
     """Nguồn mạnh nhất trong các nguồn đưa vào (mặc định position-only)."""
@@ -104,6 +68,9 @@ def strongest(*sources: str) -> str:
 # --- header keyword mỗi cột (đã bỏ dấu/hạ chữ như `norm`) ---------------------
 # Quét TẠI cột kỳ vọng nên từ khoá rộng vẫn an toàn (không lẫn sang cột khác).
 _M15_HDR_KW: dict[str, tuple[str, ...]] = {
+    "row_no": ("stt", "so tt"),
+    "material_name": ("ten nguyen lieu", "ten nvl", "ten npl", "ten vat tu", "ten hang"),
+    "unit": ("dvt", "don vi tinh", "don vi"),
     "material_code": ("ma nguyen lieu", "ma nvl", "ma npl", "ma vat tu", "ma nguyen"),
     "opening_qty": ("ton dau", "ton kho dau", "dau ky"),
     "import_qty": ("nhap trong ky", "nhap kho", "nhap"),
@@ -115,6 +82,9 @@ _M15_HDR_KW: dict[str, tuple[str, ...]] = {
 }
 
 _M15A_HDR_KW: dict[str, tuple[str, ...]] = {
+    "row_no": ("stt", "so tt"),
+    "product_name": ("ten sp", "ten thanh pham", "ten san pham", "ten hang"),
+    "unit": ("dvt", "don vi tinh", "don vi"),
     "product_code": ("ma sp", "ma thanh pham", "ma san pham"),
     "opening_qty": ("ton dau", "ton kho dau", "dau ky"),
     "intake_qty": ("nhap kho", "nhap trong ky", "nhap"),
@@ -129,6 +99,20 @@ _M16_NORM_KW: tuple[str, ...] = (
     "thuc te", "actual", "dinh muc", "luong nl", "luong nguyen", "luong dinh muc", "bom",
 )
 _M16_CODE_KW: tuple[str, ...] = ("ma npl", "ma nvl", "ma nguyen", "ma vat tu", "nguyen lieu")
+
+# Từ khoá tiêu đề cho MỌI trường Mẫu 16, không chỉ hai trường có check đọc. Trường
+# không dò được từ khoá vẫn có mục bằng chứng (`position-only`) — có mục thì có badge,
+# có ô sửa, và cổng review nhìn thấy. Đó là nội dung của #109.
+_M16_HDR_KW: dict[str, tuple[str, ...]] = {
+    "product_code": ("ma sp", "ma thanh pham", "ma san pham"),
+    "product_name": ("ten sp", "ten thanh pham", "ten san pham"),
+    "product_unit": ("dvt sp", "don vi tinh sp", "dvt thanh pham", "don vi tinh"),
+    "material_code": _M16_CODE_KW,
+    "material_name": ("ten npl", "ten nvl", "ten nguyen lieu", "ten vat tu"),
+    "material_unit": ("dvt npl", "dvt nvl", "don vi tinh npl", "don vi tinh"),
+    "norm_qty": _M16_NORM_KW,
+    "note": ("ghi chu", "note"),
+}
 
 _HEADER_DEPTH = 6
 
@@ -168,16 +152,20 @@ def _balance_ok(
     return checked > 0
 
 
-# Cột (0-indexed) đọc trên đường CHUẨN — khớp `_COL` trong m15.py / m15a.py.
+# Cột (0-indexed) đọc trên đường CHUẨN — TOÀN BỘ trường adapter đọc, kể cả cột mô tả.
+# Cột mô tả không vào đẳng thức cân đối nhưng vẫn phải có mục bằng chứng: trường không
+# có bằng chứng thì không vào `column_map` và cán bộ không có ô sửa (#109).
 _M15_COL = {
-    "material_code": 1, "opening_qty": 4, "import_qty": 5, "reexport_qty": 6,
+    "row_no": 0, "material_code": 1, "material_name": 2, "unit": 3,
+    "opening_qty": 4, "import_qty": 5, "reexport_qty": 6,
     "repurpose_qty": 7, "production_out_qty": 8, "other_out_qty": 9, "closing_qty": 10,
 }
 _M15_NUMERIC = ("opening_qty", "import_qty", "reexport_qty", "repurpose_qty",
                 "production_out_qty", "other_out_qty", "closing_qty")
 
 _M15A_COL = {
-    "product_code": 1, "opening_qty": 4, "intake_qty": 5, "repurpose_qty": 6,
+    "row_no": 0, "product_code": 1, "product_name": 2, "unit": 3,
+    "opening_qty": 4, "intake_qty": 5, "repurpose_qty": 6,
     "export_qty": 7, "other_out_qty": 8, "closing_qty": 9,
 }
 _M15A_NUMERIC = ("opening_qty", "intake_qty", "repurpose_qty", "export_qty",
@@ -207,87 +195,97 @@ def _colmap_hits(colmap: dict[str, int] | None, label_field: dict[str, str],
     return hits
 
 
-def evidence_m15_standard(
-    cells: list[list[Any]], data_start: int, colmap: dict[str, int] | None = None,
+def _balance_over(
+    cells: list[list[Any]], data_start: int, cols: dict[str, int],
+    code: str, plus: tuple[str, ...], minus: tuple[str, ...], target: str,
+) -> bool:
+    """Đẳng thức cân đối trên map cột ĐANG dùng. Map thiếu vế nào thì không kết luận."""
+    needed = (code, *plus, *minus, target)
+    if any(f not in cols for f in needed):
+        return False
+    return _balance_ok(
+        cells, data_start, cols[code],
+        [cols[f] for f in plus], [cols[f] for f in minus], cols[target],
+    )
+
+
+def _standard_evidence(
+    cells: list[list[Any]], data_start: int, cols: dict[str, int],
+    keywords: dict[str, tuple[str, ...]], colmap_hits: set[str],
+    balance_fields: tuple[str, ...], balance_ok: bool,
 ) -> dict[str, str]:
-    """Nguồn bằng chứng mỗi field cho Mẫu 15 đường CHUẨN (cột cố định)."""
-    colmap_hits = _colmap_hits(colmap, _M15_LABEL_FIELD, _M15_COL)
-    balance_ok = _balance_ok(
-        cells, data_start, _M15_COL["material_code"],
-        [_M15_COL["opening_qty"], _M15_COL["import_qty"]],
-        [_M15_COL["reexport_qty"], _M15_COL["repurpose_qty"],
-         _M15_COL["production_out_qty"], _M15_COL["other_out_qty"]],
-        _M15_COL["closing_qty"],
-    )
+    """Bằng chứng cho MỌI trường trong `cols` — suy TỪ map cột, không từ danh sách viết tay.
+
+    Đổi chiều này là nội dung của #111. Chiều cũ (`evidence` viết tay → `column_map` suy
+    từ nó) làm sáu trường Mẫu 16 đi vào cơ sở dữ liệu mà không có badge và không có ô sửa.
+    Trường không dò được từ khoá vẫn có mục — `position-only` là một kết luận, không phải
+    sự vắng mặt.
+    """
     out: dict[str, str] = {}
-    # Mã: header-matched (đường chuẩn buộc cột mã đúng vị trí để select_sheet chấm điểm).
-    out["material_code"] = (
-        HEADER_MATCHED
-        if "material_code" in colmap_hits
-        or _header_matched(cells, data_start, _M15_COL["material_code"], _M15_HDR_KW["material_code"])
-        else POSITION_ONLY
-    )
-    for field in _M15_NUMERIC:
+    for field, col in cols.items():
         if field in colmap_hits or _header_matched(
-            cells, data_start, _M15_COL[field], _M15_HDR_KW[field]
+            cells, data_start, col, keywords.get(field, ())
         ):
             out[field] = HEADER_MATCHED
-        elif balance_ok:
+        elif balance_ok and field in balance_fields:
             out[field] = BALANCE_CHECKED
         else:
             out[field] = POSITION_ONLY
     return out
+
+
+def evidence_m15_standard(
+    cells: list[list[Any]], data_start: int, colmap: dict[str, int] | None = None,
+    cols: dict[str, int] | None = None,
+) -> dict[str, str]:
+    """Nguồn bằng chứng mỗi field cho Mẫu 15 đường CHUẨN (cột cố định)."""
+    cols = _M15_COL if cols is None else cols
+    return _standard_evidence(
+        cells, data_start, cols, _M15_HDR_KW,
+        _colmap_hits(colmap, _M15_LABEL_FIELD, cols),
+        _M15_NUMERIC,
+        _balance_over(
+            cells, data_start, cols, "material_code",
+            ("opening_qty", "import_qty"),
+            ("reexport_qty", "repurpose_qty", "production_out_qty", "other_out_qty"),
+            "closing_qty",
+        ),
+    )
 
 
 def evidence_m15a_standard(
     cells: list[list[Any]], data_start: int, colmap: dict[str, int] | None = None,
+    cols: dict[str, int] | None = None,
 ) -> dict[str, str]:
     """Nguồn bằng chứng mỗi field cho Mẫu 15a đường CHUẨN (cột cố định)."""
-    colmap_hits = _colmap_hits(colmap, _M15A_LABEL_FIELD, _M15A_COL)
-    balance_ok = _balance_ok(
-        cells, data_start, _M15A_COL["product_code"],
-        [_M15A_COL["opening_qty"], _M15A_COL["intake_qty"]],
-        [_M15A_COL["repurpose_qty"], _M15A_COL["export_qty"], _M15A_COL["other_out_qty"]],
-        _M15A_COL["closing_qty"],
+    cols = _M15A_COL if cols is None else cols
+    return _standard_evidence(
+        cells, data_start, cols, _M15A_HDR_KW,
+        _colmap_hits(colmap, _M15A_LABEL_FIELD, cols),
+        _M15A_NUMERIC,
+        _balance_over(
+            cells, data_start, cols, "product_code",
+            ("opening_qty", "intake_qty"),
+            ("repurpose_qty", "export_qty", "other_out_qty"),
+            "closing_qty",
+        ),
     )
-    out: dict[str, str] = {}
-    out["product_code"] = (
-        HEADER_MATCHED
-        if "product_code" in colmap_hits
-        or _header_matched(cells, data_start, _M15A_COL["product_code"], _M15A_HDR_KW["product_code"])
-        else POSITION_ONLY
-    )
-    for field in _M15A_NUMERIC:
-        if field in colmap_hits or _header_matched(
-            cells, data_start, _M15A_COL[field], _M15A_HDR_KW[field]
-        ):
-            out[field] = HEADER_MATCHED
-        elif balance_ok:
-            out[field] = BALANCE_CHECKED
-        else:
-            out[field] = POSITION_ONLY
-    return out
 
 
 def evidence_m16(
-    cells: list[list[Any]], data_start: int, code_col: int, norm_col: int,
+    cells: list[list[Any]], data_start: int, cols: dict[str, int],
     norm_labeled: bool = False,
 ) -> dict[str, str]:
     """Nguồn bằng chứng cho Mẫu 16 (không đẳng thức cân đối → chỉ header-matched / position).
 
     ``norm_labeled`` = cột ĐM thực tế đã chọn theo nhãn "thực tế/actual" (bố cục 004) →
-    header-matched hiển nhiên.
+    header-matched hiển nhiên cho riêng cột định mức.
     """
-    out: dict[str, str] = {}
-    out["material_code"] = (
-        HEADER_MATCHED
-        if _header_matched(cells, data_start, code_col, _M16_CODE_KW)
-        else POSITION_ONLY
+    out = _standard_evidence(
+        cells, data_start, cols, _M16_HDR_KW, set(), (), balance_ok=False,
     )
-    if norm_labeled or _header_matched(cells, data_start, norm_col, _M16_NORM_KW):
+    if norm_labeled and "norm_qty" in out:
         out["norm_qty"] = HEADER_MATCHED
-    else:
-        out["norm_qty"] = POSITION_ONLY
     return out
 
 
@@ -308,7 +306,6 @@ def evidence_m15a_extended(fields: list[str]) -> dict[str, str]:
 
 __all__ = [
     "BALANCE_CHECKED",
-    "FIELD_LABEL_VI",
     "HEADER_MATCHED",
     "NEEDS_REVIEW",
     "OFFICER_CONFIRMED",

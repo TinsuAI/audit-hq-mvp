@@ -461,6 +461,10 @@ CHECK_COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
     "C4.1": (
         ("m16", "material_code", INDIVIDUAL), ("m15", "material_code", INDIVIDUAL),
         ("m15", "import_qty", SUM), ("m15", "opening_qty", SUM),
+        # Cột ghi chú Mẫu 16: C4.1 tiêu thụ qua `is_domestic_origin` (`c4_norm.py:76-77`)
+        # để TRỪ nguyên liệu trong nước khỏi phạm vi đối chiếu. Đọc sai cột này là đổi
+        # phạm vi của check mà không phát hiện nào lộ ra — ca thứ hai của #109.
+        ("m16", "note", INDIVIDUAL),
     ),
     "C4.3": (
         ("m16", "material_code", INDIVIDUAL), ("m16", "norm_qty", INDIVIDUAL),
@@ -468,8 +472,6 @@ CHECK_COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("m15", "material_code", INDIVIDUAL), ("m15", "production_out_qty", INDIVIDUAL),
     ),
     # C4.9 đọc cột MÃ TP của M16 (mã nào đã có định mức) chứ không đọc trị định mức.
-    # `product_code` của slot m16 chưa có trong mô hình bằng chứng nên không sinh
-    # `review_state`; khai ở đây để đổi map cột M16 kéo C4.9 vào diện chạy lại.
     "C4.9": (
         ("m15a", "product_code", INDIVIDUAL), ("m15a", "intake_qty", INDIVIDUAL),
         ("m16", "product_code", INDIVIDUAL),

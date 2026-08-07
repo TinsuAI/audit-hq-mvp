@@ -144,7 +144,8 @@ def parse_m15(
         )
         rows = _rows_from_colmap(cells, colmap)
         scan_cols = [c for cols in colmap.cols.values() for c in cols]
-        evidence = evidence_m15_extended([f for f in _EVIDENCE_FIELDS if colmap.has(f)])
+        # Mọi trường map cột đặt được, không chỉ cột lượng: bằng chứng suy TỪ map (#111).
+        evidence = evidence_m15_extended([f for f in colmap.cols if colmap.has(f)])
         apply_officer_evidence(evidence, officer)
         return M15File(
             header=header, rows=rows, source_file=str(p), sheet=sheet,
@@ -209,8 +210,8 @@ def parse_m15(
         )
 
     evidence, detail = resolve_template_evidence(
-        template, _EVIDENCE_FIELDS, col, form_sig,
-        lambda: evidence_m15_standard(cells, data_start, cand_colmap),
+        template, tuple(col), col, form_sig,
+        lambda: evidence_m15_standard(cells, data_start, cand_colmap, cols=col),
         officer=officer,
     )
     return M15File(
@@ -223,12 +224,6 @@ def parse_m15(
         provenance=ParseProvenance(detail=detail, evidence=evidence),
     )
 
-
-# Cột giá trị + mã mang nguồn bằng chứng ở badge truy nguồn.
-_EVIDENCE_FIELDS = (
-    "material_code", "opening_qty", "import_qty", "reexport_qty", "repurpose_qty",
-    "production_out_qty", "other_out_qty", "closing_qty",
-)
 
 
 def _rows_from_colmap(cells: list, colmap: ColMap) -> list[M15Row]:

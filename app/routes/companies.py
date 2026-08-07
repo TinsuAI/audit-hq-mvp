@@ -27,7 +27,7 @@ from app.adapters.cell_window import (
     request_extract,
     sheet_names_for,
 )
-from app.adapters.evidence import FIELD_LABEL_VI
+from app.adapters.declared_fields import FIELD_LABEL_VI
 from app.adapters.templates import column_groups
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled

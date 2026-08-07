@@ -34,7 +34,7 @@ from app.checks.registry import (
 def _m15_grid(prod_hdr="Xuất kho để sản xuất", other_hdr="Xuất kho khác",
               prod_col=8, other_col=9):
     grid = [[None] * 11 for _ in range(7)]
-    parent = ["STT", "Mã nguyên liệu, vật tư", "Tên", "ĐVT",
+    parent = ["STT", "Mã nguyên liệu, vật tư", "Tên nguyên liệu, vật tư", "ĐVT",
               "Lượng NL, VT tồn kho đầu kỳ", "Lượng NL, VT nhập trong kỳ",
               None, None, None, None, "Lượng NL, VT tồn kho cuối kỳ"]
     child = [None, None, None, None, None, None,
@@ -140,18 +140,39 @@ def test_m15a_standard_export_header_matched():
     assert review_state("m15a", "export_qty", ev["export_qty"]) == VERIFIED
 
 
+# Bố cục Mẫu 16 TT39 — khớp `_M16_TT39_COLS`. Bằng chứng nay suy TỪ map cột (#111) nên
+# hàm nhận cả map, không chỉ hai cột có check đọc.
+_M16_COLS = {
+    "product_code": 1, "product_name": 2, "product_unit": 3, "material_code": 4,
+    "material_name": 5, "material_unit": 6, "norm_qty": 7, "note": 8,
+}
+
+
 def test_m16_norm_header_matched_and_missing():
     # Có nhãn "thực tế" ở cột định mức → header-matched → verified.
     grid = [[None] * 9 for _ in range(8)]
     grid[7] = [None, None, None, None, "Nguyên liệu, vật tư", None, None,
                "Lượng NL, VT thực tế sử dụng", "Ghi chú"]
     grid.append([1, "SP1", "TP", "PCE", "MAT1", "NPL", "KG", 1.5, None])
-    ev = evidence_m16(grid, data_start=8, code_col=4, norm_col=7)
+    ev = evidence_m16(grid, data_start=8, cols=_M16_COLS)
     assert ev["norm_qty"] == HEADER_MATCHED
     assert review_state("m16", "norm_qty", ev["norm_qty"]) == VERIFIED
     # norm_labeled=True (chọn theo nhãn 004) luôn header-matched dù không quét được.
-    ev2 = evidence_m16([[None] * 9], data_start=0, code_col=4, norm_col=7, norm_labeled=True)
+    ev2 = evidence_m16([[None] * 9], data_start=0, cols=_M16_COLS, norm_labeled=True)
     assert ev2["norm_qty"] == HEADER_MATCHED
+
+
+def test_m16_evidence_covers_every_mapped_field():
+    """#109: sáu trường Mẫu 16 từng đi vào cơ sở dữ liệu KHÔNG có mục bằng chứng nào,
+    nên không có badge và không có ô sửa. Bằng chứng nay phủ đúng map cột."""
+    grid = [[None] * 9 for _ in range(8)]
+    grid[7] = [None, "Mã SP", "Tên SP", "ĐVT SP", "Mã NVL", "Tên NVL", "ĐVT NVL",
+               "Lượng NL, VT thực tế sử dụng", "Ghi chú"]
+    grid.append([1, "SP1", "TP", "PCE", "MAT1", "NPL", "KG", 1.5, "x"])
+    ev = evidence_m16(grid, data_start=8, cols=_M16_COLS)
+    assert set(ev) == set(_M16_COLS)
+    assert ev["product_code"] == HEADER_MATCHED
+    assert ev["note"] == HEADER_MATCHED
 
 
 def test_extended_evidence_balance_checked_except_export_label():
@@ -181,9 +202,9 @@ def test_every_evidence_source_and_field_has_a_vietnamese_label():
     `_evidence_columns` tra nhãn bằng `.get(key, key)`; test này chốt nhánh fallback
     không bao giờ chạy với dữ liệu thật.
     """
+    from app.adapters.declared_fields import FIELD_LABEL_VI
     from app.adapters.evidence import (
         _RANK,
-        FIELD_LABEL_VI,
         REVIEW_LABEL_VI,
         SOURCE_LABEL_VI,
     )
