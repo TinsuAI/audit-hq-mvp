@@ -15,6 +15,7 @@ import pandas as pd
 
 from app.adapters import parse_bcct, parse_m15, parse_m15a, parse_m16
 from app.adapters.evidence import FIELD_LABEL_VI
+from app.adapters.extended_layout import OfficerMapBalanceError
 from app.adapters.layout import BALANCE_EXPECT, find_header_columns
 from app.adapters.sheet_select import SheetNotFound
 from app.pipeline.discover import DiscoveredFiles, discover
@@ -94,6 +95,15 @@ def _check_balance(
         detail = _mismatch_detail(slot, hrow, hmap, exp) if hrow is not None else str(e)
         diag.diagnostics.append(Diagnostic(
             slot, "error", f"{label}: không chọn được sheet đúng biểu", detail,
+        ))
+        return
+    except OfficerMapBalanceError as e:
+        # Vị trí cột cán bộ vừa xác nhận không qua được đẳng thức của biểu (#95). File
+        # KHÔNG hỏng — nói đúng nguyên nhân và chỉ đúng chỗ sửa, nếu không cán bộ đi
+        # soi file trong khi chỗ sai là chỉ số cột họ vừa nhập.
+        diag.diagnostics.append(Diagnostic(
+            slot, "error", f"{label}: vị trí cột vừa xác nhận không khớp đẳng thức của biểu",
+            f"{e} Dữ liệu của kỳ giữ nguyên, lượt nạp này chưa ghi dòng nào.",
         ))
         return
     except Exception as e:  # noqa: BLE001 — surface parser error friendly

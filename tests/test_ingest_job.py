@@ -214,8 +214,10 @@ def test_confirm_review_chains_a_check_job_after_ingest(app_db: AppDb):
     drain_jobs()
     assert last_job_result("ingest").get("checks_job_id") is None
 
-    # Lần sau: đổi cột trên file ĐÃ parsed → nối job chạy kiểm tra phạm vi hẹp.
-    data["col_production_out_qty"] = str(int(base_map["production_out_qty"]) + 1)
+    # Lần sau: đổi cột trên file ĐÃ parsed → nối job chạy kiểm tra phạm vi hẹp. Dời sang
+    # cột PHỤ ngoài biểu (#95: biểu mẫu từ chối gán một cột cho hai trường, nên không
+    # dời sang cột `Xuất khác` được nữa).
+    data["col_production_out_qty"] = str(len(_M15_HEADER_NEEDS_REVIEW))
     client.post(f"/companies/DN_JOB/documents/file/{fid}/review",
                 data=data, follow_redirects=False)
     with app_db.SessionLocal() as db:

@@ -1087,3 +1087,27 @@ sửa (biết sai vẫn không sửa được, phải sửa file nguồn).
 **SỬA ADR #18:** mục "nhãn truy nguồn hiện ngay trên dòng file để không hộp đen" — nay dòng file CHỈ hiện thứ có hệ quả (cần xác nhận cột · đọc hỏng · có cảnh báo), toàn bộ căn cứ đọc chuyển sang trang riêng của file. Truy nguồn cách một cú bấm chứ không mất. Nền của thay đổi: `match_source` đang RỖNG trên 15/15 file (đọc một khoá đường parse hiện tại không sinh ra) nên ba trong bốn nhãn đó chưa bao giờ hiện; `parse_layout` rỗng 11/15.
 
 **KHÔNG phải sửa ADR #18:** cổng review. Bản nháp spec ban đầu nói cổng dừng ở MỌI lượt nạp và đề xuất nối tham số `has_saved_map` — SAI. `record_parse_result` đã nâng cột có map lưu lên `officer-confirmed` → `verified` nên cổng trả rỗng và lượt nạp đi thẳng. `has_saved_map` là tham số CHẾT, không lời gọi nào trong sản phẩm. Hành vi "dừng lần đầu mỗi (DN × cấu trúc)" đã đúng như mong muốn.
+
+### 25. Map cột cán bộ áp được cho bố cục MỞ RỘNG — map diễn đạt nhóm cột, đẳng thức kiểm lại sau khi áp (2026-08-07, issue #95; SỬA giới hạn của #84 trong ADR #24 mục 5)
+
+**Bối cảnh:** ADR #24 mục (5) cho map cán bộ thắng mẫu biểu curate ở mức từng trường, nhưng #84 cố ý KHÔNG áp cho nhánh bố cục mở rộng: ở đó một trường đọc bằng TỔNG nhiều cột con `(6a)+(6b)`, còn map lưu chỉ giữ được một chỉ số cột. Hệ quả trên file của hai DN pilot: cán bộ sửa chỉ số cột thì không gì được áp, và theo cổng kiểm tra bằng nhau của #84 thì cột đó cũng không được gắn nhãn "cán bộ xác nhận" — file ở lại trạng thái cần xác nhận vĩnh viễn, không có đường ra.
+
+**Quyết định:**
+
+1. **Map lưu diễn đạt `trường → [cột…]`.** Giá trị JSON nhận cả `int` (một cột — mọi map cũ và toàn bộ bố cục chuẩn) lẫn `list[int]` (nhóm cột con). Không migration; một hàm chuẩn hoá duy nhất (`app.adapters.templates.column_groups`) dùng ở mọi chỗ đọc map.
+2. **Nhánh mở rộng ghi CẢ nhóm cột vào `parse_detail.column_map`**, không phải cột đầu nhóm như trước. Màn xác nhận dựng ô nhập từ chính giá trị này, nên ghi cột đầu là đưa cho cán bộ một bố cục sai để xác nhận.
+3. **Sau khi áp vị trí của cán bộ, đẳng thức cân đối của biểu được KIỂM LẠI trên map đã áp** (ADR #15). Không đạt ngưỡng 98% → ném `OfficerMapBalanceError`: không nạp dòng nào, chẩn đoán nói đúng nguyên nhân và chỉ chỗ sửa. KHÔNG có nhánh quay về map suy được. Đẳng thức viết lại theo TRƯỜNG (Mẫu 15 suy từ công thức trên file qua bảng số biểu→trường; Mẫu 15a theo đúng cách `resolve_m15a` chia vế cộng/vế trừ) để kiểm được sau khi thay vị trí cột.
+4. **Trang tính đã ghim vẫn dò lại bố cục mở rộng.** Lúc xác nhận, biểu mẫu ghim luôn trang tính đang đọc, mà nhánh mở rộng cũ chỉ chạy khi `sheet is None` — nên chính lượt nạp ngay sau khi cán bộ xác nhận sẽ đọc file mở rộng bằng cột cố định. Nay: trang đã ghim mà nhãn tiêu đề trên chính trang đó không xác nhận bố cục chuẩn (`standard_layout_colmap`) thì thử bố cục mở rộng.
+5. **Lượt nạp đọc hỏng KHÔNG xoá `parse_detail` cũ.** Căn cứ đọc của lượt trước là thứ duy nhất màn xác nhận dựng ô nhập từ đó; xoá đi là đổi một ngõ cụt lấy một ngõ cụt khác.
+6. **Một cột chỉ đọc cho một trường.** Biểu mẫu xác nhận từ chối gán cùng một chỉ số cột cho hai trường, và cổng trùng cột của BCCT chạy LẠI sau khi áp map cán bộ (trước đó chỉ soi bản đồ suy từ nhãn, nên map lưu đưa hai trường về một cột vẫn lọt).
+
+**Lý do:** kiểu hỏng cần chặn không phải "không đoán được bố cục" mà là "map trông hợp lý nhưng ra số sai, im lặng" (ADR #15) — repo này đã mất 28,5 tỷ vì một cột đọc sai không báo gì. Bố cục mở rộng không có nhãn tiêu đề để pin cột; thứ duy nhất chứng minh cách đọc là đẳng thức của chính biểu, nên map cán bộ phải qua đúng cổng đó chứ không được miễn.
+
+**Giới hạn còn ghi rõ:** đẳng thức là lưới chặn, KHÔNG phân biệt hai cột cùng dấu — đổi `export_qty` sang một cột trừ khác VÀ đổi cột kia ngược lại thì vế trừ không đổi và đẳng thức vẫn đúng. Đó đúng là mô hình bằng chứng của ADR #18, và cũng là lý do nhãn cuối cùng là "cán bộ xác nhận" chứ không phải "đã chứng minh". Đường bố cục CHUẨN vẫn chỉ đọc một cột mỗi trường: map nhiều cột ở đó không được áp (và biểu mẫu chặn từ đầu), vì đọc cột đầu nhóm là im lặng bỏ phần còn lại.
+
+**Alternatives loại:**
+
+- *Áp cột đầu nhóm cho gọn* — rejected: chính là lỗi #84 mô tả, im lặng bỏ mất các cột con còn lại.
+- *Áp map cán bộ rồi bỏ qua đẳng thức* — rejected: mất luôn thứ duy nhất chứng minh cách đọc ở bố cục mở rộng.
+- *Đẳng thức vỡ thì quay về map suy được và nạp tiếp* — rejected: cán bộ nhận một lượt nạp "thành công" đọc bằng bố cục họ không chọn.
+- *Sửa ở handler xác nhận (đừng ghim trang tính)* — rejected: ghim trang là quyết định đã có lý do riêng (2026-08-06 mục 3); chỗ sai là adapter hiểu "trang đã ghim" thành "đọc bằng cột cố định".

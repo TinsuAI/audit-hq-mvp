@@ -98,6 +98,17 @@ def _score(cells: list[list[Any]], slot: str) -> tuple[int, dict[str, int]]:
     return _POSITION_WEIGHT * at_position + len(hmap), hmap
 
 
+def standard_layout_colmap(cells: list[list[Any]], slot: str) -> dict[str, int] | None:
+    """Map nhãn→cột nếu trang tính này XÁC NHẬN bố cục chuẩn của slot; None nếu không.
+
+    Dùng khi cán bộ đã GHIM trang tính: `select_sheet` không chạy nữa nên không trang
+    nào được chấm điểm, và đọc bằng cột cố định trên một trang không phải bố cục chuẩn
+    là lệch mọi trường mà không báo gì. Cùng ngưỡng, cùng cách chấm như `select_sheet`.
+    """
+    score, colmap = _score(cells, slot)
+    return colmap if score >= _MIN_SCORE else None
+
+
 def _count_rows(cells: list[list[Any]], slot: str, data_start: int) -> int:
     code_col = BALANCE_EXPECT[slot]["code"][0]
     return sum(
@@ -157,4 +168,10 @@ def select_sheet(path: Path, slot: str, year: int | None = None) -> SheetCandida
     return top[0]
 
 
-__all__ = ["SheetCandidate", "SheetNotFound", "profile_sheets", "select_sheet"]
+__all__ = [
+    "SheetCandidate",
+    "SheetNotFound",
+    "profile_sheets",
+    "select_sheet",
+    "standard_layout_colmap",
+]

@@ -37,9 +37,25 @@ _M15_NUMERIC = ("opening_qty", "import_qty", "reexport_qty", "repurpose_qty",
 _MATCH_RATE = 0.98  # đẳng thức phải đúng ≥98% dòng dữ liệu mới nhận map
 
 
+class OfficerMapBalanceError(ValueError):
+    """Áp vị trí cột của cán bộ vào bố cục mở rộng làm vỡ đẳng thức cân đối của biểu.
+
+    Bố cục mở rộng KHÔNG có nhãn tiêu đề để pin cột — thứ duy nhất chứng minh cách
+    đọc là đẳng thức của chính biểu (ADR #15). Map cán bộ vì thế phải qua lại đúng
+    cổng đó. Không đạt thì TỪ CHỐI đọc: quay về map suy được mà vẫn báo "đã nạp" là
+    đọc một bố cục cán bộ không chọn, im lặng.
+    """
+
+
 @dataclass
 class ColMap:
-    """Trường → cột(s). Đọc một trường có thể là CỘNG nhiều cột con (vd (6)=6a+..+6d)."""
+    """Trường → cột(s). Đọc một trường có thể là CỘNG nhiều cột con (vd (6)=6a+..+6d).
+
+    ``identity_target`` / ``identity_terms`` là đẳng thức của biểu viết theo TRƯỜNG
+    thay vì theo số biểu, để kiểm lại được sau khi thay vị trí cột (map cán bộ dùng
+    tên trường, không dùng số biểu). ``identity_target is None`` = công thức của file
+    có số hạng không quy về trường nào → không kiểm lại được → không nhận map cán bộ.
+    """
 
     cols: dict[str, list[int]] = field(default_factory=dict)
     header_row: int = 0
@@ -47,6 +63,9 @@ class ColMap:
     formula: str = ""
     checked: int = 0
     matched: int = 0
+    code_field: str = "material_code"
+    identity_target: str | None = None
+    identity_terms: tuple[tuple[int, str], ...] = ()
 
     def value(self, row: list[Any], fieldname: str) -> float:
         return sum(to_float(row[c]) for c in self.cols.get(fieldname, ()) if c < len(row))
@@ -185,6 +204,13 @@ def resolve_m15(cells: list[list[Any]]) -> ColMap | None:
     cmap.formula = formula.strip()
     cmap.checked = checked
     cmap.matched = matched
+    # Đẳng thức viết lại theo TRƯỜNG — chỉ giữ khi mọi số hạng quy được về một trường
+    # của Mẫu 15; không thì để None và map cán bộ sẽ bị từ chối thay vì áp mà không
+    # kiểm lại được.
+    fields = [(sign, _M15_FORM_FIELD.get(num)) for sign, num in raw_terms]
+    if all(f is not None for _sign, f in fields):
+        cmap.identity_target = _M15_FORM_FIELD[target]
+        cmap.identity_terms = tuple((sign, f) for sign, f in fields if f is not None)
     return cmap
 
 
@@ -242,6 +268,15 @@ _M15A_EXPORT_EXCLUDE = (
 )
 
 
+# Đẳng thức cân đối Mẫu 15a viết theo TRƯỜNG. Đúng theo CÁCH DỰNG của `resolve_m15a`:
+# vế cộng được chia hết thành `opening_qty` + `intake_qty`, vế trừ thành `export_qty` +
+# `other_out_qty`, nên tổng theo trường bằng đúng tổng theo số hạng của công thức.
+_M15A_IDENTITY_TARGET = "closing_qty"
+_M15A_IDENTITY_TERMS: tuple[tuple[int, str], ...] = (
+    (1, "opening_qty"), (1, "intake_qty"), (-1, "export_qty"), (-1, "other_out_qty"),
+)
+
+
 @dataclass
 class M15aResolution:
     """Map cột Mẫu 15a mở rộng đã xác thực + bằng chứng để hiển thị/lưu."""
@@ -253,6 +288,9 @@ class M15aResolution:
     checked: int
     matched: int
     export_label: str | None = None
+    code_field: str = "product_code"
+    identity_target: str | None = _M15A_IDENTITY_TARGET
+    identity_terms: tuple[tuple[int, str], ...] = _M15A_IDENTITY_TERMS
 
     def value(self, row: list[Any], fieldname: str) -> float:
         return sum(to_float(row[c]) for c in self.cols.get(fieldname, ()) if c < len(row))
@@ -423,9 +461,62 @@ def select_extended_m15a(path, year: int | None = None) -> tuple[str, M15aResolu
     return name, res
 
 
+def identity_counts_by_field(
+    cells: list[list[Any]], data_start: int, cols: dict[str, list[int]],
+    target: str, terms: tuple[tuple[int, str], ...], code_field: str,
+) -> tuple[int, int]:
+    """(số dòng đã kiểm, số dòng khớp) của đẳng thức cân đối viết theo TRƯỜNG."""
+    return _identity_counts(
+        cells, data_start,
+        cols.get(target, []),
+        [(sign, cols.get(f, [])) for sign, f in terms],
+        cols.get(code_field, []),
+    )
+
+
+def apply_officer_map(
+    cells: list[list[Any]], layout: Any, officer: dict[str, list[int]], slot: str,
+) -> tuple[dict[str, list[int]], int, int]:
+    """Áp vị trí cột của cán bộ lên map suy được, rồi KIỂM LẠI đẳng thức cân đối.
+
+    ``layout`` là ``ColMap`` hoặc ``M15aResolution``. ``officer`` = `{trường: [cột…]}`
+    đã lọc theo đúng vân tay và đúng các trường slot này đọc. Trả
+    `(map cột sẽ đọc, số dòng đã kiểm, số dòng khớp)`.
+
+    Đẳng thức không đạt ngưỡng → ném ``OfficerMapBalanceError``. KHÔNG có nhánh nào
+    quay về map cũ: cán bộ phải biết vị trí họ vừa chỉ định không đọc được, chứ không
+    phải nhận một lượt nạp "thành công" đọc bằng bố cục khác.
+    """
+    if not officer:
+        return dict(layout.cols), layout.checked, layout.matched
+    fields = ", ".join(sorted(officer))
+    if layout.identity_target is None:
+        raise OfficerMapBalanceError(
+            f"{slot}: không kiểm lại được đẳng thức cân đối của biểu sau khi áp map cột "
+            f"của cán bộ (công thức trên file có số hạng không quy về trường nào). "
+            f"Trường cán bộ chỉ định: {fields}. Không nạp để không ghi số chưa chứng minh."
+        )
+    cols = {**layout.cols, **{f: list(c) for f, c in officer.items()}}
+    checked, matched = identity_counts_by_field(
+        cells, layout.data_start, cols,
+        layout.identity_target, layout.identity_terms, layout.code_field,
+    )
+    if checked == 0 or (matched / checked) < _MATCH_RATE:
+        raise OfficerMapBalanceError(
+            f"{slot}: áp map cột của cán bộ làm vỡ đẳng thức cân đối của biểu — khớp "
+            f"{matched}/{checked} dòng, cần từ {int(_MATCH_RATE * 100)}% trở lên. "
+            f"Trường cán bộ chỉ định: {fields}. Không nạp dữ liệu; sửa lại chỉ số cột "
+            f"ở màn xác nhận rồi xác nhận lại."
+        )
+    return cols, checked, matched
+
+
 __all__ = [
     "ColMap",
     "M15aResolution",
+    "OfficerMapBalanceError",
+    "apply_officer_map",
+    "identity_counts_by_field",
     "parse_formula",
     "parse_formula_terms",
     "parse_numbering_row",

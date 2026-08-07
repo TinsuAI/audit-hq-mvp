@@ -19,12 +19,13 @@ import pytest
 from openpyxl import Workbook
 
 from app.adapters import templates as tpl_mod
-from app.adapters.bcct import parse_bcct
+from app.adapters.bcct import BcctColumnError, parse_bcct
 from app.adapters.evidence import (
     BUILTIN_TEMPLATE,
     OFFICER_CONFIRMED,
     POSITION_ONLY,
 )
+from app.adapters.extended_layout import OfficerMapBalanceError
 from app.adapters.m15 import parse_m15
 from app.adapters.m15a import parse_m15a
 from app.adapters.m16 import parse_m16
@@ -278,17 +279,30 @@ def test_officer_position_wins_on_bcct(tmp_path):
     assert parsed.provenance.evidence["quantity"] == OFFICER_CONFIRMED
 
 
-def test_extended_layout_does_not_take_officer_positions(tmp_path):
-    """GIỚI HẠN CÓ CHỦ Ý: bố cục mở rộng đọc một trường bằng TỔNG nhiều cột con.
+def test_extended_layout_reports_an_officer_map_that_breaks_the_balance(tmp_path):
+    """#95 SỬA giới hạn của #84: bố cục mở rộng NAY nhận vị trí của cán bộ.
 
-    Map lưu chỉ giữ được cột đầu nhóm, nên áp nó vào đây sẽ đổi `(6a)+(6b)` thành
-    `(6a)` — im lặng làm mất số. Đường mở rộng giữ nguyên map suy từ đẳng thức.
+    Map một cột duy nhất cho `import_qty` đổi `(6a)+(6b)` thành `(6a)` — đẳng thức
+    của biểu vỡ, nên lượt đọc bị TỪ CHỐI kèm lý do thay vì im lặng bỏ mất `(6b)`
+    hoặc im lặng quay về map suy được. Ca áp thành công ở
+    `tests/test_officer_map_extended.py`.
     """
     path = _write_grid(tmp_path / "m15x.xlsx", "BCQT_NPL", _m15_extended_grid())
     sig = parse_m15(path).provenance.detail["form_signature"]
-    parsed = parse_m15(path, officer_maps={sig: {"import_qty": 5}})
-    assert parsed.rows[0].import_qty == 100  # vẫn cột Tổng (6), không phải (6a)=40
-    assert parsed.provenance.detail["match_source"] == MATCH_EXTENDED
+    with pytest.raises(OfficerMapBalanceError):
+        parse_m15(path, officer_maps={sig: {"import_qty": 5}})
+    # Không map cán bộ → vẫn là đường mở rộng như cũ.
+    assert parse_m15(path).provenance.detail["match_source"] == MATCH_EXTENDED
+
+
+def test_bcct_rejects_an_officer_map_that_doubles_up_a_column(tmp_path):
+    """#95 — cổng trùng cột của BCCT chạy TRƯỚC lúc áp map cán bộ, nên map cán bộ
+    có thể đưa hai trường về cùng một cột mà không ai chặn."""
+    path, _ = _bcct_file(tmp_path)
+    sig = parse_bcct(path).provenance.detail["form_signature"]
+    col = STANDARD_54.index("Tổng số lượng 2")
+    with pytest.raises(BcctColumnError):
+        parse_bcct(path, officer_maps={sig: {"quantity": col, "unit_price": col}})
 
 
 def test_position_only_file_still_names_its_source(tmp_path):

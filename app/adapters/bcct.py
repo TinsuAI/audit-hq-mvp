@@ -315,6 +315,10 @@ def parse_bcct(
     form_sig = compute_form_signature(cells, "bcct", data_start)
     officer = officer_columns(officer_maps, form_sig, col)
     col.update(officer)
+    # Cổng trùng cột chạy LẠI sau khi áp map cán bộ (#95): lượt kiểm trong
+    # `_resolve_columns` chỉ soi bản đồ suy từ nhãn, nên một map lưu đưa hai trường về
+    # cùng một cột sẽ lọt qua và cả hai trường cùng đọc một cột, im lặng.
+    _reject_collisions(col, p.name)
     apply_officer_evidence(evidence, officer)
 
     company_tax_id: str | None = None

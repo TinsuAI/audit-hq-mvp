@@ -39,17 +39,22 @@ def parse_cache() -> Iterator[None]:
         _CACHE.reset(token)
 
 
-def _map_key(officer_maps: dict[str, dict[str, int]] | None) -> tuple:
+def _map_key(officer_maps: dict[str, dict[str, Any]] | None) -> tuple:
     """Khoá theo NỘI DUNG map cột, không theo danh tính dict.
 
     Một lượt nạp nạp map cán bộ ở hai chỗ (trước phiên DB của `ingest`, rồi trong
     phiên khi lập kế hoạch theo sổ). Hai dict khác danh tính mà cùng nội dung phải
     trúng cùng một ô nhớ, nếu không mỗi file lại mở hai lần — đúng thứ ADR #24 sửa.
+
+    Giá trị mỗi trường có thể là danh sách cột (bố cục mở rộng, #95) — đổi sang tuple
+    thì khoá mới băm được.
     """
     if not officer_maps:
         return ()
     return tuple(
-        (sig, tuple(sorted(cols.items())))
+        (sig, tuple(sorted(
+            (f, tuple(v) if isinstance(v, list | tuple) else v) for f, v in cols.items()
+        )))
         for sig, cols in sorted(officer_maps.items())
     )
 

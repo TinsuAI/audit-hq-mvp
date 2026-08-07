@@ -263,9 +263,9 @@ def record_parse_result(
         prov_layout = getattr(prov, "layout", "standard") if prov is not None else "standard"
         # Map đã lưu cho (DN, slot, vân tay form) khớp → các cột resolve
         # `officer-confirmed` → `verified`, cổng review tự advance (WS1-3, ADR #18).
-        # Chỉ nâng cột mà lượt đọc ĐÃ DÙNG đúng vị trí trong map lưu: nhánh bố cục
-        # mở rộng không áp được vị trí của cán bộ (ADR #24 mục 5), dán nhãn ở đó là
-        # nói cột đã được xác nhận trong khi parser đọc chỗ khác.
+        # Chỉ nâng cột mà lượt đọc ĐÃ DÙNG đúng vị trí trong map lưu — dán nhãn lên một
+        # cột parser đọc ở chỗ khác là nói sai. So sánh theo NHÓM cột: bố cục mở rộng
+        # đọc một trường bằng tổng nhiều cột con (#95).
         if prov_evidence:
             prov_detail = getattr(prov, "detail", None) or {}
             prov_evidence = resolve_officer_confirmed(
@@ -300,6 +300,12 @@ def record_parse_result(
                 if any(src == OFFICER_CONFIRMED for src in (prov_evidence or {}).values())
                 else detail.get("match_source")
             )
+        elif prov is None and row.parse_detail:
+            # Lượt nạp này KHÔNG đọc được file (vd vị trí cột cán bộ vừa xác nhận làm vỡ
+            # đẳng thức của biểu, #95). Giữ căn cứ đọc của lượt trước: màn xác nhận dựng
+            # ô nhập từ chính nó, xoá đi là cán bộ mất luôn đường sửa lại chỉ số cột và
+            # file kẹt ở "đọc hỏng" không lối ra.
+            pass
         else:
             row.parse_layout = None
             row.parse_detail = None
