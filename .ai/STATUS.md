@@ -45,6 +45,15 @@
 > **ẢNH E2E:** 8 ảnh `.ai/features/2026-08-07-upload-ingest-redesign/` + 8 ảnh
 > `.ai/features/2026-08-07-luoi-cuon-xem-truoc/`, đều **dữ liệu bịa**, có `ui_smoke.py` sinh lại.
 >
+> **VIỆC CHO PHIÊN SAU — owner nêu 07/08, ưu tiên cao nhất:** **#110** thiết kế lại mô hình bằng
+> chứng + màn gán cột. **Cần `/grill-with-docs` TRƯỚC khi code** (mục 2 và 3 đổi mô hình miền —
+> khái niệm "trường bắt buộc mỗi biểu" chưa tồn tại). Ghi chú đầy đủ kèm số đo:
+> `.ai/notes/2026-08-07-mo-hinh-bang-chung-va-gan-cot.md`. Ba việc: rà bằng chứng cho CẢ BỐN slot
+> (m16 đọc/ghi 7 trường, chỉ 2 trường có bằng chứng) · cán bộ phải GÁN được trường ↔ cột chứ không
+> chỉ "xác nhận" · thiếu trường bắt buộc phải CẢNH BÁO. **#109** là một ca của nó (m16 đọc mã thành
+> phẩm theo vị trí, không nhãn, không sửa được — mà bố cục cha-con điền xuôi nên lệch cột hỏng cả
+> nhóm: 4.613 mã → 270.385 dòng, 58,6 dòng/mã).
+>
 > **CÒN MỞ:** **#108** hai file test vá `app.database` không khôi phục — **rò IM LẶNG, không nổ**
 > (không `dispose()` nên engine rò vẫn giữ bảng, test sau đọc/ghi nhầm DB mà vẫn xanh) ·
 > **#93 cần người chạy**: DB dev phải `alembic upgrade head`, và phải dựng thư mục
