@@ -21,8 +21,8 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.adapters.declared_fields import DECLARED_FIELDS, FIELD_LABEL_VI
 from app.adapters.evidence import (
-    FIELD_LABEL_VI,
     NEEDS_REVIEW,
     OFFICER_CONFIRMED,
     SOURCE_LABEL_VI,
@@ -38,16 +38,12 @@ from app.settings import settings
 
 _EXCEL_EXT = {".xls", ".xlsx"}
 
-# Thứ tự hiển thị cột ở badge truy nguồn mỗi slot.
+# Thứ tự hiện ở khối "căn cứ đọc" — suy TỪ tập trường khai, không giữ tay. Danh sách
+# giữ tay ở đây là chỗ thứ hai che `product_code` của Mẫu 16: bằng chứng có phủ đủ mà
+# danh sách này vẫn lọc xuống hai cột thì cán bộ vẫn không thấy (#109). Một nguồn duy
+# nhất (spec #116 story 28) — thêm trường vào khai là hiện luôn, không phải sửa hai chỗ.
 _EVIDENCE_ORDER: dict[str, tuple[str, ...]] = {
-    "m15": ("material_code", "opening_qty", "import_qty", "reexport_qty", "repurpose_qty",
-            "production_out_qty", "other_out_qty", "closing_qty"),
-    "m15a": ("product_code", "opening_qty", "intake_qty", "repurpose_qty", "export_qty",
-             "other_out_qty", "closing_qty"),
-    "m16": ("material_code", "norm_qty"),
-    "bcct": ("declaration_no", "declaration_date", "customs_code", "item_code",
-             "hs_code", "quantity", "unit", "unit_price", "value_total",
-             "company_tax_id", "company_name"),
+    slot: tuple(f.name for f in fields) for slot, fields in DECLARED_FIELDS.items()
 }
 
 

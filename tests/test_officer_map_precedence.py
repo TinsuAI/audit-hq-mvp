@@ -308,8 +308,11 @@ def test_bcct_rejects_an_officer_map_that_doubles_up_a_column(tmp_path):
 def test_position_only_file_still_names_its_source(tmp_path):
     """Không nhãn nào khớp cột nào: nguồn phải là `default`, KHÔNG được rỗng."""
     grid = _m16_grid()
-    grid[10] = [None] * 10  # xoá dòng tiêu đề con → cột ĐM không còn từ khoá
-    grid[9][4] = None       # xoá nhãn "Nguyên liệu" → cột mã cũng chỉ còn vị trí
+    # Xoá CẢ hai dòng tiêu đề. Bằng chứng nay phủ cả 8 trường (#111), nên chỉ xoá nhãn
+    # của cột mã + cột ĐM là chưa đủ: "Mã sản phẩm", "Tên sản phẩm", "Ghi chú" ở dòng
+    # cha vẫn khớp từ khoá và file không còn là ca "chỉ theo vị trí" nữa.
+    grid[9] = [None] * 10   # dòng tiêu đề cha
+    grid[10] = [None] * 10  # dòng tiêu đề con
     path = _write_grid(tmp_path / "m16plain.xlsx", "BCTT39", grid)
     parsed = parse_m16(path)
     assert parsed.provenance.detail["match_source"] == MATCH_DEFAULT

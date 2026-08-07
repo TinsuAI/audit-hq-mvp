@@ -185,11 +185,16 @@ def parse_m16(
     # Cán bộ dời sang cột KHÁC → không còn đọc theo nhãn nữa, không được giữ nhãn
     # "ĐM thực tế theo nhãn X". Cán bộ xác nhận ĐÚNG cột đó thì giữ nguyên.
     norm_labeled = norm_labeled and cols["norm_qty"] == norm_col
-    evidence = evidence_m16(
-        cells, data_start, cols["material_code"], cols["norm_qty"], norm_labeled=norm_labeled,
-    )
+    # Bố cục 004 có HAI cột định mức: `_detect_actual_norm_col` dời `norm_qty` sang cột
+    # ĐM thực tế, và chỉ số đó chính là cột `note` của mẫu chuẩn → adapter đọc MỘT cột
+    # vào HAI trường. Đo 08/08: `norms.note` bằng đúng `norm_qty` ở 880/880 dòng của
+    # PILOT_004 2025. Trường mất chỗ về *chưa gán* (màn gán, lát 2) — không bịa vị trí.
+    if cols.get("note") == cols["norm_qty"]:
+        del cols["note"]
+    evidence = evidence_m16(cells, data_start, cols, norm_labeled=norm_labeled)
     apply_officer_evidence(evidence, officer)
-    column_map = {f: cols[f] for f in evidence if f in cols}
+    # Map cột là NGUỒN, bằng chứng suy từ nó (chiều của bcct) — không lọc ngược lại.
+    column_map = dict(cols)
     detail = {
         "form_signature": form_sig,
         "column_map": column_map,

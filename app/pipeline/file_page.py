@@ -19,8 +19,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.adapters.declared_fields import FIELD_LABEL_VI
 from app.adapters.evidence import (
-    FIELD_LABEL_VI,
     NEEDS_REVIEW,
     REVIEW_LABEL_VI,
     SOURCE_LABEL_VI,

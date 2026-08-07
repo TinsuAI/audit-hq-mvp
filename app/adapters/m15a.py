@@ -135,8 +135,9 @@ def parse_m15a(
         )
         rows = _rows_from_resolution(cells, resolution)
         scan_cols = [c for cols in resolution.cols.values() for c in cols]
+        # Mọi trường map cột đặt được, không chỉ cột lượng: bằng chứng suy TỪ map (#111).
         evidence = evidence_m15a_extended(
-            [f for f in _EVIDENCE_FIELDS if resolution.cols.get(f)]
+            [f for f in resolution.cols if resolution.cols.get(f)]
         )
         apply_officer_evidence(evidence, officer)
         return M15aFile(
@@ -202,8 +203,8 @@ def parse_m15a(
         )
 
     evidence, detail = resolve_template_evidence(
-        template, _EVIDENCE_FIELDS, col, form_sig,
-        lambda: evidence_m15a_standard(cells, data_start, cand_colmap),
+        template, tuple(col), col, form_sig,
+        lambda: evidence_m15a_standard(cells, data_start, cand_colmap, cols=col),
         officer=officer,
     )
     return M15aFile(
@@ -216,12 +217,6 @@ def parse_m15a(
         provenance=ParseProvenance(detail=detail, evidence=evidence),
     )
 
-
-# Cột giá trị + mã mang nguồn bằng chứng ở badge truy nguồn.
-_EVIDENCE_FIELDS = (
-    "product_code", "opening_qty", "intake_qty", "repurpose_qty", "export_qty",
-    "other_out_qty", "closing_qty",
-)
 
 
 def _rows_from_resolution(cells: list, res: M15aResolution) -> list[M15aRow]:
