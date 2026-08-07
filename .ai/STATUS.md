@@ -1,5 +1,68 @@
 # STATUS — Audit-HQ MVP
 
+> **(2026-08-07 — THIẾT KẾ LẠI LUỒNG TẢI LÊN → NẠP DỮ LIỆU. Spec issue #80, 14 vé #81–#93 + #95.
+> 11/15 vé xong, nằm ở nhánh LOCAL `feat/upload-ingest-wave1` @ `bc3339d`, CHƯA push.
+> Đã push riêng PR #96 sửa lỗi đổ JSON thô — độc lập, deploy được ngay):**
+>
+> **Nguồn gốc:** grill 17 quyết định, chốt với owner, ghi ở **ADR #24**; **ADR #25** ghi phần
+> #95 lật lại giới hạn của #84. Spec 352 dòng ở `.ai/features/2026-08-07-upload-ingest-redesign/`.
+> Hai agent review (một soi seam test, một quyết bốn call khó) đã lật ngược ba giả định của tôi
+> TRƯỚC khi code — chi tiết dưới.
+>
+> **ĐỔI ĐỊNH NGHĨA NỀN:** "đủ dữ liệu" = **mọi kiểm tra áp dụng được đều có đủ nguồn Tầng 1**,
+> KHÔNG phải "đủ 4 loại tài liệu". Nhãn `Đã nạp · X/4 loại` bị xoá. Đo: 10 lần `not_evaluable`
+> chia **1 / 6 / 3** theo ba lớp cách gỡ — tức **9/10 vướng mắc KHÔNG gỡ được bằng file của
+> chính kỳ đó**, nên danh sách phẳng cũ khiến cán bộ đi tìm file không tồn tại.
+>
+> **BỐN LỖI IM LẶNG BẮT ĐƯỢC (đều đang sống trên prod trước hôm nay):**
+> 1. **Toàn ứng dụng KHÔNG có trình xử lý lỗi nào** — `grep exception_handler app/` rỗng. Mọi
+>    lỗi đổ JSON thô cho cán bộ; 500 lộ dấu vết ngăn xếp. → PR #96.
+> 2. **Ghim trang tính làm hỏng bố cục mở rộng** (#95): nhánh đọc mở rộng chỉ chạy khi
+>    `sheet is None`, mà xác nhận cột thì ghim trang — nên **chính lượt nạp lại ngay sau khi cán
+>    bộ xác nhận** đọc file mở rộng bằng cột cố định, lệch mọi trường, không báo gì.
+> 3. **`match_source` rỗng 15/15 file** — đọc một khoá đường parse không sinh ra, nên 3/4 nhãn
+>    truy nguồn chưa bao giờ hiện. → #84, nay 15/15 có giá trị sau re-ingest.
+> 4. **Xoá file không dời `data_version`** — kỳ tiếp tục phục vụ số của bộ file đã biến mất. → #90.
+>
+> **BA GIẢ ĐỊNH CỦA TÔI BỊ LẬT (đo lại mới biết):**
+> - Cổng review **đã** dừng đúng một lần mỗi (DN × cấu trúc) — `resolve_officer_confirmed` nâng
+>   map lưu lên `officer-confirmed` từ trước. `has_saved_map` là **tham số chết**. Không phải sửa
+>   đổi ADR #18 như bản nháp spec viết.
+> - Hạn mức 25MB của xem trước **không** do chi phí mở file: `load_workbook(read_only)` trên file
+>   71,3MB mất **1,19 s**. Nút thắt thật là đọc tuần tự **chỉ đi tới** — nhảy tới dòng 200.000 mất
+>   **3,87 s**. → trích xuất một lần vào kho đệm SQLite mỗi (file, trang tính).
+> - **Đuôi file nói dối.** Đếm 493 file: 268 xlsx thật · 185 xls thật · **38 file đuôi `.xls` thật
+>   ra là XML SpreadsheetML** (190,8MB) · 2 hỏng — khớp ghi chú "40 file không mở được" có sẵn.
+>   Nhận dạng nay theo BYTE ĐẦU. 38 file đó nay **xem trước được**, vẫn **chưa nạp được**.
+>
+> **ĐÃ XONG (11):** `#81` fixture DB dùng chung (vá cả ba điểm gắn phiên; test cũ xanh giả vì
+> `app/pipeline/ingest.py` giữ bản sao `SessionLocal` từ lúc import) · `#82` lớp cách gỡ trên
+> `NotEvaluable` + cột `check_runs.remedy`, migration `e2f3a4b5c6d7` · `#83` bộ đọc 3 định dạng +
+> kho đệm · `#84` `match_source` + map cán bộ thắng mẫu biểu · `#85` `period_readiness` (nguồn
+> DUY NHẤT của phép đếm; tách 4 hàm điều kiện ra khỏi chính các kiểm tra để bảng điều khiển và
+> kiểm tra khớp nhau theo cấu trúc) · `#86` màn dữ liệu một DN các kỳ là dòng · `#91` lưới cuộn
+> ảo viết tay 516 dòng, không thư viện, không bước build · `#94`→PR #96 · `#95` map nhóm cột +
+> đẳng thức kiểm lại sau khi áp.
+>
+> **ĐANG CHẠY:** `#87` mở rộng dòng kỳ · `#90` đánh dấu kết quả cũ.
+> **CHỜ:** `#88` ô thả file (chờ #87) · `#89` phản hồi nạp tại chỗ (chờ #87) · `#92` một trang
+> file (chờ #88+#91) · `#93` gán lại sổ cho DN nhiều sổ (chờ #88).
+>
+> **SỐ ĐO NỀN (07/08, dữ liệu thật):** `first_bcqt_year` rỗng **cả 7 DN** → chặn kỳ sớm nhất của
+> mọi DN · `audit_decision_date` rỗng cả 7 → màn phạm vi 5 năm 404 với mọi DN · **52/170 trang
+> tính vượt 40 cột** (rộng nhất 257) · 11/493 file vượt 25MB · trích xuất lần đầu: xlsx 71,3MB
+> **164,6 s** (VƯỢT ngưỡng Cloudflare 100 s → #91 phải có trạng thái chờ + hỏi lại), XML 64,5MB
+> 5,4 s, xls 39,3MB 7,1 s; cửa sổ sau đó 2–5 ms · `row_count` ghi theo LOẠI rồi chép lên mọi file
+> cùng loại → hai file BCCT của một kỳ cùng mang 270.505 trong khi cả kỳ có đúng 270.505 dòng.
+>
+> **CÒN NGUYÊN, CỐ Ý NGOÀI PHẠM VI:** `run_checks` xoá rồi dựng lại `Finding` nên **trạng thái và
+> ghi chú cán bộ đã đánh bị đưa về `new`**. Hiện phơi nhiễm bằng 0 (15.356 finding đều `new`),
+> thành thật ngay khi thí điểm bắt đầu. Đây là lý do #90 **không** tự chạy lại kiểm tra.
+>
+> **DB DEV đã migrate** lên `e2f3a4b5c6d7` (backup WAL-safe `audit_hq.sqlite.bak-pre-remedy-*`,
+> integrity ok, 7 DN, 15.356 finding nguyên vẹn). **28 worktree cũ đã dọn**, giữ nguyên toàn bộ
+> nhánh — mọi nhánh đều còn commit chưa merge, nặng nhất 48/43/43 commit.
+
 > **PROD (2026-08-06 chiều — build `903685a`, alembic `d9e0f1a2b3c4`):** ba PR đã merge và
 > deploy trong ngày, khởi nguồn từ lỗi **524** khi cán bộ tải bộ file 006 lên demo.
 >
