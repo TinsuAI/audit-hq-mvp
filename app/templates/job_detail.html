@@ -87,7 +87,9 @@
     · <a href="/jobs/{{ res['checks_job_id'] }}" class="btn-link">→ Công việc chạy kiểm tra #{{ res["checks_job_id"] }}</a>
     {% endif %}
     {% else %}
-    <a href="/companies/{{ company_code }}?year={{ job.period_year or '' }}" class="btn-link">
+    {# Công việc không gắn kỳ thì bỏ hẳn tham số. `?year=` (có mặt nhưng rỗng) từng
+       làm trang doanh nghiệp đổ JSON kiểm kiểu ra màn hình cán bộ (issue #94). #}
+    <a href="/companies/{{ company_code }}{% if job.period_year %}?year={{ job.period_year }}{% endif %}" class="btn-link">
       → Xem kết quả kiểm tra cho {{ company_code }}
     </a>
     {% endif %}
