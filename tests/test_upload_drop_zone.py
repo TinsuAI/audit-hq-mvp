@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from sqlalchemy import select
 
 from app.main import app
@@ -42,6 +42,22 @@ def _xlsx_bytes(marker: str) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _marker(path: Path) -> object:
+    """Đọc lại ô mốc A1 của file trên đĩa.
+
+    KHÔNG so byte thô với một workbook dựng lại (#104): `.xlsx` là gói ZIP, mỗi entry
+    mang dấu thời gian và `docProps/core.xml` mang giờ tạo/sửa. Hai lần dựng cùng nội
+    dung ở hai giây khác nhau ra byte khác nhau — đo được: 10 entry lệch mtime và
+    `core.xml` lệch nội dung, dù độ dài file y hệt. So byte làm test đỏ ngẫu nhiên
+    theo đồng hồ; đọc ô mốc không phụ thuộc đồng hồ.
+    """
+    wb = load_workbook(path)
+    try:
+        return wb.active["A1"].value
+    finally:
+        wb.close()
 
 
 def _company(app_db: AppDb, code: str = _CODE) -> int:
@@ -300,7 +316,12 @@ def test_several_declaration_files_of_one_period_add_up_instead_of_replacing(app
 
 
 def test_dropping_the_same_declaration_name_twice_replaces_that_one_file(app_db: AppDb):
-    """Thả lại đúng tên cũ = sửa file đó, không sinh bản thứ hai."""
+    """Thả lại đúng tên cũ = sửa file đó, không sinh bản thứ hai.
+
+    Ba khẳng định phải cùng đứng: đúng MỘT file trên đĩa, nội dung của file đó là của
+    lượt thả SAU, và đúng MỘT dòng bcct. Nới thành "file tồn tại" là bỏ mất bất biến
+    đã làm mất 28,5 tỷ (form cũ xoá file thứ nhất khi tải file thứ hai).
+    """
     _company(app_db)
     client = _client()
     _drop(client, [_f("BCCT_F1.xlsx", _xlsx_bytes("cu"))])
@@ -308,7 +329,7 @@ def test_dropping_the_same_declaration_name_twice_replaces_that_one_file(app_db:
 
     d = app_db.raw_root / _CODE / str(_YEAR) / "HANG_CHI_TIET"
     assert [p.name for p in d.glob("*.xlsx")] == ["BCCT_F1.xlsx"]
-    assert (d / "BCCT_F1.xlsx").read_bytes() == _xlsx_bytes("moi")
+    assert _marker(d / "BCCT_F1.xlsx") == "moi"
     assert len([r for r in _rows(app_db) if r.slot == "bcct"]) == 1
 
 
