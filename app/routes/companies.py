@@ -17,8 +17,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.adapters.cell_reader import CellReadError, SheetOutOfRange, UnsupportedFileFormat
-from app.adapters.cell_window import sheet_window
+from app.adapters.cell_reader import (
+    CellReadError,
+    SheetOutOfRange,
+    UnsupportedFileFormat,
+    detect_format,
+)
+from app.adapters.cell_window import cache_file_for, read_window, request_extract
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled
 from app.audit import (
@@ -1136,15 +1141,18 @@ def documents_download_file(
     )
 
 
+# Ba hạn mức dưới đây CHỈ CÒN áp cho lưới 15 dòng nhúng trong màn xác nhận cột.
+# Trang xem file thôi dùng đường đọc này từ #91: nó lấy ô qua điểm cuối cửa sổ, vốn
+# không có trần dòng, trần cột lẫn trần kích thước file.
 PREVIEW_ROWS = 100
 PREVIEW_COLS = 40
 # Grid preview nhúng trong màn xác nhận cột (WS1) — ít dòng để đối chiếu chỉ số cột.
 REVIEW_PREVIEW_ROWS = 15
-# Trên NGƯỠNG này thì KHÔNG dựng lưới xem trước. Mở workbook bằng openpyxl/pandas phải
+# Trên NGƯỠNG này thì KHÔNG dựng lưới nhúng. Mở workbook bằng openpyxl/pandas phải
 # nạp bảng chuỗi dùng chung của cả file: đo trên BCCT 68MB của 006 mất 28-30 giây lúc
 # máy rảnh và 125 giây khi worker đang nạp file khác — quá 100 giây Cloudflare cho phép,
-# nên trang chọn trang tính chết đúng vào lúc cán bộ cần nó nhất. Danh sách trang tính
-# vẫn hiện (đọc thẳng từ zip, 0,00 giây), chỉ mất phần lưới ô.
+# nên trang chết đúng vào lúc cán bộ cần nó nhất. Danh sách trang tính vẫn hiện (đọc
+# thẳng từ zip, 0,00 giây), chỉ mất phần lưới ô.
 PREVIEW_MAX_BYTES = 25 * 1024 * 1024
 
 
@@ -1244,6 +1252,29 @@ def _extract_sheet_preview(
     return out
 
 
+def _mapped_columns(row: DataFile) -> dict[str, dict]:
+    """`{chỉ số cột: {trường, nhãn, cần soát}}` — cột parser THẬT SỰ đọc ở file này.
+
+    Cùng nguồn với màn xác nhận cột (`parse_detail` của lần đọc gần nhất), chỉ đổi
+    chỗ hiện. File chưa từng nạp thì rỗng: công tắc không có gì để đánh dấu, và
+    lưới nói ra điều đó thay vì đánh dấu bừa theo mẫu biểu.
+    """
+    detail = row.parse_detail_obj
+    column_map = detail.get("column_map") or {}
+    meta_by_field = {c.get("field"): c for c in (detail.get("columns") or [])}
+    out: dict[str, dict] = {}
+    for field, index in column_map.items():
+        if not isinstance(index, int) or isinstance(index, bool):
+            continue
+        meta = meta_by_field.get(field) or {}
+        out[str(index)] = {
+            "field": field,
+            "label": meta.get("label") or field,
+            "needs": meta.get("review") == "needs_review",
+        }
+    return out
+
+
 @router.get("/companies/{code}/documents/file/{file_id}/preview", response_class=HTMLResponse)
 def documents_preview_file(
     code: str,
@@ -1253,9 +1284,13 @@ def documents_preview_file(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    """Xem nhanh nội dung file Excel đã tải lên (raw, tối đa 100 dòng × 40 cột).
+    """Trang xem file: điểm neo cho lưới cuộn + dữ liệu chú giải cột, KHÔNG đọc ô.
 
-    Đọc thẳng file gốc (không qua adapter) để kiểm layout trước/độc lập với nạp."""
+    Máy chủ không mở file ở đây nữa. Ô đi qua điểm cuối cửa sổ, nên trang dựng
+    được cả với file 71,3 MB lẫn file bộ đọc không mở nổi — lỗi định dạng hiện
+    thành thẻ lỗi trong lưới thay vì làm chết cả trang. Ba hạn mức cũ (100 dòng ·
+    40 cột · 25 MB) biến mất cùng lượt đọc đó.
+    """
     company = get_company_or_404(db, code, user)
     row = db.get(DataFile, file_id)
     if row is None or row.company_id != company.id:
@@ -1264,8 +1299,7 @@ def documents_preview_file(
     if not abs_path.is_file():
         raise HTTPException(status_code=404, detail="File không còn trên đĩa")
 
-    pv = _extract_sheet_preview(abs_path, sheet)
-
+    slug = company.slug or company.code
     return templates.TemplateResponse(
         request,
         "document_preview.html",
@@ -1274,17 +1308,13 @@ def documents_preview_file(
             "company": company,
             "file": row,
             "slot_label": SLOT_LABEL_VI.get(row.slot, row.slot),
-            "sheet_names": pv["sheet_names"],
-            "selected_sheet": pv["selected_sheet"],
-            "columns": pv["columns"],
-            "rows": pv["rows"],
-            "truncated_rows": pv["truncated_rows"],
-            "truncated_cols": pv["truncated_cols"],
-            "preview_rows": PREVIEW_ROWS,
-            "preview_cols": PREVIEW_COLS,
             "human_size": _human_size,
-            "error": pv["error"],
-            "skipped_reason": pv["skipped_reason"],
+            "cells_url": f"/companies/{slug}/documents/file/{row.id}/cells",
+            "selected_sheet": sheet,
+            # Trang tính parser đọc: cán bộ chỉ định thắng lần đọc gần nhất. Chú
+            # giải cột chỉ đúng trên ĐÚNG trang đó — trang khác thì lưới nói rõ.
+            "parsed_sheet": row.sheet_override or row.parse_detail_obj.get("sheet") or "",
+            "mapped_columns": _mapped_columns(row),
         },
     )
 
@@ -1294,6 +1324,9 @@ def documents_preview_file(
 # được và 52/170 trang tính bị cắt cột — đúng lúc việc của màn đó là soát cột.
 MAX_WINDOW_ROWS = 1000
 MAX_WINDOW_COLS = 1000
+# Trần thời gian chờ một request được phép giữ, kể cả khi máy khách hỏi cao hơn:
+# biên cắt của Cloudflare là 100 giây.
+MAX_WAIT_SECONDS = 60.0
 
 
 @router.get("/companies/{code}/documents/file/{file_id}/cells", response_model=None)
@@ -1306,6 +1339,7 @@ def documents_file_cells(
     col: int = Query(default=0, ge=0),
     cols: int = Query(default=60, ge=1, le=MAX_WINDOW_COLS),
     formulas: bool = Query(default=False),
+    wait: float | None = Query(default=None, ge=0, le=MAX_WAIT_SECONDS),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -1318,6 +1352,11 @@ def documents_file_cells(
     TRỊ đã tính, không bao giờ là chuỗi `=SUM(...)`. Với `.xls` cũ thì
     `formulas_supported = false` kèm `formula_note` — lưới vẫn đầy dữ liệu, chỉ
     riêng công thức là không đọc được.
+
+    Chưa có kho đệm thì lượt trích xuất chạy NỀN và request này chờ tối đa `wait`
+    giây (mặc định theo cấu hình). Hết hạn chờ thì trả **202** kèm số dòng đã đọc
+    để lưới hiện màn chờ và hỏi lại với `wait=0` — file 71,3 MB mất 164,6 giây,
+    quá biên 100 giây của Cloudflare, nên giữ kết nối là chắc chắn đứt.
     """
     company = get_company_or_404(db, code, user)
     file_row = db.get(DataFile, file_id)
@@ -1327,9 +1366,36 @@ def documents_file_cells(
     if not abs_path.is_file():
         raise HTTPException(status_code=404, detail="File không còn trên đĩa")
 
+    budget = float(settings.preview_wait_seconds) if wait is None else wait
     try:
-        window = sheet_window(
-            abs_path, sheet,
+        # Dò định dạng NGAY trong request (đọc 512 byte đầu): file không mở được
+        # phải ra lỗi ngay ở lượt hỏi đầu, không thành một màn chờ rồi mới lỗi.
+        detected = detect_format(abs_path)
+        if not detected.supported:
+            raise UnsupportedFileFormat(detected)
+        status = request_extract(abs_path, sheet, wait_s=budget)
+        if not status.ready or status.extract is None:
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "state": "extracting",
+                    "first_open": True,
+                    "sheet_index": sheet,
+                    "rows_done": status.rows_done,
+                    "elapsed_ms": status.elapsed_ms,
+                    "format": detected.kind,
+                    "format_label": detected.label,
+                    "detail": (
+                        "Đang trích xuất trang tính vào kho đệm. Đây là lần đầu mở "
+                        "file này; các lần sau sẽ hiện ngay."
+                    ),
+                },
+            )
+        # CHỈ ĐỌC kho: không lùi về dựng đồng bộ ở đây. Dựng trong request là đúng
+        # cái làm request chạy 46 giây với file 200.000 dòng và 164,6 giây với file
+        # 71,3 MB — quá biên cắt 100 giây, tức mất trắng cả lượt xem.
+        window = read_window(
+            cache_file_for(abs_path, sheet), status.extract,
             row_start=row, n_rows=rows, col_start=col, n_cols=cols, with_formulas=formulas,
         )
     except UnsupportedFileFormat as e:
@@ -1351,6 +1417,7 @@ def documents_file_cells(
         )
 
     payload = {
+        "state": "ready",
         "sheet_index": window.extract.sheet_index,
         "sheet_name": window.extract.sheet_name,
         "sheet_names": window.extract.sheet_names,

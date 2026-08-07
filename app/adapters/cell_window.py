@@ -40,8 +40,13 @@ Cloudflare, nên request ĐẦU TIÊN trên đúng file đó sẽ bị cắt (l�
 đọc `openpyxl` chiếm 130 s trong số đó (60 s lượt giá trị + 67 s lượt công thức)
 — chế độ đọc tuần tự chỉ phơi được một trong hai nên không gộp được. Lượt dựng
 vẫn CHẠY TIẾP sau khi máy khách rớt và kho vào chỗ bằng đổi tên nguyên tử, nên
-lần bấm thứ hai có ngay; nhưng vé giao diện cần một màn chờ cho ca này chứ không
-để cán bộ nhìn trang lỗi. Các file còn lại trong kho đều dưới 10 giây.
+lần bấm thứ hai có ngay. Các file còn lại trong kho đều dưới 10 giây.
+
+`request_extract` là cách gọi CHO GIAO DIỆN với ca đó: lượt dựng đi vào một luồng
+nền, người gọi chờ có hạn (`wait_s`) rồi nhận về trạng thái "chưa xong kèm tiến
+trình" thay vì giữ kết nối. Lưới hỏi lại với `wait_s = 0` nên mỗi lượt hỏi là một
+request ngắn — không request nào tới gần biên 100 giây, và lượt dựng không bị bỏ
+dở khi máy khách rớt vì nó không chạy trong request nữa.
 """
 
 from __future__ import annotations
@@ -52,6 +57,7 @@ import os
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -181,8 +187,16 @@ def _read_meta(cache_file: Path) -> SheetExtract | None:
     )
 
 
-def _build_cache(src: Path, sheet_index: int, dest: Path) -> SheetExtract:
-    """Đọc trọn một trang tính vào file tạm rồi đổi tên nguyên tử sang `dest`."""
+def _build_cache(
+    src: Path, sheet_index: int, dest: Path,
+    on_progress: Callable[[int], None] | None = None,
+) -> SheetExtract:
+    """Đọc trọn một trang tính vào file tạm rồi đổi tên nguyên tử sang `dest`.
+
+    `on_progress` nhận SỐ DÒNG ĐÃ GHI sau mỗi lô — màn chờ của lưới hiện số đó.
+    Không có tổng để chia phần trăm: tổng chỉ biết được khi đọc xong, và đoán tổng
+    từ kích thước file là bịa một con số.
+    """
     started = time.perf_counter()
     reader = open_reader(src)
     tmp = dest.with_name(f"{dest.name}.tmp-{os.getpid()}-{threading.get_ident()}")
@@ -196,6 +210,7 @@ def _build_cache(src: Path, sheet_index: int, dest: Path) -> SheetExtract:
             conn.execute("PRAGMA synchronous = OFF")
             conn.executescript(_SCHEMA)
             batch: list[tuple] = []
+            written = 0
             for row in reader.iter_sheet_rows(sheet_index):
                 values = _trim_trailing_blanks(row.values)
                 if not values and not row.formulas:
@@ -214,9 +229,15 @@ def _build_cache(src: Path, sheet_index: int, dest: Path) -> SheetExtract:
                 ))
                 if len(batch) >= _BATCH:
                     conn.executemany("INSERT INTO rows VALUES (?, ?, ?, ?)", batch)
+                    written += len(batch)
                     batch.clear()
+                    if on_progress is not None:
+                        on_progress(written)
             if batch:
                 conn.executemany("INSERT INTO rows VALUES (?, ?, ?, ?)", batch)
+                written += len(batch)
+                if on_progress is not None:
+                    on_progress(written)
 
             names = reader.sheet_names()
             sheet_name = names[sheet_index] if 0 <= sheet_index < len(names) else ""
@@ -265,7 +286,10 @@ def _trim_trailing_blanks(values: list[Any]) -> list[Any]:
     return list(values[:end])
 
 
-def extract_sheet(path: Path, sheet_index: int = 0) -> tuple[Path, SheetExtract]:
+def extract_sheet(
+    path: Path, sheet_index: int = 0,
+    on_progress: Callable[[int], None] | None = None,
+) -> tuple[Path, SheetExtract]:
     """Đảm bảo có kho đệm cho (file, trang tính); trả (file kho, siêu dữ liệu)."""
     src = Path(path)
     if not src.is_file():
@@ -283,9 +307,130 @@ def extract_sheet(path: Path, sheet_index: int = 0) -> tuple[Path, SheetExtract]
         if hit is not None:
             _touch(dest)
             return dest, replace(hit, from_cache=True)
-        extract = _build_cache(src, sheet_index, dest)
+        extract = _build_cache(src, sheet_index, dest, on_progress)
     _prune_cache(keep=dest)
     return dest, extract
+
+
+# ------------------------------------------------- trích xuất chạy nền ------
+
+
+@dataclass(frozen=True)
+class ExtractStatus:
+    """Kết quả một lượt hỏi có hạn: đã có kho chưa, và nếu chưa thì đang tới đâu."""
+
+    ready: bool
+    rows_done: int
+    elapsed_ms: int
+    extract: SheetExtract | None = None
+
+
+class _BuildJob:
+    """Một lượt dựng kho đang chạy ở luồng nền, kèm tiến trình đọc được từ ngoài."""
+
+    def __init__(self, src: Path, sheet_index: int, key: str) -> None:
+        self.key = key
+        self.done = threading.Event()
+        self.error: BaseException | None = None
+        self.extract: SheetExtract | None = None
+        self.rows_done = 0
+        self.started = time.monotonic()
+        # daemon: lượt dựng dài không được giữ tiến trình máy chủ lại lúc tắt.
+        # Bỏ dở giữa chừng thì file tạm bị xoá và kho không có gì nửa vời — kho
+        # chỉ vào chỗ bằng một lần đổi tên nguyên tử.
+        self.thread = threading.Thread(
+            target=self._run, args=(src, sheet_index), name=f"trich-xuat-{key[:8]}", daemon=True,
+        )
+
+    def _run(self, src: Path, sheet_index: int) -> None:
+        try:
+            _, self.extract = extract_sheet(src, sheet_index, self._count)
+        except BaseException as e:  # noqa: BLE001 — lỗi thuộc về người hỏi, không phải luồng nền
+            self.error = e
+        finally:
+            self.done.set()
+
+    def _count(self, rows: int) -> None:
+        self.rows_done = rows
+
+    @property
+    def elapsed_ms(self) -> int:
+        return int((time.monotonic() - self.started) * 1000)
+
+
+_JOBS: dict[str, _BuildJob] = {}
+_JOBS_GUARD = threading.Lock()
+
+
+def reset_extract_jobs(timeout_s: float = 5.0) -> None:
+    """Chỉ dùng cho test — chờ mọi lượt dựng đang chạy rồi xoá sổ đăng ký.
+
+    Không dọn thì một luồng nền của ca test trước còn ghi vào thư mục tạm đã bị
+    xoá của ca đó, và ca sau đỏ vì lý do không liên quan.
+    """
+    with _JOBS_GUARD:
+        jobs = list(_JOBS.values())
+        _JOBS.clear()
+    for job in jobs:
+        job.thread.join(timeout_s)
+
+
+def _drop_job(job: _BuildJob) -> None:
+    with _JOBS_GUARD:
+        if _JOBS.get(job.key) is job:
+            del _JOBS[job.key]
+
+
+def request_extract(
+    path: Path, sheet_index: int = 0, *, wait_s: float = 0.0,
+) -> ExtractStatus:
+    """Hỏi kho đệm, chờ TỐI ĐA `wait_s` giây, rồi trả về trạng thái.
+
+    Lượt dựng chạy ở luồng nền chứ không trong request: file 71,3 MB mất 164,6
+    giây, quá biên 100 giây của Cloudflare, và một request bị cắt giữa chừng
+    không được phép làm hỏng lượt dựng. Người gọi hết hạn chờ thì nhận
+    `ready = False` kèm số dòng đã đọc để hiện màn chờ, rồi hỏi lại.
+
+    Lỗi của lượt dựng được ném LẠI ở luồng người hỏi, đúng loại ngoại lệ gốc, nên
+    tầng route xử lý y như lúc dựng đồng bộ.
+    """
+    src = Path(path)
+    if not src.is_file():
+        raise CellReadError("File không còn trên đĩa.")
+    dest = cache_file_for(src, sheet_index)
+
+    hit = _read_meta(dest) if dest.exists() else None
+    if hit is not None:
+        _touch(dest)
+        return ExtractStatus(True, hit.total_rows, hit.build_ms, replace(hit, from_cache=True))
+
+    with _JOBS_GUARD:
+        # Lượt dựng đã hỏng vẫn nằm trong sổ cho tới khi có người đọc lỗi ra: bỏ nó
+        # đi ngay lúc hỏng thì người hỏi tiếp theo mở lượt dựng mới và không ai
+        # thấy lỗi, màn chờ quay vòng mãi. `_drop_job` bên dưới mới là chỗ xoá.
+        job = _JOBS.get(dest.name)
+        if job is None:
+            job = _BuildJob(src, sheet_index, dest.name)
+            _JOBS[dest.name] = job
+            job.thread.start()
+
+    if wait_s > 0:
+        job.done.wait(wait_s)
+    if not job.done.is_set():
+        return ExtractStatus(False, job.rows_done, job.elapsed_ms)
+
+    _drop_job(job)
+    if job.error is not None:
+        raise job.error
+    # "Xong" phải có KHO ĐỆM THẬT chống lưng, không chỉ có một việc đã kết thúc:
+    # file kho có thể đã bị dọn theo trần dung lượng sau khi dựng xong. Nhận là
+    # xong lúc đó thì người gọi đọc hụt và lùi về dựng đồng bộ ngay trong request
+    # — đúng cái mà vé này cấm. Kho mất thì coi như chưa có, lượt hỏi sau dựng lại.
+    hit = _read_meta(dest) if dest.exists() else None
+    if hit is None:
+        return ExtractStatus(False, 0, 0)
+    _touch(dest)
+    return ExtractStatus(True, hit.total_rows, hit.build_ms, replace(hit, from_cache=True))
 
 
 def _touch(path: Path) -> None:
@@ -340,12 +485,36 @@ def sheet_window(
     n_cols: int = 40,
     with_formulas: bool = False,
 ) -> CellWindow:
-    """Cửa sổ ô `[row_start, row_start+n_rows) × [col_start, col_start+n_cols)`.
+    """Cửa sổ ô, DỰNG KHO nếu chưa có — dùng cho chỗ gọi chấp nhận chờ hàng phút.
 
-    Chỉ số 0-based. Cửa sổ vượt quá cuối trang thì cắt về đúng phần có thật —
-    không ném lỗi, vì thanh cuộn ảo hỏi quá tay là chuyện thường.
+    Tầng route KHÔNG gọi hàm này lúc kho có thể trống: nó gọi `request_extract`
+    rồi `read_window`, vì lượt dựng ở đây chạy ngay trong luồng người gọi.
     """
     cache_file, extract = extract_sheet(Path(path), sheet_index)
+    return read_window(
+        cache_file, extract,
+        row_start=row_start, n_rows=n_rows,
+        col_start=col_start, n_cols=n_cols, with_formulas=with_formulas,
+    )
+
+
+def read_window(
+    cache_file: Path,
+    extract: SheetExtract,
+    *,
+    row_start: int = 0,
+    n_rows: int = 100,
+    col_start: int = 0,
+    n_cols: int = 40,
+    with_formulas: bool = False,
+) -> CellWindow:
+    """Cửa sổ ô `[row_start, row_start+n_rows) × [col_start, col_start+n_cols)`.
+
+    CHỈ ĐỌC kho đã có — không bao giờ dựng. Chỉ số 0-based; cửa sổ vượt quá cuối
+    trang thì cắt về đúng phần có thật, vì thanh cuộn ảo hỏi quá tay là chuyện
+    thường. Kho không đọc được thì ném `CellReadError`, người gọi quyết định.
+    """
+    sheet_index = extract.sheet_index
     end_row = min(row_start + max(n_rows, 0), extract.total_rows)
     width = max(0, min(col_start + max(n_cols, 0), extract.total_cols) - col_start)
     if end_row <= row_start or width == 0:
@@ -379,10 +548,14 @@ def sheet_window(
 
 __all__ = [
     "CellWindow",
+    "ExtractStatus",
     "SheetExtract",
     "cache_dir",
     "cache_file_for",
     "extract_sheet",
+    "read_window",
+    "request_extract",
     "reset_build_locks",
+    "reset_extract_jobs",
     "sheet_window",
 ]
