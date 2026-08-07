@@ -102,7 +102,10 @@
     <span class="badge warning" title="Dữ liệu đã nạp không còn khớp bộ file của kỳ.">Dữ liệu đã cũ — cần nạp lại</span>
     {% endif %}
     {% if p.checks_run and p.score is not none %}
-    <span class="badge {{ tier_css_for(p.score) }}">Rủi ro {{ p.score }}/1000</span>
+    <span class="badge {{ tier_css_for(p.score) }}" data-results-stale="{{ 1 if p.results_stale else 0 }}">Rủi ro {{ p.score }}/1000</span>
+    {% endif %}
+    {% if p.results_stale %}
+    <span class="badge warning" title="Dữ liệu kỳ đã đổi sau lần chạy kiểm tra gần nhất. Hệ thống không tự chạy lại: lượt chạy dựng lại danh sách phát hiện nên trạng thái và ghi chú cán bộ đã đánh sẽ về “mới”.">Kết quả cũ — chạy lại kiểm tra</span>
     {% endif %}
   </header>
 

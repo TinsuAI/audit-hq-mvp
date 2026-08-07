@@ -90,12 +90,14 @@ from app.pipeline.period import (
     QUARTER_START_MONTHS,
     YEAR_MAX,
     YEAR_MIN,
+    bump_data_version,
     duplicate_period_windows,
     fiscal_bounds,
     load_period_windows,
     period_window_conflict,
     period_window_errors,
 )
+from app.pipeline.staleness import results_stale, stale_result_years
 from app.pipeline.validate import diagnose_upload
 from app.scoping import allowed_company_ids, can_access_company_id, get_company_or_404
 from app.settings import settings
@@ -250,6 +252,13 @@ def list_companies(
         cur = coverage.get(cid)
         if cur is None or (done - total) < (cur[0] - cur[1]):
             coverage[cid] = (done, total)
+    # Kỳ có kết quả cũ (phiên bản dữ liệu dời sau lần chạy) — nhãn cạnh cột điểm (#90).
+    # KHÔNG lọc doanh nghiệp ra khỏi bảng xếp hạng: rơi khỏi bảng vì có người tải file
+    # lên là cùng dạng sai lầm với việc bỏ luật khỏi thang điểm làm DN sạch hơn (#65).
+    # Bất kỳ kỳ nào cũ cũng đủ để đánh dấu: điểm hiện là max theo năm, chạy lại kỳ cũ
+    # có thể đổi chính giá trị max đó, nên thứ hạng cũng chưa chắc.
+    stale_years = stale_result_years(db, [c.id for c in companies])
+
     summary = []
     for c in companies:
         counts_rows = db.execute(
@@ -269,6 +278,8 @@ def list_companies(
             "coverage_done": done,
             "coverage_total": total,
             "full_coverage": bool(total) and done >= total,
+            "stale_years": stale_years.get(c.id, ()),
+            "results_stale": bool(stale_years.get(c.id)),
         })
     # Xếp hạng tách NHÓM: DN đã đánh giá trọn phạm vi đứng trước, DN còn luật chưa đánh
     # giá được xuống nhóm sau. Điểm của hai nhóm KHÔNG so ngang được — điểm là trung
@@ -415,21 +426,30 @@ def _bcct_filename(original: str, year: int, ext: str) -> str:
     return safe or f"BCCT_{year}{ext}"
 
 
-def _save_upload(upload: UploadFile, dest: Path, slot: str) -> int:
-    """Lưu upload vào slot canonical (multi-slot form): thay file CÙNG SLOT đã có.
+def _existing_slot_files(dest_dir: Path, slot: str) -> list[Path]:
+    """File Excel đã nằm trong thư mục và thuộc CÙNG slot.
 
-    Dọn theo phân loại slot (`_classify_slot`) thay vì glob prefix — glob cũ
-    `M15*` còn xoá nhầm `M15a*` (cùng slot khác nhau trong BCQT/)."""
+    Phân loại theo `_classify_slot` thay vì glob prefix — glob cũ `M15*` còn xoá
+    nhầm `M15a*` (hai slot khác nhau trong BCQT/). Cũng là căn cứ để biết một lượt
+    tải lên là THAY file hay thêm file (#90).
+    """
     from app.pipeline.data_files import _classify_slot
 
-    subdir = dest.parent.name
-    for p in list(dest.parent.glob("*")):
-        if (
-            p.is_file()
-            and p.suffix.lower() in {".xls", ".xlsx"}
-            and _classify_slot(subdir, p.name) == slot
-        ):
-            p.unlink(missing_ok=True)
+    if not dest_dir.is_dir():
+        return []
+    return [
+        p
+        for p in dest_dir.glob("*")
+        if p.is_file()
+        and p.suffix.lower() in {".xls", ".xlsx"}
+        and _classify_slot(dest_dir.name, p.name) == slot
+    ]
+
+
+def _save_upload(upload: UploadFile, dest: Path, slot: str) -> int:
+    """Lưu upload vào slot canonical (multi-slot form): thay file CÙNG SLOT đã có."""
+    for p in _existing_slot_files(dest.parent, slot):
+        p.unlink(missing_ok=True)
     return _write_upload_stream(upload, dest, expected_ext=dest.suffix.lower())
 
 
@@ -740,6 +760,8 @@ def upload_data(
 
     base = Path(settings.raw_data_path) / company.code / str(year)
     saved_any = False
+    # Có lượt nào THAY file đã có không — chỉ thay mới dời phiên bản dữ liệu (#90).
+    replaced_any = False
 
     # m15/m15a/m16: mỗi biểu 1 bản → file mới thay file cũ cùng slot.
     for slot, upload in (("m15", m15), ("m15a", m15a), ("m16", m16)):
@@ -747,6 +769,7 @@ def upload_data(
             continue
         ext = _ext_of(slot, upload)
         subdir, stem = _UPLOAD_SLOTS[slot]
+        replaced_any = replaced_any or bool(_existing_slot_files(base / subdir, slot))
         _save_upload(upload, base / subdir / f"{stem}_{year}{ext}", slot)
         saved_any = True
 
@@ -759,6 +782,7 @@ def upload_data(
             continue
         ext = _ext_of("bcct", upload)
         dest = base / bcct_subdir / _bcct_filename(upload.filename, year, ext)
+        replaced_any = replaced_any or dest.exists()
         _write_upload_stream(upload, dest, expected_ext=ext)
         saved_any = True
 
@@ -771,6 +795,10 @@ def upload_data(
     # Cập nhật registry file ngay sau khi lưu (nhanh — chỉ đọc tên + kích thước).
     from app.pipeline.data_files import sync_data_files
     sync_data_files(db, company)
+
+    if replaced_any:
+        bump_data_version(db, company.id, year)
+        db.commit()
 
     # Chẩn đoán + nạp chạy ở worker, KHÔNG trong request: một bộ file lớn (BCCT 68MB
     # của 006) mất vài phút, còn Cloudflare cắt kết nối ở 100 giây (lỗi 524).
@@ -992,21 +1020,19 @@ def documents_upload_cell(
     dest_dir = raw_root / company.code / str(year) / subdir
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    from app.pipeline.data_files import _classify_slot, sync_data_files
+    from app.pipeline.data_files import sync_data_files
 
     if slot == "bcct":
         # Nhiều file/ô — giữ tên gốc đã làm sạch (thay nếu trùng tên).
         dest = dest_dir / _bcct_filename(file.filename, year, ext)
+        replaced = dest.exists()
     else:
         # 1 file/ô — xoá file cùng slot đã có trên đĩa rồi ghi tên canonical.
-        for p in list(dest_dir.glob("*")):
-            if (
-                p.is_file()
-                and p.suffix.lower() in {".xls", ".xlsx"}
-                and _classify_slot(subdir, p.name) == slot
-            ):
-                p.unlink(missing_ok=True)
+        previous = _existing_slot_files(dest_dir, slot)
+        for p in previous:
+            p.unlink(missing_ok=True)
         dest = dest_dir / f"{stem}_{year}{ext}"
+        replaced = bool(previous)
 
     try:
         _write_upload_stream(file, dest, expected_ext=ext)
@@ -1026,6 +1052,13 @@ def documents_upload_cell(
         row.uploaded_by = ur.id if ur else None
         db.commit()
 
+    # THAY file (không phải thêm) = bộ file của kỳ đã đổi trong khi dòng đã nạp là của
+    # bộ trước → dời phiên bản dữ liệu (#90). Thêm file mới KHÔNG dời: dòng đã nạp vẫn
+    # đúng với các file sinh ra chúng, và trục bộ file của `readiness` đã bắt ca đó.
+    if replaced:
+        bump_data_version(db, company.id, year)
+        db.commit()
+
     label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
     return _redirect(f"msg={label}+{year}+%C4%91%C3%A3+t%E1%BA%A3i+l%C3%AAn")
 
@@ -1043,7 +1076,13 @@ def documents_delete_file(
         raise HTTPException(status_code=404, detail="Không tìm thấy file")
     abs_path = _resolve_within_root(row.stored_path)
     abs_path.unlink(missing_ok=True)
+    # Bộ file của kỳ đã đổi mà dòng Tầng 1 vẫn là của bộ trước: dời phiên bản dữ liệu
+    # trong CÙNG transaction với lượt xoá (#90). Không xoá dòng đã nạp (bảng Tầng 1
+    # không có tham chiếu file nguồn) và KHÔNG tự chạy lại kiểm tra — chạy lại xoá rồi
+    # dựng lại `Finding`, đưa `status`/`notes` cán bộ đã đánh về "mới" (ADR #24).
+    year = row.period_year
     db.delete(row)
+    bump_data_version(db, company.id, year)
     db.commit()
     return RedirectResponse(
         url=f"/companies/{code}/documents?msg=%C4%90%C3%A3+xo%C3%A1+file",
@@ -2267,6 +2306,13 @@ def company_detail(
     has_data = selected_year in data_years if selected_year is not None else False
     checks_run = year_score is not None or (selected_year in finding_years)
 
+    # Phát hiện + điểm của kỳ có tính trên phiên bản dữ liệu cũ không (#90). Cùng phép
+    # so mà tổng quan AI dùng, nay áp cho cả hai con số trên màn này. Hiện nhãn, KHÔNG
+    # tự chạy lại và KHÔNG giấu số.
+    results_stale_now = (
+        results_stale(db, company.id, selected_year) if selected_year is not None else False
+    )
+
     return templates.TemplateResponse(
         request,
         "company_detail.html",
@@ -2299,6 +2345,7 @@ def company_detail(
             "all_specs": all_specs,
             "has_data": has_data,
             "checks_run": checks_run,
+            "results_stale": results_stale_now,
             "scope_tags": scope_tags,
             "audit_scope_window": audit_scope_window,
             "just_ingested": bool(ingested),

@@ -64,6 +64,7 @@ from app.pipeline.readiness import (
     PeriodReadiness,
     period_readiness,
 )
+from app.pipeline.staleness import results_stale
 
 # --- Hành động gỡ một vướng mắc --------------------------------------------------
 
@@ -181,6 +182,8 @@ class BlockerItem:
     #: Chỉ dòng loại `check`/`conclusion` mang lớp — dòng mức file và độ phủ thì không.
     remedy: str | None = None
     check_codes: tuple[str, ...] = ()
+    #: Các loại tài liệu mà dòng này nói tới cùng lúc (dòng dấu hiệu cũ gộp cả kỳ).
+    slots: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -207,6 +210,9 @@ class PeriodRow:
     run_to_know_codes: tuple[str, ...]
     #: Dữ liệu đã nạp không còn khớp bộ file — TRỤC RIÊNG, không vào phép đếm.
     stale: bool
+    #: Phát hiện và điểm tính trên phiên bản dữ liệu cũ hơn hiện tại — cần CHẠY LẠI
+    #: kiểm tra, khác `stale` (cần NẠP LẠI). Cũng không vào phép đếm.
+    results_stale: bool
     groups: tuple[BlockerGroup, ...]
     window_from: date
     window_to: date
@@ -377,7 +383,9 @@ def _blocker_item(
     years_present: set[int],
 ) -> BlockerItem:
     if blocker.kind == BLOCKER_FILE:
-        slot = readiness.slot(str(blocker.slot))
+        # Dòng dấu hiệu cũ nói cả kỳ nên không neo vào một slot nào — việc gỡ là một
+        # lượt nạp, đúng mặc định của `_file_action`.
+        slot = readiness.slot(blocker.slot) if blocker.slot else None
         action = _file_action(blocker, slot.state if slot else None, year, slug)
     elif blocker.kind == BLOCKER_CHECK:
         action = _check_action(blocker, year, slug, years_present)
@@ -391,6 +399,7 @@ def _blocker_item(
         slot=blocker.slot,
         remedy=blocker.remedy,
         check_codes=blocker.check_codes,
+        slots=blocker.slots,
     )
 
 
@@ -478,6 +487,7 @@ def _period_row(
         total_count=readiness.total_count,
         run_to_know_codes=readiness.run_to_know_codes,
         stale=readiness.stale,
+        results_stale=results_stale(session, company.id, year),
         groups=_groups(readiness, year, slug, years_present, findings_url),
         window_from=window_from,
         window_to=window_to,
