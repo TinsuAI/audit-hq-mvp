@@ -90,8 +90,8 @@ from app.pipeline.audit_scope import (
 )
 from app.pipeline.data_screen import build_data_screen
 from app.pipeline.export import build_export
-from app.pipeline.ingest_status import ingest_status
 from app.pipeline.findings_screen import not_evaluable_panel
+from app.pipeline.ingest_status import ingest_status
 from app.pipeline.period import (
     FISCAL_START_MONTHS,
     QUARTER_START_MONTHS,
