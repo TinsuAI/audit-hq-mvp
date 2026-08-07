@@ -14,7 +14,7 @@ from app.checks.not_evaluable import CheckResult, NotEvaluable, RemedyClassifica
 from app.checks.registry import Severity
 from app.checks.scope import declaration_scope
 from app.checks.sources import classify_missing_sources
-from app.checks.uom import UomMatch
+from app.checks.uom import UomMatch, resolve_canonical
 from app.checks.uom import compare as uom_compare
 from app.models import DeclarationLine, Finding, Norm, NvlBalance
 
@@ -169,7 +169,15 @@ def check_c3_2(session: Session, company_id: int, year: int) -> list[Finding]:
     return findings
 
 
-_MATCH_RANK = {UomMatch.EQUIVALENT: 0, UomMatch.SAME_FAMILY: 1, UomMatch.DIFFERENT: 2}
+# Thứ tự "xấu dần". UNRESOLVED nằm DƯỚI DIFFERENT: một mã vừa có đơn vị lệch thật
+# vừa có đơn vị không tra được thì phát hiện vẫn phải mang mức của cái lệch thật,
+# nếu không thì thêm một chuỗi rác vào file là hạ được mức của phát hiện thật.
+_MATCH_RANK = {
+    UomMatch.EQUIVALENT: 0,
+    UomMatch.SAME_FAMILY: 1,
+    UomMatch.UNRESOLVED: 2,
+    UomMatch.DIFFERENT: 3,
+}
 
 _NO_COMPARISON_UNITS = (
     "Kỳ này không có đơn vị tính nào để đối chiếu với Mẫu 15 — chưa có tờ "
@@ -290,10 +298,10 @@ def check_c3_3(session: Session, company_id: int, year: int) -> CheckResult:
             result = UomMatch.EQUIVALENT
             for other in others:
                 m = uom_compare(session, candidate, other)
-                if m == UomMatch.DIFFERENT:
-                    return UomMatch.DIFFERENT
-                if m == UomMatch.SAME_FAMILY:
-                    result = UomMatch.SAME_FAMILY
+                if _MATCH_RANK[m] > _MATCH_RANK[result]:
+                    result = m
+                if result == UomMatch.DIFFERENT:
+                    return result  # đã chạm mức xấu nhất, không cần so tiếp
             return result
 
         worst_match = UomMatch.DIFFERENT
@@ -323,11 +331,25 @@ def check_c3_3(session: Session, company_id: int, year: int) -> CheckResult:
             if units
         )
 
+        unresolved_units: list[str] = []
         if worst_match == UomMatch.SAME_FAMILY:
             severity = Severity.INFO
             title = (
                 f"Đơn vị tính NVL {code} dùng nhiều đơn vị cùng họ "
                 f"(có thể quy đổi): M15={m15_label}, {others_label}"
+            )
+        elif worst_match == UomMatch.UNRESOLVED:
+            # Chưa đo được, không phải đã đo ra lệch — mức phải nói đúng điều đó.
+            # Cách gỡ nằm trong tay cán bộ: khai bí danh ở /admin/units rồi chạy lại.
+            unresolved_units = sorted(
+                u for u in (unit_set | bcct_set | m16_set)
+                if resolve_canonical(session, u) is None
+            )
+            severity = Severity.WARNING
+            title = (
+                f"Đơn vị tính NVL {code} chưa đối chiếu được — "
+                f"{', '.join(unresolved_units)} không có trong bảng đơn vị chuẩn: "
+                f"M15={m15_label}, {others_label}"
             )
         else:
             severity = Severity.CRITICAL
@@ -379,6 +401,7 @@ def check_c3_3(session: Session, company_id: int, year: int) -> CheckResult:
                 "bcct_units": sorted(bcct_set),
                 "diverging_sources": diverging,
                 "uom_match": worst_match.value,
+                "unresolved_units": unresolved_units,
             },
             evidence_refs=evidence_refs,
         ))

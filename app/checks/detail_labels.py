@@ -77,6 +77,7 @@ DETAIL_FIELDS: dict[str, tuple[str, str]] = {
     "bcct_units": ("ĐVT trên tờ khai", "list"),
     "diverging_sources": ("Nguồn lệch với M15", "list"),
     "uom_match": ("Mức khớp đơn vị", "enum"),
+    "unresolved_units": ("ĐVT chưa có trong bảng đơn vị chuẩn", "list"),
     # --- C4 định mức ---
     "m15_opening": ("M15 tồn đầu", "qty"),
     "theoretical_consumption": ("Tiêu hao lý thuyết (M16)", "qty"),
@@ -105,6 +106,7 @@ DETAIL_VALUE_LABELS: dict[str, dict[str, str]] = {
     "uom_match": {
         "equivalent": "Quy đổi được",
         "same_family": "Cùng họ đơn vị",
+        "unresolved": "Chưa tra được đơn vị",
         "different": "Khác họ đơn vị",
     },
     "divergence": {
@@ -160,7 +162,10 @@ FINDING_COLUMNS: dict[str, tuple[str, ...]] = {
     "C2.4": ("closing_qty", "unit"),
     "C3.1": ("nvl_codes", "mmtb_codes"),
     "C3.2": ("divergence", "hs_codes"),
-    "C3.3": ("uom_match", "diverging_sources", "m15_units", "m16_units", "bcct_units"),
+    "C3.3": (
+        "uom_match", "unresolved_units", "diverging_sources",
+        "m15_units", "m16_units", "bcct_units",
+    ),
     "C4.1": ("reason", "m15_import", "m15_opening", "norm_source_years"),
     "C4.3": (
         "value_vnd", "theoretical_consumption", "actual_m15_production_out", "diff_pct",
