@@ -85,6 +85,7 @@ from app.pipeline.audit_scope import (
 )
 from app.pipeline.data_screen import build_data_screen
 from app.pipeline.export import build_export
+from app.pipeline.ingest_status import ingest_status
 from app.pipeline.period import (
     FISCAL_START_MONTHS,
     QUARTER_START_MONTHS,
@@ -710,6 +711,26 @@ def _enqueue_ingest(
     )
 
 
+def _back_to_period(company: Company, year: int) -> RedirectResponse:
+    """Về đúng dòng kỳ vừa xếp lượt nạp, KHÔNG sang `/jobs/{id}` (#89).
+
+    Dòng kỳ tự chuyển sang trạng thái đang chờ / đang chạy và tự cập nhật; trang
+    hàng đợi còn nguyên nhưng lùi về vai trò màn quản trị.
+    """
+    slug = company.slug or company.code
+    return RedirectResponse(url=f"/companies/{slug}/documents#ky-{year}", status_code=303)
+
+
+def _ai_available() -> bool:
+    """Trợ lý AI có bật và có khoá hay không — quyết định hiện nút nhờ AI chẩn đoán."""
+    from app.ai.config import get_setting
+
+    try:
+        return bool(get_setting("enabled") and get_setting("api_key"))
+    except Exception:  # noqa: BLE001 — cấu hình AI hỏng không được chặn màn dữ liệu
+        return False
+
+
 @router.get("/companies/{code}/upload", response_class=HTMLResponse)
 def upload_form(
     code: str,
@@ -802,8 +823,8 @@ def upload_data(
 
     # Chẩn đoán + nạp chạy ở worker, KHÔNG trong request: một bộ file lớn (BCCT 68MB
     # của 006) mất vài phút, còn Cloudflare cắt kết nối ở 100 giây (lỗi 524).
-    job = _enqueue_ingest(db, user, company, year, gate=True)
-    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+    _enqueue_ingest(db, user, company, year, gate=True)
+    return _back_to_period(company, year)
 
 
 @router.post("/companies/{code}/diagnose-ai", response_model=None)
@@ -900,6 +921,14 @@ def company_documents(
     # Route KHÔNG tự đếm lại: hai đường đếm là hai đường lệch được nhau (ADR #24).
     screen = build_data_screen(db, company, add=add)
 
+    # Trạng thái lượt nạp là TRỤC RIÊNG của #89, dựng ngoài `build_data_screen`: màn
+    # dữ liệu nói kỳ đang thiếu gì, còn đây nói lượt nạp gần nhất đang ở đâu.
+    ai_enabled = _ai_available()
+    ingests = {
+        p.year: ingest_status(db, company, p.year, ai_enabled=ai_enabled)
+        for p in screen.periods
+    }
+
     return templates.TemplateResponse(
         request,
         "company_documents.html",
@@ -907,6 +936,7 @@ def company_documents(
             "user": user,
             "company": company,
             "screen": screen,
+            "ingests": ingests,
             "human_size": _human_size,
             "fiscal_options": FISCAL_MONTH_OPTIONS,
             "bcqt_year_min": BCQT_YEAR_MIN,
@@ -1630,8 +1660,8 @@ async def documents_confirm_review(
             )
         row.sheet_override = picked
         db.commit()
-        job = _enqueue_ingest(db, user, company, year, gate=False)
-        return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+        _enqueue_ingest(db, user, company, year, gate=False)
+        return _back_to_period(company, year)
 
     # Map đầy đủ = cột officer sửa (field `needs_review`) chồng lên map đề xuất. Ô trống
     # giữ giá trị đề xuất để map không khuyết cột; ô SAI thì từ chối cả biểu mẫu thay vì
@@ -1724,10 +1754,10 @@ async def documents_confirm_review(
     # Re-ingest thật (commit dòng) chạy ở worker — record_parse_result đọc saved-map vừa
     # ghi để nâng các cột lên officer-confirmed → verified → cổng review clear, file thành
     # `parsed`. Job nối tiếp job chạy kiểm tra khi cần, đúng thứ tự.
-    job = _enqueue_ingest(
+    _enqueue_ingest(
         db, user, company, year, gate=False, then_run_checks=then_run_checks,
     )
-    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+    return _back_to_period(company, year)
 
 
 @router.post("/companies/{code}/documents/ingest", response_model=None)
@@ -1743,8 +1773,27 @@ def documents_ingest_year(
     (`gate=False`) — dừng nữa là quay vòng chính thao tác họ vừa làm.
     """
     company = get_company_or_404(db, code, user)
-    job = _enqueue_ingest(db, user, company, year, gate=False)
-    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+    _enqueue_ingest(db, user, company, year, gate=False)
+    return _back_to_period(company, year)
+
+
+@router.get("/companies/{code}/documents/ingest.json")
+def documents_ingest_status(
+    code: str,
+    year: int = Query(...),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Trạng thái lượt nạp gần nhất của một kỳ — bộ đếm poll của dòng kỳ đọc ở đây.
+
+    Trả đủ bốn trạng thái công việc (đang chờ · đang chạy · xong · hỏng) cộng dạng
+    kết quả khi xong, kèm chữ và nút đã dựng sẵn (xem `app/pipeline/ingest_status.py`).
+    """
+    company = get_company_or_404(db, code, user)
+    status = ingest_status(db, company, year, ai_enabled=_ai_available())
+    if status is None:
+        return {"status": None}
+    return status.as_dict()
 
 
 @router.post("/companies/{code}/documents/period", response_model=None)

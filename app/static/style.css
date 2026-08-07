@@ -1990,6 +1990,40 @@ p { margin: 0 0 var(--space-3); }
   .ds-blocker { grid-template-columns: 1fr; }
 }
 
+/* — Phản hồi lượt nạp ngay tại dòng kỳ (#89) — */
+.ds-ingest {
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--c-info-border); background: var(--c-info-bg);
+  border-radius: var(--radius-md); font-size: var(--fs-sm);
+}
+.ds-ingest-success { border-color: var(--c-success-border); background: var(--c-success-bg); }
+.ds-ingest-warning { border-color: var(--c-warning-border); background: var(--c-warning-bg); }
+.ds-ingest-error   { border-color: var(--c-critical-border); background: var(--c-critical-bg); }
+.ds-ingest-title {
+  margin: 0; font-weight: 700; display: flex; align-items: center; gap: var(--space-2);
+}
+.ds-ingest-error .ds-ingest-title { color: var(--c-critical-fg); }
+.ds-ingest-warning .ds-ingest-title { color: var(--c-warning-fg); }
+.ds-ingest-detail { margin: 2px 0 0; }
+.ds-ingest-notes {
+  margin: var(--space-2) 0 0; padding-left: var(--space-4);
+  display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-xs);
+}
+.ds-ingest-actions {
+  margin-top: var(--space-2); display: flex; flex-wrap: wrap;
+  gap: var(--space-2); align-items: center;
+}
+.ds-ingest-actions form { margin: 0; }
+.ds-ingest-spin {
+  width: 12px; height: 12px; flex: none; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: ds-ingest-spin 0.9s linear infinite;
+}
+@keyframes ds-ingest-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .ds-ingest-spin { animation: none; }
+}
+
 /* — Soạn kiểm tra từ NL (authoring + preview) — */
 .uc-examples { margin-top: var(--space-2); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .uc-example-chip {

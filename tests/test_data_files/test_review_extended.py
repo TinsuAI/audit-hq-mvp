@@ -125,7 +125,7 @@ def test_officer_group_is_applied_and_clears_the_review_gate(app_db):
         f"/companies/DN_EXT/documents/file/{fid}/review", data=data, follow_redirects=False,
     )
     assert r.status_code == 303
-    assert r.headers["location"].startswith("/jobs/")
+    assert r.headers["location"].endswith("/documents#ky-2024")
     drain_jobs()
 
     with app_db.SessionLocal() as db:
@@ -174,7 +174,7 @@ def test_officer_may_turn_a_single_column_field_into_a_group(app_db):
         f"/companies/DN_EXT/documents/file/{fid}/review", data=data, follow_redirects=False,
     )
     assert r.status_code == 303
-    assert r.headers["location"].startswith("/jobs/")
+    assert r.headers["location"].endswith("/documents#ky-2024")
     drain_jobs()
 
     with app_db.SessionLocal() as db:

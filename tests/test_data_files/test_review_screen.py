@@ -111,8 +111,8 @@ def _upload_needs_review(client) -> None:
         follow_redirects=False,
     )
     assert r.status_code == 303
-    # Nạp chạy ở hàng đợi → redirect tới trang công việc, chưa đọc file lúc request.
-    assert r.headers["location"].startswith("/jobs/")
+    # Nạp chạy ở hàng đợi, chưa đọc file lúc request — cán bộ về lại đúng dòng kỳ.
+    assert r.headers["location"].endswith("/documents#ky-2024")
     drain_jobs()
     # Dừng ở cổng review → job kết luận "cần xác nhận", KHÔNG tự nạp.
     assert last_job_result("ingest")["status"] == "needs_review"
@@ -166,7 +166,7 @@ def test_review_confirm_saves_map_and_advances_to_parsed(tmp_path):
             data=data, follow_redirects=False,
         )
         assert r.status_code == 303
-        assert r.headers["location"].startswith("/jobs/")
+        assert r.headers["location"].endswith("/documents#ky-2024")
         drain_jobs()
 
         with dbmod.SessionLocal() as db:

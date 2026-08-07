@@ -170,6 +170,41 @@
     <a href="{{ p.findings_url }}" class="btn btn-sm btn-secondary">Phát hiện kỳ {{ p.year }}</a>
   </div>
 
+  {# Phản hồi lượt nạp ở lại đây (#89) — không chuyển hướng sang trang hàng đợi.
+     Bộ đếm poll (ingest-poll.js) đổ lại đúng khối này khi trạng thái đổi. #}
+  {% set ing = ingests.get(p.year) %}
+  <div class="ds-ingest-slot" data-ingest-year="{{ p.year }}"
+       data-ingest-active="{{ 1 if (ing and ing.active) else 0 }}">
+    {% if ing and ing.visible %}
+    <div class="ds-ingest ds-ingest-{{ ing.tone }}">
+      <p class="ds-ingest-title">
+        {% if ing.active %}<span class="ds-ingest-spin" aria-hidden="true"></span>{% endif %}
+        {{ ing.title }}
+      </p>
+      <p class="ds-ingest-detail">{{ ing.detail }}</p>
+      {% if ing.notes %}
+      <ul class="ds-ingest-notes">
+        {% for note in ing.notes %}<li>{{ note }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if ing.actions %}
+      <div class="ds-ingest-actions">
+        {% for a in ing.actions %}
+          {% if a.kind == 'post' %}
+          <form method="post" action="{{ a.url }}">
+            <input type="hidden" name="year" value="{{ a.year }}">
+            <button type="submit" class="btn btn-sm btn-primary">{{ a.label }}</button>
+          </form>
+          {% else %}
+          <a href="{{ a.url }}" class="btn btn-sm btn-primary">{{ a.label }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
   {% if p.files %}
   <div class="ds-part ds-types">
     <h3 class="ds-part-title">Số dòng theo loại tài liệu</h3>
@@ -271,5 +306,9 @@
 
 </section>
 {% endfor %}
+
+<div id="documents-root"
+     data-ingest-url="/companies/{{ company.slug or company.code }}/documents/ingest.json"></div>
+<script src="/static/ingest-poll.js?v={{ app_version_string | urlencode }}" defer></script>
 
 {% endblock %}
