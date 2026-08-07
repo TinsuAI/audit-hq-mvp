@@ -234,7 +234,7 @@ def record_parse_result(
     sheets = getattr(stats, "sheets", None) or {}
     diag_errors = diagnosis.errors if diagnosis else []
     diag_warnings = diagnosis.warnings if diagnosis else []
-    # File nằm trong HANG_CHI_TIET nhưng không phải báo cáo chi tiết tờ khai đã bị bỏ
+    # File nằm trong HANG_CHI_TIET nhưng không phải báo cáo hàng chi tiết đã bị bỏ
     # qua lúc nạp — không được hiển thị "ok" kèm số dòng của các file khác.
     skipped = set(getattr(stats, "bcct_skipped", None) or ())
 
@@ -248,7 +248,7 @@ def record_parse_result(
         if row.slot == "bcct" and row.original_filename in skipped:
             row.parse_status = DataFileStatus.ERROR
             row.parse_message = (
-                "Không phải báo cáo chi tiết tờ khai (thiếu số tờ khai / ngày ĐK) — "
+                "Không phải báo cáo hàng chi tiết (thiếu số tờ khai / ngày ĐK) — "
                 "đã bỏ qua khi nạp, không đóng góp dòng nào."
             )
             row.row_count = 0

@@ -50,7 +50,6 @@ from app.checks.not_evaluable import (
 from app.checks.registry import missing_sources
 from app.checks.scope import effective_window
 from app.checks.sources import (
-    SOURCE_LABEL_VI,
     available_sources,
     classify_missing_sources,
     missing_sources_reason,
@@ -61,6 +60,7 @@ from app.models.data_file import (
     SETTLEMENT_SLOTS,
     SLOT_LABEL_VI,
     SLOT_ORDER,
+    SLOT_SHORT_VI,
     DataFileStatus,
 )
 from app.pipeline.coverage import bcct_coverage, coverage_gaps, overlapping_periods
@@ -374,7 +374,7 @@ def _stale_blocker(slots: tuple[SlotStatus, ...], year: int) -> Blocker | None:
     stale = [s for s in slots if s.stale]
     if not stale:
         return None
-    labels = ", ".join(_slot_label(s.slot).split(" — ")[0] for s in stale)
+    labels = ", ".join(SLOT_SHORT_VI.get(s.slot, s.slot) for s in stale)
     return Blocker(
         kind=BLOCKER_FILE,
         key="file:stale",
@@ -414,7 +414,7 @@ def _file_blocker_message(status: SlotStatus, year: int) -> str:
 def _check_group_message(remedy: str, target: RemedyTarget | None, year: int) -> str:
     if target is not None and target.kind == TARGET_DOCUMENT:
         return (
-            f"Kỳ {year} chưa có {SOURCE_LABEL_VI.get(str(target.value), target.value)} — "
+            f"Kỳ {year} chưa có {SLOT_LABEL_VI.get(str(target.value), target.value)} — "
             "nạp thêm file kỳ này."
         )
     if target is not None and target.kind == TARGET_PERIOD:

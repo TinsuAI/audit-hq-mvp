@@ -59,7 +59,12 @@ from app.models import (
     NvlBalance,
     SpBalance,
 )
-from app.models.data_file import SLOT_LABEL_VI, SLOT_ORDER, DataFileStatus
+from app.models.data_file import (
+    SLOT_LABEL_VI,
+    SLOT_ORDER,
+    SLOT_SHORT_VI,
+    DataFileStatus,
+)
 from app.pipeline.period import YEAR_MAX, YEAR_MIN
 from app.pipeline.readiness import (
     BLOCKER_CHECK,
@@ -528,8 +533,8 @@ def _groups(
 
 
 def _short_label(slot: str) -> str:
-    """"Mẫu 15 — Cân đối NVL" → "Mẫu 15"; nhãn dài không vừa một con chip."""
-    return SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
+    """Dạng ngắn cho chip — đọc thẳng bảng nhãn, không cắt lại chuỗi (#98)."""
+    return SLOT_SHORT_VI.get(slot, slot)
 
 
 def _slot_rank(slot: str) -> int:

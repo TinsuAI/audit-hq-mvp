@@ -32,11 +32,19 @@ SLOT_SUBDIR: dict[str, str] = {
     "bcct": "HANG_CHI_TIET",
 }
 
+# NGUỒN DUY NHẤT cho tên tiếng Việt của bốn loại tài liệu (#98). Mọi màn hình cán bộ
+# đọc ở đây — không module nào được viết bảng nhãn thứ hai. Dạng "NGẮN — DÀI": phần
+# trước dấu gạch dài là tên rút gọn dùng cho chip và tiêu đề cột.
 SLOT_LABEL_VI: dict[str, str] = {
     "m15": "Mẫu 15 — Cân đối NVL",
     "m15a": "Mẫu 15a — Cân đối thành phẩm",
     "m16": "Mẫu 16 — Định mức",
     "bcct": "BCCT — Báo cáo hàng chi tiết",
+}
+
+# Dạng ngắn, SUY từ bảng trên chứ không gõ lại: hai bảng gõ tay thì lệch nhau được.
+SLOT_SHORT_VI: dict[str, str] = {
+    slot: label.split(" — ")[0] for slot, label in SLOT_LABEL_VI.items()
 }
 
 # Thứ tự cột hiển thị ở ma trận năm × loại.

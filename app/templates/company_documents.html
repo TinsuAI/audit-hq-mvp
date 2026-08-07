@@ -149,7 +149,7 @@
     <form method="post" action="{{ p.upload_url }}" enctype="multipart/form-data" class="ds-upload">
       <input type="hidden" name="year" value="{{ p.year }}">
       <select name="slot" class="form-select ds-upload-slot">
-        {% for slot in SLOT_ORDER %}<option value="{{ slot }}">{{ SLOT_LABEL_VI[slot].split(' — ')[0] }}</option>{% endfor %}
+        {% for slot in SLOT_ORDER %}<option value="{{ slot }}">{{ SLOT_SHORT_VI[slot] }}</option>{% endfor %}
       </select>
       <label class="btn btn-sm btn-secondary ds-upload-pick">
         Tải file lên

@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.main import app
 from app.models import Company, Finding, NvlBalance
+from app.models.data_file import SLOT_LABEL_VI
 
 
 def _setup_db():
@@ -114,8 +115,9 @@ def test_enum_values_are_translated():
 def test_evidence_block_names_the_form_not_the_db_table():
     _engine, new_session = _setup_db()
     page = _page(new_session)
-    assert "Mẫu 15 — Cân đối NVL" in page
-    assert "BCCT — Tờ khai chi tiết" in page
+    # Tên loại tài liệu lấy từ bảng nhãn duy nhất (#98), không gõ lại ở test.
+    assert SLOT_LABEL_VI["m15"] in page
+    assert SLOT_LABEL_VI["bcct"] in page
     assert "nvl_balances" not in page
     assert "declaration_lines" not in page
 

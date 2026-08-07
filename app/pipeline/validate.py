@@ -18,14 +18,12 @@ from app.adapters.evidence import FIELD_LABEL_VI
 from app.adapters.extended_layout import OfficerMapBalanceError
 from app.adapters.layout import BALANCE_EXPECT, find_header_columns
 from app.adapters.sheet_select import SheetNotFound
+from app.models.data_file import SLOT_LABEL_VI
 from app.pipeline.discover import DiscoveredFiles, discover
 
-SLOT_LABEL = {
-    "m15": "Mẫu 15 — Cân đối NVL",
-    "m15a": "Mẫu 15a — Cân đối SP",
-    "m16": "Mẫu 16 — Định mức",
-    "bcct": "BCCT — Báo cáo hàng chi tiết",
-}
+# Bí danh của bảng nhãn duy nhất (#98). Câu chẩn đoán đi vào `parse_message` rồi hiện
+# trên màn tài liệu cạnh chip loại file — hai tên khác nhau ở đó là nhiễu tự tạo.
+SLOT_LABEL = SLOT_LABEL_VI
 
 # Header mong đợi cho file cân đối — định nghĩa ở app/adapters/layout.py để adapter
 # và chẩn đoán dùng CHUNG một bộ từ khoá (adapter không import ngược được module này).
