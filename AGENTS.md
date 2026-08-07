@@ -24,6 +24,8 @@
 - **Truy nguồn:** mọi phát hiện phải có FK về dòng dữ liệu Tầng 1 (§5.1 đề án) — không phát hiện nào được "hộp đen".
 - **AI calls** (chuẩn hoá tên hàng §5.3): cache hard, fallback heuristics. KHÔNG gọi LLM trong rule logic.
 - **Ngôn ngữ UI:** tiếng Việt full accents, tone formal — same đề án.
+- **Phiên DB:** module mới KHÔNG được `from app.database import SessionLocal` ở mức module. `from ... import` chụp đối tượng ngay lúc import, nên vá `app.database.SessionLocal` không đổi được bản sao đó và test sẽ ghi thẳng vào DB của máy dev. Dùng một trong hai: nhận `Session` qua tham số (route thì `Depends(get_db)`), hoặc `import app.database as dbmod` rồi gọi `dbmod.SessionLocal()` để phân giải lúc chạy. Bốn module còn giữ bản sao cũ (`app/main.py`, `app/ai/config.py`, `app/pipeline/ingest.py`, `app/pipeline/run_checks.py`) là nợ kỹ thuật, không phải mẫu để chép.
+- **Test đi qua route hoặc hàng đợi:** dùng fixture chung `app_db` (`tests/conftest.py`), KHÔNG tự dựng engine + tự vá `app.database`. `app_db` vá engine, phiên ở `app.database`, và bản sao phiên đã import vào mọi module `app.*`; kèm sẵn schema, admin `admin/admin`, và `settings.raw_data_path` trỏ vào `tmp_path`. `tests/test_db_fixture_isolation.py` giữ ràng buộc này.
 
 ## Skills project-scoped
 
