@@ -76,7 +76,12 @@ from app.models import (
     NvlBalance,
     SpBalance,
 )
-from app.models.data_file import SETTLEMENT_SLOTS, SLOT_LABEL_VI, SLOT_ORDER
+from app.models.data_file import (
+    SETTLEMENT_SLOTS,
+    SLOT_LABEL_VI,
+    SLOT_ORDER,
+    SLOT_SHORT_VI,
+)
 from app.pipeline.audit_scope import (
     AUDIT_YEARS,
     audit_window,
@@ -148,6 +153,7 @@ templates.env.globals["app_version_string"] = version_string()
 
 # Nhãn cho trang quản lý tài liệu (ma trận năm × loại file BCQT).
 templates.env.globals["SLOT_LABEL_VI"] = SLOT_LABEL_VI
+templates.env.globals["SLOT_SHORT_VI"] = SLOT_SHORT_VI
 templates.env.globals["SLOT_ORDER"] = list(SLOT_ORDER)
 # Trục lifecycle (ADR #18): uploaded → analyzed → parsed (+ error). Cờ review
 # (verified/needs_review) là trục RIÊNG, render bằng badge khác. "warning" giữ lại
@@ -1128,7 +1134,7 @@ def documents_upload_cell(
         bump_data_version(db, company.id, year)
         db.commit()
 
-    label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
+    label = SLOT_SHORT_VI.get(slot, slot)
     return _redirect(f"msg={label}+{year}+%C4%91%C3%A3+t%E1%BA%A3i+l%C3%AAn")
 
 
@@ -2668,7 +2674,7 @@ def export_recommendations(
 _TABLE_CONFIG = {
     "m15": {
         "model": NvlBalance,
-        "label": "Mẫu 15 — Cân đối NVL",
+        "label": SLOT_LABEL_VI["m15"],
         "code_field": "material_code",
         "code_label": "Mã NVL",
         # (field, label, cell_class). Chỉ các cột thực sự cần để rà cân đối M15.
@@ -2691,7 +2697,7 @@ _TABLE_CONFIG = {
     },
     "m15a": {
         "model": SpBalance,
-        "label": "Mẫu 15a — Cân đối TP",
+        "label": SLOT_LABEL_VI["m15a"],
         "code_field": "product_code",
         "code_label": "Mã TP",
         "view_cols": [
@@ -2710,7 +2716,7 @@ _TABLE_CONFIG = {
     },
     "m16": {
         "model": Norm,
-        "label": "Mẫu 16 — Định mức",
+        "label": SLOT_LABEL_VI["m16"],
         "code_field": "material_code",
         # Mẫu 16 là bảng CẶP: mỗi dòng mang cả mã TP lẫn mã NVL. Lọc một cột thôi thì
         # tra mã TP ở đây ra bảng rỗng, đọc như "không có định mức" — mà C4.9 lại trỏ
@@ -2730,7 +2736,7 @@ _TABLE_CONFIG = {
     },
     "bcct": {
         "model": DeclarationLine,
-        "label": "BCCT — Báo cáo hàng chi tiết",
+        "label": SLOT_LABEL_VI["bcct"],
         "code_field": "item_code",
         "code_label": "Mã hàng",
         "view_cols": [
@@ -2797,13 +2803,12 @@ def raw_data_url(company: Company, year: int | None, finding: Finding) -> str | 
 templates.env.globals["raw_data_url"] = raw_data_url
 
 # Tên bảng Tầng 1 bằng tiếng Việt — trang chứng cứ từng in thẳng tên bảng DB.
+# Nhãn khối chứng cứ ở trang phát hiện. SUY từ bảng nhãn duy nhất qua map bảng → loại
+# tài liệu (#98) — gõ lại tên ở đây là cách sinh ra tên thứ hai cho cùng một loại.
+# `findings` không phải loại tài liệu Tầng 1 nên có nhãn riêng.
 _EVIDENCE_TABLE_LABEL = {
-    "nvl_balances": "Mẫu 15 — Cân đối NVL",
-    "sp_balances": "Mẫu 15a — Cân đối TP",
-    "norms": "Mẫu 16 — Định mức",
-    "declaration_lines": "BCCT — Tờ khai chi tiết",
-    "findings": "Phát hiện nguồn",
-}
+    table: SLOT_LABEL_VI[slot] for table, slot in _DATA_TAB_BY_TABLE.items()
+} | {"findings": "Phát hiện nguồn"}
 
 # Khoá bộ lọc chứng cứ → nhãn. `__in` là hậu tố cú pháp của `_resolve_evidence`.
 _EVIDENCE_FILTER_LABEL = {
