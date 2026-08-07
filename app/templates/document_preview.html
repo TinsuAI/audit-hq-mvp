@@ -1,18 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Xem file — {{ file.original_filename }} — Audit-HQ{% endblock %}
 {% block content %}
-<style>
-  .preview-table td, .preview-table th {
-    white-space: nowrap; font-size: 12px; max-width: 260px;
-    overflow: hidden; text-overflow: ellipsis;
-  }
-  .preview-table th { position: sticky; top: 0; background: #333; color: #fff; z-index: 1; }
-  .preview-table .preview-rownum {
-    color: var(--c-text-subtle, #9ca3af); text-align: right;
-    background: var(--c-surface-alt, #f9fafb); position: sticky; left: 0;
-  }
-  .preview-table thead .preview-rownum { background: #333; }
-</style>
 
 <nav class="breadcrumbs">
   <a href="/companies">Doanh nghiệp</a><span class="sep">›</span>
@@ -35,50 +23,33 @@
   </div>
 </div>
 
-{% if error %}
-<div class="form-alert form-alert-error" role="alert"><span class="form-alert-icon">⚠️</span>
-  <div>Không đọc được file (có thể sai định dạng / hỏng): {{ error }}</div></div>
-{% else %}
+<div class="cg-sheets" id="cg-sheets" hidden></div>
 
-{% if sheet_names | length > 1 %}
-<div class="doc-bar" style="gap:6px;flex-wrap:wrap">
-  <span class="form-hint" style="margin:0">Sheet:</span>
-  {% for s in sheet_names %}
-  <a href="?sheet={{ loop.index0 }}"
-     class="btn btn-sm {% if loop.index0 == selected_sheet %}btn-primary{% else %}btn-secondary{% endif %}">{{ s }}</a>
-  {% endfor %}
+<div class="cg-toolbar">
+  <div class="cg-jump">
+    <label for="cg-row-input">Tới dòng</label>
+    <input type="number" id="cg-row-input" min="1" step="1" inputmode="numeric" placeholder="1">
+    <button type="button" class="btn btn-sm btn-secondary" id="cg-row-go">Nhảy tới</button>
+  </div>
+  <label class="cg-switch">
+    <input type="checkbox" id="cg-toggle-mapped">
+    <span>Hiện cột hệ thống đang đọc</span>
+  </label>
+  <label class="cg-switch">
+    <input type="checkbox" id="cg-toggle-formula">
+    <span>Hiện công thức trong ô</span>
+  </label>
 </div>
-{% endif %}
 
-{% if skipped_reason %}
-<div class="card"><p class="text-muted">{{ skipped_reason }}</p></div>
-{% elif not rows %}
-<div class="card"><p class="text-muted">Sheet này trống.</p></div>
-{% else %}
-<div class="card" style="overflow:auto;max-height:75vh;padding:0">
-  <table class="data-table preview-table">
-    <thead>
-      <tr>
-        <th class="preview-rownum">#</th>
-        {% for c in columns %}<th>{{ c }}</th>{% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in rows %}
-      <tr>
-        <td class="preview-rownum">{{ loop.index }}</td>
-        {% for cell in r %}<td title="{{ cell }}">{{ cell }}</td>{% endfor %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% if truncated_rows or truncated_cols %}
-<p class="form-hint" style="margin-top:var(--space-3)">
-  Chỉ hiện {% if truncated_rows %}{{ preview_rows }} dòng đầu{% endif %}{% if truncated_rows and truncated_cols %} · {% endif %}{% if truncated_cols %}{{ preview_cols }} cột đầu{% endif %}. Tải xuống để xem đầy đủ.
-</p>
-{% endif %}
-{% endif %}
+<div class="cg-notes" id="cg-notes"></div>
 
-{% endif %}
+<div id="cell-grid" class="cg"
+     data-cells-url="{{ cells_url }}"
+     data-sheet="{{ selected_sheet }}"
+     data-parsed-sheet="{{ parsed_sheet }}"
+     data-mapped-columns='{{ mapped_columns | tojson }}'></div>
+
+<p class="form-hint cg-status" id="cg-status"></p>
+
+<script src="/static/cell-grid.js?v={{ app_version_string | urlencode }}" defer></script>
 {% endblock %}
