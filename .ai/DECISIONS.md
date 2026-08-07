@@ -1233,12 +1233,19 @@ chiếu trên FILE THẬT (`BCDM_TT39 2024.xls`, sheet `BCTT39`): băng tiêu đ
 `(1)…(9)` khớp từng vị trí với `_M16_TT39_COLS`. **ĐVT là 2/9 cột của biểu**, không phải chú thích
 tuỳ chọn.
 
-**CHƯA kiểm chứng được từ nguồn gốc (đừng trích như đã xác nhận):** (a) hướng dẫn cột (4) buộc ĐVT
-thống nhất với ĐVT khai trên tờ khai hải quan — mới có ở nguồn thứ cấp; PDF phụ lục ở
-datafiles.chinhphu.vn là bản quét CCITT 91 trang không có lớp text (`pdftotext` ra 91 ký tự),
-vbpl.vn và thuvienphapluat chặn từ môi trường này; (b) TT 121/2025/TT-BTC (hiệu lực 01/02/2026, sửa
-phụ lục qua Phụ lục I của nó) có đổi tập cột Mẫu 16 hay không — dữ liệu ZONSEN 2026 thuộc phạm vi
-văn bản này.
+**ĐÃ KIỂM CHỨNG TỪ NGUỒN GỐC (08/08, sau khi ADR này viết lần đầu).** Hai bản quét Công báo được
+trích bằng `pdftoppm` + `tesseract -l vie`; nguyên văn ở
+`.ai/notes/2026-08-08-huong-dan-lap-mau-16-tt39.md`.
+
+- **Ràng buộc ĐVT là THẬT, ở CẢ HAI thế hệ văn bản.** Hướng dẫn lập Mẫu 16, cột (4) và cột (7):
+  ĐVT "sử dụng thống nhất với mã đơn vị tính doanh nghiệp quản lý tại nhà xưởng sản xuất, với đơn vị
+  tính đã khai báo trên tờ khai hải quan". TT 39/2018 Phụ lục II (`25kem6.pdf` tr. 8) và TT 121/2025
+  (`121-btc.pdf` tr. 238) đều có. Cột (2) mã SP, cột (3) tên SP, cột (5) mã NVL cũng buộc thống nhất
+  với tờ khai — tức có căn cứ pháp lý cho cả một lớp đối chiếu M16 ↔ BCCT, chưa dùng tới.
+- **Mẫu 16 ĐÃ BỊ SỬA bởi TT 121/2025** (hiệu lực 01/02/2026), mục "đ) Sửa đổi, bổ sung mẫu số
+  16/ĐMTT/GSQL". **Tập cột KHÔNG đổi** (9 cột + chỉ tiêu (10), (11)) và công thức định mức thực tế
+  ở cột (8) không đổi — nên `_M16_TT39_COLS` vẫn đúng cho kỳ 2026. Đổi ở cột (9) và ở quy tắc mã/tên
+  cho sản phẩm tái nhập.
 
 **Alternatives loại:**
 
@@ -1287,10 +1294,21 @@ văn bản này.
 được định mức · `TH` thu hồi từ SP tái nhập · `SPTN` sửa chữa/tái chế SP tái nhập), trong khi
 `is_domestic_origin` chỉ so `== "x"`.
 
-**Mức bằng chứng của khẳng định này: THẤP — đừng trích như quy định đã xác nhận.** Nguồn duy nhất là
-bản tóm tắt kết quả tìm kiếm của các trang thứ cấp; chưa ai đọc hướng dẫn in dưới biểu ở bản Công
-báo. Và dữ liệu KHÔNG ủng hộ: trong 270.385 dòng, `KXDĐM` · `TH` · `SPTN` xuất hiện **0 lần**; mã
-duy nhất có thật là `X` (1.565 dòng). Phải đọc bản quét Công báo TRƯỚC khi mở vé cài.
+**Đã đọc bản quét Công báo 08/08 — khẳng định "năm trạng thái" ĐÚNG MỘT NỬA, và nửa sai là nửa quan
+trọng: bộ mã hợp lệ PHỤ THUỘC KỲ.**
+
+| | TT 39/2018 (kỳ ≤ 2025) | TT 121/2025 (kỳ từ 01/02/2026) |
+|---|---|---|
+| cột (9) | `X` · để trống · `KXDĐM` | thêm `TH` · `SPTN` |
+
+Bản tóm tắt của công cụ tìm kiếm nêu năm trạng thái mà không nói đang mô tả bản nào — đúng với TT
+121, sai với TT 39. Kho dữ liệu bắc qua cả hai thế hệ (ZONSEN 2026 thuộc TT 121, mọi kỳ còn lại
+thuộc TT 39), nên vé cài sau này **không được hằng số hoá bộ mã**.
+
+Dữ liệu hiện tại chưa dùng tới mã nào ngoài `X`: trong 270.385 dòng, `KXDĐM` · `TH` · `SPTN` xuất
+hiện **0 lần**, `X` có 1.565 dòng. Nhưng `KXDĐM` là trạng thái DN tự khai "không xây dựng được định
+mức" — đúng thứ cổng độ phủ định mức (C4.9 / `norm_gate`) cần biết, và `is_domestic_origin` hiện chỉ
+so `== "x"` nên sẽ xử lý nó y hệt "nhập khẩu, có định mức bình thường".
 
 **Triển khai — ba lát, TIẾN LÊN, không backfill:** (1) module khai + đảo chiều suy bằng chứng ở
 m15/m15a/m16 + test chống trôi + `("m16","note")` vào `CHECK_COLUMNS` — đóng #109 và lỗ `note`,
