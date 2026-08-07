@@ -1156,3 +1156,132 @@ Câu chuyện người dùng 51 chỉ đòi mã không dự đoán được **�
 - *Giữ nguyên, coi là chấp nhận được* — rejected: cán bộ không bao giờ thấy kỳ nào xong là hỏng đúng thứ cả loạt vé này sinh ra để làm.
 
 **Ghi chú:** nếu MỌI kiểm tra đều là biết-khi-chạy thì `predictable_count` = 0 và trạng thái đọc là đủ. Không tới được chừng nào còn kiểm tra dựng sẵn, nên không có test cho ca đó — ghi lại để người sau khỏi tưởng là sót.
+
+## 2026-08-08 — Mô hình bằng chứng phủ đều bốn biểu · màn gán cột hai chiều
+
+### 28. Tập trường KHAI theo biểu là nguồn sự thật; bằng chứng và ô nhập suy TỪ nó (2026-08-08, issue #110; MỞ RỘNG ADR #18, KHÔNG đổi thang nguồn)
+
+**Bối cảnh — một lỗi cấu trúc, không phải ba lỗi rời.** `bcct.py:276` suy bằng chứng TỪ map cột
+(`evidence = {f: … for f in col}`) nên phủ đủ do cách viết. `m15` · `m15a` · `m16` đi NGƯỢC:
+`evidence` là danh sách viết tay, map cột suy từ nó (`m16.py:192`, `_EVIDENCE_FIELDS`). Dây chuyền
+kéo thẳng vào giao diện: `evidence` → `column_map` → `parse_detail` → `base_map`
+(`companies.py:1649`) → ô nhập của biểu mẫu xác nhận. **Trường không có bằng chứng thì không có ô
+nhập, cán bộ không sửa được.** Đo được ở `.ai/notes/2026-08-07-ra-bang-chung-bon-slot.md`: m16 đọc
+8 trường / có bằng chứng 2; m15 11/8; m15a 10/7; bcct đủ 100%.
+
+**Quyết định — chín mục.**
+
+1. **Tập trường khai theo biểu (declared field set)** là nguồn sự thật cho màn gán cột: mỗi biểu
+   khai một lần, màn hiện MỘT DÒNG MỖI TRƯỜNG KHAI. Phỏng đoán của máy thành giá trị điền sẵn,
+   không còn là cổng quyết định trường nào hiện ra.
+2. **"Bắt buộc" là HAI sự thật khác nhau, không gộp:** *bắt buộc theo biểu* — biểu mẫu chính thức
+   có cột đó (khai theo biểu); *có check đọc* — suy từ `CHECK_COLUMNS`. Hai cái nói hai hậu quả
+   khác nhau nên cảnh báo khác nhau.
+3. **Ràng buộc gán có BA trạng thái:** đã gán cột · chưa gán · **xác nhận không có trong file**.
+   Trạng thái thứ ba là lời của cán bộ, ghi lại như `officer-confirmed`. Thiếu nó thì cảnh báo
+   "thiếu trường bắt buộc" không có đường đóng — đúng hình dạng bế tắc của #95.
+4. **Khai đặt ở MỘT module dưới `app/adapters/`**, mỗi biểu một mục: tên trường · nhãn tiếng Việt ·
+   một cột hay nhóm cột · bắt buộc theo biểu. `CHECK_COLUMNS` Ở LẠI `registry.py`. Hằng vị trí cột
+   của từng adapter (`_COL`, `_M16_TT39_COLS`, `_M16_DINHMUC_COLS`, `_LABEL_ALIASES`) giữ nguyên —
+   chúng trả lời "cột nào", không phải "trường nào". **Test khoá:** mọi khoá trong mọi hằng cột
+   phải có mặt trong khai của biểu đó. Chiều ngược để lỏng có chủ ý: trường khai mà bố cục không có
+   vị trí mặc định thì tới màn gán ở trạng thái *chưa gán* — đúng ca `_M16_DINHMUC_COLS` thiếu
+   `note`.
+5. **Gửi biểu mẫu = xác nhận MỌI trường đang hiện.** Hành vi hiện tại (`saved_map.py:117` nâng mọi
+   trường trong map lưu lên `officer-confirmed`) giữ nguyên, nhưng kèm NGHĨA VỤ: màn phải hiện, mỗi
+   trường, cột đang gán VÀ mẫu giá trị của cột đó. Không hiện đủ thì nhãn "cán bộ xác nhận" là nói
+   sai.
+6. **Màn gán theo TRƯỜNG (field-major)**, ~8–11 dòng, mỗi dòng một bộ chọn cột mang tiêu đề + mẫu
+   giá trị. **KHÔNG dựng** phía cột ("cột này không phải trường nào cả"): dưới bố cục field-major,
+   cột không trường nào chọn thì không đọc — đó đã là mặc định của mọi cột, không có gì để ghi.
+7. **"Xác nhận không có trong file" lưu ở cột MỚI `saved_column_maps.absent_fields`** (JSON list),
+   `column_map` giữ nguyên hình dạng. Hai tập BẤT BIẾN không giao nhau, khẳng định ở một chỗ + test.
+8. **`not_evaluable` mức TRƯỜNG nối vào CỔNG TIỀN-DISPATCH đã có** (`sources.py`): adapter ghi
+   trường xác nhận vắng vào `parse_detail`, cổng gom theo kỳ như `data_files.py:355` đang gom
+   `review`, check nào có `CHECK_COLUMNS` gọi tên `(slot, trường)` vắng thì `not_evaluable`, lớp
+   cách gỡ `need-file-this-period`. Ánh xạ dùng `checks_reading()` — **cùng một hàm** sinh cảnh báo
+   trên màn và sinh hành vi lúc chạy, nên hai cái không thể nói khác nhau.
+9. **Tập trường khai = tập trường adapter GHI vào dòng Tầng 1**, đúng bằng tập nó đang đọc (đã đối
+   chiếu: mọi khoá hằng cột đều có cột trong model — `row_no`, các `*_name`, các `*_unit`, `note`).
+   Quy tắc này bỏ phán đoán ra khỏi bước mà phán đoán đã hỏng ba lần.
+
+**Hai hậu quả của "bắt buộc theo biểu", tách theo trường có phải KHOÁ DÒNG hay không:**
+
+- thiếu trường là **khoá dòng** (`material_code` m15 · `product_code` m15a · `product_code` +
+  `material_code` + `norm_qty` m16 · ba trường sẵn có của bcct) → không dựng được dòng nào → **từ
+  chối**, đúng hành vi bcct đang có, đúng dòng 0.1 sổ yêu cầu;
+- thiếu trường **bắt buộc mà không phải khoá dòng** (`product_unit`, `material_unit` của m16) →
+  **nhận, cảnh báo ở màn gán, đánh dấu file thiếu**, KHÔNG nhận vơ là có check đọc. Dòng 0.2.
+
+**Nền số đo của vế ĐVT (đo 08/08 trên 270.385 dòng đã nạp):** `material_unit` có ở 270.384/270.385
+dòng (một dòng rỗng, HONG_AN 2021); `product_unit` rỗng 5.077 dòng, **toàn bộ thuộc HIEP_QUANG
+2024** = 65,8% file đó. Đối chiếu ĐVT giữa các nguồn: M16↔M15 22.374 mã chung, lệch **5.088
+(22,7%)**; M16↔tờ khai 21.568 mã chung, lệch **5.092 (23,6%)**. Nhưng lệch là **khác từ vựng, không
+phải khác đơn vị vật lý**: `PCE` vs `Cái/Chiếc` (4.974 mã), `Mét` vs `MTR`, `Kilogam` vs `KGM` /
+`KILO-GRAMMES`, `Đôi/Cặp` vs `PR` / `PAIR`, `Bộ` vs `SETS`, `ROLL` vs `Cuộn`. Và lệch theo FILE chứ
+không rải rác: PILOT_006 2024/2025 và ZONSEN 2026 khớp ~100%, còn ZONSEN 2024, ZONSEN 2025,
+PILOT_002 2025 khớp **0%** — DN ghi mã ECUS ở biểu này, tên tiếng Việt ở biểu kia.
+
+**Vì thế KHÔNG khai `("m16","material_unit")` vào `CHECK_COLUMNS`** ở đợt này: so chuỗi trần sẽ bắn
+~5.000 phát hiện gần như sai hết. Kiểm tra thống nhất ĐVT cần BẢNG ĐỒNG NGHĨA đơn vị (mã ECUS ↔ tên
+tiếng Việt) trước; đó là việc riêng, không thuộc #110.
+
+**Căn cứ biểu mẫu:** Mẫu số 16/ĐMTT/GSQL, Phụ lục ban hành kèm TT 39/2018/TT-BTC (thay Phụ lục V TT
+38/2015). Chín cột: (1) Stt · (2) Mã SP · (3) Tên SP · **(4) Đơn vị tính** · (5) Mã NVL · (6) Tên
+NVL · (7) **Đơn vị tính** · (8) Lượng NL, VT thực tế để sản xuất một sản phẩm · (9) Ghi chú. Đối
+chiếu trên FILE THẬT (`BCDM_TT39 2024.xls`, sheet `BCTT39`): băng tiêu đề hai tầng + dòng đánh số
+`(1)…(9)` khớp từng vị trí với `_M16_TT39_COLS`. **ĐVT là 2/9 cột của biểu**, không phải chú thích
+tuỳ chọn.
+
+**CHƯA kiểm chứng được từ nguồn gốc (đừng trích như đã xác nhận):** (a) hướng dẫn cột (4) buộc ĐVT
+thống nhất với ĐVT khai trên tờ khai hải quan — mới có ở nguồn thứ cấp; PDF phụ lục ở
+datafiles.chinhphu.vn là bản quét CCITT 91 trang không có lớp text (`pdftotext` ra 91 ký tự),
+vbpl.vn và thuvienphapluat chặn từ môi trường này; (b) TT 121/2025/TT-BTC (hiệu lực 01/02/2026, sửa
+phụ lục qua Phụ lục I của nó) có đổi tập cột Mẫu 16 hay không — dữ liệu ZONSEN 2026 thuộc phạm vi
+văn bản này.
+
+**Alternatives loại:**
+
+- *Chỉ nới `_EVIDENCE_FIELDS` cho đủ trường, giữ chiều suy cũ* — rejected: vẫn bế tắc khi máy không
+  đặt được trường nào, chỉ hẹp hơn.
+- *"Bắt buộc" suy hết từ `CHECK_COLUMNS`* — rejected trên số đo: `CHECK_COLUMNS` có **0 mục bcct**
+  trong khi 10 check đọc `declaration_lines`, nên mô hình này khai "bcct không cần trường nào".
+- *Gộp khai trường vào `registry.py`* — rejected: sửa khai của một check sẽ lặng lẽ đổi thứ cán bộ
+  nhìn thấy trên màn gán.
+- *Mỗi adapter tự khai* — rejected: m16 có hai bố cục cho cùng một tập trường → khai hai lần, trôi
+  lệch, đúng cách `product_code` biến mất.
+- *Thêm một bậc "cán bộ đã duyệt" giữa `header-matched` và `builtin-template`* — rejected: cán bộ
+  đọc "product_code → cột 1" cạnh mẫu giá trị rồi gửi đã xác nhận đúng bằng người gõ lại số 1.
+  "Sửa" vs "để nguyên" không phải khác biệt về độ mạnh bằng chứng; mã hoá thành một bậc là đưa vào
+  thang ADR #18 một phân biệt không ứng với cái gì thật.
+- *Bảng gán theo CỘT (một dòng mỗi cột file)* — rejected: 257 dòng để diễn đạt 8 sự thật.
+- *Sentinel `[]` trong `column_map` cho "vắng"* — rejected: `column_groups` (`templates.py:156`) BỎ
+  list rỗng có chủ ý ("giá trị hỏng bị bỏ, không đoán"); nới nó là tiêu mất chính cái chốt #95 dựng.
+- *Mỗi check tự kiểm trường vắng* — rejected: 17+ chỗ sửa, check viết sau quên kiểm thì hỏng im
+  lặng — đúng lớp lỗi vé này sinh ra để diệt.
+- *Ép nạp lại toàn bộ file sau khi deploy* — rejected: `run_checks` dựng lại `Finding` → `status` /
+  `notes` cán bộ về `new`, đúng lý do đợt trước cố ý không tự chạy lại check sau khi nạp.
+
+**Ba lỗi im lặng bắt được TRONG lúc grill, chưa có ở ghi chú gốc:**
+
+1. **`m16.note` là ca thứ hai của #109.** Đọc ở cột 8, ghi vào `norms.note`, **C4.1 tiêu thụ**
+   (`c4_norm.py:76` gọi `is_domestic_origin`, dòng 77 trừ các mã đó khỏi phạm vi check). Không bằng
+   chứng, không badge, không ô sửa. → khai `("m16","note", INDIVIDUAL)` cho C4.1.
+2. **`_M16_DINHMUC_COLS` KHÔNG có khoá `note`** → mọi dòng của bố cục đó nhận `note=None`,
+   `is_domestic_origin` luôn False, **không mã nào từng bị loại**, và không tín hiệu nào phân biệt
+   với file thật sự không có hàng trong nước. Đo: `note` rỗng ở 269.505/270.385 dòng; **chỉ
+   PILOT_004 2025 (880 dòng) có giá trị** — 0,33% toàn kho.
+3. **`CHECK_COLUMNS` có 0 mục bcct** → cổng review chưa bao giờ bắn cho bcct (mục còn mở (b) ở
+   STATUS), và cổng mức trường ở mục 8 cũng sẽ câm cho bcct tới khi khai bù.
+
+**Ghi chú — nợ đã biết, KHÔNG thuộc #110:** cột (9) Ghi chú của biểu có **năm** trạng thái theo
+hướng dẫn (`X` trong nước · để trống = nhập khẩu · `KXDĐM` không xác định được định mức · `TH` thu
+hồi từ SP tái nhập · `SPTN` sửa chữa/tái chế SP tái nhập), trong khi `is_domestic_origin` chỉ so
+`== "x"` nên ba mã còn lại bị xử lý y như "nhập khẩu". Cần vé riêng; nguồn hướng dẫn cũng mới là
+thứ cấp, phải đọc bản quét Công báo trước khi cài.
+
+**Triển khai — ba lát, TIẾN LÊN, không backfill:** (1) module khai + đảo chiều suy bằng chứng ở
+m15/m15a/m16 + test chống trôi + `("m16","note")` vào `CHECK_COLUMNS` — đóng #109 và lỗ `note`,
+không đổi schema; (2) màn gán cột + cột `absent_fields` + migration; (3) cổng `not_evaluable` mức
+trường + khai bù bcct vào `CHECK_COLUMNS`. File đã nạp GIỮ `parse_detail` cũ tới khi có người nạp
+lại — mã mới chỉ đổi thứ một lượt parse MỚI sinh ra.

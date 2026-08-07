@@ -241,3 +241,31 @@ chứng. Cùng cấu trúc với evidence source của việc gán CỘT (ADR #1
 `content-matched` hoặc đã qua `diagnose_upload` trong lượt nạp. KHÔNG dùng cho `name-matched`:
 nói "nhận ra" về một phép đoán theo tên là nói với cán bộ rằng file đã hợp lệ trong khi hệ thống
 chưa mở file lần nào. Từ dùng cho `name-matched` là **gợi ý** / **gán tạm**.
+
+## Gán cột theo trường khai (ADR #28 — chưa cài)
+
+**Declared field set** (tập trường khai) — danh sách trường một BIỂU có, khai một lần ở module khai
+dưới `app/adapters/`, mỗi trường mang: nhãn tiếng Việt · một cột hay nhóm cột · có bắt buộc theo
+biểu không. Là nguồn sự thật cho màn gán cột: màn hiện một dòng mỗi trường khai, kể cả trường máy
+không đặt được. Đối lập với mô hình cũ, nơi `evidence` viết tay quyết định trường nào có ô nhập.
+Tập trường khai = tập trường adapter GHI vào dòng Tầng 1.
+
+**Bắt buộc theo biểu** — biểu mẫu chính thức có cột đó (ví dụ ĐVT là cột (4) và (7) của Mẫu 16).
+Sự thật về BIỂU, không phải về check. Khác **cột có check đọc** — suy từ `CHECK_COLUMNS`, sự thật về
+CODE. Hai cái sinh hai cảnh báo khác nhau vì hậu quả khác nhau.
+
+**Khoá dòng** (row key) — trường mà thiếu nó thì không dựng được dòng Tầng 1 nào: `material_code`
+(m15) · `product_code` (m15a) · `product_code` + `material_code` + `norm_qty` (m16) ·
+`declaration_no` + `item_code` + `quantity` (bcct). Quyết định HẬU QUẢ của một trường bắt buộc bị
+thiếu: khoá dòng → từ chối file (dòng 0.1 sổ yêu cầu); bắt buộc mà không phải khoá dòng → nhận, cảnh
+báo, đánh dấu file thiếu (dòng 0.2).
+
+**Ba trạng thái gán** — mỗi trường khai ở đúng một trạng thái: `đã gán` (trỏ vào cột/nhóm cột) ·
+`chưa gán` · `xác nhận không có trong file`. Trạng thái thứ ba là LỜI CỦA CÁN BỘ, lưu ở
+`saved_column_maps.absent_fields`, và là thứ cho cảnh báo "thiếu trường bắt buộc" một đường đóng.
+Hai tập `column_map` và `absent_fields` bất biến không giao nhau.
+
+**Cổng trường vắng** — mở rộng cổng tiền-dispatch của `sources.py` từ mức NGUỒN xuống mức TRƯỜNG:
+check nào `CHECK_COLUMNS` khai đọc một `(slot, trường)` đã xác nhận vắng thì `not_evaluable`, lớp
+cách gỡ `need-file-this-period`. Cảnh báo trên màn gán và hành vi lúc chạy cùng suy từ
+`checks_reading()` nên không nói khác nhau được.
