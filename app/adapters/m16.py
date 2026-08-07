@@ -25,6 +25,11 @@ from app.adapters.evidence import evidence_m16
 from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
 from app.adapters.sheet_select import SheetNotFound, select_sheet
+from app.adapters.templates import (
+    apply_officer_evidence,
+    match_source_for,
+    officer_columns,
+)
 
 
 @dataclass
@@ -129,7 +134,15 @@ def _detect_format(xls: pd.ExcelFile) -> str:
     return "tt39"
 
 
-def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = None) -> M16File:
+def parse_m16(
+    path: str | Path,
+    sheet: str | None = None,
+    year: int | None = None,
+    officer_maps: dict[str, dict[str, int]] | None = None,
+) -> M16File:
+    """`officer_maps` = {vân tay form: {field: chỉ số cột}} cán bộ đã xác nhận cho DN
+    này ở slot này. Vị trí của cán bộ THẮNG cả cột ĐM chọn theo nhãn (ADR #24 mục 5).
+    Mẫu 16 chưa có họ biểu curate nào, nên chỉ còn hai tầng: cán bộ > dò từ khoá."""
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
     cols = _M16_TT39_COLS
@@ -161,14 +174,28 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
     # dict module-level dùng chung.
     norm_col, norm_label, tech_col = _detect_actual_norm_col(cells, data_start, cols["norm_qty"])
     norm_labeled = norm_col != cols["norm_qty"]
+    cols = dict(cols)
     if norm_labeled:
-        cols = dict(cols)
         cols["norm_qty"] = norm_col
+    form_sig = compute_form_signature(cells, "m16", data_start)
+    # Cán bộ đã chỉ cột nào thì cột đó thắng — kể cả cột ĐM vừa chọn theo nhãn: nhãn
+    # là suy đoán của máy, map lưu là kết luận của người đã nhìn file.
+    officer = officer_columns(officer_maps, form_sig, cols)
+    cols.update(officer)
+    # Cán bộ dời sang cột KHÁC → không còn đọc theo nhãn nữa, không được giữ nhãn
+    # "ĐM thực tế theo nhãn X". Cán bộ xác nhận ĐÚNG cột đó thì giữ nguyên.
+    norm_labeled = norm_labeled and cols["norm_qty"] == norm_col
     evidence = evidence_m16(
         cells, data_start, cols["material_code"], cols["norm_qty"], norm_labeled=norm_labeled,
     )
-    form_sig = compute_form_signature(cells, "m16", data_start)
+    apply_officer_evidence(evidence, officer)
     column_map = {f: cols[f] for f in evidence if f in cols}
+    detail = {
+        "form_signature": form_sig,
+        "column_map": column_map,
+        "template_id": None,
+        "match_source": match_source_for(officer, None, evidence),
+    }
     if norm_labeled:
         provenance = ParseProvenance(
             layout="labeled",
@@ -176,16 +203,12 @@ def parse_m16(path: str | Path, sheet: str | None = None, year: int | None = Non
                 "norm_col": norm_col,
                 "norm_label": norm_label,
                 "technical_col": tech_col,
-                "form_signature": form_sig,
-                "column_map": column_map,
+                **detail,
             },
             evidence=evidence,
         )
     else:
-        provenance = ParseProvenance(
-            detail={"form_signature": form_sig, "column_map": column_map},
-            evidence=evidence,
-        )
+        provenance = ParseProvenance(detail=detail, evidence=evidence)
 
     current_product_code: str | None = None
     current_product_name: str | None = None

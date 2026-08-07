@@ -13,12 +13,19 @@ kiểm tra nào cổng thực sự làm. Rủi ro chấp nhận: một template 
 lặng trên diện rộng — chặn bằng hai lớp: test fixture cho từng template, và badge
 "Khớp mẫu: <tên>" luôn hiển thị.
 
-**GIỚI HẠN ĐANG CÓ — map officer per-DN mới thắng ở NHÃN, chưa thắng ở VỊ TRÍ CỘT.**
-`resolve_officer_confirmed` chỉ nâng nguồn bằng chứng của cột lên `officer-confirmed`
-SAU khi parse xong; chỉ số cột lúc parse vẫn là của template. Hôm nay chưa lệch được
-vì cả bốn họ đã seed đều để `column_map` RỖNG (= cột mặc định của slot), nhưng seed
-một họ có map riêng thì map cán bộ sẽ bị template che. Phải sửa trước khi seed họ đầu
-tiên có `column_map` khác mặc định.
+**Map cán bộ thắng template ở MỨC TỪNG TRƯỜNG, ngay lúc đọc file** (ADR #24 mục 5).
+`resolve_columns` trộn ba tầng theo đúng thứ tự trên: trường nào map cán bộ có thì
+lấy vị trí của map và mang nguồn `officer-confirmed`, trường còn lại lấy theo
+template (hoặc cột mặc định của slot khi không họ nào khớp).
+
+*Ràng buộc khi seed họ mới:* một họ có `column_map` KHÔNG rỗng chỉ được seed khi
+test ca xung đột (`tests/test_officer_map_precedence.py`) còn xanh — đó là chỗ duy
+nhất chứng minh map cán bộ không bị template che. Trước bản sửa này cả bốn họ đã
+seed đều để `column_map` rỗng, nên lỗi che map chưa từng lộ ra trên dữ liệu thật.
+
+*Giới hạn còn lại:* nhánh bố cục MỞ RỘNG (Mẫu 15/15a suy map từ dòng đánh số) KHÔNG
+nhận vị trí của cán bộ — ở đó một trường có thể đọc bằng TỔNG nhiều cột con, mà map
+lưu chỉ giữ được cột đầu nhóm, nên áp vào là im lặng bỏ mất các cột con còn lại.
 
 **Tầng này sống trong CODE, đổi qua PR.** ADR #23 đã chốt yêu cầu tương lai: quản
 lý template qua UI (bảng DB seed từ code). CHƯA build.
@@ -29,16 +36,20 @@ không chứa mã số thuế, tên DN hay số liệu, nên hằng số dưới
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
-from app.adapters.evidence import BUILTIN_TEMPLATE, POSITION_ONLY
+from app.adapters.evidence import BUILTIN_TEMPLATE, OFFICER_CONFIRMED, POSITION_ONLY
 
-# Nguồn khớp ghi vào `data_files.match_source`.
+# Nguồn khớp ghi vào `data_files.match_source` — TẦNG NÀO đã quyết định vị trí cột.
 MATCH_BUILTIN = "builtin-template"
 MATCH_OFFICER = "officer-map"
 MATCH_KEYWORD = "keyword"
 MATCH_DEFAULT = "default"
+# Bố cục mở rộng: map suy từ dòng đánh số của chính file, chứng minh bằng đẳng thức
+# của biểu (ADR #15). KHÔNG gộp vào `keyword` — cơ chế khác hẳn, gọi sai tên là nói
+# với cán bộ rằng cột đã khớp tiêu đề trong khi không nhãn nào được đọc.
+MATCH_EXTENDED = "extended-layout"
 
 @dataclass(frozen=True)
 class BuiltinTemplate:
@@ -122,39 +133,107 @@ def match_template(
     return None
 
 
+def officer_columns(
+    officer_maps: dict[str, dict[str, int]] | None,
+    form_sig: str | None,
+    known_fields: Iterable[str],
+) -> dict[str, int]:
+    """Map cột cán bộ đã xác nhận áp cho ĐÚNG vân tay này (rỗng nếu chưa có).
+
+    Khoá map là `(DN, slot, vân tay form)` — người gọi đã lọc theo DN + slot, ở đây
+    chỉ còn lọc vân tay. Bỏ field slot không đọc: map lưu là dữ liệu cũ trong DB,
+    một field lạ không được phép tạo cột mới cho parser.
+    """
+    if not officer_maps or not form_sig:
+        return {}
+    saved = officer_maps.get(form_sig) or {}
+    known = set(known_fields)
+    out: dict[str, int] = {}
+    for f, idx in saved.items():
+        if f not in known:
+            continue
+        try:
+            out[f] = int(idx)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def resolve_columns(
+    base_col: dict[str, int],
+    template: BuiltinTemplate | None,
+    officer_maps: dict[str, dict[str, int]] | None,
+    form_sig: str | None,
+) -> tuple[dict[str, int], dict[str, int]]:
+    """`(map cột sẽ đọc, phần map cán bộ đã áp)` — ưu tiên cán bộ > template > mặc định.
+
+    Trộn ở MỨC TỪNG TRƯỜNG: cán bộ xác nhận một cột không làm mất các cột khác mà
+    template đã curate, và ngược lại template không che cột cán bộ vừa sửa.
+    """
+    officer = officer_columns(officer_maps, form_sig, base_col)
+    col = {**base_col, **(template.column_map if template else {}), **officer}
+    return col, officer
+
+
+def match_source_for(
+    officer: dict[str, int],
+    template: BuiltinTemplate | None,
+    evidence: dict[str, str],
+) -> str:
+    """Tầng đã quyết định vị trí cột — giá trị ghi vào `data_files.match_source`.
+
+    Nhánh bố cục mở rộng KHÔNG đi qua đây: ở đó tầng quyết định là dòng đánh số của
+    chính file (``MATCH_EXTENDED``), không suy được từ evidence.
+    """
+    if officer:
+        return MATCH_OFFICER
+    if template is not None:
+        return MATCH_BUILTIN
+    matched = any(src != POSITION_ONLY for src in evidence.values())
+    return MATCH_KEYWORD if matched else MATCH_DEFAULT
+
+
+def apply_officer_evidence(
+    evidence: dict[str, str], officer: dict[str, int]
+) -> dict[str, str]:
+    """Đánh dấu `officer-confirmed` cho ĐÚNG các cột đã đọc bằng vị trí của cán bộ."""
+    for f in officer:
+        if f in evidence:
+            evidence[f] = OFFICER_CONFIRMED
+    return evidence
+
+
 def resolve_template_evidence(
     template: BuiltinTemplate | None,
     evidence_fields: tuple[str, ...],
     column_map: dict[str, int],
     form_sig: str,
     fallback: Callable[[], dict[str, str]],
+    officer: dict[str, int] | None = None,
 ) -> tuple[dict[str, str], dict]:
     """`(evidence, provenance detail)` cho đường parse chuẩn của một slot.
 
     Khớp template → mọi cột mang nguồn `builtin-template` (rank giữa khớp-tiêu-đề và
     map-cán-bộ) nên cổng review tự qua. Không khớp → giữ nguyên đường cũ (dò từ khoá
-    rồi cổng review), và `match_source` nói rõ đang đọc bằng gì — không đường nào
-    parse im lặng.
+    rồi cổng review). Cột nào đọc theo vị trí CÁN BỘ chỉ định thì mang
+    `officer-confirmed` bất kể hai nhánh trên. `match_source` luôn nói rõ đang đọc
+    bằng gì — không đường nào parse im lặng.
     """
+    officer = officer or {}
     if template is not None:
         evidence = {f: BUILTIN_TEMPLATE for f in evidence_fields if f in column_map}
-        detail = {
-            "form_signature": form_sig,
-            "column_map": {f: column_map[f] for f in evidence},
-            "template_id": template.id,
-            "template_name": template.name,
-            "match_source": MATCH_BUILTIN,
-        }
-        return evidence, detail
-
-    evidence = fallback()
-    matched = any(src != POSITION_ONLY for src in evidence.values())
-    return evidence, {
+    else:
+        evidence = fallback()
+    apply_officer_evidence(evidence, officer)
+    detail = {
         "form_signature": form_sig,
         "column_map": {f: column_map[f] for f in evidence if f in column_map},
-        "template_id": None,
-        "match_source": MATCH_KEYWORD if matched else MATCH_DEFAULT,
+        "template_id": template.id if template is not None else None,
+        "match_source": match_source_for(officer, template, evidence),
     }
+    if template is not None:
+        detail["template_name"] = template.name
+    return evidence, detail
 
 
 def template_by_id(template_id: str | None) -> BuiltinTemplate | None:
@@ -170,10 +249,15 @@ __all__ = [
     "BUILTIN_TEMPLATES",
     "MATCH_BUILTIN",
     "MATCH_DEFAULT",
+    "MATCH_EXTENDED",
     "MATCH_KEYWORD",
     "MATCH_OFFICER",
     "BuiltinTemplate",
+    "apply_officer_evidence",
+    "match_source_for",
     "match_template",
+    "officer_columns",
+    "resolve_columns",
     "resolve_template_evidence",
     "template_by_id",
 ]

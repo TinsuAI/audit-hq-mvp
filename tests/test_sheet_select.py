@@ -160,24 +160,31 @@ def test_fiscal_year_period_rank_prefers_exact_start_year(tmp_path: Path) -> Non
 
 
 def test_diagnosis_parses_the_same_way_as_ingest() -> None:
-    """Chẩn đoán phải gọi parse ĐÚNG như lúc nạp: cùng kỳ VÀ cùng trang tính.
+    """Chẩn đoán phải gọi parse ĐÚNG như lúc nạp: cùng kỳ, cùng trang tính, cùng map cột.
 
     Thiếu `year` thì phá hoà theo kỳ bị bỏ qua; thiếu trang tính đã ghim thì file
-    được ghim trang vẫn trượt ở bước chẩn đoán và không bao giờ tới bước nạp. Cả hai
-    đều dẫn tới cùng một hậu quả: cán bộ duyệt một trang, hệ thống nạp trang khác.
+    được ghim trang vẫn trượt ở bước chẩn đoán và không bao giờ tới bước nạp; thiếu
+    map cột cán bộ thì chẩn đoán kiểm đẳng thức trên bộ cột KHÁC bộ sẽ nạp (và mỗi
+    file mở thêm một lần vì khoá nhớ parse gồm cả map). Cả ba đều dẫn tới cùng một
+    hậu quả: cán bộ duyệt một đằng, hệ thống nạp một nẻo.
     """
     from app.pipeline.validate import UploadDiagnosis, _check_balance, _check_simple
 
-    seen: list[tuple[str | None, int | None]] = []
+    seen: list[tuple[str | None, int | None, dict | None]] = []
 
     row = type("R", (), {"opening_qty": 1.0, "import_qty": 1.0, "closing_qty": 1.0})()
 
-    def fake_parse(path, sheet=None, year=None):
-        seen.append((sheet, year))
+    def fake_parse(path, sheet=None, year=None, officer_maps=None):
+        seen.append((sheet, year, officer_maps))
         return type("P", (), {"rows": [row], "issues": None, "sheet": sheet or "S"})()
 
-    _check_balance(UploadDiagnosis(), "m15", Path("x.xlsx"), fake_parse, 2025, "Trang A")
+    m15_map = {"vantay": {"closing_qty": 10}}
+    m16_map = {"vantay": {"norm_qty": 7}}
+    _check_balance(
+        UploadDiagnosis(), "m15", Path("x.xlsx"), fake_parse, 2025, "Trang A", m15_map,
+    )
     _check_simple(
         UploadDiagnosis(), "m16", Path("x.xlsx"), fake_parse, year=2025, sheet="Trang B",
+        officer_maps=m16_map,
     )
-    assert seen == [("Trang A", 2025), ("Trang B", 2025)]
+    assert seen == [("Trang A", 2025, m15_map), ("Trang B", 2025, m16_map)]

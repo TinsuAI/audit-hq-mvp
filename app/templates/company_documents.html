@@ -178,6 +178,8 @@
               <span class="badge info doc-file-badge" title="Cấu trúc file khớp một mẫu đã được kiểm và đưa vào hệ thống, nên không cần xác nhận lại vị trí cột.">📐 Khớp mẫu: {{ f.parse_detail_obj.template_name or f.template_id }}</span>
               {% elif f.match_source == 'officer-map' %}
               <span class="badge info doc-file-badge" title="Cán bộ đã xác nhận vị trí cột cho đúng cấu trúc này của doanh nghiệp — map lưu lại dùng cho các kỳ sau.">✅ Map đã xác nhận</span>
+              {% elif f.match_source == 'extended-layout' %}
+              <span class="badge info doc-file-badge" title="Không khớp mẫu nào có sẵn, nhưng vị trí cột suy được từ dòng đánh số của chính file và đã chứng minh bằng đẳng thức của biểu.">🧭 Suy cột từ dòng đánh số</span>
               {% elif f.match_source %}
               <span class="badge warning doc-file-badge" title="Không khớp mẫu nào có sẵn — vị trí cột đang suy từ từ khoá hoặc cột mặc định, cần cán bộ xác nhận.">❓ Không khớp — cần xác nhận cột</span>
               {% endif %}
