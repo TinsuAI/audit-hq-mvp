@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ error_title }} — Audit-HQ{% endblock %}
+
+{% block content %}
+<section class="error-page">
+  <div class="card">
+    <div class="page-title-group">
+      <h1>{{ error_title }}</h1>
+      <p class="page-subtitle">Mã trạng thái {{ status_code }}</p>
+    </div>
+
+    <p class="error-message">{{ error_message }}</p>
+
+    {% if error_detail %}
+    <div class="alert alert-warning error-detail">{{ error_detail }}</div>
+    {% endif %}
+
+    <div class="btn-group error-actions">
+      {% for link in back_links %}
+      <a href="{{ link.url }}" class="btn {% if loop.first %}btn-primary{% else %}btn-secondary{% endif %}">
+        ← {{ link.label }}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

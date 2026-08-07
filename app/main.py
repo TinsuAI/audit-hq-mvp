@@ -21,6 +21,7 @@ from app.auth import (
 )
 from app.auth_users import get_user_by_username, seed_default_admin, set_password
 from app.database import SessionLocal, get_db
+from app.errors import register_error_handlers, strip_empty_query_params
 from app.jobs import register_handler
 from app.jobs.handlers import ingest_handler, run_batch_handler, run_checks_handler
 from app.jobs.worker import JobWorker, recover_zombie_jobs
@@ -128,7 +129,16 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Audit-HQ MVP", version=VERSION, lifespan=lifespan)
+# `strip_empty_query_params` là phụ thuộc TOÀN CỤC nên nó chạy trước khi FastAPI kiểm
+# kiểu tham số của từng hàm xử lý — `?year=` do giao diện dựng ra không còn thành lỗi.
+# `register_error_handlers` là chỗ duy nhất quyết định lỗi ra HTML hay JSON (issue #94).
+app = FastAPI(
+    title="Audit-HQ MVP",
+    version=VERSION,
+    lifespan=lifespan,
+    dependencies=[Depends(strip_empty_query_params)],
+)
+register_error_handlers(app)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 app.include_router(companies_router)
 app.include_router(admin_router)
