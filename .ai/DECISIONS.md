@@ -1222,9 +1222,23 @@ phải khác đơn vị vật lý**: `PCE` vs `Cái/Chiếc` (4.974 mã), `Mét`
 không rải rác: PILOT_006 2024/2025 và ZONSEN 2026 khớp ~100%, còn ZONSEN 2024, ZONSEN 2025,
 PILOT_002 2025 khớp **0%** — DN ghi mã ECUS ở biểu này, tên tiếng Việt ở biểu kia.
 
-**Vì thế KHÔNG khai `("m16","material_unit")` vào `CHECK_COLUMNS`** ở đợt này: so chuỗi trần sẽ bắn
-~5.000 phát hiện gần như sai hết. Kiểm tra thống nhất ĐVT cần BẢNG ĐỒNG NGHĨA đơn vị (mã ECUS ↔ tên
-tiếng Việt) trước; đó là việc riêng, không thuộc #110.
+**Vì thế KHÔNG khai `("m16","material_unit")` / `("m16","product_unit")` vào `CHECK_COLUMNS`.**
+
+*Lý do ghi lần đầu ở đây là SAI và đã sửa:* tôi viết "cần bảng đồng nghĩa đơn vị trước". Kiểm lại thì
+**kiểm tra thống nhất ĐVT đã tồn tại và đang chạy** — **C3.3** (`app/checks/c3_classify.py`) đối
+chiếu ĐVT giữa M15 · M16 · BCCT qua `uom.compare()` trên hai bảng `uom_canonical` (27 dòng) +
+`uom_aliases` (154 dòng), và catalog đề án đánh ✅ cho nó. `resolve_canonical` còn tách được đơn vị
+ghép theo `[/,;|]` nên `Cái/Chiếc` · `Đôi/Cặp` resolve bình thường.
+
+Nên con số "5.088 / 5.092 mã lệch chuỗi" ở trên **không phải số phát hiện sai** — phần lớn đã bị bảng
+alias hấp thụ trước khi thành phát hiện. Số thật: **140 phát hiện C3.3**, trong đó 94 là lệch
+canonical thật và 46 có ít nhất một đơn vị KHÔNG resolve được (`Lon/Can` 1.720 dòng · `Phút vuông`
+539 · `UNL` 277; tổng 25/73 chuỗi đơn vị trong dữ liệu không resolve được). `compare()` gộp "không
+biết" vào `DIFFERENT` → Nghiêm trọng. Đó là **issue #115**, không thuộc #110.
+
+*Lý do ĐÚNG để không khai vào `CHECK_COLUMNS`:* C3.3 đã phụ trách đúng việc đó, và cổng trường vắng
+ở mục 8 là một cơ chế KHÁC (thiếu cột ⇒ không chạy được) — khai ĐVT vào đó là làm trùng vai, hai
+đường cùng báo một chuyện bằng hai giọng khác nhau.
 
 **Căn cứ biểu mẫu:** Mẫu số 16/ĐMTT/GSQL, Phụ lục ban hành kèm TT 39/2018/TT-BTC (thay Phụ lục V TT
 38/2015). Chín cột: (1) Stt · (2) Mã SP · (3) Tên SP · **(4) Đơn vị tính** · (5) Mã NVL · (6) Tên
