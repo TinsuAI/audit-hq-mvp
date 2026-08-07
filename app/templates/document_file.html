@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}{{ file.original_filename }} — Audit-HQ{% endblock %}
+{% block content %}
+
+{# MỘT trang cho mỗi file (#92): lưới cuộn đầy đủ, căn cứ đọc, biểu mẫu xác nhận cột.
+   Trước đây là hai trang dựng cùng một thứ, và lưới xác nhận bị cắt còn 15 dòng. #}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a><span class="sep">›</span>
+  <a href="/companies/{{ company.slug or company.code }}">{{ company.name or company.code }}</a><span class="sep">›</span>
+  <a href="/companies/{{ company.slug or company.code }}/documents">Dữ liệu</a><span class="sep">›</span>
+  {{ file.original_filename }}
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1 style="word-break:break-all">{{ file.original_filename }}</h1>
+    <p class="page-subtitle">
+      {{ slot_label }} · Năm {{ file.period_year }} · {{ human_size(file.size_bytes) }}
+      {% if file.row_count is not none %} · đã nạp {{ fmt_int(file.row_count) }} dòng{% endif %}
+      {% if file.book %} · sổ {{ book_label(file.book) }}{% endif %}
+    </p>
+  </div>
+  <div class="btn-group">
+    <a href="/companies/{{ company.slug or company.code }}/documents#ky-{{ file.period_year }}" class="btn btn-secondary">← Về dữ liệu</a>
+    <a href="{{ page_url }}/download" class="btn btn-secondary">↓ Tải xuống</a>
+  </div>
+</div>
+
+{% if period_conflict %}
+<div class="alert alert-warning" role="status" style="margin-bottom:var(--space-4)">
+  <p style="margin:0">⚠️ Cửa sổ kỳ năm {{ file.period_year }} đang là <strong>{{ period_conflict[0][0].strftime('%d/%m/%Y') }} – {{ period_conflict[0][1].strftime('%d/%m/%Y') }}</strong> (đọc từ tiêu đề file), <strong>lệch với niên độ kế toán</strong> đã khai cho doanh nghiệp: <strong>{{ period_conflict[1][0].strftime('%d/%m/%Y') }} – {{ period_conflict[1][1].strftime('%d/%m/%Y') }}</strong>. Hệ thống không tự chọn hộ — nếu tiêu đề file đúng thì bỏ qua, nếu sai thì sửa kỳ ở trang dữ liệu rồi chạy lại kiểm tra.</p>
+</div>
+{% endif %}
+
+{# Lưới dính mép trên: biểu mẫu xác nhận nằm dưới, cán bộ phải thấy được ô thật của
+   file trong lúc sửa chỉ số cột. Không dính thì lại thành hai màn như trước. #}
+<div class="fp-grid">
+  <div class="cg-sheets" id="cg-sheets" hidden></div>
+
+  <div class="cg-toolbar">
+    <div class="cg-jump">
+      <label for="cg-row-input">Tới dòng</label>
+      <input type="number" id="cg-row-input" min="1" step="1" inputmode="numeric" placeholder="1">
+      <button type="button" class="btn btn-sm btn-secondary" id="cg-row-go">Nhảy tới</button>
+    </div>
+    <label class="cg-switch">
+      <input type="checkbox" id="cg-toggle-mapped">
+      <span>Hiện cột hệ thống đang đọc</span>
+    </label>
+    <label class="cg-switch">
+      <input type="checkbox" id="cg-toggle-formula">
+      <span>Hiện công thức trong ô</span>
+    </label>
+  </div>
+
+  <div class="cg-notes" id="cg-notes"></div>
+
+  <div id="cell-grid" class="cg"
+       data-cells-url="{{ cells_url }}"
+       data-sheet="{{ selected_sheet }}"
+       data-parsed-sheet="{{ parsed_sheet }}"
+       data-mapped-columns='{{ mapped_columns | tojson }}'></div>
+
+  <p class="form-hint cg-status" id="cg-status"></p>
+</div>
+
+<h2 style="font-size:var(--fs-md);margin:0 0 var(--space-2)">Căn cứ đọc file</h2>
+<div class="card" style="margin-bottom:var(--space-4)">
+  <dl class="fp-basis">
+    <dt>Vị trí cột quyết định bằng</dt>
+    <dd>{{ basis.match_source_label }}</dd>
+    {% if basis.template_name %}
+    <dt>Mẫu biểu khớp</dt>
+    <dd>{{ basis.template_name }}</dd>
+    {% endif %}
+    {% if basis.layout_label %}
+    <dt>Bố cục đọc được</dt>
+    <dd>{{ basis.layout_label }}</dd>
+    {% endif %}
+    <dt>Trang tính đã đọc</dt>
+    <dd>
+      {% if basis.sheet %}{{ basis.sheet }}
+        <span class="text-muted">— {% if basis.sheet_pinned %}cán bộ ghim{% else %}hệ thống tự nhận diện{% endif %}</span>
+      {% else %}<span class="text-muted">chưa xác định</span>{% endif %}
+    </dd>
+    <dt>Số dòng đã nạp</dt>
+    <dd>{% if file.row_count is not none %}{{ fmt_int(file.row_count) }}{% else %}<span class="text-muted">chưa nạp dòng nào</span>{% endif %}</dd>
+  </dl>
+
+  {% if basis.needs_count %}
+  <p class="form-hint" style="margin:var(--space-3) 0 0">
+    ⚠️ Còn <strong>{{ basis.needs_count }}</strong> cột cần cán bộ xác nhận vị trí:
+    <strong>{{ basis.needs_confirmation | join(', ') }}</strong>.
+    Các cột này đọc theo <strong>vị trí</strong> hoặc chỉ khớp <strong>đẳng thức cân đối</strong> —
+    chưa đủ để chắc đúng cột, vì đẳng thức không phân biệt hai cột cùng dấu.
+    Đối chiếu với lưới ở trên rồi sửa chỉ số cột trong bảng dưới.
+  </p>
+  {% elif basis.columns %}
+  <p class="form-hint" style="margin:var(--space-3) 0 0">
+    Mọi cột đều có bằng chứng đủ mạnh cho các kiểm tra đọc chúng — không cột nào đang chờ xác nhận.
+  </p>
+  {% else %}
+  <p class="form-hint" style="margin:var(--space-3) 0 0">
+    Chưa có căn cứ đọc cho file này: lượt nạp gần nhất không đọc ra bố cục cột nào.
+    Chọn đúng trang tính chứa dữ liệu chi tiết ở dưới rồi nạp lại.
+  </p>
+  {% endif %}
+</div>
+
+<form method="post" action="{{ page_url }}">
+  <div class="card" style="margin-bottom:var(--space-4)">
+    <label for="sheet-input" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Trang tính (sheet) được đọc</label>
+    <p class="form-hint" style="margin:0 0 var(--space-2)">
+      {% if basis.sheet %}
+      Hệ thống đang đọc trang <strong>{{ basis.sheet }}</strong>{% if basis.sheet_pinned %} theo chỉ định của cán bộ{% else %} do tự nhận diện{% endif %}.
+      {% else %}
+      Hệ thống <strong>không tự nhận ra</strong> trang nào đúng biểu trong file này.
+      {% endif %}
+      Một workbook kết xuất từ hải quan thường có cả trang tổng hợp cấp tờ khai lẫn trang chi tiết dòng hàng —
+      đọc nhầm trang ra <strong>dòng sai</strong> chứ không phải 0 dòng. Để trống = để hệ thống tự chọn.
+    </p>
+    <select id="sheet-input" name="sheet" class="form-select mono-input" style="max-width:320px">
+      <option value="">(tự nhận diện)</option>
+      {% for s in sheet_names %}
+      <option value="{{ s }}" {% if basis.sheet == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    {% if sheet_names | length <= 1 %}
+    <p class="form-hint" style="margin:var(--space-2) 0 0">File này chỉ có một trang tính.</p>
+    {% endif %}
+  </div>
+
+  {% if is_settlement and basis.can_confirm %}
+  <div class="card" style="margin-bottom:var(--space-4)">
+    <label for="book-input" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Sổ quyết toán (loại hình)</label>
+    <p class="form-hint" style="margin:0 0 var(--space-2)">Nếu doanh nghiệp giữ nhiều sổ quyết toán khác loại hình (vd DNCX vừa chế xuất vừa gia công), nhập mã sổ cho file này — vd <code>EPE</code>, <code>GC</code>. Nạp lại sẽ gom dữ liệu theo sổ. <strong>Gán sổ là tất cả hoặc không</strong>: đã gán cho một file thì phải gán cho tất cả các file quyết toán (Mẫu 15, 15a, 16) của kỳ — bỏ sót file nào thì lượt nạp dừng và báo tên file đó, dữ liệu cũ giữ nguyên, gán nốt rồi nạp lại. Để trống <strong>mọi</strong> file = doanh nghiệp <strong>1 sổ</strong>, chỉ áp dụng cho kỳ <strong>chưa từng nạp theo sổ</strong>; kỳ đã có dữ liệu theo sổ thì bỏ hết nhãn sẽ bị từ chối — muốn sửa thì gán lại nhãn cho từng file.</p>
+    <input list="book-datalist" id="book-input" name="book" class="form-input" style="max-width:280px"
+           value="{{ file.book or '' }}" placeholder="1 sổ (dùng chung)" autocomplete="off">
+    <datalist id="book-datalist">
+      {% for b in book_options %}<option value="{{ b }}">{{ book_label(b) }}</option>{% endfor %}
+      {% for code, label in book_known.items() if code not in book_options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </datalist>
+  </div>
+  {% endif %}
+
+  {% if basis.columns %}
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Cột dữ liệu</th>
+          <th>Nguồn bằng chứng</th>
+          <th>Trạng thái</th>
+          <th>Kiểm tra đọc cột</th>
+          <th>Cột trên file</th>
+          <th>Chỉ số cột (đếm từ 0)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in basis.columns %}
+        <tr>
+          <td><strong>{{ c.label }}</strong></td>
+          <td><span class="badge muted doc-file-badge">{{ c.evidence_label }}</span></td>
+          <td>
+            <span class="badge {{ 'warning' if c.needs_review else 'info' }} doc-file-badge">{{ c.review_label }}</span>
+          </td>
+          <td class="text-muted">{% if c.checks %}{{ c.checks|join(', ') }}{% else %}—{% endif %}</td>
+          <td class="text-mono">{{ c.column_ref or '—' }}</td>
+          <td>
+            {% if basis.can_confirm and c.needs_review and (c.is_group or basis.layout == 'extended') %}
+            <input type="text" class="form-input mono-input review-idx" name="col_{{ c.field }}"
+                   value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*"
+                   style="max-width:120px">
+            <div class="form-hint">Đọc bằng nhiều cột thì ghi các chỉ số, ngăn bởi dấu phẩy.</div>
+            {% elif basis.can_confirm and c.needs_review %}
+            <input type="number" class="form-input mono-input review-idx" name="col_{{ c.field }}"
+                   value="{{ c.col_value }}" min="0" step="1"
+                   style="max-width:96px">
+            {% elif basis.can_confirm %}
+            <span class="text-mono">{{ c.col_value or '—' }}</span>
+            <input type="hidden" name="col_{{ c.field }}" value="{{ c.col_value }}">
+            {% else %}
+            <span class="text-mono">{{ c.col_value or '—' }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="btn-group" style="margin-top:var(--space-4)">
+    {% if basis.can_confirm %}
+    <button type="submit" class="btn btn-primary">✅ Xác nhận &amp; nạp dữ liệu</button>
+    {% else %}
+    <button type="submit" class="btn btn-primary">⤵️ Ghim trang tính &amp; nạp lại</button>
+    {% endif %}
+    <a href="/companies/{{ company.slug or company.code }}/documents#ky-{{ file.period_year }}" class="btn btn-secondary">Huỷ</a>
+  </div>
+  <p class="form-hint" style="margin-top:var(--space-3)">
+    {% if basis.can_confirm %}
+    Xác nhận lưu vị trí cột cho doanh nghiệp này theo cấu trúc biểu — lần sau gặp cùng bố cục
+    (kể cả năm khác) sẽ không phải xác nhận lại. Chỉ số cột tính từ <strong>0</strong> (cột A = 0, B = 1…).
+    {% else %}
+    Ghim trang tính rồi nạp lại là đường đưa file vào hệ thống khi không trang nào khớp biểu chuẩn —
+    không phải sửa file nguồn.
+    {% endif %}
+  </p>
+</form>
+
+<script src="/static/cell-grid.js?v={{ app_version_string | urlencode }}" defer></script>
+{% endblock %}

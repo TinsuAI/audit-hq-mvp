@@ -39,6 +39,7 @@
     url: '', sheet: 0, parsedSheet: '', mapped: {},
     meta: null, win: null,
     showMapped: false, showFormula: false,
+    highlight: null,
     tries: 0, timer: null, fetching: false, gen: 0,
     lastKey: '',
   };
@@ -141,17 +142,26 @@
 
   // ------------------------------------------------------------ vẽ lưới ----
 
+  function onParsedSheet() {
+    // Chú giải cột chỉ đúng trên trang parser đọc — trang khác thì không đánh dấu.
+    return !(state.parsedSheet && state.meta && state.meta.sheet_name !== state.parsedSheet);
+  }
+
   function markedColumn(colIndex) {
     if (!state.showMapped) return null;
-    if (state.parsedSheet && state.meta && state.meta.sheet_name !== state.parsedSheet) return null;
+    if (!onParsedSheet()) return null;
     return state.mapped[String(colIndex)] || null;
+  }
+
+  function isHighlighted(colIndex) {
+    return state.highlight !== null && state.highlight === colIndex && onParsedSheet();
   }
 
   function render(force) {
     if (!state.meta) return;
     var v = visibleRange();
     var key = [v.firstRow, v.lastRow, v.firstCol, v.lastCol,
-               state.showMapped, state.showFormula,
+               state.showMapped, state.showFormula, state.highlight,
                state.win ? state.win.rowStart : -1,
                state.win ? state.win.colStart : -1].join(':');
     if (!force && key === state.lastKey) return;
@@ -181,6 +191,7 @@
           + (mark.needs ? ' — cột này còn chờ cán bộ xác nhận.' : '.');
         th.appendChild(tag);
       }
+      if (isHighlighted(c)) th.classList.add('cg-col-hi');
       head.appendChild(th);
     }
     el.headInner.textContent = '';
@@ -209,6 +220,7 @@
           if (got.formula) cell.classList.add('cg-cell-formula');
         }
         if (markedColumn(cc)) cell.classList.add('cg-cell-mapped');
+        if (isHighlighted(cc)) cell.classList.add('cg-cell-hi');
         body.appendChild(cell);
       }
     }
@@ -444,6 +456,41 @@
 
   // ------------------------------------------------------------ khởi động --
 
+  function showColumn(index) {
+    // Cuộn NGANG tới cột đang soi, không đụng vị trí dòng: cán bộ đang đối chiếu
+    // đúng những dòng trước mắt, kéo họ về dòng 1 là bắt tìm lại.
+    if (!state.meta || index >= state.meta.total_cols) return;
+    var left = index * COL_W;
+    var view = el.body.scrollLeft;
+    if (left < view || left + COL_W > view + el.body.clientWidth) {
+      el.body.scrollLeft = Math.max(0, left - COL_W);
+      onScroll();
+    }
+  }
+
+  function setHighlight(raw) {
+    // Ô nhập của bố cục mở rộng chứa cả NHÓM cột (`5,6`) — soi cột đầu nhóm, đủ để
+    // cán bộ biết mình đang gõ vào vùng nào của biểu.
+    var first = String(raw === null || raw === undefined ? '' : raw).split(/[,\s;]+/)[0];
+    var idx = parseInt(first, 10);
+    var next = isNaN(idx) || idx < 0 ? null : idx;
+    if (next === state.highlight) return;
+    state.highlight = next;
+    render(true);
+    if (next !== null) showColumn(next);
+  }
+
+  function wireColumnInputs() {
+    // Biểu mẫu xác nhận cột nằm CÙNG TRANG với lưới đầy đủ (#92): gõ một chỉ số thì
+    // đúng cột đó sáng lên trong lưới, thay cho lưới rút gọn 15 dòng của màn cũ.
+    var inputs = document.querySelectorAll('input.review-idx');
+    Array.prototype.forEach.call(inputs, function (inp) {
+      inp.addEventListener('input', function () { setHighlight(inp.value); });
+      inp.addEventListener('focus', function () { setHighlight(inp.value); });
+      inp.addEventListener('blur', function () { setHighlight(''); });
+    });
+  }
+
   function wireControls() {
     var input = document.getElementById('cg-row-input');
     var go = document.getElementById('cg-row-go');
@@ -470,6 +517,8 @@
         render(true);
       });
     }
+
+    wireColumnInputs();
 
     var formula = document.getElementById('cg-toggle-formula');
     if (formula) {

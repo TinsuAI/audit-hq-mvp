@@ -2382,6 +2382,8 @@ p { margin: 0 0 var(--space-3); }
 }
 .cg-col-mapped { background: var(--c-success-fg); }
 .cg-col-needs { background: var(--c-warning-fg); }
+/* Cột đang soi khi cán bộ gõ chỉ số ở biểu mẫu xác nhận (#92). */
+.cg-col-hi { background: var(--c-warning-fg); outline: 2px solid var(--c-warning-fg); }
 .cg-rownum {
   left: 0; width: var(--cg-rownum-w, 86px);
   display: flex; align-items: center; justify-content: flex-end;
@@ -2397,6 +2399,9 @@ p { margin: 0 0 var(--space-3); }
   border-bottom: 1px solid var(--c-border);
 }
 .cg-cell-mapped { background: color-mix(in srgb, var(--c-success-bg) 55%, transparent); }
+.cg-cell-hi {
+  background: var(--c-warning-bg); color: var(--c-warning-fg); font-weight: 600;
+}
 .cg-cell-formula {
   font-family: var(--font-mono); font-size: 11px;
   background: var(--c-info-bg); color: var(--c-info-fg);
@@ -2435,3 +2440,23 @@ p { margin: 0 0 var(--space-3); }
 /* `display: flex` ở trên thắng luật `[hidden] {display:none}` của trình duyệt, nên
    phải nói thẳng — thiếu dòng này thì màn chờ nằm nguyên trên lưới đã dựng xong. */
 .cg-overlay[hidden], .cg-sheets[hidden] { display: none; }
+
+/* — Trang file: một địa chỉ cho mỗi file (issue #92) — */
+
+/* Lưới dính dưới thanh tiêu đề: biểu mẫu xác nhận cột nằm phía dưới, mà việc của
+   nó là đối chiếu với ô thật. Lưới trôi khỏi màn hình là quay về đúng cái sai của
+   hai trang tách rời — gõ chỉ số cột mà không nhìn thấy cột. */
+.fp-grid {
+  position: sticky; top: var(--header-height); z-index: 3;
+  background: var(--c-bg);
+  padding: var(--space-3) 0;
+  margin-bottom: var(--space-4);
+}
+.fp-grid .cg-frame { height: 46vh; min-height: 240px; }
+
+.fp-basis {
+  display: grid; grid-template-columns: minmax(12rem, max-content) 1fr;
+  gap: var(--space-2) var(--space-4); margin: 0;
+}
+.fp-basis dt { color: var(--c-text-muted); font-size: var(--fs-sm); }
+.fp-basis dd { margin: 0; }

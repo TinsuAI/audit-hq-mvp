@@ -22,6 +22,7 @@ from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.pipeline.data_files import _evidence_columns
 from app.pipeline.data_screen import ACTION_OPEN_FILE, build_data_screen
+from app.pipeline.file_page import file_page_url
 from app.pipeline.readiness import BLOCKER_FILE
 from app.settings import settings
 from tests.helpers import drain_jobs, last_job_result, upload_and_ingest
@@ -132,7 +133,7 @@ def test_a_column_still_to_confirm_becomes_a_blocker_pointing_at_that_file(tmp_p
         # Cổng dừng lượt nạp và ghi 0 dòng, nên vướng mắc phải dẫn tới trang file —
         # bảo cán bộ "tải lên" ở đây là bảo họ tải lại thứ vừa tải.
         assert item.action.kind == ACTION_OPEN_FILE
-        assert item.action.url == f"/companies/DN_GATE/documents/file/{file_id}/review"
+        assert item.action.url == file_page_url("DN_GATE", file_id)
     finally:
         _teardown(new_engine, prev_root)
 

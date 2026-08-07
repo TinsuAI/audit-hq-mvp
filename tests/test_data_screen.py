@@ -44,6 +44,7 @@ from app.pipeline.data_screen import (
     GROUP_ORDER,
     build_data_screen,
 )
+from app.pipeline.file_page import file_page_url
 from app.pipeline.readiness import BLOCKER_CHECK, BLOCKER_COVERAGE, BLOCKER_FILE, period_readiness
 from tests.conftest import AppDb, add_decl, add_norm, add_nvl, add_sp
 from tests.test_readiness import add_file
@@ -282,7 +283,7 @@ def test_a_file_that_will_not_read_points_at_that_file(session, company):
     item = next(i for i in _items(row) if i.kind == BLOCKER_FILE and i.slot == "m15")
 
     assert item.action.kind == ACTION_OPEN_FILE
-    assert item.action.url == f"/companies/TEST_DN/documents/file/{f.id}/review"
+    assert item.action.url == file_page_url("TEST_DN", f.id)
 
 
 def test_a_column_still_to_confirm_points_at_the_file_that_holds_it(session, company):
@@ -294,7 +295,7 @@ def test_a_column_still_to_confirm_points_at_the_file_that_holds_it(session, com
     item = next(i for i in _items(row) if i.kind == BLOCKER_FILE and i.slot == "m15")
 
     assert item.action.kind == ACTION_OPEN_FILE
-    assert item.action.url == f"/companies/TEST_DN/documents/file/{f.id}/review"
+    assert item.action.url == file_page_url("TEST_DN", f.id)
 
 
 def test_a_settlement_file_without_a_book_points_at_that_file(session, company):
@@ -306,7 +307,7 @@ def test_a_settlement_file_without_a_book_points_at_that_file(session, company):
     item = next(i for i in _items(row) if i.kind == BLOCKER_FILE and i.slot == "m16")
 
     assert item.action.kind == ACTION_OPEN_FILE
-    assert item.action.url == f"/companies/TEST_DN/documents/file/{f.id}/review"
+    assert item.action.url == file_page_url("TEST_DN", f.id)
 
 
 def test_no_group_outside_the_three_remedy_classes_is_created(session, company):
