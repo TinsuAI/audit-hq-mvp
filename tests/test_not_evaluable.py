@@ -1,7 +1,8 @@
 """T2 (#58) — `not_evaluable` là trạng thái chạy thật.
 
 Ba mặt:
-- GHI: check trả `NotEvaluable(reason)` → `check_runs.status` + `.status_reason`.
+- GHI: check trả `NotEvaluable(reason, remedy=...)` → `check_runs.status` +
+  `.status_reason` + `.remedy` (lớp cách gỡ, #82).
 - ĐIỂM: mã đó bị loại khỏi CẢ `rule_scores` LẪN `max_raw`. Nghiệm thu: điểm và hạng
   bằng đúng lần chạy mà mã đó không có trong tập luật, KHÔNG so với số cứng.
 - UI: phân biệt "đã đánh giá, 0 phát hiện" với "chưa đánh giá được", kèm lý do.
@@ -16,6 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.checks.denominators import RULE_SCOPE
 from app.checks.not_evaluable import (
+    REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION,
     STATUS_NOT_EVALUABLE,
     NotEvaluable,
     load_not_evaluable,
@@ -44,9 +46,9 @@ def _make_finding(check_code: str, severity: str, subject_key: str) -> Finding:
 
 def test_not_evaluable_requires_reason():
     with pytest.raises(ValueError):
-        NotEvaluable("")
+        NotEvaluable("", remedy=REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION)
     with pytest.raises(ValueError):
-        NotEvaluable("   ")
+        NotEvaluable("   ", remedy=REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION)
 
 
 def test_truncate_reason_fits_column():
@@ -102,7 +104,8 @@ def _load_every_source(session, company_id: int, year: int = 2024) -> None:
 
 
 def _not_evaluable_check(_session, _company_id, _year):
-    return NotEvaluable(REASON)
+    # Lý do là ca kỳ biên → lớp cách gỡ 2 (cần kỳ khác hoặc một xác nhận).
+    return NotEvaluable(REASON, remedy=REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION)
 
 
 def _clean_check(_session, _company_id, _year):

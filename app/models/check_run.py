@@ -38,6 +38,10 @@ class CheckRun(Base):
     # Lý do đi kèm `not_evaluable` (hiện trên UI) hoặc `error` (thông điệp lỗi).
     # NULL khi status = 'ok'.
     status_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Lớp cách gỡ đi kèm `not_evaluable` — một trong ba giá trị ở
+    # `app.checks.not_evaluable.REMEDY_CLASSES` (ADR #24 mục 2). NULL khi status
+    # là 'ok' hoặc 'error', và khi dòng có từ trước migration này.
+    remedy: Mapped[str | None] = mapped_column(String(48), nullable=True)
     # Phiên bản dữ liệu (CompanyPeriod.data_version) mà lần chạy này đọc — provenance.
     data_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

@@ -12,6 +12,12 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
+from app.checks.not_evaluable import (
+    REMEDY_NEED_FILE_THIS_PERIOD,
+    TARGET_DOCUMENT,
+    RemedyClassification,
+    RemedyTarget,
+)
 from app.checks.scope import declaration_scope
 from app.models import DeclarationLine, Norm, NvlBalance, SpBalance
 
@@ -64,9 +70,21 @@ def missing_sources_reason(missing: tuple[str, ...]) -> str:
     return "Kỳ này chưa có " + " · ".join(names)
 
 
+def classify_missing_sources(missing: tuple[str, ...]) -> RemedyClassification:
+    """(lớp cách gỡ, đích) của cổng thiếu nguồn — luôn lớp 1 (ADR #24 mục 2).
+
+    Nguồn Tầng 1 khuyết là nguồn của CHÍNH kỳ đang xét, nên file của kỳ này gỡ được.
+    Đích là loại tài liệu đầu tiên theo thứ tự đã sắp của `missing` — đủ để dựng nút
+    "tải lên loại này", và tính lại được lúc hiển thị nên không cần lưu.
+    """
+    target = RemedyTarget(TARGET_DOCUMENT, missing[0]) if missing else None
+    return REMEDY_NEED_FILE_THIS_PERIOD, target
+
+
 __all__ = [
     "SOURCES",
     "SOURCE_LABEL_VI",
     "available_sources",
+    "classify_missing_sources",
     "missing_sources_reason",
 ]
