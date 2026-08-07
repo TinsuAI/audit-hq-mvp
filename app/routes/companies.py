@@ -12,11 +12,13 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import quote_plus, urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.adapters.cell_reader import CellReadError, SheetOutOfRange, UnsupportedFileFormat
+from app.adapters.cell_window import sheet_window
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled
 from app.audit import (
@@ -1285,6 +1287,89 @@ def documents_preview_file(
             "skipped_reason": pv["skipped_reason"],
         },
     )
+
+
+# Trần MỘT CỬA SỔ, không phải trần cả file: lưới cuộn hỏi từng khoảng dòng, còn
+# hạn mức cũ (100 dòng · 40 cột · 25MB) chặn ở mức FILE nên 11/493 file không xem
+# được và 52/170 trang tính bị cắt cột — đúng lúc việc của màn đó là soát cột.
+MAX_WINDOW_ROWS = 1000
+MAX_WINDOW_COLS = 1000
+
+
+@router.get("/companies/{code}/documents/file/{file_id}/cells", response_model=None)
+def documents_file_cells(
+    code: str,
+    file_id: int,
+    sheet: int = Query(default=0, ge=0),
+    row: int = Query(default=0, ge=0),
+    rows: int = Query(default=100, ge=1, le=MAX_WINDOW_ROWS),
+    col: int = Query(default=0, ge=0),
+    cols: int = Query(default=60, ge=1, le=MAX_WINDOW_COLS),
+    formulas: bool = Query(default=False),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Một cửa sổ ô dạng JSON, chỉ số 0-based, phục vụ từ kho đệm trích xuất một lần.
+
+    `total_rows` / `total_cols` lấy từ KẾT QUẢ TRÍCH XUẤT chứ không từ khai báo
+    kích thước trong file — file kết xuất khai `A1:ZZ9999` cho 12 dòng dữ liệu.
+
+    `formulas=1` trả thêm từ điển thưa công thức mỗi dòng; tắt thì ô luôn là GIÁ
+    TRỊ đã tính, không bao giờ là chuỗi `=SUM(...)`. Với `.xls` cũ thì
+    `formulas_supported = false` kèm `formula_note` — lưới vẫn đầy dữ liệu, chỉ
+    riêng công thức là không đọc được.
+    """
+    company = get_company_or_404(db, code, user)
+    file_row = db.get(DataFile, file_id)
+    if file_row is None or file_row.company_id != company.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file")
+    abs_path = _resolve_within_root(file_row.stored_path)
+    if not abs_path.is_file():
+        raise HTTPException(status_code=404, detail="File không còn trên đĩa")
+
+    try:
+        window = sheet_window(
+            abs_path, sheet,
+            row_start=row, n_rows=rows, col_start=col, n_cols=cols, with_formulas=formulas,
+        )
+    except UnsupportedFileFormat as e:
+        # Nêu ĐỊNH DẠNG DÒ ĐƯỢC, không nhắc lại đuôi file: đuôi nói dối ở 38 file.
+        return JSONResponse(
+            status_code=415,
+            content={
+                "detail": str(e),
+                "format": e.detected.kind,
+                "format_label": e.detected.label,
+                "format_supported": False,
+            },
+        )
+    except SheetOutOfRange as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except CellReadError as e:
+        return JSONResponse(
+            status_code=422, content={"detail": str(e), "format_supported": True},
+        )
+
+    payload = {
+        "sheet_index": window.extract.sheet_index,
+        "sheet_name": window.extract.sheet_name,
+        "sheet_names": window.extract.sheet_names,
+        "format": window.fmt,
+        "format_label": window.format_label,
+        "format_supported": True,
+        "total_rows": window.total_rows,
+        "total_cols": window.total_cols,
+        "row_start": window.row_start,
+        "col_start": window.col_start,
+        "rows": window.rows,
+        "formulas_supported": window.formulas_supported,
+        "formula_note": window.formula_note,
+        "build_ms": window.extract.build_ms,
+        "from_cache": window.from_cache,
+    }
+    if formulas:
+        payload["formulas"] = window.formulas
+    return JSONResponse(payload)
 
 
 @router.get("/companies/{code}/documents/file/{file_id}/review", response_class=HTMLResponse)

@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     auth_password: str = "admin"
     session_secret: str = "dev-secret-change-me"
     raw_data_path: Path = Path("./data")
+    # Kho đệm trích xuất xem trước — PHẢI nằm ngoài `raw_data_path` (thư mục đó là
+    # liên kết tới dữ liệu khách) và trong nhánh đã gitignore.
+    preview_cache_path: Path = Path("./db-data/preview-cache")
+    preview_cache_max_bytes: int = 2 * 1024 * 1024 * 1024
 
 
 settings = Settings()
