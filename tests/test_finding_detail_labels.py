@@ -7,35 +7,11 @@ Trang này từng in khoá JSON thô (`m15_import`) làm nhãn và tên bảng D
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
 
-from app.database import Base
 from app.main import app
 from app.models import Company, Finding, NvlBalance
 from app.models.data_file import SLOT_LABEL_VI
-
-
-def _setup_db():
-    import app.database as dbmod
-    from app.app_settings import invalidate_cache
-    from app.auth_users import seed_default_admin
-
-    new_engine = dbmod.create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
-    new_session = dbmod.sessionmaker(
-        bind=new_engine, autoflush=False, autocommit=False, future=True
-    )
-    dbmod.engine = new_engine
-    dbmod.SessionLocal = new_session
-    Base.metadata.create_all(new_engine)
-    with new_session() as db:
-        seed_default_admin(db, "admin", "admin")
-    invalidate_cache()
-    return new_engine, new_session
+from tests.conftest import AppDb
 
 
 def _login(client: TestClient) -> None:
@@ -91,30 +67,26 @@ def _page(new_session, **overrides) -> str:
     return client.get(f"/findings/{fid}").text
 
 
-def test_detail_keys_render_as_vietnamese_labels():
-    _engine, new_session = _setup_db()
-    page = _page(new_session)
+def test_detail_keys_render_as_vietnamese_labels(app_db: AppDb):
+    page = _page(app_db.SessionLocal)
     assert "Số M15 đối chiếu" in page or "M15 nhập" in page
     assert "Chênh lệch" in page
     assert "m15_import" not in page, "khoá thô lọt ra màn hình"
     assert "diff_pct" not in page
 
 
-def test_percentages_carry_the_symbol():
-    _engine, new_session = _setup_db()
-    assert "+517,2 %" in _page(new_session)
+def test_percentages_carry_the_symbol(app_db: AppDb):
+    assert "+517,2 %" in _page(app_db.SessionLocal)
 
 
-def test_enum_values_are_translated():
-    _engine, new_session = _setup_db()
-    page = _page(new_session)
+def test_enum_values_are_translated(app_db: AppDb):
+    page = _page(app_db.SessionLocal)
     assert "Gia công" in page
     assert "GIA_CONG" not in page
 
 
-def test_evidence_block_names_the_form_not_the_db_table():
-    _engine, new_session = _setup_db()
-    page = _page(new_session)
+def test_evidence_block_names_the_form_not_the_db_table(app_db: AppDb):
+    page = _page(app_db.SessionLocal)
     # Tên loại tài liệu lấy từ bảng nhãn duy nhất (#98), không gõ lại ở test.
     assert SLOT_LABEL_VI["m15"] in page
     assert SLOT_LABEL_VI["bcct"] in page
@@ -122,22 +94,19 @@ def test_evidence_block_names_the_form_not_the_db_table():
     assert "declaration_lines" not in page
 
 
-def test_evidence_filter_reads_as_a_sentence_not_json():
-    _engine, new_session = _setup_db()
-    page = _page(new_session)
+def test_evidence_filter_reads_as_a_sentence_not_json(app_db: AppDb):
+    page = _page(app_db.SessionLocal)
     assert "Mã NVL: NVL-A" in page
     assert "Loại hình: E21, E23" in page
     assert "company_id" not in page, "khoá kỹ thuật không cần in ra"
 
 
-def test_evidence_block_links_to_the_filtered_raw_data():
-    _engine, new_session = _setup_db()
-    page = _page(new_session)
+def test_evidence_block_links_to_the_filtered_raw_data(app_db: AppDb):
+    page = _page(app_db.SessionLocal)
     assert "table=m15&amp;q=NVL-A" in page
     assert "table=bcct" in page and "customs=E21%2CE23" in page
 
 
-def test_a_finding_without_details_does_not_break_the_page():
-    _engine, new_session = _setup_db()
-    page = _page(new_session, details=None, evidence_refs=None)
+def test_a_finding_without_details_does_not_break_the_page(app_db: AppDb):
+    page = _page(app_db.SessionLocal, details=None, evidence_refs=None)
     assert "Chứng cứ truy nguồn" in page
