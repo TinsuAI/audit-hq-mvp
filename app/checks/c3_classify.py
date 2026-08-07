@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.checks.not_evaluable import CheckResult, NotEvaluable
 from app.checks.registry import Severity
 from app.checks.scope import declaration_scope
+from app.checks.sources import classify_missing_sources
 from app.checks.uom import UomMatch
 from app.checks.uom import compare as uom_compare
 from app.models import DeclarationLine, Finding, Norm, NvlBalance
@@ -230,9 +231,12 @@ def check_c3_3(session: Session, company_id: int, year: int) -> CheckResult:
     if not bcct_units and not m16_units:
         # `requires` chỉ gác M15 (vế đối chiếu là HOẶC), nên phải tự chặn ở đây —
         # không thì thiếu cả hai vế vẫn ra 0 phát hiện đọc như "đơn vị nhất quán".
+        # Lớp 1: cả hai vế đối chiếu đều là file của CHÍNH kỳ này (ADR #24 mục 2).
+        remedy, _ = classify_missing_sources(("bcct", "m16"))
         return NotEvaluable(
             "Kỳ này không có đơn vị tính nào để đối chiếu với Mẫu 15 — chưa có tờ "
-            "khai trong cửa sổ kỳ, cũng chưa có Mẫu 16."
+            "khai trong cửa sổ kỳ, cũng chưa có Mẫu 16.",
+            remedy=remedy,
         )
 
     findings: list[Finding] = []

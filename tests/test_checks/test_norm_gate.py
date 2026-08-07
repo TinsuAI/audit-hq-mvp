@@ -11,8 +11,20 @@ from sqlalchemy import select
 
 import app.checks.c4_norm as c4_mod
 from app.checks.c4_norm import check_c4_3
-from app.checks.norm_gate import earliest_period_held
-from app.checks.not_evaluable import NotEvaluable
+from app.checks.norm_gate import (
+    classify_boundary_period,
+    classify_norm_coverage,
+    earliest_period_held,
+    periods_without_norms,
+)
+from app.checks.not_evaluable import (
+    REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION,
+    REMEDY_NOTHING_TO_LOAD,
+    TARGET_COMPANY_FIELD,
+    TARGET_PERIOD,
+    NotEvaluable,
+    RemedyTarget,
+)
 from app.models import CompanyYearScore
 from app.pipeline.run_checks import run_checks
 from tests.conftest import add_nvl, add_sp
@@ -204,3 +216,70 @@ def test_gate_does_not_lower_the_risk_score(session, company, monkeypatch):
         f"raw {off_raw} → {on.breakdown['raw']}, "
         f"max_raw {off_max} → {on.breakdown['max_raw']}, C4.3 = {off_c43}"
     )
+
+
+# --- Lớp cách gỡ của cổng định mức (#82, ADR #24 mục 2) -----------------------
+
+
+def test_the_boundary_branch_asks_for_a_company_level_confirmation(session, company):
+    """Kỳ biên gỡ bằng trường `first_bcqt_year` của DN, không bằng file kỳ này."""
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0, year=2024)
+    add_sp(session, company.id, product_code="TP", intake=100, year=2024)
+    add_nvl(session, company.id, material_code="X", production_out=100, year=2024)
+    session.commit()
+
+    result = check_c4_3(session, company.id, 2024)
+    assert isinstance(result, NotEvaluable)
+    assert result.remedy == REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION
+    assert classify_boundary_period() == (
+        REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION,
+        RemedyTarget(TARGET_COMPANY_FIELD, "first_bcqt_year"),
+    )
+
+
+def test_the_coverage_branch_is_class_two_while_an_earlier_period_has_no_norm_rows(
+    session, company
+):
+    """Kỳ 2023 nằm trong khoảng dữ liệu mà chưa có dòng định mức nào → còn Mẫu 16
+    nạp được, cách gỡ là nạp nó chứ không phải kết luận về DN."""
+    add_sp(session, company.id, product_code="MADE", intake=10, year=2023)
+    add_sp(session, company.id, product_code="MADE", intake=100, year=2024)
+    add_nvl(session, company.id, material_code="X", production_out=100, year=2024)
+    session.commit()
+
+    assert earliest_period_held(session, company.id) == 2023
+    assert periods_without_norms(session, company.id, 2024) == [2023]
+    result = check_c4_3(session, company.id, 2024)
+    assert isinstance(result, NotEvaluable)
+    assert result.remedy == REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION
+    assert classify_norm_coverage(session, company.id, 2024) == (
+        REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION,
+        RemedyTarget(TARGET_PERIOD, 2023),
+    )
+
+
+def test_the_coverage_branch_is_class_three_once_every_earlier_period_has_norms(
+    session, company
+):
+    """Mọi kỳ trước trong khoảng dữ liệu đã có dòng định mức → hết đường nạp, đây là
+    kết luận về DN (mã thành phẩm chưa từng khai định mức)."""
+    _seed_period_2024(session, company, declare_norm_for_made=False)
+
+    assert periods_without_norms(session, company.id, 2024) == []
+    result = check_c4_3(session, company.id, 2024)
+    assert isinstance(result, NotEvaluable)
+    assert result.remedy == REMEDY_NOTHING_TO_LOAD
+    assert classify_norm_coverage(session, company.id, 2024) == (
+        REMEDY_NOTHING_TO_LOAD,
+        None,
+    )
+
+
+def test_a_gap_year_inside_the_data_window_counts_as_loadable(session, company):
+    """Kỳ 2023 không có dòng nào ở bảng Tầng 1 nào vẫn nằm trong khoảng dữ liệu:
+    Mẫu 16 của kỳ đó vẫn nạp được."""
+    add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=1.0, year=2022)
+    add_sp(session, company.id, product_code="MADE", intake=100, year=2024)
+    session.commit()
+
+    assert periods_without_norms(session, company.id, 2024) == [2023]

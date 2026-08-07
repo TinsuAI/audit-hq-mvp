@@ -9,11 +9,26 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.checks.not_evaluable import CheckResult, NotEvaluable
+from app.checks.not_evaluable import (
+    REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION,
+    TARGET_PERIOD,
+    CheckResult,
+    NotEvaluable,
+    RemedyClassification,
+    RemedyTarget,
+)
 from app.checks.registry import Severity
 from app.models import Finding, NvlBalance
 
 _TOLERANCE = 0.01
+
+
+def classify_missing_prev_period(prev_year: int) -> RemedyClassification:
+    """(lớp, đích) khi thiếu Mẫu 15 kỳ N−1 — lớp 2, đích là chính kỳ N−1 (ADR #24).
+
+    File của kỳ đang xét không gỡ được: thứ thiếu là dữ liệu của một kỳ khác.
+    """
+    return REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION, RemedyTarget(TARGET_PERIOD, prev_year)
 
 
 def check_c6_1(session: Session, company_id: int, year: int) -> CheckResult:
@@ -32,9 +47,11 @@ def check_c6_1(session: Session, company_id: int, year: int) -> CheckResult:
         )
     ).all()
     if not prev_rows:
+        remedy, _ = classify_missing_prev_period(prev_year)
         return NotEvaluable(
             f"Chưa có Mẫu 15 của kỳ {prev_year} — không có tồn cuối kỳ trước để "
-            f"đối chiếu với tồn đầu kỳ {year}."
+            f"đối chiếu với tồn đầu kỳ {year}.",
+            remedy=remedy,
         )
     # Khoá theo (SỔ, mã): mỗi sổ quyết toán là ledger tồn kho riêng — tồn cuối kỳ N-1
     # của một sổ chỉ so với tồn đầu kỳ N CÙNG SỔ (xem ADR #19). book=None (một sổ) là
