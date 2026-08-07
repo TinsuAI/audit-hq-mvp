@@ -10,51 +10,32 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
 
-from app.database import Base
 from app.main import app
 from app.models import Company, DataFile
 from app.settings import settings
 from tests.excel_fixtures import write_biff_xls, write_spreadsheetml, write_xlsx
 
+REL_DIR = "DN_PV/2025/HANG_CHI_TIET"
+
 
 @pytest.fixture
-def env(tmp_path, monkeypatch):
-    """DB tạm + thư mục dữ liệu tạm + kho đệm tạm; trả về client đã đăng nhập."""
-    import app.database as dbmod
+def env(app_db, tmp_path, monkeypatch):
+    """Kho đệm tạm + DN mẫu trên DB tạm dùng chung; trả về client đã đăng nhập."""
     from app.adapters import cell_window
-    from app.auth_users import seed_default_admin
 
-    prev_engine, prev_session = dbmod.engine, dbmod.SessionLocal
-    new_engine = dbmod.create_engine(
-        "sqlite://", connect_args={"check_same_thread": False},
-        poolclass=StaticPool, future=True,
-    )
-    new_session = dbmod.sessionmaker(bind=new_engine, autoflush=False, autocommit=False, future=True)
-    dbmod.engine, dbmod.SessionLocal = new_engine, new_session
-    Base.metadata.create_all(new_engine)
-
-    prev_root = settings.raw_data_path
-    settings.raw_data_path = str(tmp_path / "data")
-    (tmp_path / "data" / "DN_PV" / "2025" / "HANG_CHI_TIET").mkdir(parents=True)
+    (tmp_path / REL_DIR).mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(settings, "preview_cache_path", tmp_path / "kho-dem", raising=False)
     cell_window.reset_build_locks()
 
-    with new_session() as db:
-        seed_default_admin(db, "admin", "admin")
+    with app_db.SessionLocal() as db:
         db.add(Company(code="DN_PV", name="PV", tax_id="1"))
         db.add(Company(code="DN_KHAC", name="Khác", tax_id="2"))
         db.commit()
 
     client = TestClient(app)
     client.post("/login", data={"user": "admin", "password": "admin"}, follow_redirects=False)
-    try:
-        yield client, tmp_path
-    finally:
-        settings.raw_data_path = prev_root
-        new_engine.dispose()
-        dbmod.engine, dbmod.SessionLocal = prev_engine, prev_session
+    return client, tmp_path
 
 
 def _add_file(name: str, company: str = "DN_PV") -> int:
@@ -82,7 +63,7 @@ def _url(fid: int, company: str = "DN_PV", **params) -> str:
 
 
 def _make(tmp_path, name, writer, *args, **kwargs):
-    path = tmp_path / "data" / "DN_PV" / "2025" / "HANG_CHI_TIET" / name
+    path = tmp_path / REL_DIR / name
     writer(path, *args, **kwargs)
     return _add_file(name)
 
@@ -189,7 +170,7 @@ def test_a_sheet_index_past_the_end_is_a_clean_error(env):
 
 def test_unsupported_format_names_the_detected_format_not_the_extension(env):
     client, tmp = env
-    path = tmp / "data" / "DN_PV" / "2025" / "HANG_CHI_TIET" / "gia.xlsx"
+    path = tmp / REL_DIR / "gia.xlsx"
     path.write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
     fid = _add_file("gia.xlsx")
 
@@ -212,6 +193,6 @@ def test_another_companys_file_is_not_readable(env):
 def test_a_missing_file_on_disk_is_a_404(env):
     client, tmp = env
     fid = _make(tmp, "a.xlsx", write_xlsx, [["a", 1]])
-    (tmp / "data" / "DN_PV" / "2025" / "HANG_CHI_TIET" / "a.xlsx").unlink()
+    (tmp / REL_DIR / "a.xlsx").unlink()
 
     assert client.get(_url(fid)).status_code == 404
