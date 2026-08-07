@@ -124,10 +124,13 @@ def overview_is_stale(
 ) -> bool:
     """Overview cũ khi check chạy lại (ran_at dời) HOẶC dữ liệu nạp lại (data_version
     dời) so với snapshot lúc sinh. Xử None hai đầu: dòng nền mới xuất hiện = stale."""
+    from app.pipeline.staleness import data_version_moved
+
     ran_at_stale = current_ran_at is not None and (
         ov.based_on_run_at is None or current_ran_at > ov.based_on_run_at
     )
-    dv_stale = current_data_version > (ov.based_on_data_version or 0)
+    # Vế phiên bản dữ liệu là CÙNG phép so mà phát hiện và điểm rủi ro dùng (#90).
+    dv_stale = data_version_moved(ov.based_on_data_version, current_data_version)
     return ran_at_stale or dv_stale
 
 

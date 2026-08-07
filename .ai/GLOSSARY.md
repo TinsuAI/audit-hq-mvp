@@ -86,6 +86,20 @@ nạp ĐẾM severity + top-N `subject_key`, KHÔNG nạp dòng. Chỉ mặt tr�
 `based_on_data_version` snapshot trên dòng overview. Xử lý FLAG-ONLY: hiện text xám + badge "đã cũ" +
 nút "Tạo lại", KHÔNG auto-regenerate lúc load. Combo (`COMBO_*`) KHÔNG có check-run lẫn overview.
 
+**Staleness (kết quả)** — phát hiện + điểm rủi ro của (DN, kỳ) tính trên bộ dữ liệu cũ.
+**Stale ⇔ `min(check_runs.data_version) < CompanyPeriod.data_version`** (`app/pipeline/staleness.py`,
+#90) — cùng phép so phiên bản mà overview dùng, nay áp cho cả ba nơi có số: dòng kỳ · màn phát hiện ·
+cột điểm ở bảng danh sách DN. `min` chứ không `max`: chạy lại một mã lẻ để lại điểm gộp phát hiện của
+hai phiên bản. Kỳ KHÔNG có dòng `check_runs` = "chưa rõ", KHÔNG stale. Nguồn dời phiên bản: `ingest()`,
+lưu cửa sổ kỳ, **xoá file, thay file** (#90). Xử lý FLAG-ONLY: KHÔNG tự chạy lại (chạy lại dựng lại
+`Finding`, đưa `status`/`notes` cán bộ về `new`) và KHÔNG giấu số (DN vẫn nằm trong bảng xếp hạng).
+
+**Trục bộ file vs trục kết quả** — hai dấu hiệu cũ KHÁC nhau, không gộp. Trục bộ file
+(`readiness.stale`: có dòng Tầng 1 mà bản ghi file mất hoặc chưa đọc xong) → **nạp lại**. Trục kết quả
+(trên) → **chạy lại kiểm tra**. Xoá file bật cả hai; nạp lại tắt trục bộ file, trục kết quả còn tới khi
+chạy kiểm tra. Không trục nào vào phép đếm "đủ dữ liệu cho N/M kiểm tra" (#85). Dòng vướng mắc của trục
+bộ file gộp CẢ KỲ thành MỘT dòng kể tên các loại tài liệu — ba loại cùng cũ vẫn là một việc.
+
 ## Pháp nhân · loại hình · sổ quyết toán (004 hai loại hình)
 
 **Pháp nhân (legal entity)** — thực thể pháp lý, định danh bằng MST (`tax_id`). Một pháp nhân có thể

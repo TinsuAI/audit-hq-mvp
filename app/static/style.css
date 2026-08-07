@@ -1804,6 +1804,11 @@ p { margin: 0 0 var(--space-3); }
   color: var(--c-success-fg);
   border: 1px solid var(--c-success-border);
 }
+.form-alert-warning {
+  background: var(--c-warning-bg);
+  color: var(--c-warning-fg);
+  border: 1px solid var(--c-warning-border);
+}
 .form-alert-icon { font-size: 1.1em; line-height: 1.3; }
 
 /* — Upload slots (drag & drop) — */

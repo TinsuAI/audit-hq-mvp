@@ -172,6 +172,8 @@ class Blocker:
     target: RemedyTarget | None = None
     check_codes: tuple[str, ...] = ()
     file_ids: tuple[int, ...] = ()
+    #: Nhiều loại tài liệu cùng một việc — dòng dấu hiệu cũ gộp cả kỳ vào một dòng.
+    slots: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -362,6 +364,29 @@ def _slot_label(slot: str) -> str:
     return SLOT_LABEL_VI.get(slot, slot)
 
 
+def _stale_blocker(slots: tuple[SlotStatus, ...], year: int) -> Blocker | None:
+    """MỘT dòng cho cả kỳ, kể tên các loại tài liệu — không phải mỗi loại một dòng.
+
+    Ba loại tài liệu cùng cũ vẫn là một việc duy nhất: nạp lại kỳ. Ba dòng ba nút cùng
+    trỏ về một lượt nạp đọc ra ba vấn đề khác nhau, trên đúng màn hình sinh ra để bớt
+    nhiễu. Điều kiện cũ giữ nguyên (`SlotStatus.stale`), chỉ số dòng đổi.
+    """
+    stale = [s for s in slots if s.stale]
+    if not stale:
+        return None
+    labels = ", ".join(_slot_label(s.slot).split(" — ")[0] for s in stale)
+    return Blocker(
+        kind=BLOCKER_FILE,
+        key="file:stale",
+        message=(
+            f"Dữ liệu của kỳ {year} ({labels}) đã nạp nhưng bộ file của kỳ đã đổi — "
+            "nạp lại để dữ liệu khớp bộ file."
+        ),
+        file_ids=tuple(sorted({fid for s in stale for fid in s.file_ids})),
+        slots=tuple(s.slot for s in stale),
+    )
+
+
 def _file_blocker_message(status: SlotStatus, year: int) -> str:
     label = _slot_label(status.slot)
     if status.state == SLOT_NOT_PARSED:
@@ -379,13 +404,10 @@ def _file_blocker_message(status: SlotStatus, year: int) -> str:
             f"File {label} của kỳ {year} đã phân tích nhưng còn cột cần xác nhận — "
             "xác nhận cột rồi nạp lại; lượt nạp đang dừng ở đó nên chưa ghi dòng nào."
         )
-    if status.state == SLOT_NEEDS_BOOK:
-        return status.message or (
-            f"File {label} của kỳ {year} chưa gán sổ quyết toán — gán sổ rồi nạp lại."
-        )
-    return (
-        f"Dữ liệu {label} của kỳ {year} đã nạp nhưng bộ file của kỳ đã đổi — "
-        "nạp lại để dữ liệu khớp bộ file."
+    # Còn lại là trạng thái 5 (chưa gán sổ). Dấu hiệu cũ KHÔNG đi qua đây: nó gộp cả
+    # kỳ thành một dòng ở `_stale_blocker`.
+    return status.message or (
+        f"File {label} của kỳ {year} chưa gán sổ quyết toán — gán sổ rồi nạp lại."
     )
 
 
@@ -505,6 +527,7 @@ class _Group:
         return Blocker(
             kind=b.kind, key=b.key, message=b.message, slot=b.slot, remedy=b.remedy,
             target=b.target, check_codes=tuple(sorted(self.codes)), file_ids=b.file_ids,
+            slots=b.slots,
         )
 
 
@@ -517,7 +540,7 @@ def _blockers(
 ) -> tuple[Blocker, ...]:
     file_groups: dict[str, _Group] = {}
     for s in slots:
-        if s.state not in _FILE_LEVEL_STATES and s.state != SLOT_STALE:
+        if s.state not in _FILE_LEVEL_STATES:
             continue
         file_groups[s.slot] = _Group(Blocker(
             kind=BLOCKER_FILE,
@@ -559,9 +582,13 @@ def _blockers(
         group.codes.append(c.code)
 
     ordered_files = [file_groups[s.slot].done() for s in slots if s.slot in file_groups]
+    stale = _stale_blocker(slots, year)
     ordered_checks = [check_groups[k].done() for k in sorted(check_groups)]
     return tuple(
-        ordered_files + ordered_checks + _coverage_blockers(session, company_id, year)
+        ordered_files
+        + ([stale] if stale is not None else [])
+        + ordered_checks
+        + _coverage_blockers(session, company_id, year)
     )
 
 

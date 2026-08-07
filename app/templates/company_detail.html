@@ -78,10 +78,30 @@
 </div>
 {% endif %}
 
+{% if results_stale %}
+{# Dữ liệu của kỳ đã đổi sau lần chạy gần nhất. Hiện NHÃN, không tự chạy lại: chạy lại
+   xoá rồi dựng lại phát hiện nên trạng thái và ghi chú cán bộ đã đánh về "mới". #}
+<div class="form-alert form-alert-warning" role="status" data-results-stale="1">
+  <span class="form-alert-icon">⚠️</span>
+  <div>
+    <strong>Kết quả dưới đây là của bộ dữ liệu trước.</strong>
+    Dữ liệu kỳ {{ selected_year }} đã đổi (nạp lại, xoá hoặc thay file) sau lần chạy kiểm tra gần nhất,
+    nên phát hiện và điểm rủi ro chưa phản ánh dữ liệu hiện tại.
+    Hệ thống không tự chạy lại: lượt chạy dựng lại danh sách phát hiện, đưa trạng thái và ghi chú cán bộ đã đánh về “mới”.
+    <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks" style="margin-top:8px">
+      <input type="hidden" name="year" value="{{ selected_year }}">
+      <button type="submit" class="btn btn-sm btn-primary">Chạy lại kiểm tra {{ selected_year }}</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <div class="stat-grid">
-  <div class="stat tier-stat {% if checks_run %}{{ ys_css }}{% endif %}">
+  <div class="stat tier-stat {% if checks_run %}{{ ys_css }}{% endif %}"
+       data-results-stale="{{ 1 if results_stale else 0 }}">
     <span class="stat-label">
       Rủi ro dữ liệu {% if selected_year %}({{ selected_year }}){% endif %}
+      {% if results_stale %}<span class="badge warning" title="Dữ liệu kỳ đã đổi sau lần chạy kiểm tra gần nhất — chạy lại để cập nhật.">kết quả cũ</span>{% endif %}
     </span>
     {% if checks_run %}
       <span class="stat-value">{{ ys_score }}<span class="stat-unit">/1000</span></span>
