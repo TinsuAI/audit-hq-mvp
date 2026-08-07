@@ -214,60 +214,46 @@ def test_unmatched_file_keeps_the_old_path_and_names_its_source(tmp_path):
     assert parsed.rows[0].material_code == "NVL001"
 
 
-# --- Badge ba trạng thái trên UI ----------------------------------------------
+# --- Căn cứ đọc: tầng nào đã quyết định vị trí cột -----------------------------
+
+# Khẳng định ở mức DỮ LIỆU trên cấu trúc trang file dựng ra (#92), không dò câu chữ
+# trong HTML: chỗ hiện đã dời một lần (dòng file → trang file, ADR #24) và sẽ còn dời.
 
 
-def _seed_file(db, match_source: str | None, template_id: str | None = None):
+def _basis(match_source: str | None, template_id: str | None = None):
     import json
 
-    from sqlalchemy import select as _select
+    from app.models import DataFile
+    from app.pipeline.file_page import file_read_basis
 
-    from app.models import Company, DataFile
-
-    c = db.scalar(_select(Company).where(Company.code == "DN_077"))
-    db.add(DataFile(
-        company_id=c.id, period_year=2025, slot="m15",
+    return file_read_basis(DataFile(
+        company_id=1, period_year=2025, slot="m15",
         original_filename="NVL.xlsx", stored_path="DN_077/2025/BCQT/NVL.xlsx",
         parse_layout="standard", template_id=template_id, match_source=match_source,
         parse_detail=json.dumps({"template_name": "Mẫu 15 TT39 — bố cục chuẩn"}),
     ))
-    db.commit()
 
 
-def _review_page(seed_kwargs: dict) -> str:
-    """Màn review đọc DataFile thẳng theo id (trang tài liệu chạy `sync_data_files`
-    trước, mà sync xoá dòng registry không còn file trên đĩa)."""
-    from fastapi.testclient import TestClient
-    from sqlalchemy import select as _select
+def test_read_basis_says_which_template_matched():
+    basis = _basis(MATCH_BUILTIN, template_id="m15-tt39-chuan")
 
-    from app.main import app
-    from app.models import DataFile
-    from tests.test_company_period_route import _login, _setup_db, _teardown
-
-    new_engine, new_session = _setup_db()
-    try:
-        with new_session() as db:
-            _seed_file(db, **seed_kwargs)
-            file_id = db.scalar(_select(DataFile.id))
-        client = TestClient(app)
-        _login(client)
-        r = client.get(f"/companies/DN_077/documents/file/{file_id}/review")
-        assert r.status_code == 200
-        return r.text
-    finally:
-        _teardown(new_engine)
+    assert basis.match_source == MATCH_BUILTIN
+    assert basis.template_id == "m15-tt39-chuan"
+    assert basis.template_name == "Mẫu 15 TT39 — bố cục chuẩn"
+    assert "mẫu biểu" in basis.match_source_label.lower()
 
 
-def test_badge_says_which_template_matched():
-    text = _review_page({"match_source": MATCH_BUILTIN, "template_id": "m15-tt39-chuan"})
-    assert "Khớp mẫu: Mẫu 15 TT39 — bố cục chuẩn" in text
-
-
-def test_badge_says_officer_map_when_the_company_map_won():
+def test_read_basis_says_officer_map_when_the_company_map_won():
     from app.adapters.templates import MATCH_OFFICER
 
-    assert "Map đã xác nhận" in _review_page({"match_source": MATCH_OFFICER})
+    basis = _basis(MATCH_OFFICER)
+
+    assert basis.match_source == MATCH_OFFICER
+    assert "cán bộ" in basis.match_source_label.lower()
 
 
-def test_badge_asks_for_confirmation_when_nothing_matched():
-    assert "Không khớp — cần xác nhận cột" in _review_page({"match_source": MATCH_DEFAULT})
+def test_read_basis_names_the_default_positions_when_nothing_matched():
+    basis = _basis(MATCH_DEFAULT)
+
+    assert basis.match_source == MATCH_DEFAULT
+    assert "vị trí mặc định" in basis.match_source_label.lower()

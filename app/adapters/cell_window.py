@@ -546,6 +546,27 @@ def read_window(
     return CellWindow(extract, row_start, col_start, rows, formulas if with_formulas else None)
 
 
+def sheet_names_for(path: Path) -> list[str]:
+    """Tên các trang tính của một file — kho đệm trước, mở file sau.
+
+    Trang file cần danh sách này để dựng ô chọn trang, và nó phải rẻ: đây là một
+    lượt GET, không phải lượt nạp. Kho đệm của trang tính 0 đã giữ sẵn danh sách
+    nên file đã mở lần nào rồi thì không chạm tới workbook. Chưa có kho thì hỏi bộ
+    đọc — `.xlsx` đọc `xl/workbook.xml` trong zip, `.xls` chỉ đọc phần globals của
+    sổ. File không mở được trả danh sách rỗng: trang vẫn dựng, lưới tự báo lỗi.
+    """
+    try:
+        meta = _read_meta(cache_file_for(path, 0))
+    except OSError:
+        return []
+    if meta is not None and meta.sheet_names:
+        return list(meta.sheet_names)
+    try:
+        return open_reader(path).sheet_names()
+    except (CellReadError, OSError):
+        return []
+
+
 __all__ = [
     "CellWindow",
     "ExtractStatus",
@@ -554,6 +575,7 @@ __all__ = [
     "cache_file_for",
     "extract_sheet",
     "read_window",
+    "sheet_names_for",
     "request_extract",
     "reset_build_locks",
     "reset_extract_jobs",

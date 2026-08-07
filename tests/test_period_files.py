@@ -276,7 +276,7 @@ def test_every_file_line_carries_open_download_and_delete(session, company):
 
     entry = _row(build_data_screen(session, company), 2025).files[0]
     base = f"/companies/TEST_DN/documents/file/{f.id}"
-    assert entry.open_url == f"{base}/preview"
+    assert entry.open_url == base
     assert entry.download_url == f"{base}/download"
     assert entry.delete_url == f"{base}/delete"
 

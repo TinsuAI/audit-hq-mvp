@@ -18,6 +18,7 @@ from app.jobs.result_labels import RESULT_LABEL_VI
 from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.models.job import Job, JobStatus
+from app.pipeline.file_page import file_page_url
 from tests.conftest import AppDb
 from tests.helpers import (
     M15_HEADER,
@@ -162,7 +163,7 @@ def test_period_row_renders_the_diagnosis(app_db: AppDb):
         c = db.query(Company).filter_by(code="DN_JOB").first()
         fid = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first().id
     # Nút chọn trang tính nằm ngay đó, không phải một câu bảo sang trang khác.
-    assert f"/documents/file/{fid}/review" in html
+    assert f'href="{file_page_url("DN_JOB", fid)}"' in html
 
 
 def test_gate_stops_before_writing_rows(app_db: AppDb):

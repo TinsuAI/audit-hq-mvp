@@ -21,6 +21,7 @@ from app.main import app
 from app.models import Company, DataFile, User
 from app.models.data_file import DataFileStatus
 from app.models.job import Job, JobKind, JobStatus
+from app.pipeline.file_page import file_page_url
 from app.pipeline.ingest_status import (
     ACTION_LINK,
     ACTION_POST,
@@ -281,7 +282,7 @@ def test_unreadable_file_offers_sheet_choice_and_ai_diagnosis_right_there(
         st = _status(db, world, ai_enabled=True)
 
     links = [a.url for a in st.actions if a.kind == ACTION_LINK]
-    assert f"/companies/dn-t9/documents/file/{file_id}/review" in links
+    assert file_page_url("dn-t9", file_id) in links
     posts = [a.url for a in st.actions if a.kind == ACTION_POST]
     assert "/companies/dn-t9/diagnose-ai" in posts
 
@@ -323,7 +324,7 @@ def test_needs_review_lists_the_columns_and_links_the_file(app_db: AppDb, world:
     assert st.visible is True
     assert any("Mã NVL" in n for n in st.notes)
     assert any(
-        a.url == f"/companies/dn-t9/documents/file/{file_id}/review" for a in st.actions
+        a.url == file_page_url("dn-t9", file_id) for a in st.actions
     )
 
 
@@ -348,9 +349,9 @@ def test_plan_error_offers_book_assignment_on_the_settlement_files(
     assert st.visible is True
     assert "chưa gán sổ" in st.detail
     urls = [a.url for a in st.actions]
-    assert f"/companies/dn-t9/documents/file/{settlement_id}/review" in urls
+    assert file_page_url("dn-t9", settlement_id) in urls
     # Tờ khai luôn toàn pháp nhân, không mang sổ — không mời cán bộ vào đó gán.
-    assert f"/companies/dn-t9/documents/file/{bcct_id}/review" not in urls
+    assert file_page_url("dn-t9", bcct_id) not in urls
 
 
 def test_failed_job_shows_the_error_at_the_period_row(app_db: AppDb, world: dict):

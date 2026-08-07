@@ -35,6 +35,7 @@ from app.jobs.worker import ZOMBIE_THRESHOLD_SECONDS
 from app.models import Company, DataFile
 from app.models.data_file import SETTLEMENT_SLOTS, SLOT_LABEL_VI, DataFileStatus
 from app.models.job import AI_JOB_KINDS, Job, JobKind, JobStatus
+from app.pipeline.file_page import file_page_url
 
 #: Bốn dạng kết quả của `ingest_handler` — xem app/jobs/handlers.py.
 OUTCOME_OK = "ok"
@@ -170,7 +171,7 @@ def _short_label(slot: str) -> str:
 
 def _review_action(slug: str, row: DataFile, label: str) -> StatusAction:
     return StatusAction(
-        ACTION_LINK, label, f"/companies/{slug}/documents/file/{row.id}/review",
+        ACTION_LINK, label, file_page_url(slug, row.id),
     )
 
 
@@ -528,7 +529,7 @@ def _review_actions(
     return tuple(
         StatusAction(
             ACTION_LINK, f"Xác nhận cột · {label}",
-            f"/companies/{slug}/documents/file/{file_id}/review",
+            file_page_url(slug, file_id),
         )
         for file_id, label in sorted(by_file.items())
     )

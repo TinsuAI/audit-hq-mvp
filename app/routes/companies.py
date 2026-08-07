@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json as _json
 import re
-import xml.etree.ElementTree as ET
-import zipfile
 from collections import defaultdict
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -23,7 +21,12 @@ from app.adapters.cell_reader import (
     UnsupportedFileFormat,
     detect_format,
 )
-from app.adapters.cell_window import cache_file_for, read_window, request_extract
+from app.adapters.cell_window import (
+    cache_file_for,
+    read_window,
+    request_extract,
+    sheet_names_for,
+)
 from app.adapters.evidence import FIELD_LABEL_VI
 from app.adapters.templates import column_groups
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
@@ -90,6 +93,7 @@ from app.pipeline.audit_scope import (
 )
 from app.pipeline.data_screen import build_data_screen
 from app.pipeline.export import build_export
+from app.pipeline.file_page import file_page_url, file_read_basis
 from app.pipeline.findings_screen import not_evaluable_panel
 from app.pipeline.ingest_status import ingest_status, mark_seen
 from app.pipeline.period import (
@@ -1336,155 +1340,59 @@ def documents_download_file(
     )
 
 
-# Ba hạn mức dưới đây CHỈ CÒN áp cho lưới 15 dòng nhúng trong màn xác nhận cột.
-# Trang xem file thôi dùng đường đọc này từ #91: nó lấy ô qua điểm cuối cửa sổ, vốn
-# không có trần dòng, trần cột lẫn trần kích thước file.
-PREVIEW_ROWS = 100
-PREVIEW_COLS = 40
-# Grid preview nhúng trong màn xác nhận cột (WS1) — ít dòng để đối chiếu chỉ số cột.
-REVIEW_PREVIEW_ROWS = 15
-# Trên NGƯỠNG này thì KHÔNG dựng lưới nhúng. Mở workbook bằng openpyxl/pandas phải
-# nạp bảng chuỗi dùng chung của cả file: đo trên BCCT 68MB của 006 mất 28-30 giây lúc
-# máy rảnh và 125 giây khi worker đang nạp file khác — quá 100 giây Cloudflare cho phép,
-# nên trang chết đúng vào lúc cán bộ cần nó nhất. Danh sách trang tính vẫn hiện (đọc
-# thẳng từ zip, 0,00 giây), chỉ mất phần lưới ô.
-PREVIEW_MAX_BYTES = 25 * 1024 * 1024
-
-
-def _sheet_names_fast(path: Path) -> list[str] | None:
-    """Tên các trang tính, đọc thẳng `xl/workbook.xml` trong file .xlsx — 0,00 giây.
-
-    Trả None nếu không phải .xlsx đọc được (file .xls cũ, file hỏng) — người gọi lùi
-    về đường pandas, vốn chỉ đắt với file lớn mà .xls thì không lớn.
-    """
-    if path.suffix.lower() != ".xlsx":
-        return None
-    try:
-        with zipfile.ZipFile(path) as z:
-            root = ET.fromstring(z.read("xl/workbook.xml"))
-    except (OSError, zipfile.BadZipFile, ET.ParseError, KeyError):
-        return None
-    names = [
-        el.get("name") for el in root.iter()
-        if el.tag.rpartition("}")[2] == "sheet" and el.get("name")
-    ]
-    return names or None
-
-
-def _excel_col_letters(n: int) -> list[str]:
-    """['A','B',…,'AA',…] cho n cột — nhãn cột kiểu Excel cho header preview."""
-    out = []
-    for i in range(n):
-        s, x = "", i
-        while True:
-            s = chr(ord("A") + x % 26) + s
-            x = x // 26 - 1
-            if x < 0:
-                break
-        out.append(s)
-    return out
-
-
-def _extract_sheet_preview(
-    abs_path: Path, sheet: int | str = 0,
-    max_rows: int = PREVIEW_ROWS, max_cols: int = PREVIEW_COLS,
-) -> dict:
-    """Đọc thô (không qua adapter) `max_rows × max_cols` ô đầu của một sheet Excel.
-
-    Trả dict cho template: sheet_names, selected_sheet, columns (nhãn A/B/…), rows,
-    truncated_rows/cols, error. Dùng chung cho trang xem file + grid nhúng màn review.
-    """
-    import pandas as pd
-
-    out: dict = {
-        "sheet_names": [], "selected_sheet": 0, "selected_sheet_name": None,
-        "columns": [], "rows": [],
-        "truncated_rows": False, "truncated_cols": False, "error": None,
-        "skipped_reason": None,
-    }
-
-    fast_names = _sheet_names_fast(abs_path)
-    try:
-        too_big = abs_path.stat().st_size > PREVIEW_MAX_BYTES
-    except OSError:
-        too_big = False
-    if fast_names and too_big:
-        # File lớn: giữ danh sách trang tính (thứ cán bộ cần để chọn), bỏ lưới ô.
-        out["sheet_names"] = fast_names
-        sel = fast_names.index(sheet) if isinstance(sheet, str) and sheet in fast_names else 0
-        out["selected_sheet"] = sel
-        out["selected_sheet_name"] = fast_names[sel]
-        limit_mb = PREVIEW_MAX_BYTES // 1024 // 1024
-        out["skipped_reason"] = (
-            f"File nặng hơn {limit_mb}MB — không dựng lưới xem trước (mở workbook mất "
-            "hàng chục giây, trang sẽ hết giờ). Danh sách trang tính vẫn chọn được."
-        )
-        return out
-
-    try:
-        xls = pd.ExcelFile(abs_path)
-        out["sheet_names"] = list(xls.sheet_names)
-        # `sheet` là TÊN trang khi gọi từ màn review (trang parser thật sự đọc) và là
-        # chỉ số khi gọi từ trang xem file. Tên không có trong workbook → về trang đầu.
-        if isinstance(sheet, str):
-            sel = out["sheet_names"].index(sheet) if sheet in out["sheet_names"] else 0
-        else:
-            sel = sheet if 0 <= sheet < len(out["sheet_names"]) else 0
-        out["selected_sheet"] = sel
-        out["selected_sheet_name"] = out["sheet_names"][sel] if out["sheet_names"] else None
-        df = pd.read_excel(xls, sheet_name=sel, header=None, nrows=max_rows + 1, dtype=object)
-        out["truncated_rows"] = len(df) > max_rows
-        df = df.iloc[:max_rows]
-        out["truncated_cols"] = df.shape[1] > max_cols
-        df = df.iloc[:, :max_cols]
-        out["columns"] = _excel_col_letters(df.shape[1])
-        out["rows"] = [
-            ["" if pd.isna(v) else str(v) for v in r]
-            for r in df.itertuples(index=False, name=None)
-        ]
-    except Exception as e:  # noqa: BLE001 — file hỏng/sai định dạng → báo nhẹ, không 500
-        out["error"] = f"{type(e).__name__}: {e}"
-    return out
-
-
 def _mapped_columns(row: DataFile) -> dict[str, dict]:
     """`{chỉ số cột: {trường, nhãn, cần soát}}` — cột parser THẬT SỰ đọc ở file này.
 
-    Cùng nguồn với màn xác nhận cột (`parse_detail` của lần đọc gần nhất), chỉ đổi
-    chỗ hiện. File chưa từng nạp thì rỗng: công tắc không có gì để đánh dấu, và
-    lưới nói ra điều đó thay vì đánh dấu bừa theo mẫu biểu.
+    Cùng nguồn với khối căn cứ đọc, chỉ đổi chỗ hiện. Đánh dấu MỌI cột của một nhóm
+    `(6a)+(6b)`, không riêng cột đầu: sáng một cột thì cán bộ tưởng cột kia không
+    được đọc. File chưa từng nạp thì rỗng — lưới nói ra điều đó thay vì đánh dấu bừa
+    theo mẫu biểu.
     """
-    detail = row.parse_detail_obj
-    column_map = detail.get("column_map") or {}
-    meta_by_field = {c.get("field"): c for c in (detail.get("columns") or [])}
-    out: dict[str, dict] = {}
-    for field, index in column_map.items():
-        if not isinstance(index, int) or isinstance(index, bool):
-            continue
-        meta = meta_by_field.get(field) or {}
-        out[str(index)] = {
-            "field": field,
-            "label": meta.get("label") or field,
-            "needs": meta.get("review") == "needs_review",
-        }
-    return out
+    return {
+        str(index): {"field": c.field, "label": c.label, "needs": c.needs_review}
+        for c in file_read_basis(row).columns
+        for index in c.columns
+    }
 
 
 @router.get("/companies/{code}/documents/file/{file_id}/preview", response_class=HTMLResponse)
-def documents_preview_file(
+@router.get("/companies/{code}/documents/file/{file_id}/review", response_class=HTMLResponse)
+def documents_file_legacy_address(
+    code: str,
+    file_id: int,
+    sheet: int | None = Query(default=None, ge=0),
+) -> RedirectResponse:
+    """Hai địa chỉ cũ (`/preview`, `/review`) → địa chỉ DUY NHẤT của file (#92).
+
+    Chuyển hướng "câm": không tra DB, không sờ đĩa. Địa chỉ chuẩn là chỗ duy nhất
+    quyết định 404, nên liên kết cũ và liên kết mới cho ra đúng một kết cục. Giữ
+    `?sheet=` để một liên kết đã gửi đi vẫn mở đúng trang tính cán bộ đang xem.
+    """
+    url = file_page_url(code, file_id)
+    if sheet is not None:
+        url = f"{url}?sheet={sheet}"
+    return RedirectResponse(url=url, status_code=302)
+
+
+@router.get("/companies/{code}/documents/file/{file_id}", response_class=HTMLResponse)
+def documents_file_page(
     code: str,
     request: Request,
     file_id: int,
-    sheet: int = Query(default=0, ge=0),
+    sheet: int | None = Query(default=None, ge=0),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    """Trang xem file: điểm neo cho lưới cuộn + dữ liệu chú giải cột, KHÔNG đọc ô.
+    """MỘT trang cho mỗi file: lưới cuộn, căn cứ đọc, biểu mẫu xác nhận cột (#92).
 
-    Máy chủ không mở file ở đây nữa. Ô đi qua điểm cuối cửa sổ, nên trang dựng
-    được cả với file 71,3 MB lẫn file bộ đọc không mở nổi — lỗi định dạng hiện
-    thành thẻ lỗi trong lưới thay vì làm chết cả trang. Ba hạn mức cũ (100 dòng ·
-    40 cột · 25 MB) biến mất cùng lượt đọc đó.
+    Máy chủ KHÔNG mở file để lấy ô — ô đi qua điểm cuối cửa sổ, nên trang dựng được
+    cả với file 71,3 MB lẫn file bộ đọc không mở nổi. Chỉ đọc DANH SÁCH TRANG TÍNH
+    (kho đệm trước, `xl/workbook.xml` sau) vì ô chọn trang phải dựng ở máy chủ.
+
+    Lưới mở ở TRANG PARSER ĐỌC, không phải trang đầu workbook: biểu mẫu xác nhận cột
+    nằm ngay cạnh lưới, mà workbook kết xuất từ ECUS có trang `Tổng hợp` đứng trước
+    trang `Chi tiết` — xác nhận chỉ số cột trên trang tổng hợp là xác nhận nhầm bố
+    cục. `?sheet=` do cán bộ đưa vào thì thắng, vì đó là lựa chọn tường minh.
     """
     company = get_company_or_404(db, code, user)
     row = db.get(DataFile, file_id)
@@ -1495,21 +1403,39 @@ def documents_preview_file(
         raise HTTPException(status_code=404, detail="File không còn trên đĩa")
 
     slug = company.slug or company.code
+    basis = file_read_basis(row)
+    sheet_names = sheet_names_for(abs_path)
+    selected_sheet = (
+        sheet if sheet is not None
+        else (sheet_names.index(basis.sheet) if basis.sheet in sheet_names else 0)
+    )
+
+    # Selector chọn sổ quyết toán — chỉ file settlement (m15/m15a/m16), tờ khai không
+    # có (toàn pháp nhân). Datalist gợi ý sổ ĐÃ có của DN năm này (ADR #19 Revision).
+    is_settlement = row.slot in SETTLEMENT_SLOTS
     return templates.TemplateResponse(
         request,
-        "document_preview.html",
+        "document_file.html",
         {
             "user": user,
             "company": company,
             "file": row,
             "slot_label": SLOT_LABEL_VI.get(row.slot, row.slot),
             "human_size": _human_size,
+            "page_url": file_page_url(slug, row.id),
             "cells_url": f"/companies/{slug}/documents/file/{row.id}/cells",
-            "selected_sheet": sheet,
-            # Trang tính parser đọc: cán bộ chỉ định thắng lần đọc gần nhất. Chú
-            # giải cột chỉ đúng trên ĐÚNG trang đó — trang khác thì lưới nói rõ.
-            "parsed_sheet": row.sheet_override or row.parse_detail_obj.get("sheet") or "",
+            "selected_sheet": selected_sheet,
+            # Chú giải cột chỉ đúng trên ĐÚNG trang parser đọc — trang khác thì lưới
+            # nói rõ thay vì đánh dấu bừa.
+            "parsed_sheet": basis.sheet or "",
             "mapped_columns": _mapped_columns(row),
+            "basis": basis,
+            "sheet_names": sheet_names,
+            "is_settlement": is_settlement,
+            "book_options": company_books(db, company.id, row.period_year) if is_settlement else [],
+            "book_known": BOOK_LABELS,
+            # Cửa sổ kỳ đang dùng lệch niên độ DN (#50): CẢNH BÁO, không tự chọn hộ.
+            "period_conflict": period_window_conflict(db, company.id, row.period_year),
         },
     )
 
@@ -1634,103 +1560,6 @@ def documents_file_cells(
     return JSONResponse(payload)
 
 
-@router.get("/companies/{code}/documents/file/{file_id}/review", response_class=HTMLResponse)
-def documents_review_file(
-    code: str,
-    request: Request,
-    file_id: int,
-    user: SessionUser = Depends(require_user),
-    db: Session = Depends(get_db),
-) -> HTMLResponse:
-    """Màn review map cột (WS1-3b, ADR #18): xem map đề xuất + badge evidence mỗi cột,
-    sửa chỉ số cột của field `needs_review`, xác nhận (POST) → advance `analyzed→parsed`.
-    """
-    company = get_company_or_404(db, code, user)
-    row = db.get(DataFile, file_id)
-    if row is None or row.company_id != company.id:
-        raise HTTPException(status_code=404, detail="Không tìm thấy file")
-
-    detail = row.parse_detail_obj
-    columns = detail.get("columns", [])
-    column_map = detail.get("column_map", {})
-    form_signature = detail.get("form_signature")
-
-    from app.checks.registry import checks_reading
-
-    # Đính check bị ảnh hưởng cho mỗi cột (banner ở màn này) — cùng nguồn với cổng review.
-    # Một trường ở bố cục mở rộng đọc bằng TỔNG nhiều cột con `(6a)+(6b)`, nên ô nhập
-    # nhận CẢ nhóm (viết ngăn bởi dấu phẩy) chứ không phải một chỉ số (#95).
-    groups = column_groups(column_map)
-    view_cols = []
-    for c in columns:
-        field = c.get("field", "")
-        cols = groups.get(field, [])
-        view_cols.append({
-            **c,
-            "col_index": cols[0] if len(cols) == 1 else None,
-            "col_indexes": cols,
-            "col_value": ",".join(str(i) for i in cols),
-            "col_group": len(cols) > 1,
-            "checks": checks_reading(row.slot, field),
-        })
-
-    # Grid preview nhúng: nội dung THẬT của file (dòng/cột đầu) để đối chiếu chỉ số cột —
-    # bảng chỉ-số-không thì cán bộ không biết cột 8 là gì. Annotate mỗi cột grid bằng
-    # field đã map (tô màu) + cột needs_review (vàng). Số cột grid phủ đủ chỉ số đã map.
-    mapped_idx = [i for cols in groups.values() for i in cols]
-    grid_cols = min(max((max(mapped_idx) + 2 if mapped_idx else 0), 8), PREVIEW_COLS)
-    abs_path = _resolve_within_root(row.stored_path)
-    # Lưới xem trước phải là TRANG PARSER ĐỌC, không phải trang đầu workbook: file BCCT
-    # kết xuất từ ECUS có trang `Tổng hợp` đứng trước trang `Chi tiết` đang được nạp,
-    # xác nhận chỉ số cột trên trang tổng hợp là xác nhận nhầm bố cục.
-    parsed_sheet = detail.get("sheet")
-    preview = (
-        _extract_sheet_preview(
-            abs_path, row.sheet_override or parsed_sheet or 0, REVIEW_PREVIEW_ROWS, grid_cols,
-        )
-        if abs_path.is_file() else None
-    )
-    # Tô MỌI cột của nhóm, không riêng cột đầu: nhóm `(6a)+(6b)` mà chỉ sáng một cột
-    # thì cán bộ tưởng cột kia không được đọc.
-    col_annot = {
-        idx: {"label": c["label"], "needs": c.get("review") == "needs_review"}
-        for c in view_cols
-        for idx in c["col_indexes"]
-    }
-
-    # Selector chọn sổ quyết toán — chỉ file settlement (m15/m15a/m16), tờ khai không có
-    # (toàn pháp nhân). Datalist gợi ý sổ ĐÃ có của DN năm này (ADR #19 Revision — upload).
-    is_settlement = row.slot in SETTLEMENT_SLOTS
-    book_options = company_books(db, company.id, row.period_year) if is_settlement else []
-
-    return templates.TemplateResponse(
-        request,
-        "document_review.html",
-        {
-            "user": user,
-            "company": company,
-            "file": row,
-            "slot_label": SLOT_LABEL_VI.get(row.slot, row.slot),
-            "columns": view_cols,
-            "form_signature": form_signature,
-            "can_confirm": bool(form_signature and column_map),
-            "human_size": _human_size,
-            "preview": preview,
-            "col_annot": col_annot,
-            "is_settlement": is_settlement,
-            "book_options": book_options,
-            "book_known": BOOK_LABELS,
-            # Trang tính: trang parser đọc lần gần nhất, trang cán bộ đã chỉ định, và
-            # danh sách trang có trong workbook để chọn lại.
-            "parsed_sheet": parsed_sheet,
-            "sheet_override": row.sheet_override,
-            "sheet_names": (preview or {}).get("sheet_names", []),
-            # Cửa sổ kỳ đang dùng lệch niên độ DN (#50): CẢNH BÁO, không tự chọn hộ.
-            "period_conflict": period_window_conflict(db, company.id, row.period_year),
-        },
-    )
-
-
 def _parse_column_answer(
     raw: str | None, default: list[int], label: str, allow_groups: bool = False,
 ) -> list[int]:
@@ -1785,6 +1614,7 @@ def _reject_shared_columns(groups: dict[str, list[int]]) -> None:
             owner[idx] = label
 
 
+@router.post("/companies/{code}/documents/file/{file_id}", response_model=None)
 @router.post("/companies/{code}/documents/file/{file_id}/review", response_model=None)
 async def documents_confirm_review(
     code: str,

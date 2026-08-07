@@ -78,6 +78,7 @@ from app.pipeline.file_intake import (
     pending_uploads,
     pending_years,
 )
+from app.pipeline.file_page import file_page_url
 from app.pipeline.period import YEAR_MAX, YEAR_MIN
 from app.pipeline.readiness import (
     BLOCKER_CHECK,
@@ -452,7 +453,7 @@ def _file_action(
     if kind == ACTION_OPEN_FILE and blocker.file_ids:
         return ScreenAction(
             ACTION_OPEN_FILE, ACTION_LABEL_VI[ACTION_OPEN_FILE],
-            url=f"/companies/{slug}/documents/file/{blocker.file_ids[0]}/review",
+            url=file_page_url(slug, blocker.file_ids[0]),
         )
     return ScreenAction(
         ACTION_INGEST, ACTION_LABEL_VI[ACTION_INGEST],
@@ -631,7 +632,7 @@ def _period_files(files: list[DataFile], slug: str) -> tuple[PeriodFile, ...]:
             text = (f.parse_message or "").strip()
             if text and text not in notes:
                 notes.append(text)
-        base = f"/companies/{slug}/documents/file/{ids[0]}"
+        base = file_page_url(slug, ids[0])
         entries.append(PeriodFile(
             file_id=ids[0],
             file_ids=ids,
@@ -644,7 +645,7 @@ def _period_files(files: list[DataFile], slug: str) -> tuple[PeriodFile, ...]:
             ),
             unreadable=any(f.parse_status == DataFileStatus.ERROR for f in rows),
             notes=tuple(notes),
-            open_url=f"{base}/preview",
+            open_url=base,
             download_url=f"{base}/download",
             delete_url=f"{base}/delete",
             rel_path=rows[0].stored_path,

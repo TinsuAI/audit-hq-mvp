@@ -27,6 +27,7 @@ from app.pipeline.period import (
     load_period_windows,
     resolve_period_bounds,
 )
+from tests.excel_fixtures import write_xlsx
 from tests.test_company_period_route import _login, _setup_db, _teardown
 
 # --- Cửa sổ mặc định từ niên độ ----------------------------------------------
@@ -293,9 +294,17 @@ def test_calendar_company_never_conflicts(session, company):
     assert period_window_conflict(session, company.id, 2025) is None
 
 
-def test_review_screen_warns_when_file_window_conflicts_with_fiscal_year():
+def test_file_page_warns_when_file_window_conflicts_with_fiscal_year(tmp_path):
     from app.models import DataFile
+    from app.pipeline.file_page import file_page_url
+    from app.settings import settings
 
+    rel = "DN_077/2025/BCQT/NVL.xlsx"
+    path = tmp_path / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_xlsx(path, [["Mã", 1]])
+    prev_root = settings.raw_data_path
+    settings.raw_data_path = str(tmp_path)
     new_engine, new_session = _setup_db()
     try:
         with new_session() as db:
@@ -307,15 +316,16 @@ def test_review_screen_warns_when_file_window_conflicts_with_fiscal_year():
             ))
             db.add(DataFile(
                 company_id=c.id, period_year=2025, slot="m15",
-                original_filename="NVL.xlsx", stored_path="DN_077/2025/BCQT/NVL.xlsx",
+                original_filename="NVL.xlsx", stored_path=rel,
             ))
             db.commit()
             file_id = db.scalar(select(DataFile.id))
         client = TestClient(app)
         _login(client)
-        r = client.get(f"/companies/DN_077/documents/file/{file_id}/review")
+        r = client.get(file_page_url("DN_077", file_id))
         assert r.status_code == 200
         assert "lệch với niên độ" in r.text
         assert "01/04/2025 – 31/03/2026" in r.text
     finally:
+        settings.raw_data_path = prev_root
         _teardown(new_engine)
