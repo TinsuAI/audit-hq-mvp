@@ -17,9 +17,11 @@ phải mở được — nên đường thiếu dữ liệu nói ra điều đó
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
-from app.adapters.declared_fields import FIELD_LABEL_VI
+from app.adapters.declared_fields import declared as declared_fields
+from app.adapters.declared_fields import label_of
 from app.adapters.evidence import (
     NEEDS_REVIEW,
     REVIEW_LABEL_VI,
@@ -72,9 +74,26 @@ def column_letter(index: int) -> str:
             return out
 
 
+# Ba trạng thái gán của một trường khai (ADR #28). Trạng thái thứ ba là LỜI CỦA CÁN BỘ.
+ASSIGNED = "assigned"
+UNASSIGNED = "unassigned"
+ABSENT = "absent"
+
+STATE_LABEL_VI = {
+    ASSIGNED: "Đã gán",
+    UNASSIGNED: "Chưa gán",
+    ABSENT: "Không có trong file",
+}
+
+
 @dataclass(frozen=True)
 class BasisColumn:
-    """Một trường dữ liệu: đọc ở cột nào, và cái gì quyết định cột đó."""
+    """Một trường KHAI của biểu: đọc ở cột nào, và cái gì quyết định cột đó.
+
+    Có dòng kể cả khi máy không đặt được trường này ở file — đó là điểm của màn theo
+    trường (#112). Mô hình cũ chỉ dựng dòng cho trường đã có bằng chứng, nên file bố
+    cục lệch hẳn ra biểu mẫu rỗng và kẹt vĩnh viễn (#95).
+    """
 
     field: str
     label: str
@@ -85,10 +104,21 @@ class BasisColumn:
     columns: tuple[int, ...]
     column_ref: str
     checks: tuple[str, ...]
+    state: str = ASSIGNED
+    required: bool = False
+    row_key: bool = False
 
     @property
     def review_label(self) -> str:
         return REVIEW_LABEL_VI.get(self.review, self.review)
+
+    @property
+    def state_label(self) -> str:
+        return STATE_LABEL_VI.get(self.state, self.state)
+
+    @property
+    def is_absent(self) -> bool:
+        return self.state == ABSENT
 
     @property
     def is_group(self) -> bool:
@@ -117,37 +147,79 @@ class ReadBasis:
     form_signature: str | None
     columns: tuple[BasisColumn, ...]
     needs_confirmation: tuple[str, ...]
+    # Ảnh chụp cột của file lúc parse — bộ chọn cột dựng từ đây. Rỗng với file nạp
+    # trước #112 (tiến lên, không backfill): màn rơi về ô nhập chỉ số như cũ.
+    choices: tuple[dict, ...] = ()
 
     @property
     def needs_count(self) -> int:
         return len(self.needs_confirmation)
 
     @property
+    def has_choices(self) -> bool:
+        return bool(self.choices)
+
+    @property
+    def missing_row_keys(self) -> tuple[str, ...]:
+        """Khoá dòng chưa gán/xác nhận vắng → KHÔNG dựng nổi một dòng Tầng 1 nào."""
+        return tuple(c.label for c in self.columns if c.row_key and c.state != ASSIGNED)
+
+    @property
+    def missing_required(self) -> tuple[str, ...]:
+        """Bắt buộc theo biểu mà KHÔNG phải khoá dòng → nhận file, cảnh báo, đánh dấu."""
+        return tuple(
+            c.label for c in self.columns
+            if c.required and not c.row_key and c.state != ASSIGNED
+        )
+
+    @property
     def can_confirm(self) -> bool:
-        """Có VỊ TRÍ cột để xác nhận không. Không có thì chỉ còn ghim trang tính.
+        """Gán được cột không. Không thì chỉ còn ghim trang tính.
 
-        Đo theo vị trí đã lưu chứ không theo số cột có bằng chứng: đường xác nhận đọc
-        `column_map`, nên một file chỉ có bằng chứng mà không có vị trí nào sẽ hiện nút
-        xác nhận rồi báo lỗi khi bấm.
+        Hai đường: đã có vị trí lưu để sửa, HOẶC có ảnh chụp cột để gán từ đầu. Đường
+        thứ hai là điểm của #112 — trước đây đo riêng theo vị trí đã lưu, nên file máy
+        đặt được 0 trường ra biểu mẫu rỗng và kẹt vĩnh viễn (#95). Vẫn cần vân tay
+        form: map lưu theo `(DN, slot, vân tay)`, không có vân tay thì không có khoá ghi.
         """
-        return bool(self.form_signature) and any(c.columns for c in self.columns)
+        return bool(self.form_signature) and (
+            any(c.columns for c in self.columns) or self.has_choices
+        )
 
 
-def file_read_basis(row: DataFile) -> ReadBasis:
-    """Căn cứ đọc của một file, dựng từ `parse_detail` của lượt nạp gần nhất."""
+def file_read_basis(
+    row: DataFile, absent_fields: Iterable[str] | None = None,
+) -> ReadBasis:
+    """Căn cứ đọc của một file, dựng từ `parse_detail` của lượt nạp gần nhất.
+
+    `absent_fields` = trường cán bộ đã xác nhận không có trong file, lấy từ map đã
+    lưu của `(DN, slot, vân tay)`. Truyền vào chứ không tự tra: hàm này không giữ
+    phiên DB, và người gọi đã có sẵn map đó."""
     detail = row.parse_detail_obj
     groups = column_groups(detail.get("column_map"))
     meta = {c.get("field"): c for c in (detail.get("columns") or []) if c.get("field")}
 
-    # HỢP của hai nguồn, thứ tự theo `columns` (đã sắp theo biểu ở `_evidence_columns`)
-    # rồi tới các trường chỉ có trong map. Bỏ bên nào cũng là giấu một cột: map là thứ
-    # parser THẬT SỰ đọc, còn bằng chứng ghi cho một trường mà map không giữ vị trí
-    # (`resolve_template_evidence` lọc map theo trường có vị trí) vẫn là căn cứ đọc.
-    order = list(meta) + [f for f in groups if f not in meta]
-    columns = tuple(
-        _basis_column(row.slot, field, meta.get(field) or {}, groups.get(field, []))
-        for field in order
-    )
+    # Thứ tự theo TẬP TRƯỜNG KHAI của biểu, rồi tới trường lạ chỉ có trong dữ liệu cũ.
+    # Khai là nguồn sự thật: mỗi trường khai có MỘT dòng, kể cả trường máy không đặt
+    # được ở file này — đó là đường gỡ cho file bố cục lệch hẳn (#95). Trường ngoài khai
+    # vẫn hiện vì map cũ trong DB có thể mang nó, và giấu đi là giấu một cột đang đọc.
+    # File CHƯA nạp lần nào không có bố cục để nói về: dựng 11 dòng "chưa gán" ở đó là
+    # bịa ra một biểu mẫu cho một file hệ thống chưa mở. Đường "chưa đọc lần nào" giữ
+    # nguyên như trước — nó nói ra điều đó thay vì ném lỗi.
+    if not detail:
+        columns: tuple[BasisColumn, ...] = ()
+    else:
+        declared = [f.name for f in declared_fields(row.slot)]
+        extra = [f for f in list(meta) + list(groups) if f not in declared]
+        seen: set[str] = set()
+        order = [f for f in declared + extra if not (f in seen or seen.add(f))]
+        absent = set(absent_fields or ())
+        columns = tuple(
+            _basis_column(
+                row.slot, field, meta.get(field) or {}, groups.get(field, []),
+                absent=field in absent,
+            )
+            for field in order
+        )
     parsed = bool(columns) or bool(detail)
 
     return ReadBasis(
@@ -164,15 +236,40 @@ def file_read_basis(row: DataFile) -> ReadBasis:
         form_signature=detail.get("form_signature"),
         columns=columns,
         needs_confirmation=tuple(c.label for c in columns if c.needs_review),
+        choices=tuple(detail.get("column_choices") or ()),
     )
 
 
-def _basis_column(slot: str, field: str, meta: dict, cols: list[int]) -> BasisColumn:
+def _basis_column(
+    slot: str, field: str, meta: dict, cols: list[int], absent: bool = False,
+) -> BasisColumn:
     evidence = meta.get("evidence")
-    review = meta.get("review") or (VERIFIED if evidence else NEEDS_REVIEW)
+    declared = {f.name: f for f in declared_fields(slot)}.get(field)
+    if absent:
+        state = ABSENT
+    elif cols:
+        state = ASSIGNED
+    else:
+        state = UNASSIGNED
+    # `review` là trục BẰNG CHỨNG: "cột này đọc bằng căn cứ yếu tới đâu". Chỉ trường ĐÃ
+    # GÁN mới có câu trả lời — chưa gán thì không đọc cột nào, xác nhận vắng thì cán bộ
+    # đã kết luận. Nhét hai trạng thái kia vào cổng review làm phồng số "cột cần xác
+    # nhận" bằng những dòng không đọc gì; việc phải làm với chúng nằm ở cảnh báo thiếu
+    # trường bắt buộc / khoá dòng, là đúng chỗ theo ADR #28.
+    if state == ABSENT:
+        review = VERIFIED
+    elif meta or cols:
+        # Parser đã nói gì đó về trường này (có mục bằng chứng, hoặc có vị trí lưu) →
+        # giữ NGUYÊN cách tính cũ. Có bằng chứng mà map không giữ vị trí vẫn là cột
+        # parser ĐÃ đọc, không được im chỉ vì thiếu vị trí.
+        review = meta.get("review") or (VERIFIED if evidence else NEEDS_REVIEW)
+    else:
+        # Trường KHAI mà parser chưa nói gì: chưa đọc cột nào nên không có gì để soát.
+        # Việc phải làm với nó nằm ở cảnh báo thiếu khoá dòng / thiếu trường bắt buộc.
+        review = VERIFIED
     return BasisColumn(
         field=field,
-        label=meta.get("label") or FIELD_LABEL_VI.get(field, field),
+        label=meta.get("label") or label_of(slot, field),
         evidence=evidence,
         evidence_label=(
             SOURCE_LABEL_VI.get(evidence, evidence) if evidence
@@ -183,6 +280,9 @@ def _basis_column(slot: str, field: str, meta: dict, cols: list[int]) -> BasisCo
         columns=tuple(cols),
         column_ref=", ".join(column_letter(i) for i in cols),
         checks=tuple(checks_reading(slot, field)),
+        state=state,
+        required=bool(declared and declared.required),
+        row_key=bool(declared and declared.row_key),
     )
 
 

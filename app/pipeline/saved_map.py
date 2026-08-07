@@ -38,6 +38,26 @@ def load_column_map(
     )
 
 
+def _reject_overlap(
+    column_map: dict[str, int | list[int]], absent_fields: list[str] | None,
+) -> list[str] | None:
+    """`column_map` ∩ `absent_fields` = ∅. Giao khác rỗng là mâu thuẫn, không phải ưu tiên.
+
+    Một trường vừa "đọc ở cột 5" vừa "không có trong file" thì không có cách đọc nào
+    đúng cả hai, và đoán một bên là quay lại đúng lớp lỗi đọc sai im lặng. Từ chối.
+    """
+    if absent_fields is None:
+        return None
+    absent = sorted(set(absent_fields))
+    clash = sorted(set(absent) & set(column_map))
+    if clash:
+        raise ValueError(
+            f"Trường {', '.join(clash)} vừa được gán cột vừa bị đánh dấu không có "
+            "trong file. Một trường chỉ ở đúng một trạng thái."
+        )
+    return absent
+
+
 def save_column_map(
     session: Session,
     company_id: int,
@@ -46,16 +66,23 @@ def save_column_map(
     column_map: dict[str, int | list[int]],
     evidence: dict[str, str] | None = None,
     confirmed_by: int | None = None,
+    absent_fields: list[str] | None = None,
 ) -> SavedColumnMap:
     """Upsert map cột cho `(DN, slot, vân tay)`. Idempotent: khoá đã có → ghi đè map.
 
     Giá trị mỗi trường là `int` (một cột) hoặc `list[int]` (một trường đọc bằng TỔNG
     nhiều cột con — bố cục mở rộng, #95). Không commit — người gọi quyết định ranh
     giới transaction.
+
+    `absent_fields` = trường cán bộ XÁC NHẬN không có trong file (#112). Bất biến hai
+    tập rời nhau được khẳng định ở ĐÂY và chỉ ở đây — mọi đường ghi map đều đi qua hàm
+    này, nên không có chỗ thứ hai để hai tập lệch nhau.
     """
+    absent = _reject_overlap(column_map, absent_fields)
     row = load_column_map(session, company_id, slot, form_signature)
     col_json = json.dumps(column_map, ensure_ascii=False)
     ev_json = json.dumps(evidence, ensure_ascii=False) if evidence is not None else None
+    absent_json = json.dumps(absent, ensure_ascii=False) if absent is not None else None
     if row is None:
         row = SavedColumnMap(
             company_id=company_id,
@@ -64,12 +91,14 @@ def save_column_map(
             column_map=col_json,
             evidence=ev_json,
             confirmed_by=confirmed_by,
+            absent_fields=absent_json,
         )
         session.add(row)
     else:
         row.column_map = col_json
         row.evidence = ev_json
         row.confirmed_by = confirmed_by
+        row.absent_fields = absent_json
     # Flush để lần upsert kế trong CÙNG transaction thấy dòng vừa thêm (session
     # autoflush=False) — giữ idempotent theo khoá mà không commit.
     session.flush()

@@ -11,6 +11,7 @@ from app.adapters._common import (
     CompanyHeader,
     ParseIssues,
     ParseProvenance,
+    column_choices,
     count_external_workbooks,
     ensure_excel,
     normalize_code,
@@ -200,6 +201,7 @@ def parse_m16(
         "column_map": column_map,
         "template_id": None,
         "match_source": match_source_for(officer, None, evidence),
+        "column_choices": column_choices(cells, data_start),
     }
     if norm_labeled:
         provenance = ParseProvenance(

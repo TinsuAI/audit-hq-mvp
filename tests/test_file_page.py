@@ -182,7 +182,8 @@ def test_read_basis_keeps_a_column_that_has_evidence_but_no_stored_position(env)
     basis = file_read_basis(_row(fid))
 
     by_field = {c.field: c for c in basis.columns}
-    assert set(by_field) == {"material_code", "closing_qty"}
+    # Mỗi TRƯỜNG KHAI của biểu có một dòng (#112), nên tập dòng rộng hơn map.
+    assert {"material_code", "closing_qty"} <= set(by_field)
     assert by_field["closing_qty"].columns == ()
     assert by_field["closing_qty"].column_ref == ""
     assert by_field["closing_qty"].evidence_label == "Khớp đẳng thức"
@@ -227,8 +228,9 @@ def test_read_basis_keeps_a_group_of_sub_columns_together(env):
 
     basis = file_read_basis(_row(fid))
 
-    assert basis.columns[0].columns == (5, 6)
-    assert basis.columns[0].column_ref == "F, G"           # chữ cái cột, đếm từ 0
+    by_field = {c.field: c for c in basis.columns}
+    assert by_field["import_qty"].columns == (5, 6)
+    assert by_field["import_qty"].column_ref == "F, G"           # chữ cái cột, đếm từ 0
     assert basis.layout_label
 
 
