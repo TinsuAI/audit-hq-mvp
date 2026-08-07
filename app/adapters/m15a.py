@@ -29,7 +29,12 @@ from app.adapters.extended_layout import M15aResolution, select_extended_m15a
 from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
 from app.adapters.sheet_select import SheetNotFound, select_sheet
-from app.adapters.templates import match_template, resolve_template_evidence
+from app.adapters.templates import (
+    MATCH_EXTENDED,
+    match_template,
+    resolve_columns,
+    resolve_template_evidence,
+)
 
 
 @dataclass
@@ -77,7 +82,15 @@ _DATA_START_ROW = 9
 _SHEET_NAMES = ("BCQT_SP", "BCQT_SXXK", "Sheet1")
 
 
-def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = None) -> M15aFile:
+def parse_m15a(
+    path: str | Path,
+    sheet: str | None = None,
+    year: int | None = None,
+    officer_maps: dict[str, dict[str, int]] | None = None,
+) -> M15aFile:
+    """`officer_maps` = {vân tay form: {field: chỉ số cột}} cán bộ đã xác nhận cho DN
+    này ở slot này. Vị trí của cán bộ THẮNG template lẫn cột mặc định, theo TỪNG
+    trường (ADR #24 mục 5)."""
     p = ensure_excel(Path(path))
     xls = pd.ExcelFile(p)
     resolution: M15aResolution | None = None
@@ -125,6 +138,10 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
                     "column_map": {
                         f: resolution.cols[f][0] for f in evidence if resolution.cols.get(f)
                     },
+                    # Bố cục mở rộng KHÔNG nhận vị trí của cán bộ: một trường ở đây có
+                    # thể là TỔNG nhiều cột con, map lưu chỉ giữ cột đầu nhóm.
+                    "template_id": None,
+                    "match_source": MATCH_EXTENDED,
                 },
                 evidence=evidence,
             ),
@@ -134,7 +151,7 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
     # Vân tay đo TRƯỚC khi áp template (template khai vân tay theo đúng cách đo này).
     form_sig = compute_form_signature(cells, "m15a", data_start)
     template = match_template("m15a", form_sig, data_start)
-    col = {**_COL, **template.column_map} if template else _COL
+    col, officer = resolve_columns(_COL, template, officer_maps, form_sig)
     if template is not None:
         data_start = template.data_start
 
@@ -167,6 +184,7 @@ def parse_m15a(path: str | Path, sheet: str | None = None, year: int | None = No
     evidence, detail = resolve_template_evidence(
         template, _EVIDENCE_FIELDS, col, form_sig,
         lambda: evidence_m15a_standard(cells, data_start, cand_colmap),
+        officer=officer,
     )
     return M15aFile(
         header=header, rows=rows, source_file=str(p), sheet=sheet,

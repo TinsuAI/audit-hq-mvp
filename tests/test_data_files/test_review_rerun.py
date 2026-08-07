@@ -4,10 +4,11 @@ Sửa 1 cột trên file đã `parsed` chỉ chạy lại các check registry b�
 (`run_checks(only=…)`). Finding của check bị ảnh hưởng cập nhật (xoá + dựng lại);
 finding của check KHÔNG đọc cột đó giữ nguyên (không treo, trang vẫn render).
 
-Lưu ý cơ chế: saved-map chỉ nâng nguồn bằng chứng lên `officer-confirmed`; adapter
-đọc cột theo VỊ TRÍ cố định, nên re-ingest sinh dòng y hệt. Test chứng minh scope của
-re-run (check nào bị xoá+dựng lại) bằng cách đánh dấu `status=confirmed` trước rồi kiểm
-check bị ảnh hưởng về `new` (đã dựng lại) còn check khác giữ `confirmed` (không đụng).
+Lưu ý cơ chế: từ #84 map cán bộ ÁP THẬT vị trí cột lúc đọc, nên sửa cột là đổi số
+liệu. Test ở đây đo SCOPE của re-run chứ không đo số, nên fixture có sẵn cột bản sao
+nội dung y hệt: sửa map sang cột bản sao giữ dòng bất biến, phần còn lại chỉ còn là
+scope. Chứng minh bằng cách đánh dấu `status=confirmed` trước rồi kiểm check bị ảnh
+hưởng về `new` (đã dựng lại) còn check khác giữ `confirmed` (không đụng).
 """
 
 from __future__ import annotations
@@ -27,10 +28,15 @@ from tests.helpers import drain_jobs, last_job_result
 
 # Header chuẩn NHƯNG cột xuất SX (col 8) nhãn không khớp từ khoá → needs_review → cổng
 # review bật (dừng ở `analyzed`), giống test màn review. Điều khiển production_out_qty.
+# Hai cột cuối là BẢN SAO nội dung của cột 8 và cột mã: sửa map sang chúng đổi vị
+# trí đọc mà KHÔNG đổi số liệu, nên test còn lại đúng một biến là scope re-run.
 _M15_HEADER = [
     "STT", "Mã NVL", "Tên NVL", "Đơn vị tính", "Tồn đầu kỳ", "Nhập trong kỳ",
     "Tái xuất", "Chuyển mục đích sử dụng", "Cột 8", "Xuất khác", "Tồn cuối kỳ",
+    "Cột 8 bản sao", "Mã NVL bản sao",
 ]
+_COPY_OF_COL8 = 11
+_COPY_OF_CODE = 12
 
 
 def _m15_bytes() -> bytes:
@@ -41,12 +47,12 @@ def _m15_bytes() -> bytes:
         ws.append([None] * len(_M15_HEADER))
     ws.append(_M15_HEADER)
     # MAT0: mất cân đối (10+100-80=30 ≠ 50) → C2.1 fire. C2.3 no (closing>0).
-    ws.append([1, "MAT0", "Tên", "KG", 10, 100, 0, 0, 80, 0, 50])
+    ws.append([1, "MAT0", "Tên", "KG", 10, 100, 0, 0, 80, 0, 50, 80, "MAT0"])
     # MAT1: cân đối → không fire.
-    ws.append([2, "MAT1", "Tên", "KG", 10, 100, 0, 0, 80, 0, 30])
+    ws.append([2, "MAT1", "Tên", "KG", 10, 100, 0, 0, 80, 0, 30, 80, "MAT1"])
     # MAT2: cân đối nhưng tồn cuối âm (C2.3 fire) + xuất SX>0 & nhập=0 & tồn đầu=0
     # (C5.1 fire). C2.1 no (0+0-5 = -5 khớp).
-    ws.append([3, "MAT2", "Tên", "KG", 0, 0, 0, 0, 5, 0, -5])
+    ws.append([3, "MAT2", "Tên", "KG", 0, 0, 0, 0, 5, 0, -5, 5, "MAT2"])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -162,9 +168,10 @@ def test_edit_column_reruns_only_affected(tmp_path):
             assert len(before["C2.3"]) == 1  # đọc closing_qty → KHÔNG affected
             c23_id = before["C2.3"][0].id
 
-        # Sửa cột production_out_qty (8 → 9) trên file đã `parsed`.
+        # Sửa cột production_out_qty sang cột BẢN SAO trên file đã `parsed`: vị trí
+        # đọc đổi (→ scoped re-run) nhưng số liệu bất biến.
         data = {f"col_{f}": str(idx) for f, idx in base_map.items()}
-        data["col_production_out_qty"] = str(int(base_map["production_out_qty"]) + 1)
+        data["col_production_out_qty"] = str(_COPY_OF_COL8)
         r = client.post(
             f"/companies/DN_RERUN/documents/file/{fid}/review", data=data, follow_redirects=False,
         )
@@ -211,10 +218,10 @@ def test_edit_key_column_reruns_balance_check(tmp_path):
             cid = db.query(Company).filter_by(code="DN_RERUN").first().id
             assert len(_by_check(cid, db)["C2.1"]) == 1
 
-        # Đổi map cột khoá material_code (adapter đọc theo vị trí nên dữ liệu không đổi;
-        # điểm test là SCOPE re-run gồm C2.1 nhờ guard).
+        # Đổi map cột khoá material_code sang cột bản sao (mã y hệt, chỉ đổi vị trí
+        # đọc; điểm test là SCOPE re-run gồm C2.1 nhờ guard).
         data = {f"col_{f}": str(idx) for f, idx in base_map.items()}
-        data["col_material_code"] = str(int(base_map["material_code"]) + 1)
+        data["col_material_code"] = str(_COPY_OF_CODE)
         r = client.post(
             f"/companies/DN_RERUN/documents/file/{fid}/review", data=data, follow_redirects=False,
         )

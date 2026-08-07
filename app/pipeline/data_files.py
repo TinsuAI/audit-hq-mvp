@@ -263,10 +263,14 @@ def record_parse_result(
         prov_layout = getattr(prov, "layout", "standard") if prov is not None else "standard"
         # Map đã lưu cho (DN, slot, vân tay form) khớp → các cột resolve
         # `officer-confirmed` → `verified`, cổng review tự advance (WS1-3, ADR #18).
+        # Chỉ nâng cột mà lượt đọc ĐÃ DÙNG đúng vị trí trong map lưu: nhánh bố cục
+        # mở rộng không áp được vị trí của cán bộ (ADR #24 mục 5), dán nhãn ở đó là
+        # nói cột đã được xác nhận trong khi parser đọc chỗ khác.
         if prov_evidence:
-            form_sig = (getattr(prov, "detail", None) or {}).get("form_signature")
+            prov_detail = getattr(prov, "detail", None) or {}
             prov_evidence = resolve_officer_confirmed(
-                session, company.id, row.slot, form_sig, prov_evidence,
+                session, company.id, row.slot, prov_detail.get("form_signature"),
+                prov_evidence, prov_detail.get("column_map"),
             )
         # Ghi provenance cho MỌI file có bằng chứng cột (kể cả bố cục chuẩn) — badge
         # truy nguồn hiện nguồn + trạng thái review từng cột (WS1, ADR #18).

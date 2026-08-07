@@ -47,6 +47,26 @@ def _needs_review_m15_bytes() -> bytes:
     return buf.getvalue()
 
 
+_SPARE_COL = 11          # cột phụ ngoài biểu chuẩn, mang giá trị phân biệt được
+_SPARE_VALUE = 999.0
+
+
+def _m15_with_spare_column_bytes() -> bytes:
+    """Như trên nhưng thêm một cột phụ — để test cán bộ DỜI cột đọc sang đó."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "BCQT_NVL"
+    header = [*_M15_HEADER, "Ghi chú"]
+    for _ in range(8):
+        ws.append([None] * len(header))
+    ws.append(header)
+    for i in range(3):
+        ws.append([i + 1, f"MAT{i}", "Tên", "KG", 10, 100, 0, 0, 80, 0, 30, _SPARE_VALUE])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def _setup(tmp_path: Path):
     import app.pipeline.ingest as ingmod
     from app.auth_users import seed_default_admin
@@ -160,5 +180,55 @@ def test_review_confirm_saves_map_and_advances_to_parsed(tmp_path):
             # Cổng review đã clear + dòng dữ liệu đã commit.
             assert year_review_gate(db, c, 2024) is None
             assert db.query(NvlBalance).filter_by(company_id=c.id, period_year=2024).count() == 3
+    finally:
+        _teardown(new_engine, prev_root)
+
+
+def test_confirming_a_moved_column_reads_the_officer_column(tmp_path):
+    """Cán bộ sửa chỉ số cột → lượt nạp kế ĐỌC ĐÚNG cột đó (#84, ADR #24 mục 5).
+
+    Trước bản sửa, map lưu chỉ nâng NHÃN bằng chứng lên `officer-confirmed`; adapter
+    vẫn đọc cột cũ, nên số liệu Tầng 1 không đổi và cán bộ tin là đã sửa xong trong
+    khi hệ thống vẫn đọc sai — im lặng.
+    """
+    new_engine, prev_root = _setup(tmp_path)
+    try:
+        client = TestClient(app)
+        _login(client)
+        r = client.post(
+            "/companies/DN_REV/upload",
+            data={"year": "2024"},
+            files={"m15": ("Mau15_NVL.xlsx", _m15_with_spare_column_bytes(),
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        drain_jobs()
+
+        with dbmod.SessionLocal() as db:
+            c = db.query(Company).filter_by(code="DN_REV").first()
+            row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
+            fid, base_map = row.id, dict(row.parse_detail_obj["column_map"])
+            assert base_map["closing_qty"] != _SPARE_COL  # tiền đề: đang đọc cột chuẩn
+
+        data = {f"col_{field}": str(idx) for field, idx in base_map.items()}
+        data["col_closing_qty"] = str(_SPARE_COL)
+        r = client.post(
+            f"/companies/DN_REV/documents/file/{fid}/review",
+            data=data, follow_redirects=False,
+        )
+        assert r.status_code == 303
+        drain_jobs()
+
+        with dbmod.SessionLocal() as db:
+            c = db.query(Company).filter_by(code="DN_REV").first()
+            rows = db.query(NvlBalance).filter_by(company_id=c.id, period_year=2024).all()
+            assert len(rows) == 3
+            # Số liệu đọc từ ĐÚNG cột cán bộ chỉ, không phải cột chuẩn (30).
+            assert {r.closing_qty for r in rows} == {_SPARE_VALUE}
+            row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
+            assert row.parse_status == DataFileStatus.OK
+            assert row.match_source == "officer-map"
+            assert row.parse_detail_obj["column_map"]["closing_qty"] == _SPARE_COL
     finally:
         _teardown(new_engine, prev_root)

@@ -47,6 +47,8 @@
       <span class="badge info">📐 Khớp mẫu: {{ file.parse_detail_obj.template_name or file.template_id }}</span>
       {% elif file.match_source == 'officer-map' %}
       <span class="badge info">✅ Map đã xác nhận</span>
+      {% elif file.match_source == 'extended-layout' %}
+      <span class="badge info">🧭 Suy cột từ dòng đánh số</span>
       {% elif file.match_source %}
       <span class="badge warning">❓ Không khớp — cần xác nhận cột</span>
       {% endif %}

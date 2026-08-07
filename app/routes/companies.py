@@ -1387,9 +1387,11 @@ async def documents_confirm_review(
     `analyzed→parsed`, cột trong map resolve `officer-confirmed` → `verified`.
 
     Chuỗi advance: ``save_column_map`` (+ commit) → job ``ingest`` → ``record_parse_result``
-    (committed=True). ``record_parse_result`` gọi ``resolve_officer_confirmed`` nên các cột
-    vừa lưu map lên `officer-confirmed`, cổng review clear. Phần nạp nằm ở hàng đợi vì đọc
-    file là việc hàng phút với bộ dữ liệu thật (xem DECISIONS 2026-08-06).
+    (committed=True). Lượt nạp đó ĐỌC THEO VỊ TRÍ vừa lưu: `ingest` nạp map của DN rồi
+    truyền vào adapter, map cán bộ thắng mẫu biểu curate ở từng trường (ADR #24 mục 5).
+    ``record_parse_result`` gọi ``resolve_officer_confirmed`` nên các cột vừa lưu map lên
+    `officer-confirmed`, cổng review clear. Phần nạp nằm ở hàng đợi vì đọc file là việc
+    hàng phút với bộ dữ liệu thật (xem DECISIONS 2026-08-06).
     """
     company = get_company_or_404(db, code, user)
     row = db.get(DataFile, file_id)

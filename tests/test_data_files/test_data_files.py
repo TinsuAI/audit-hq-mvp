@@ -90,6 +90,39 @@ class TestRecordParseResult:
         assert by_slot["m15"].row_count == 99
         assert by_slot["m16"].row_count == 476
 
+    def test_record_writes_match_source_for_every_slot(self, session, company, tmp_path):
+        """`match_source` phải xuống CỘT cho mọi slot, không chỉ Mẫu 15/15a (#84).
+
+        Trước đây Mẫu 16 và tờ khai không sinh khoá đó ở provenance, nên cột rỗng và
+        khối căn cứ đọc ở trang file không có gì để hiện.
+        """
+        from app.adapters._common import ParseProvenance
+        from app.adapters.evidence import HEADER_MATCHED
+
+        _touch(tmp_path, company.code, 2024, "DINH_MUC", "BCDM_TT39.xls")
+        _touch(tmp_path, company.code, 2024, "HANG_CHI_TIET", "BCCT_NK.xlsx")
+        sync_data_files(session, company, raw_root=tmp_path)
+
+        stats = IngestStats(company_code=company.code, period_year=2024,
+                            m16_rows=10, bcct_rows=20)
+        stats.provenance = {
+            "m16": ParseProvenance(
+                detail={"form_signature": "sig-m16", "column_map": {"norm_qty": 7},
+                        "template_id": None, "match_source": "keyword"},
+                evidence={"norm_qty": HEADER_MATCHED},
+            ),
+            "bcct": ParseProvenance(
+                detail={"form_signature": "sig-bcct", "column_map": {"quantity": 26},
+                        "template_id": None, "match_source": "keyword"},
+                evidence={"quantity": HEADER_MATCHED},
+            ),
+        }
+        record_parse_result(session, company, 2024, stats)
+
+        by_slot = {r.slot: r for r in session.query(DataFile).filter_by(company_id=company.id).all()}
+        assert by_slot["m16"].match_source == "keyword"
+        assert by_slot["bcct"].match_source == "keyword"
+
     def test_record_zero_rows_is_error(self, session, company, tmp_path):
         # WARNING không còn là status lifecycle (ADR #18): 0 dòng = chưa dùng được → error.
         _touch(tmp_path, company.code, 2024, "BCQT", "Mau15_NVL.xlsx")

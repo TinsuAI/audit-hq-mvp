@@ -2,8 +2,8 @@
 
 Chẩn đoán → xem trước → nạp thật mở lại cùng workbook ba lần; với BCCT 68MB mỗi
 lượt mất 97 giây nên một lần tải lên vượt 100 giây Cloudflare cho phép. Test giữ
-hai điều: trong phạm vi cache mỗi (file, sheet, năm) chỉ parse một lần, và file
-đổi trên đĩa thì parse lại chứ không trả bản cũ.
+hai điều: trong phạm vi cache mỗi (file, sheet, năm, map cột cán bộ) chỉ parse một
+lần, và file đổi trên đĩa thì parse lại chứ không trả bản cũ.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def _write_m15(root: Path, code: str = "DN_CACHE", year: int = 2024, rows: int =
 def _counting():
     calls: list[tuple] = []
 
-    def fn(path, sheet=None, year=None):
+    def fn(path, sheet=None, year=None, officer_maps=None):
         calls.append((str(path), sheet, year))
         return f"parsed:{len(calls)}"
 
@@ -92,6 +92,30 @@ def test_sheet_and_year_are_part_of_key(tmp_path):
     assert len(calls) == 3
 
 
+def test_officer_map_content_is_part_of_key(tmp_path):
+    """Map cột đổi = bộ cột đọc đổi → phải parse lại, không trả bản đọc cột cũ."""
+    p = _write_m15(tmp_path)
+    calls, cached = _counting()
+    with parse_cache():
+        cached(p, None, 2024, None)
+        cached(p, None, 2024, {"sig": {"closing_qty": 10}})
+        cached(p, None, 2024, {"sig": {"closing_qty": 9}})
+    assert len(calls) == 3
+
+
+def test_equal_officer_map_content_hits_the_same_entry(tmp_path):
+    """Một lượt nạp nạp map ở hai chỗ → hai dict khác danh tính, cùng nội dung.
+
+    Khoá theo danh tính thì mỗi file mở hai lần — đúng thứ hàng đợi nạp phải tránh.
+    """
+    p = _write_m15(tmp_path)
+    calls, cached = _counting()
+    with parse_cache():
+        cached(p, None, 2024, {"sig": {"closing_qty": 10, "opening_qty": 4}})
+        cached(p, None, 2024, {"sig": {"opening_qty": 4, "closing_qty": 10}})
+    assert len(calls) == 1
+
+
 def test_file_rewritten_is_parsed_again(tmp_path):
     """Tải lên đè file trong cùng phạm vi → mtime/size đổi → không trả bản cũ."""
     p = _write_m15(tmp_path, rows=3)
@@ -107,7 +131,7 @@ def test_error_is_cached_and_reraised(tmp_path):
     p = _write_m15(tmp_path)
     calls: list[str] = []
 
-    def fn(path, sheet=None, year=None):
+    def fn(path, sheet=None, year=None, officer_maps=None):
         calls.append(str(path))
         raise ValueError("không đọc được")
 
