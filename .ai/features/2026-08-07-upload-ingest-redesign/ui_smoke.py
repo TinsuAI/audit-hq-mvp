@@ -62,6 +62,41 @@ def make_workbook(path: Path, rows: int, cols: int, *, formula_cell: bool = Fals
     wb.save(path)
 
 
+# Nhãn tiêu đề LỆCH CHUẨN có chủ ý: parser không khớp được theo tiêu đề nên phải suy
+# cột theo VỊ TRÍ, và đó chính là ca màn "Xác nhận vị trí cột" sinh ra để xử lý.
+M15_HEADER_LECH = [
+    "TT", "Mã vật tư", "Diễn giải", "ĐVT", "Đầu kỳ", "Phát sinh tăng",
+    "Tái xuất", "Chuyển mục đích", "Đưa vào sản xuất", "Giảm khác", "Cuối kỳ",
+]
+
+
+def make_m15(path: Path, rows: int = 25) -> None:
+    """Mẫu 15 bố cục chuẩn (8 dòng trống, dòng tiêu đề, rồi dữ liệu) nhưng NHÃN lệch."""
+    from openpyxl import Workbook
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "BCQT_NVL"
+    for _ in range(8):
+        ws.append([None] * len(M15_HEADER_LECH))
+    ws.append(M15_HEADER_LECH)
+    for i in range(rows):
+        ws.append([i + 1, f"NPL{i:04d}", "Vải chính", "MTR", 10, 100, 0, 0, 80, 0, 30])
+    wb.save(path)
+
+
+def ingest_period(company_code: str, year: int) -> None:
+    """Nạp THẬT qua handler để `record_parse_result` điền `parse_detail` (map cột + bằng chứng)."""
+    from app.database import SessionLocal
+    from app.jobs.handlers import ingest_handler
+
+    with SessionLocal() as s:
+        res = ingest_handler({"company_code": company_code, "year": year, "gate": True}, s)
+        s.commit()
+    print(f"  nạp {company_code}/{year}: {res.get('status')} — {res.get('note', '')[:60]}")
+
+
 def seed() -> None:
     from app.auth_users import create_user
     from app.database import Base, SessionLocal, engine
@@ -71,10 +106,9 @@ def seed() -> None:
     )
 
     Base.metadata.create_all(engine)
-    gop = RAW / "DN_MINH_HOA/2025/BCQT/BaoCaoQuyetToan_2025.xlsx"
-    make_workbook(gop, rows=120, cols=40, formula_cell=True)
-    tokhai = RAW / "DN_MINH_HOA/2025/HANG_CHI_TIET/BaoCaoHangChiTiet_2025.xlsx"
-    make_workbook(tokhai, rows=400, cols=20)
+    # CHỈ Mẫu 15 có mặt lúc nạp: file BCCT bịa không khớp bố cục sẽ làm chẩn đoán
+    # chặn cả lượt nạp, nên file dùng cho ảnh xem trước được dựng SAU khi nạp xong.
+    make_m15(RAW / "DN_MINH_HOA/2025/BCQT/NhapXuatTon_NVL_2025.xlsx")
 
     with SessionLocal() as s:
         create_user(s, username="can_bo", password="MatKhau!2026", role="admin")
@@ -89,17 +123,6 @@ def seed() -> None:
         s.add(CompanyPeriod(company_id=c.id, period_year=2025,
                             period_from=date(2025, 1, 1), period_to=date(2025, 12, 31),
                             data_version=4))
-        for slot, rc in (("m15", 10_560), ("m15a", 501), ("m16", 113_561)):
-            s.add(DataFile(company_id=c.id, period_year=2025, slot=slot,
-                           original_filename="BaoCaoQuyetToan_2025.xlsx",
-                           stored_path="DN_MINH_HOA/2025/BCQT/BaoCaoQuyetToan_2025.xlsx",
-                           size_bytes=gop.stat().st_size, parse_status="ok", row_count=rc,
-                           parse_message=("3 liên kết tới workbook ngoài — số có thể lấy "
-                                          "từ file khác") if slot == "m15" else None))
-        s.add(DataFile(company_id=c.id, period_year=2025, slot="bcct",
-                       original_filename="BaoCaoHangChiTiet_2025.xlsx",
-                       stored_path="DN_MINH_HOA/2025/HANG_CHI_TIET/BaoCaoHangChiTiet_2025.xlsx",
-                       size_bytes=tokhai.stat().st_size, parse_status="ok", row_count=270_505))
         for i in range(40):
             s.add(NvlBalance(company_id=c.id, period_year=2025, row_no=i,
                              material_code=f"NPL{i:03d}", material_name="Vải chính",
@@ -151,7 +174,29 @@ def seed() -> None:
                        finding_count=1, status="ok", data_version=1,
                        ran_at=datetime(2026, 8, 7, 9, 0)))
         s.commit()
-        return {"file_id": s.query(DataFile).filter_by(slot="m15").first().id}
+
+    # Nạp THẬT kỳ 2025: `record_parse_result` điền `parse_detail` (map cột + bằng chứng
+    # từng cột) — không có bước này thì màn xác nhận cột rỗng, không có gì để hiện.
+    ingest_period("DN_MINH_HOA", 2025)
+
+    # File cho ảnh lưới xem trước — dựng SAU lượt nạp để không lọt vào chẩn đoán.
+    gop = RAW / "DN_MINH_HOA/2025/BCQT/BaoCaoQuyetToan_2025.xlsx"
+    make_workbook(gop, rows=120, cols=40, formula_cell=True)
+    with SessionLocal() as s:
+        from app.models import Company as _C
+        from app.pipeline.data_files import sync_data_files
+        sync_data_files(s, s.query(_C).filter_by(code="DN_MINH_HOA").one())
+        s.commit()
+
+    with SessionLocal() as s:
+        m15 = (s.query(DataFile)
+               .filter_by(slot="m15", company_id=1)
+               .filter(DataFile.original_filename.like("NhapXuatTon%"))
+               .first())
+        xem = s.query(DataFile).filter(
+            DataFile.original_filename == "BaoCaoQuyetToan_2025.xlsx").first()
+        return {"file_id": m15.id if m15 else None,
+                "preview_id": xem.id if xem else (m15.id if m15 else None)}
 
 
 def shot(pg, name: str, caption: str, *, full: bool = True) -> None:
@@ -218,7 +263,8 @@ def main() -> int:
                  "#94 — mã DN không tồn tại; trước đây cũng đổ JSON thô")
 
             fid = ids["file_id"]
-            pg.goto(f"{base}/companies/dn-minh-hoa/documents/file/{fid}/preview",
+            pid = ids["preview_id"]
+            pg.goto(f"{base}/companies/dn-minh-hoa/documents/file/{pid}/preview",
                     wait_until="networkidle")
             pg.wait_for_timeout(2500)
             shot(pg, "06_luoi_cuon_xem_truoc",
