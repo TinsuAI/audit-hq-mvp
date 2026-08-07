@@ -14,9 +14,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.auth import SessionUser
-from app.models import Company, User
+from app.main import app
+from app.models import Company, DataFile, User
 from app.models.data_file import DataFileStatus
 from app.models.job import Job, JobKind, JobStatus
 from app.pipeline.ingest_status import (
@@ -501,3 +503,167 @@ def test_status_endpoint_serialises_actions_for_the_poller(app_db: AppDb, world:
 
     assert body["actions"]
     assert set(body["actions"][0]) == {"kind", "label", "url", "year"}
+
+
+# ────────────────── việc nạp đã xem ngay tại dòng kỳ (#100) ──────────────────
+#
+# Trước #89, `viewed_at` chỉ được đặt khi cán bộ mở `/jobs/{id}`. #89 bỏ đường
+# chuyển hướng đó nên mọi lượt nạp ở lại "chưa xem" vĩnh viễn và huy hiệu
+# `/jobs/unread.json` tăng mãi. Quy tắc chọn ở đây: kết quả CUỐI của lượt nạp
+# được giao tới trình duyệt CỦA CHÍNH NGƯỜI XẾP VIỆC tại dòng kỳ thì tính là đã
+# xem — hai đường giao là bộ đếm poll (`ingest.json`) và lần render màn dữ liệu.
+# Lượt nạp còn chạy, lượt nạp của cán bộ khác, và việc thuộc loại khác đều không
+# bị đụng tới.
+
+
+def _client(app_db: AppDb) -> TestClient:
+    client = TestClient(app)
+    client.post("/login", data={"user": "admin", "password": "admin"},
+                follow_redirects=False)
+    return client
+
+
+def _unread(client: TestClient) -> int:
+    r = client.get("/jobs/unread.json")
+    assert r.status_code == 200, r.text
+    return r.json()["unread"]
+
+
+def _viewed_at(app_db: AppDb, job_id: int):
+    with app_db.SessionLocal() as db:
+        return db.get(Job, job_id).viewed_at
+
+
+def _register_file(app_db: AppDb, world: dict, *, year: int = 2025) -> None:
+    """Một file THẬT trên đĩa + dòng registry — kỳ chỉ có dòng khi có file.
+
+    `sync_data_files` chạy ở mỗi lượt vào màn dữ liệu và xoá khỏi registry mọi
+    dòng mà file đã biến mất, nên phải ghi bytes xuống đĩa chứ không chỉ ghi DB.
+    Thư mục `HANG_CHI_TIET` suy ra loại `bcct` từ chính vị trí, không phải mở
+    workbook — nhờ đó 32 byte giả đủ dùng.
+    """
+    rel = f"DN_T9/{year}/HANG_CHI_TIET/bcct.xlsx"
+    abs_path = app_db.raw_root / rel
+    abs_path.parent.mkdir(parents=True, exist_ok=True)
+    abs_path.write_bytes(b"x" * 32)
+    with app_db.SessionLocal() as db:
+        db.add(DataFile(
+            company_id=world["company_id"], period_year=year, slot="bcct",
+            original_filename="bcct.xlsx", stored_path=rel,
+            size_bytes=abs_path.stat().st_size,
+            parse_status=DataFileStatus.OK, row_count=10,
+        ))
+        db.commit()
+
+
+def test_seeing_the_result_at_the_period_row_stops_the_badge_counting_it(
+    app_db: AppDb, world: dict
+):
+    """Chiều thứ nhất: đã thấy kết quả thì không còn đếm là chưa xem."""
+    client = _client(app_db)
+    with app_db.SessionLocal() as db:
+        job_id = _job(db, world, status=JobStatus.FAILED, error="RuntimeError: hỏng").id
+
+    assert _unread(client) == 1
+
+    r = client.get("/companies/DN_T9/documents/ingest.json?year=2025")
+    assert r.status_code == 200
+    assert r.json()["job_id"] == job_id
+
+    assert _viewed_at(app_db, job_id) is not None
+    assert _unread(client) == 0
+
+
+def test_a_failed_ingest_nobody_looked_at_still_counts(app_db: AppDb, world: dict):
+    """Chiều thứ hai: không đánh dấu đã xem hàng loạt.
+
+    Mở trang hàng đợi hay hỏi trạng thái của kỳ KHÁC đều không phải là nhìn thấy
+    kết quả của kỳ này.
+    """
+    client = _client(app_db)
+    with app_db.SessionLocal() as db:
+        job_id = _job(db, world, status=JobStatus.FAILED, error="RuntimeError: hỏng").id
+
+    client.get("/jobs")
+    client.get("/companies/DN_T9/documents/ingest.json?year=2024")
+
+    assert _viewed_at(app_db, job_id) is None
+    assert _unread(client) == 1
+
+
+def test_rendering_the_period_row_counts_as_seeing_the_result(app_db: AppDb, world: dict):
+    """Kết quả cũng tới dòng kỳ qua lần render của máy chủ, không chỉ qua poll.
+
+    Cán bộ đóng tab trước khi lượt nạp xong thì poll không chạy lần nào. Lần sau
+    vào màn dữ liệu, tấm bảng đỏ in ngay tại dòng kỳ — bỏ đường này thì mỗi lượt
+    nạp hỏng đọc-rồi-nạp-lại vẫn cộng vĩnh viễn một đơn vị vào huy hiệu.
+    """
+    client = _client(app_db)
+    _register_file(app_db, world)
+    with app_db.SessionLocal() as db:
+        job_id = _job(db, world, status=JobStatus.FAILED, error="RuntimeError: hỏng").id
+
+    r = client.get("/companies/DN_T9/documents")
+    assert r.status_code == 200
+    assert 2025 in {p.year for p in r.context["screen"].periods}
+
+    assert _viewed_at(app_db, job_id) is not None
+    assert _unread(client) == 0
+
+
+@pytest.mark.parametrize("status", [JobStatus.QUEUED, JobStatus.RUNNING])
+def test_an_ingest_still_running_is_not_marked_seen(app_db: AppDb, world: dict, status):
+    """Chưa có kết quả thì chưa có gì để thấy — huy hiệu cũng chưa đếm nó."""
+    client = _client(app_db)
+    with app_db.SessionLocal() as db:
+        job_id = _job(
+            db, world, status=status,
+            started_at=_now() if status is JobStatus.RUNNING else None,
+        ).id
+
+    client.get("/companies/DN_T9/documents/ingest.json?year=2025")
+
+    assert _viewed_at(app_db, job_id) is None
+
+
+def test_the_follow_up_check_run_keeps_its_own_unread_state(app_db: AppDb, world: dict):
+    """Việc thuộc loại khác giữ nguyên hành vi: chỉ mở `/jobs/{id}` mới xoá nó."""
+    client = _client(app_db)
+    with app_db.SessionLocal() as db:
+        checks_id = _job(
+            db, world, kind=JobKind.RUN_CHECKS, status=JobStatus.DONE, result={},
+        ).id
+        ingest_id = _job(
+            db, world, status=JobStatus.DONE,
+            result={"status": OUTCOME_OK, "note": "Đã nạp dữ liệu.",
+                    "checks_job_id": checks_id},
+        ).id
+
+    assert _unread(client) == 2
+
+    client.get("/companies/DN_T9/documents/ingest.json?year=2025")
+
+    assert _viewed_at(app_db, ingest_id) is not None
+    assert _viewed_at(app_db, checks_id) is None
+    assert _unread(client) == 1
+
+
+def test_an_ingest_of_another_officer_is_not_marked_seen(app_db: AppDb, world: dict):
+    """Huy hiệu đếm theo người xếp việc, nên chỉ người ấy xoá được nó.
+
+    Quản trị mở màn dữ liệu của DN mà xoá huy hiệu của cán bộ khác thì cán bộ ấy
+    mất đúng cái tín hiệu vé này đi cứu.
+    """
+    from app.auth_users import create_user
+
+    client = _client(app_db)
+    with app_db.SessionLocal() as db:
+        other = create_user(db, "canbo2", "matkhau123", role="officer")
+        job = _job(db, world, status=JobStatus.FAILED, error="RuntimeError: hỏng")
+        job.created_by = other.id
+        db.commit()
+        job_id = job.id
+
+    client.get("/companies/DN_T9/documents/ingest.json?year=2025")
+
+    assert _viewed_at(app_db, job_id) is None

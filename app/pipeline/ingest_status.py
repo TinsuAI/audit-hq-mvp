@@ -408,6 +408,59 @@ def _done_status(
     )
 
 
+def mark_seen(session: Session, statuses, *, user_id: int | None) -> int:
+    """Đánh dấu đã xem những lượt nạp vừa giao kết quả CUỐI tới dòng kỳ (#100).
+
+    Trước #89, `viewed_at` chỉ được đặt khi cán bộ mở `/jobs/{id}`. #89 bỏ đường
+    chuyển hướng sang trang đó, nên nếu không có hàm này thì mọi lượt nạp ở lại
+    "chưa xem" vĩnh viễn và huy hiệu `/jobs/unread.json` tăng mãi — một con số
+    đếm sai dạy cán bộ phớt lờ nó, rồi nó hết tác dụng đúng lúc có lượt nạp hỏng.
+
+    **Bằng chứng nhận là "đã xem": kết quả cuối được giao tới trình duyệt của
+    CHÍNH NGƯỜI XẾP VIỆC tại dòng kỳ.** Hai đường giao, và cả hai đều tính:
+
+    - bộ đếm poll hỏi `documents/ingest.json?year=N` và nhận về một trạng thái
+      đã dừng — dòng kỳ vừa in kết quả tại chỗ;
+    - màn dữ liệu render với lượt nạp đã ở trạng thái dừng — cán bộ đóng tab
+      trước khi việc chạy xong thì poll không chạy lần nào, mà tấm bảng kết quả
+      vẫn in ra ở lần vào trang sau. Bỏ đường này thì mỗi lượt nạp hỏng
+      đọc-rồi-nạp-lại vẫn cộng vĩnh viễn một đơn vị vào huy hiệu, vì lượt nạp mới
+      thay chỗ lượt cũ ở dòng kỳ và không màn nào còn nhắc tới nó nữa.
+
+    Ba thứ KHÔNG đụng tới:
+
+    - lượt nạp còn `active` — chưa có kết quả thì chưa có gì để thấy;
+    - lượt nạp của cán bộ khác (`created_by`) — huy hiệu đếm theo người xếp việc,
+      quản trị mở màn dữ liệu của DN mà xoá huy hiệu của người khác thì người ấy
+      mất đúng tín hiệu cần giữ;
+    - bản ghi kẹt ở `running` (tiến trình chết giữa chừng): dòng kỳ đọc nó thành
+      hỏng, nhưng huy hiệu đếm nó ở vế `running` chứ không ở vế `unread`.
+
+    Chỉ job nạp đi qua đây — `IngestStatus.job_id` theo cấu tạo là job `ingest`.
+    Việc thuộc loại khác (chạy kiểm tra, AI), kể cả lượt chạy kiểm tra nối tiếp
+    một lượt nạp, giữ nguyên hành vi cũ: mở `/jobs/{id}` mới xoá được.
+
+    Trả số việc vừa đánh dấu.
+    """
+    if user_id is None:
+        return 0
+    now = _now()
+    changed = 0
+    for status in statuses:
+        if status is None or status.active:
+            continue
+        job = session.get(Job, status.job_id)
+        if job is None or job.viewed_at is not None or job.created_by != user_id:
+            continue
+        if job.status not in (JobStatus.DONE.value, JobStatus.FAILED.value):
+            continue
+        job.viewed_at = now
+        changed += 1
+    if changed:
+        session.commit()
+    return changed
+
+
 def _follow_up(session: Session, result: dict) -> Job | None:
     follow_id = result.get("checks_job_id")
     return session.get(Job, int(follow_id)) if follow_id else None
@@ -502,4 +555,5 @@ __all__ = [
     "IngestStatus",
     "StatusAction",
     "ingest_status",
+    "mark_seen",
 ]

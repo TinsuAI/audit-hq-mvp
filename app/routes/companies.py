@@ -90,8 +90,8 @@ from app.pipeline.audit_scope import (
 )
 from app.pipeline.data_screen import build_data_screen
 from app.pipeline.export import build_export
-from app.pipeline.ingest_status import ingest_status
 from app.pipeline.findings_screen import not_evaluable_panel
+from app.pipeline.ingest_status import ingest_status, mark_seen
 from app.pipeline.period import (
     FISCAL_START_MONTHS,
     QUARTER_START_MONTHS,
@@ -940,6 +940,18 @@ def _resolve_within_root(rel_path: str) -> Path:
     return abs_path
 
 
+def _user_id_or_none(db: Session, user: SessionUser) -> int | None:
+    """Id của tài khoản đang đăng nhập, `None` khi bản ghi đã bị xoá.
+
+    Dùng cho việc ghi nhận "đã xem" (#100): đó là việc phụ của một lần vào trang,
+    không đáng chặn cả trang bằng 403 như `_enqueue_ingest` phải làm.
+    """
+    from app.auth_users import get_user_by_username
+
+    row = get_user_by_username(db, user.name)
+    return row.id if row is not None else None
+
+
 @router.get("/companies/{code}/documents", response_class=HTMLResponse)
 def company_documents(
     code: str,
@@ -968,6 +980,8 @@ def company_documents(
         p.year: ingest_status(db, company, p.year, ai_enabled=ai_enabled)
         for p in screen.periods
     }
+    # Kết quả lượt nạp in ngay ở dòng kỳ dưới đây, nên nó hết là "chưa xem" (#100).
+    mark_seen(db, ingests.values(), user_id=_user_id_or_none(db, user))
 
     return templates.TemplateResponse(
         request,
@@ -1970,6 +1984,8 @@ def documents_ingest_status(
     status = ingest_status(db, company, year, ai_enabled=_ai_available())
     if status is None:
         return {"status": None}
+    # Trả về một trạng thái đã dừng nghĩa là dòng kỳ vừa in kết quả cuối tại chỗ (#100).
+    mark_seen(db, [status], user_id=_user_id_or_none(db, user))
     return status.as_dict()
 
 
