@@ -1,5 +1,81 @@
 # STATUS — Audit-HQ MVP
 
+> **(2026-08-08 — GRILL #110 XONG. THIẾT KẾ ĐÃ CHỐT, CHƯA VIẾT DÒNG CODE SẢN PHẨM NÀO.
+> `main` @ `05e8e96`, 4 commit đều là tài liệu, cây làm việc sạch):**
+>
+> **ADR #28** (`.ai/DECISIONS.md`) · từ vựng mới ở `.ai/GLOSSARY.md` mục "Gán cột theo trường khai" ·
+> spec **[#116](https://github.com/TinsuAI/audit-hq-mvp/issues/116)** (28 user story, seam để test,
+> phạm vi loại trừ) · năm vé: **#111 → #112 → #113** cộng **#114**, **#115**, cạnh chặn khai bằng
+> issue dependency thật.
+>
+> **GRAB ĐƯỢC NGAY: #111 và #115.** #112 chặn bởi #111 · #113 chặn bởi #112 · #114 chặn bởi #111.
+> Mỗi vé mở một **session mới** (context hygiene), bắt đầu bằng đọc #116 rồi ADR #28.
+>
+> **CHẨN ĐOÁN — một lỗi cấu trúc, không phải ba lỗi rời.** `bcct.py:276` suy bằng chứng TỪ map cột
+> nên phủ đủ do cách viết; `m15`/`m15a`/`m16` đi NGƯỢC (`evidence` viết tay → `column_map` suy từ nó,
+> `m16.py:192`, `_EVIDENCE_FIELDS`). Dây chuyền chạy thẳng vào giao diện: `evidence` → `column_map` →
+> `parse_detail` → `base_map` (`companies.py:1649`) → ô nhập biểu mẫu xác nhận. **Trường không có
+> bằng chứng thì không có ô nhập.** Việc 2 của #110 là đầu cuối của chính dây chuyền đó.
+> Đo: m16 đọc 8 trường / bằng chứng **2** · m15 11/8 · m15a 10/7 · bcct 100%.
+>
+> **BA LỖI IM LẶNG BẮT ĐƯỢC TRONG LÚC GRILL, chưa có ở ghi chú gốc:**
+> 1. **`m16.note` là ca thứ hai của #109** — đọc ở cột 8, ghi `norms.note`, **C4.1 tiêu thụ** qua
+>    `is_domestic_origin` (`c4_norm.py:76-77`) để trừ NVL trong nước khỏi phạm vi. Không bằng chứng,
+>    không ô sửa. → khai `("m16","note", INDIVIDUAL)` ở #111.
+> 2. **`_M16_DINHMUC_COLS` không có khoá `note`** → mọi dòng bố cục đó `note=None`,
+>    `is_domestic_origin` luôn False. Và **`norms.note` của PILOT_004 2025 BẰNG ĐÚNG `norm_qty` ở
+>    880/880 dòng** — bố cục 004 có hai cột ĐM, `_detect_actual_norm_col` dời `norm_qty` sang cột ĐM
+>    thực tế, mà chỉ số 8 (chỗ đọc `note`) chính là cột đó → adapter đọc MỘT cột vào HAI trường.
+> 3. **`CHECK_COLUMNS` có 0 mục bcct** trong khi 10 check đọc `declaration_lines` → cổng review chưa
+>    bao giờ bắn cho bcct, và cổng trường vắng cũng sẽ câm. Khai bù ở #113.
+>
+> **TRA ĐƯỢC NGUYÊN VĂN HƯỚNG DẪN MẪU 16 TỪ CÔNG BÁO** (`.ai/notes/2026-08-08-huong-dan-lap-mau-16-tt39.md`).
+> Cả hai văn bản là **bản QUÉT không có lớp text** — `pdftotext` ra 91 ký tự; phải
+> `pdftoppm -r 300..400` + `tesseract -l vie`. Phụ lục nằm ở **tệp RIÊNG**: TT 39/2018 ở
+> `datafiles.chinhphu.vn/…/2019/03/25kem6.pdf` (Mẫu 16 tr. 7–8), TT 121/2025 ở `…/2026/01/121-btc.pdf`
+> (tr. 237–238). Host `g7.cdnchinhphu.vn` bị chặn khỏi môi trường này.
+>
+> - **ĐVT bắt buộc, có chuẩn đối chiếu, ở CẢ HAI thế hệ:** cột (4) và (7) buộc "thống nhất với đơn vị
+>   tính đã khai báo trên tờ khai hải quan". Cột (2) mã SP, (3) tên SP, (5) mã NVL cũng buộc thống
+>   nhất với tờ khai — **căn cứ pháp lý cho cả một lớp đối chiếu M16 ↔ BCCT chưa dùng tới, chưa có vé.**
+> - **Bộ mã cột (9) PHỤ THUỘC KỲ:** TT 39/2018 có **ba** (`X` · trống · `KXDĐM`); TT 121/2025 (hiệu
+>   lực **01/02/2026**) thêm `TH` · `SPTN`. Kho bắc qua cả hai (ZONSEN 2026 thuộc TT 121) →
+>   **không được hằng số hoá bộ mã**. → #114.
+> - **TT 121/2025 CÓ sửa Mẫu 16** nhưng **giữ nguyên 9 cột** và giữ nguyên công thức ĐM thực tế ở cột
+>   (8) → `_M16_TT39_COLS` vẫn đúng cho kỳ 2026.
+>
+> **HAI SỐ TÔI ĐƯA SAI TRONG PHIÊN, ĐÃ SỬA — đừng chép lại bản cũ:**
+> (a) "note rỗng 269.505/270.385, chỉ PILOT_004 có giá trị" **SAI** (đọc nhầm bảng đếm theo (DN,kỳ)).
+> Đúng: **2.445 dòng có ghi chú** = 1.565 `X` (HONG_AN 2021: 715 · 2022: 850) + 880 số (PILOT_004
+> 2025); 267.940 rỗng. (b) "kiểm tra thống nhất ĐVT cần bảng đồng nghĩa trước" **SAI** — **C3.3 ĐÃ
+> CÓ và đang chạy**, dùng `uom_canonical` (27) + `uom_aliases` (154) qua `uom.compare()`, catalog đề
+> án đánh ✅, và `resolve_canonical` tách được đơn vị ghép nên `Cái/Chiếc` · `Đôi/Cặp` resolve bình
+> thường. Nên **5.088 / 5.092 "mã lệch chuỗi" KHÔNG phải số phát hiện sai** — số thật là **140 phát
+> hiện C3.3**, trong đó 94 lệch canonical thật và **46 có đơn vị không resolve được** (`Lon/Can`
+> 1.720 dòng · `Phút vuông` 539 · `UNL` 277; tổng **25/73** chuỗi đơn vị không resolve). `compare()`
+> gộp "không biết" vào `DIFFERENT` → Nghiêm trọng. → **#115**.
+>
+> **SEAM ĐỂ TEST — đã chốt với owner, BA seam ĐỀU CÓ SẴN, không thêm seam mới:** (1) hàm
+> `parse_m15/m15a/m16/bcct(path)` → `provenance.evidence` + `column_map` (prior art `test_adapters.py`,
+> dựng file bằng `tests/excel_fixtures.py`); (2) route HTTP màn gán qua fixture `app_db` + TestClient
+> (prior art `tests/test_data_files/test_review_screen.py`); (3) `run_checks(...)` → `check_runs`
+> status/reason/remedy (prior art `test_not_evaluable.py`). **`tests/test_evidence_source.py` hiện
+> test THẤP HƠN seam đúng một bậc** (gọi thẳng `evidence_*` trên lưới ô) — đúng thứ #111 tái cấu
+> trúc → chuyển khẳng định lên seam hàm parse. Chuỗi "trường vắng" bắc qua hai seam → seed thẳng
+> `parse_detail` ở test seam 3, cộng **đúng một** test seam 2 đi trọn màn gán → nạp → chạy check.
+>
+> **CỐ Ý KHÔNG LÀM:** không viết code sản phẩm (ghi chú #110 chặn tới khi có ADR) · không nạp lại dữ
+> liệu đã có (tiến lên, không backfill — `run_checks` dựng lại `Finding` → `status`/`notes` cán bộ về
+> `new`) · không tách vé prefactor trước #111 (owner chốt để nguyên) · không khai ĐVT vào
+> `CHECK_COLUMNS` (C3.3 đã phụ trách).
+>
+> **BẪY MÔI TRƯỜNG:** các skill `to-spec` · `to-tickets` · `grill-with-docs` · `implement` · `triage`
+> · `wayfinder` khai `disable-model-invocation: true` → **AI không gọi được, người dùng phải tự gõ**;
+> chúng không xuất hiện trong danh sách skill của phiên nhưng vẫn nằm ở `~/.claude/skills/`. Đừng
+> lặng lẽ thay bằng primitive — hỏi owner. Khai cạnh chặn issue phải lấy `databaseId` qua GraphQL;
+> `gh api repos/.../issues/<n>` trả 404 với issue vừa tạo.
+
+
 > **(2026-08-07 — THIẾT KẾ LẠI LUỒNG TẢI LÊN → NẠP DỮ LIỆU. XONG TOÀN BỘ.
 > [PR #105](https://github.com/TinsuAI/audit-hq-mvp/pull/105) mở, chưa merge ·
 > [PR #96](https://github.com/TinsuAI/audit-hq-mvp/pull/96) tách riêng, deploy độc lập được):**
@@ -45,9 +121,9 @@
 > **ẢNH E2E:** 8 ảnh `.ai/features/2026-08-07-upload-ingest-redesign/` + 8 ảnh
 > `.ai/features/2026-08-07-luoi-cuon-xem-truoc/`, đều **dữ liệu bịa**, có `ui_smoke.py` sinh lại.
 >
-> **VIỆC CHO PHIÊN SAU — owner nêu 07/08, ưu tiên cao nhất:** **#110** thiết kế lại mô hình bằng
-> chứng + màn gán cột. **Cần `/grill-with-docs` TRƯỚC khi code** (mục 2 và 3 đổi mô hình miền —
-> khái niệm "trường bắt buộc mỗi biểu" chưa tồn tại). Ghi chú đầy đủ kèm số đo:
+> **~~VIỆC CHO PHIÊN SAU~~ — ĐÃ GRILL XONG 08/08, xem khối trên cùng.** **#110** thiết kế lại mô
+> hình bằng chứng + màn gán cột. Grill đã chạy → **ADR #28** + spec **#116** + vé **#111–#115**.
+> Đừng grill lại. Ghi chú gốc kèm số đo:
 > `.ai/notes/2026-08-07-mo-hinh-bang-chung-va-gan-cot.md`. Ba việc: rà bằng chứng cho CẢ BỐN slot
 > (m16 đọc/ghi 7 trường, chỉ 2 trường có bằng chứng) · cán bộ phải GÁN được trường ↔ cột chứ không
 > chỉ "xác nhận" · thiếu trường bắt buộc phải CẢNH BÁO. **#109** là một ca của nó (m16 đọc mã thành
