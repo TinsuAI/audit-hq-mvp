@@ -12,6 +12,7 @@ import pandas as pd
 from app.adapters._common import (
     ParseIssues,
     ParseProvenance,
+    column_choices,
     ensure_excel,
     formula_cell_result,
     normalize_code,
@@ -396,6 +397,7 @@ def parse_bcct(
                 "header_row": header_row,
                 "template_id": None,
                 "match_source": match_source_for(officer, None, evidence),
+                "column_choices": column_choices(cells, data_start),
             },
             evidence=evidence,
         ),

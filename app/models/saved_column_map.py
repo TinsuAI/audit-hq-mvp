@@ -40,6 +40,11 @@ class SavedColumnMap(Base):
     column_map: Mapped[str] = mapped_column(Text, nullable=False)
     # JSON: field → nguồn bằng chứng lúc xác nhận (header-matched/balance-checked/…).
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON list: trường cán bộ XÁC NHẬN không có trong file (#112). Lời của cán bộ,
+    # không phải suy đoán của máy — và là thứ cho cảnh báo "thiếu trường bắt buộc"
+    # một đường đóng thay vì nhắc mãi. Bất biến: giao với `column_map` luôn rỗng.
+    # NULL = chưa ai xác nhận vắng trường nào (đúng nguyên trạng của hàng cũ).
+    absent_fields: Mapped[str | None] = mapped_column(Text, nullable=True)
     confirmed_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True,
     )
@@ -59,6 +64,14 @@ class SavedColumnMap(Base):
             return json.loads(self.column_map) if self.column_map else {}
         except (ValueError, TypeError):
             return {}
+
+    @property
+    def absent_fields_obj(self) -> list[str]:
+        try:
+            value = json.loads(self.absent_fields) if self.absent_fields else []
+        except (ValueError, TypeError):
+            return []
+        return [f for f in value if isinstance(f, str)] if isinstance(value, list) else []
 
     @property
     def evidence_obj(self) -> dict[str, str]:

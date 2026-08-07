@@ -313,3 +313,55 @@ def ensure_excel(path: Path) -> Path:
     if not p.exists():
         raise FileNotFoundError(f"Excel file not found: {p}")
     return p
+
+
+# --- Ảnh chụp cột của file, lấy lúc parse (#112) ------------------------------
+# Màn gán cột phải cho cán bộ chọn theo TIÊU ĐỀ + MẪU GIÁ TRỊ chứ không phải đếm cột.
+# Chụp lúc parse thay vì đọc lại file lúc render: cùng `cells` và cùng `data_start`
+# mà parser đã dùng, nên thứ cán bộ chọn đúng là thứ parser đã đọc. Tiến lên, không
+# backfill — file nạp trước lát này không có khoá `column_choices`, màn gán rơi về ô
+# nhập chỉ số như cũ (ADR #28: file đã nạp giữ `parse_detail` cũ tới khi có người nạp lại).
+_CHOICE_HEADER_DEPTH = 6
+_CHOICE_MAX_COLS = 512      # trang rộng nhất đo được là 257 cột; chặn trên có biên
+_CHOICE_SAMPLES = 3
+_CHOICE_HEADER_CHARS = 80
+_CHOICE_SAMPLE_CHARS = 40
+_CHOICE_SCAN_ROWS = 40
+
+
+def _clip(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def column_choices(
+    cells: list[list[Any]], data_start: int, max_cols: int = _CHOICE_MAX_COLS,
+) -> list[dict[str, Any]]:
+    """`[{index, header, samples}]` cho mọi cột của trang tính.
+
+    Cắt ngắn tiêu đề lẫn mẫu: một ô "đơn vị tính" trong kho thật chứa nguyên khối chữ
+    ký chân biểu, và chuỗi đó không được kéo dài cả trang gán cột.
+    """
+    scan = cells[: data_start + _CHOICE_SCAN_ROWS]
+    width = min(max((len(r) for r in scan), default=0), max_cols)
+    out: list[dict[str, Any]] = []
+    for col in range(width):
+        parts: list[str] = []
+        for r in range(max(0, data_start - _CHOICE_HEADER_DEPTH), data_start):
+            if r < len(cells):
+                s = to_str(safe_get(cells[r], col))
+                if s:
+                    parts.append(s)
+        samples: list[str] = []
+        for raw in cells[data_start:data_start + _CHOICE_SCAN_ROWS]:
+            s = to_str(safe_get(raw, col))
+            if s:
+                samples.append(_clip(s, _CHOICE_SAMPLE_CHARS))
+            if len(samples) >= _CHOICE_SAMPLES:
+                break
+        out.append({
+            "index": col,
+            "header": _clip(" ".join(parts), _CHOICE_HEADER_CHARS),
+            "samples": samples,
+        })
+    return out

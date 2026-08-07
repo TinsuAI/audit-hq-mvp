@@ -27,7 +27,8 @@ from app.adapters.cell_window import (
     request_extract,
     sheet_names_for,
 )
-from app.adapters.declared_fields import FIELD_LABEL_VI
+from app.adapters.declared_fields import FIELD_LABEL_VI, label_of, row_key_fields
+from app.adapters.declared_fields import declared as declared_fields
 from app.adapters.templates import column_groups
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled
@@ -1403,7 +1404,7 @@ def documents_file_page(
         raise HTTPException(status_code=404, detail="File không còn trên đĩa")
 
     slug = company.slug or company.code
-    basis = file_read_basis(row)
+    basis = file_read_basis(row, _absent_fields_for(db, row))
     sheet_names = sheet_names_for(abs_path)
     selected_sheet = (
         sheet if sheet is not None
@@ -1600,6 +1601,39 @@ def _parse_column_answer(
     return cols
 
 
+def _absent_fields_for(db: Session, row: DataFile) -> list[str]:
+    """Trường cán bộ đã xác nhận vắng cho `(DN, slot, vân tay)` của chính file này."""
+    from app.pipeline.saved_map import load_column_map
+
+    sig = row.parse_detail_obj.get("form_signature")
+    if not sig:
+        return []
+    saved = load_column_map(db, row.company_id, row.slot, sig)
+    return saved.absent_fields_obj if saved is not None else []
+
+
+def _reject_missing_row_keys(
+    slot: str, groups: dict[str, list[int]], absent_fields: list[str],
+) -> None:
+    """Thiếu KHOÁ DÒNG → từ chối, vì không dựng nổi một dòng Tầng 1 nào.
+
+    Tách khỏi "bắt buộc theo biểu mà không phải khoá dòng" (`product_unit`,
+    `material_unit` của Mẫu 16): cái sau vẫn nhận file, chỉ cảnh báo và đánh dấu thiếu.
+    Hai hậu quả khác nhau nên hai đường khác nhau (ADR #28).
+    """
+    missing = sorted(
+        f for f in row_key_fields(slot)
+        if f in absent_fields or not groups.get(f)
+    )
+    if not missing:
+        return
+    labels = ", ".join(f"“{label_of(slot, f)}”" for f in missing)
+    raise ValueError(
+        f"Thiếu khoá dòng {labels}. Không có trường này thì không dựng được dòng dữ "
+        "liệu nào từ file — gán cột cho nó rồi xác nhận lại."
+    )
+
+
 def _reject_shared_columns(groups: dict[str, list[int]]) -> None:
     """Hai trường về cùng một cột thì map sai — từ chối thay vì nạp một cột cho hai chỗ."""
     owner: dict[int, str] = {}
@@ -1677,14 +1711,35 @@ async def documents_confirm_review(
     # theo bố cục của FILE chứ không theo hình dạng hiện tại của từng trường: đổi một
     # trường từ cột Tổng sang các cột con là bản sửa hợp lệ trên chính bố cục đó.
     allow_groups = row.parse_layout == "extended"
+    # Biểu mẫu đi theo TẬP TRƯỜNG KHAI, không theo map đang lưu: trường máy chưa đặt
+    # được cũng có dòng, và đó là đường gỡ duy nhất cho file bố cục lệch hẳn (#95).
+    # Trường ngoài khai còn sót trong map cũ vẫn giữ, không lặng lẽ đánh rơi.
+    declared_names = [f.name for f in declared_fields(slot)]
+    fields = declared_names + [f for f in base_groups if f not in declared_names]
+    absent_fields = sorted(
+        f for f in fields if (form.get(f"absent_{f}") or "").strip()
+    )
+    # Biểu mẫu theo TRƯỜNG luôn gửi một giá trị cho mọi trường (bộ chọn có sẵn mục
+    # “— chưa gán —”), nên ô trống ở đó là LỰA CHỌN bỏ gán. Biểu mẫu cũ chỉ gửi ô của
+    # trường cần soát, nên ô trống ở đó vẫn là “giữ đề xuất” — hai nghĩa khác nhau,
+    # và đoán nhầm thì hoặc đánh rơi cột hoặc không bao giờ bỏ gán được.
+    field_major = bool(form.get("_field_major"))
     groups: dict[str, list[int]] = {}
     try:
-        for field, default_cols in base_groups.items():
-            label = FIELD_LABEL_VI.get(field, field)
-            groups[field] = _parse_column_answer(
-                form.get(f"col_{field}"), default_cols, label, allow_groups,
+        for field in fields:
+            if field in absent_fields:
+                continue
+            label = label_of(slot, field)
+            fallback: list[int] = [] if field_major else base_groups.get(field, [])
+            cols = _parse_column_answer(
+                form.get(f"col_{field}"), fallback, label, allow_groups,
             )
+            # Rỗng = CHƯA GÁN. Không ghi khoá rỗng vào map: `column_groups` bỏ list rỗng
+            # nên khoá đó vừa vô nghĩa vừa làm bất biến "map ∩ vắng = ∅" báo giao giả.
+            if cols:
+                groups[field] = cols
         _reject_shared_columns(groups)
+        _reject_missing_row_keys(slot, groups, absent_fields)
     except ValueError as e:
         return _redirect("error=" + quote_plus(str(e)))
 
@@ -1696,7 +1751,10 @@ async def documents_confirm_review(
 
     # Cột đổi map so với map đã commit (base_map = map đang lưu ở parse_detail, đã sinh
     # ra dòng hiện tại). Chỉ có ý nghĩa khi file đã `parsed` → scoped re-run.
+    # Trường CHUYỂN sang "không có trong file" cũng là đổi: check đọc nó phải chạy lại,
+    # nếu không thì phát hiện cũ vẫn nói theo cột vừa bị gỡ.
     changed_fields = {f for f, cols in groups.items() if base_groups.get(f) != cols}
+    changed_fields |= {f for f in absent_fields if base_groups.get(f)}
 
     # Sổ quyết toán (book) — chỉ file settlement mang book; tờ khai luôn toàn pháp nhân.
     # Set NGAY trên row (cùng session) → commit dưới → run_ingest đọc data_files.book,
@@ -1726,6 +1784,7 @@ async def documents_confirm_review(
     save_column_map(
         db, company.id, slot, form_signature, column_map,
         evidence=evidence, confirmed_by=ur.id if ur else None,
+        absent_fields=absent_fields,
     )
     db.commit()
 

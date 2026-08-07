@@ -11,6 +11,7 @@ from app.adapters._common import (
     CompanyHeader,
     ParseIssues,
     ParseProvenance,
+    column_choices,
     count_external_workbooks,
     ensure_excel,
     normalize_code,
@@ -163,6 +164,7 @@ def parse_m15a(
                     },
                     "template_id": None,
                     "match_source": MATCH_OFFICER if officer else MATCH_EXTENDED,
+                    "column_choices": column_choices(cells, resolution.data_start),
                 },
                 evidence=evidence,
             ),
@@ -207,6 +209,7 @@ def parse_m15a(
         lambda: evidence_m15a_standard(cells, data_start, cand_colmap, cols=col),
         officer=officer,
     )
+    detail["column_choices"] = column_choices(cells, data_start)
     return M15aFile(
         header=header, rows=rows, source_file=str(p), sheet=sheet,
         issues=ParseIssues(

@@ -144,14 +144,29 @@
   </div>
   {% endif %}
 
+  {% if basis.missing_row_keys %}
+  <div class="card alert alert-danger" style="margin-bottom:var(--space-4)">
+    <strong>Thiếu khoá dòng: {{ basis.missing_row_keys | join(', ') }}.</strong>
+    Không có trường này thì không dựng được dòng dữ liệu nào từ file. Gán cột cho nó
+    rồi xác nhận — biểu mẫu sẽ từ chối nếu vẫn thiếu.
+  </div>
+  {% endif %}
+  {% if basis.missing_required %}
+  <div class="card alert alert-warning" style="margin-bottom:var(--space-4)">
+    <strong>Thiếu trường bắt buộc theo biểu: {{ basis.missing_required | join(', ') }}.</strong>
+    File vẫn nạp được, nhưng kỳ này sẽ mang dấu thiếu trường.
+  </div>
+  {% endif %}
+
   {% if basis.columns %}
   <div class="card" style="padding:0;overflow-x:auto">
     <table class="data-table">
       <thead>
         <tr>
-          <th>Cột dữ liệu</th>
+          <th>Trường của biểu</th>
           <th>Nguồn bằng chứng</th>
-          <th>Trạng thái</th>
+          <th>Trạng thái gán</th>
+          <th>Cổng review</th>
           <th>Kiểm tra đọc cột</th>
           <th>Cột trên file</th>
           <th>Chỉ số cột (đếm từ 0)</th>
@@ -160,17 +175,57 @@
       <tbody>
         {% for c in basis.columns %}
         <tr>
-          <td><strong>{{ c.label }}</strong></td>
+          <td>
+            <strong>{{ c.label }}</strong>
+            {% if c.row_key %}<span class="badge danger doc-file-badge" title="Thiếu trường này thì không dựng được dòng nào">khoá dòng</span>
+            {% elif c.required %}<span class="badge warning doc-file-badge" title="Biểu mẫu chính thức có cột này">bắt buộc</span>{% endif %}
+          </td>
           <td><span class="badge muted doc-file-badge">{{ c.evidence_label }}</span></td>
+          <td>
+            <span class="badge {{ 'muted' if c.is_absent else ('warning' if c.state == 'unassigned' else 'info') }} doc-file-badge">{{ c.state_label }}</span>
+          </td>
           <td>
             <span class="badge {{ 'warning' if c.needs_review else 'info' }} doc-file-badge">{{ c.review_label }}</span>
           </td>
           <td class="text-muted">{% if c.checks %}{{ c.checks|join(', ') }}{% else %}—{% endif %}</td>
           <td class="text-mono">{{ c.column_ref or '—' }}</td>
           <td>
-            {% if not c.columns %}
-            {# Có bằng chứng nhưng map không giữ vị trí — nêu ra, đừng mời sửa một ô
-               mà đường xác nhận không đọc. #}
+            {% if basis.can_confirm and basis.has_choices %}
+            <input type="hidden" name="_field_major" value="1">
+            {# Chọn theo TIÊU ĐỀ + MẪU GIÁ TRỊ, không phải đếm cột. `<select>` gốc chịu
+               được trang 257 cột mà không cần widget riêng, và không phụ thuộc lưới. #}
+            <select class="form-input" name="col_{{ c.field }}" style="max-width:320px"
+                    {% if c.is_absent %}disabled{% endif %}>
+              <option value="">— chưa gán —</option>
+              {% if not c.is_group and c.columns and c.columns[0] >= basis.choices | length %}
+              {# Map trỏ ra ngoài bề rộng file đã chụp — cột đó KHÔNG có trên trang tính.
+                 Nêu đúng như vậy thay vì hiện "chưa gán": trạng thái nói đã gán, và hai
+                 chỗ mâu thuẫn nhau thì cán bộ không biết tin chỗ nào. #}
+              <option value="{{ c.columns[0] }}" selected>
+                cột {{ c.columns[0] }} · không có trên trang tính này
+              </option>
+              {% endif %}
+              {% for ch in basis.choices %}
+              <option value="{{ ch.index }}" {% if not c.is_group and c.columns and c.columns[0] == ch.index %}selected{% endif %}>
+                cột {{ ch.index }}{% if ch.header %} · «{{ ch.header }}»{% endif %}{% if ch.samples %} · {{ ch.samples | join(' / ') }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+            {% if c.is_group %}
+            <input type="text" class="form-input mono-input review-idx" name="col_{{ c.field }}"
+                   value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*"
+                   style="max-width:120px">
+            <div class="form-hint">Trường này đọc bằng nhiều cột — ghi các chỉ số, ngăn bởi dấu phẩy.</div>
+            {% endif %}
+            {% if not c.row_key %}
+            <label class="form-hint" style="display:block;margin-top:var(--space-1)">
+              <input type="checkbox" name="absent_{{ c.field }}" value="1" {% if c.is_absent %}checked{% endif %}>
+              Không có trong file
+            </label>
+            {% endif %}
+            {% elif not c.columns %}
+            {# File nạp trước #112 không có ảnh chụp cột — không mời chọn thứ không có.
+               Nạp lại file là có bộ chọn (tiến lên, không backfill). #}
             <span class="text-muted">không có vị trí lưu</span>
             {% elif basis.can_confirm and c.needs_review and (c.is_group or basis.layout == 'extended') %}
             <input type="text" class="form-input mono-input review-idx" name="col_{{ c.field }}"
