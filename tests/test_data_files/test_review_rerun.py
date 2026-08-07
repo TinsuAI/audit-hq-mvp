@@ -176,8 +176,9 @@ def test_edit_column_reruns_only_affected(tmp_path):
             f"/companies/DN_RERUN/documents/file/{fid}/review", data=data, follow_redirects=False,
         )
         assert r.status_code == 303
-        # Re-confirm file đã `parsed` + cột đổi → enqueue re-run scoped → /jobs/{id}.
-        assert r.headers["location"].startswith("/jobs/")
+        # Re-confirm file đã `parsed` + cột đổi → enqueue re-run scoped; cán bộ ở lại
+        # dòng kỳ, tấm bảng trạng thái tự cập nhật ở đó (#89).
+        assert r.headers["location"].endswith("/documents#ky-2024")
         drain_jobs()
 
         with dbmod.SessionLocal() as db:
@@ -226,7 +227,7 @@ def test_edit_key_column_reruns_balance_check(tmp_path):
             f"/companies/DN_RERUN/documents/file/{fid}/review", data=data, follow_redirects=False,
         )
         assert r.status_code == 303
-        assert r.headers["location"].startswith("/jobs/")
+        assert r.headers["location"].endswith("/documents#ky-2024")
         drain_jobs()
 
         with dbmod.SessionLocal() as db:

@@ -150,7 +150,7 @@ def test_verified_upload_auto_advances_to_parsed(tmp_path):
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert r.headers["location"].startswith("/jobs/")
+        assert r.headers["location"].endswith("/documents#ky-2024")
         drain_jobs()
         # Tự advance → job kết luận đã nạp, KHÔNG dừng chờ xác nhận.
         assert last_job_result("ingest")["status"] == "ok"

@@ -234,7 +234,7 @@ def test_unreadable_file_still_offers_the_sheet_picker(tmp_path):
         r = client.post(f"/companies/DN_SHEET/documents/file/{fid}/review",
                         data={"sheet": "Dữ liệu"}, follow_redirects=False)
         assert r.status_code == 303
-        assert r.headers["location"].startswith("/jobs/")
+        assert r.headers["location"].endswith("/documents#ky-2024")
         drain_jobs()
 
         with dbmod.SessionLocal() as db:

@@ -67,7 +67,8 @@ def test_upload_request_only_queues_a_job(app_db: AppDb):
     r = _upload(client, m15_xlsx_bytes())
 
     assert r.status_code == 303
-    assert r.headers["location"].startswith("/jobs/")
+    # Cán bộ ở lại màn dữ liệu, đúng dòng kỳ vừa xếp lượt nạp (#89).
+    assert r.headers["location"].endswith("/documents#ky-2024")
 
     with app_db.SessionLocal() as db:
         c = db.query(Company).filter_by(code="DN_JOB").first()
@@ -117,18 +118,39 @@ def test_unreadable_file_reports_diagnosis_on_the_job(app_db: AppDb):
         assert db.query(NvlBalance).filter_by(company_id=c.id).count() == 0
 
 
-def test_job_page_renders_the_diagnosis(app_db: AppDb):
-    """Chẩn đoán phải ĐỌC ĐƯỢC trên trang công việc — trước đây nó nằm ở trang 422."""
+def test_period_row_shows_the_queued_state_and_starts_polling(app_db: AppDb):
+    """Bấm nạp xong, dòng kỳ nói ĐANG CHỜ và tự hỏi lại.
+
+    `TestClient(app)` không vào context manager nên không có worker — job đứng ở
+    `queued`, đúng trạng thái cần nhìn thấy.
+    """
     client = _client(app_db)
-    r = _upload(client, _not_m15_bytes())
-    job_url = r.headers["location"]
+    _upload(client, m15_xlsx_bytes())
+
+    html = client.get("/companies/DN_JOB/documents").text
+    assert "Đang chờ trong hàng đợi" in html
+    assert 'data-ingest-active="1"' in html
+    assert "/static/ingest-poll.js" in html
+
+
+def test_period_row_renders_the_diagnosis(app_db: AppDb):
+    """Chẩn đoán đọc được NGAY TẠI DÒNG KỲ, cạnh nút xử lý (#89).
+
+    Trước đây nó nằm ở trang 422, rồi ở trang công việc — cả hai đều bắt cán bộ
+    rời màn dữ liệu để đọc một câu về chính kỳ họ đang làm.
+    """
+    client = _client(app_db)
+    _upload(client, _not_m15_bytes())
     drain_jobs()
 
-    html = client.get(job_url).text
-    assert "Dữ liệu chưa nạp được" in html
+    html = client.get("/companies/DN_JOB/documents").text
+    assert "hệ thống đọc không ra file" in html
     assert "không chọn được sheet đúng biểu" in html   # tiêu đề chẩn đoán cụ thể
-    assert "Nhờ AI chẩn đoán" in html      # lối thoát AI vẫn tới được
-    assert "/companies/DN_JOB/documents" in html
+    with app_db.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_JOB").first()
+        fid = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first().id
+    # Nút chọn trang tính nằm ngay đó, không phải một câu bảo sang trang khác.
+    assert f"/documents/file/{fid}/review" in html
 
 
 def test_gate_stops_before_writing_rows(app_db: AppDb):
@@ -159,7 +181,7 @@ def test_reingest_button_does_not_stop_at_the_gate(app_db: AppDb):
         "/companies/DN_JOB/documents/ingest", data={"year": "2024"}, follow_redirects=False,
     )
     assert r.status_code == 303
-    assert r.headers["location"].startswith("/jobs/")
+    assert r.headers["location"].endswith("/documents#ky-2024")
     with app_db.SessionLocal() as db:
         job = db.query(Job).order_by(Job.id.desc()).first()
         assert job.payload["gate"] is False
