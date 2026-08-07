@@ -22,7 +22,7 @@ from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.models.job import Job
 from app.pipeline.data_files import year_review_gate
 from app.pipeline.saved_map import load_column_map
-from tests.helpers import XLSX_MIME, drain_jobs, last_job_result
+from tests.helpers import drain_jobs, last_job_result, upload_and_ingest
 
 # Bố cục mở rộng như 004: cột `Mã kế toán` chèn ở c1, `Nhập` tách thành `(6a)(6b)`
 # và KHÔNG có cột Tổng — trường `import_qty` chỉ đọc được bằng TỔNG hai cột con.
@@ -68,11 +68,8 @@ def _company(app_db) -> None:
 
 
 def _upload(client: TestClient, split_output: bool = False) -> None:
-    r = client.post(
-        "/companies/DN_EXT/upload",
-        data={"year": "2024"},
-        files={"m15": ("Mau15_NVL.xlsx", _extended_m15_bytes(split_output), XLSX_MIME)},
-        follow_redirects=False,
+    r = upload_and_ingest(
+        client, "DN_EXT", "Mau15_NVL.xlsx", _extended_m15_bytes(split_output)
     )
     assert r.status_code == 303
     drain_jobs()
@@ -273,12 +270,7 @@ def test_standard_layout_rejects_a_multi_column_answer(app_db):
         "STT", "Mã NVL", "Tên NVL", "Đơn vị tính", "Tồn đầu kỳ", "Nhập trong kỳ",
         "Tái xuất", "Chuyển mục đích sử dụng", "Cột 8", "Xuất khác", "Tồn cuối kỳ",
     ]
-    r = client.post(
-        "/companies/DN_STD/upload",
-        data={"year": "2024"},
-        files={"m15": ("Mau15_NVL.xlsx", m15_xlsx_bytes(header), XLSX_MIME)},
-        follow_redirects=False,
-    )
+    r = upload_and_ingest(client, "DN_STD", "Mau15_NVL.xlsx", m15_xlsx_bytes(header))
     assert r.status_code == 303
     drain_jobs()
 

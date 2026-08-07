@@ -19,7 +19,6 @@
   </div>
   <div class="btn-group">
     <a href="/companies/{{ company.slug or company.code }}" class="btn btn-secondary">← Về trang doanh nghiệp</a>
-    <a href="/companies/{{ company.slug or company.code }}/upload" class="btn btn-secondary">Tải lên nhiều file</a>
   </div>
 </div>
 
@@ -145,21 +144,62 @@
   </details>
   {% endif %}
 
+  {# Ô thả file của kỳ (#88): một ô nhận MỌI file. Thuộc tính `multiple` là bắt buộc —
+     thiếu nó thì trình duyệt chỉ gửi một file và mọi sửa đổi phía máy chủ thành vô ích. #}
+  <form method="post" action="{{ p.upload_url }}" enctype="multipart/form-data" class="ds-drop" id="tha-{{ p.year }}">
+    <input type="hidden" name="year" value="{{ p.year }}">
+    <label class="ds-drop-zone" for="tha-file-{{ p.year }}">
+      <span class="ds-drop-title">Thả cả bộ file của kỳ {{ p.year }} vào đây</span>
+      <span class="ds-drop-hint text-muted">
+        Chọn được nhiều file cùng lúc. Hệ thống gợi ý loại cho từng file và nêu căn cứ;
+        cán bộ sửa lại trước khi nạp. Định dạng <code>.xls</code> / <code>.xlsx</code>.
+      </span>
+      <span class="ds-drop-chosen" hidden></span>
+      <input type="file" id="tha-file-{{ p.year }}" name="files" accept=".xls,.xlsx" multiple class="ds-drop-input">
+    </label>
+    <div class="ds-drop-actions">
+      <button type="submit" class="btn btn-sm btn-primary">Tải lên</button>
+    </div>
+  </form>
+
+  {% if p.pending %}
+  <div class="ds-part ds-pending">
+    <h3 class="ds-part-title">Chờ cán bộ chọn loại <span class="badge muted">{{ p.pending|length }}</span></h3>
+    <p class="ds-part-hint text-muted">
+      Tên file không suy được loại — file quá nặng để mở ra dò, hoặc đã mở mà không khớp
+      biểu quyết toán nào. Chọn loại thì file mới vào hệ thống.
+    </p>
+    <ul class="ds-file-list">
+      {% for w in p.pending %}
+      <li class="ds-file ds-file-flagged">
+        <div class="ds-file-main">
+          <span class="ds-file-name">{{ w.name }}</span>
+          <span class="ds-file-size text-muted mono">{{ human_size(w.size_bytes) }}</span>
+        </div>
+        <form method="post" action="{{ p.type_url }}" class="ds-file-assign">
+          <input type="hidden" name="year" value="{{ p.year }}">
+          <input type="hidden" name="path" value="{{ w.rel_path }}">
+          <select name="slot" class="form-select form-select-sm" aria-label="Loại tài liệu">
+            {% for slot in SLOT_ORDER %}<option value="{{ slot }}">{{ SLOT_LABEL_VI[slot].split(' — ')[0] }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="btn btn-sm btn-primary">Đặt loại</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if p.ingest_locked %}
+  <p class="ds-lock" role="alert">{{ p.ingest_lock_message }}</p>
+  {% endif %}
+
   <div class="ds-period-actions">
-    <form method="post" action="{{ p.upload_url }}" enctype="multipart/form-data" class="ds-upload">
-      <input type="hidden" name="year" value="{{ p.year }}">
-      <select name="slot" class="form-select ds-upload-slot">
-        {% for slot in SLOT_ORDER %}<option value="{{ slot }}">{{ SLOT_LABEL_VI[slot].split(' — ')[0] }}</option>{% endfor %}
-      </select>
-      <label class="btn btn-sm btn-secondary ds-upload-pick">
-        Tải file lên
-        <input type="file" name="file" accept=".xls,.xlsx" class="ds-upload-input" onchange="this.form.submit()">
-      </label>
-    </form>
     <form method="post" action="{{ p.ingest_url }}">
       <input type="hidden" name="year" value="{{ p.year }}">
-      <button type="submit" class="btn btn-sm {% if p.has_files and not p.has_data %}btn-primary{% else %}btn-secondary{% endif %}"
-              {% if not p.has_files %}disabled title="Chưa có file để nạp"{% endif %}>Nạp dữ liệu</button>
+      <button type="submit" class="btn btn-sm {% if p.has_files and not p.has_data and not p.ingest_locked %}btn-primary{% else %}btn-secondary{% endif %}"
+              {% if not p.has_files %}disabled title="Chưa có file để nạp"
+              {% elif p.ingest_locked %}disabled title="{{ p.ingest_lock_message }}"{% endif %}>Nạp dữ liệu</button>
     </form>
     <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks">
       <input type="hidden" name="year" value="{{ p.year }}">
@@ -215,6 +255,38 @@
           {% for note in f.notes %}<p class="ds-file-note">{{ note }}</p>{% endfor %}
         </div>
         {% endif %}
+        <div class="ds-file-assigns">
+          {# Gợi ý loại kèm CĂN CỨ. "Nhận ra" chỉ dành cho file đã mở và khớp bố cục;
+             khớp tên là gợi ý, vì tên do người gõ. #}
+          <form method="post" action="{{ p.type_url }}" class="ds-file-assign">
+            <input type="hidden" name="year" value="{{ p.year }}">
+            <input type="hidden" name="path" value="{{ f.rel_path }}">
+            <label class="ds-assign-label">Loại
+              <select name="slot" class="form-select form-select-sm">
+                {% for slot in SLOT_ORDER %}
+                <option value="{{ slot }}"{% if slot in f.slots %} selected{% endif %}>{{ SLOT_LABEL_VI[slot].split(' — ')[0] }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            {% if f.basis_label %}<span class="ds-assign-basis text-muted">{{ f.basis_label }}</span>{% endif %}
+            <button type="submit" class="btn btn-sm btn-secondary">Đổi loại</button>
+          </form>
+          {% if p.multi_book and f.is_settlement %}
+          <form method="post" action="{{ p.book_url }}" class="ds-file-assign">
+            <input type="hidden" name="year" value="{{ p.year }}">
+            <input type="hidden" name="path" value="{{ f.rel_path }}">
+            <label class="ds-assign-label">Sổ quyết toán
+              <select name="book" class="form-select form-select-sm">
+                <option value="">— chưa gán —</option>
+                {% for b in p.book_options %}
+                <option value="{{ b }}"{% if f.book == b %} selected{% endif %}>{{ book_label(b) }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit" class="btn btn-sm {% if not f.book %}btn-primary{% else %}btn-secondary{% endif %}">Gán sổ</button>
+          </form>
+          {% endif %}
+        </div>
         <div class="ds-file-actions">
           <a href="{{ f.open_url }}" class="btn btn-sm btn-secondary">Mở</a>
           <a href="{{ f.download_url }}" class="btn btn-sm btn-secondary">Tải xuống</a>
@@ -271,5 +343,36 @@
 
 </section>
 {% endfor %}
+
+<script>
+// Ô thả file (#88): kéo thả và hiện tên file đã chọn. Không phân loại ở đây — việc
+// gán loại chạy phía máy chủ, viết lại logic bằng JS là dựng đường thứ hai lệch được.
+(function () {
+  document.querySelectorAll('.ds-drop').forEach(function (form) {
+    var zone = form.querySelector('.ds-drop-zone');
+    var input = form.querySelector('.ds-drop-input');
+    var chosen = form.querySelector('.ds-drop-chosen');
+    function show() {
+      var n = input.files ? input.files.length : 0;
+      if (!n) { chosen.hidden = true; zone.classList.remove('has-file'); return; }
+      chosen.textContent = n + ' file: ' + Array.prototype.map.call(
+        input.files, function (f) { return f.name; }).join(', ');
+      chosen.hidden = false;
+      zone.classList.add('has-file');
+    }
+    input.addEventListener('change', show);
+    zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', function () { zone.classList.remove('dragover'); });
+    zone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        input.files = e.dataTransfer.files;
+        show();
+      }
+    });
+  });
+})();
+</script>
 
 {% endblock %}

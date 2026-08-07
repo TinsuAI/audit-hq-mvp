@@ -24,20 +24,26 @@ Ngược lại, một workbook đăng ký cho ba biểu là ba bản ghi cùng `
 lại thành một dòng file mang ba nhãn.
 
 Phạm vi vé: khung màn + dòng kỳ + phép đếm + danh sách vướng mắc + phần mở rộng dòng
-kỳ. Ô thả file là #88, phản hồi nạp tại chỗ là #89, trang riêng của file là #92 — toàn
-bộ căn cứ đọc (bằng chứng từng cột, bố cục, vân tay biểu, họ biểu) thuộc về trang đó,
-không thuộc dòng file ở đây (ADR #24 sửa ADR #18).
+kỳ. Phản hồi nạp tại chỗ là #89, trang riêng của file là #92 — toàn bộ căn cứ đọc
+(bằng chứng từng cột, bố cục, vân tay biểu, họ biểu) thuộc về trang đó, không thuộc
+dòng file ở đây (ADR #24 sửa ADR #18).
+
+**Ô thả file (#88)** thêm vào dòng kỳ: gợi ý loại kèm CĂN CỨ cho từng file, ô chọn
+loại, ô chọn sổ cho file quyết toán, và cờ khoá nút nạp. Cờ khoá đến từ `book_lock` —
+cùng hàm mà handler nạp gọi, để nút hiện một đằng máy chủ làm một nẻo là không thể.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.evidence import NEEDS_REVIEW
+from app.books import book_lock
 from app.checks.not_evaluable import (
     REMEDY_NEED_FILE_THIS_PERIOD,
     REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION,
@@ -59,7 +65,18 @@ from app.models import (
     NvlBalance,
     SpBalance,
 )
-from app.models.data_file import SLOT_LABEL_VI, SLOT_ORDER, DataFileStatus
+from app.models.data_file import (
+    SETTLEMENT_SLOTS,
+    SLOT_LABEL_VI,
+    SLOT_ORDER,
+    DataFileStatus,
+)
+from app.pipeline.file_intake import (
+    BASIS_LABEL_VI,
+    PendingUpload,
+    pending_uploads,
+    pending_years,
+)
 from app.pipeline.period import YEAR_MAX, YEAR_MIN
 from app.pipeline.readiness import (
     BLOCKER_CHECK,
@@ -75,6 +92,7 @@ from app.pipeline.readiness import (
     period_readiness,
 )
 from app.pipeline.staleness import results_stale
+from app.settings import settings
 
 # --- Hành động gỡ một vướng mắc --------------------------------------------------
 
@@ -250,11 +268,26 @@ class PeriodFile:
     open_url: str
     download_url: str
     delete_url: str
+    #: Đường dẫn tương đối — khoá của ô chọn loại và ô chọn sổ (#88).
+    rel_path: str = ""
+    #: Loại này được gán bằng gì: chỉ khớp tên · đã mở file · cán bộ chọn.
+    slot_basis: str | None = None
+    #: Sổ quyết toán của file quyết toán; None = chưa gán (hoặc pháp nhân một sổ).
+    book: str | None = None
 
     @property
     def plain(self) -> bool:
         """Không có gì có hệ quả — dòng chỉ còn tên, kích thước, các loại nó phục vụ."""
         return not (self.needs_column_review or self.unreadable or self.notes)
+
+    @property
+    def is_settlement(self) -> bool:
+        """File quyết toán mang sổ; tờ khai luôn toàn pháp nhân."""
+        return any(s in SETTLEMENT_SLOTS for s in self.slots)
+
+    @property
+    def basis_label(self) -> str:
+        return BASIS_LABEL_VI.get(self.slot_basis or "", "")
 
 
 @dataclass(frozen=True)
@@ -290,6 +323,16 @@ class PeriodRow:
     window_url: str
     ingest_url: str
     upload_url: str
+    #: File đã tải lên nhưng hệ thống chưa suy được loại — cán bộ tự chọn (#88).
+    pending: tuple[PendingUpload, ...] = ()
+    #: Mã sổ dựng ô chọn sổ; rỗng hoặc một mã = pháp nhân một sổ, không hiện ô.
+    book_options: tuple[str, ...] = ()
+    multi_book: bool = False
+    #: Còn file quyết toán chưa gán sổ — nút nạp khoá, kèm câu nêu rõ file nào.
+    ingest_locked: bool = False
+    ingest_lock_message: str = ""
+    type_url: str = ""
+    book_url: str = ""
 
     @property
     def ready(self) -> bool:
@@ -603,6 +646,11 @@ def _period_files(files: list[DataFile], slug: str) -> tuple[PeriodFile, ...]:
             open_url=f"{base}/preview",
             download_url=f"{base}/download",
             delete_url=f"{base}/delete",
+            rel_path=rows[0].stored_path,
+            # Căn cứ gán loại đóng dấu cho cả nhóm đăng ký của một workbook; lấy
+            # giá trị đầu tiên có, để dòng file không nói hai câu khác nhau.
+            slot_basis=next((f.slot_basis for f in rows if f.slot_basis), None),
+            book=next((f.book for f in rows if f.book), None),
         ))
 
     entries.sort(key=lambda e: (_slot_rank(e.slots[0]), e.name))
@@ -622,8 +670,10 @@ def _period_row(
     windows: dict[int, CompanyPeriod],
     scores: dict[int, CompanyYearScore],
     finding_years: set[int],
+    raw_root: Path,
 ) -> PeriodRow:
     readiness = period_readiness(session, company.id, year)
+    lock = book_lock(session, company.id, year)
     findings_url = f"/companies/{slug}?year={year}"
     window_from, window_to = effective_window(session, company.id, year)
     stored = windows.get(year)
@@ -652,12 +702,25 @@ def _period_row(
         findings_url=findings_url,
         window_url=f"/companies/{slug}/documents/period",
         ingest_url=f"/companies/{slug}/documents/ingest",
-        upload_url=f"/companies/{slug}/documents/upload",
+        # Ô thả file của kỳ — nhận MỌI file, hệ thống gợi ý loại (#88). Khác
+        # `documents/upload`, vốn là nút tải lên một loại đã biết ở dòng vướng mắc.
+        upload_url=f"/companies/{slug}/upload",
+        pending=pending_uploads(raw_root, company.code, year),
+        book_options=lock.options,
+        multi_book=lock.multi_book,
+        ingest_locked=lock.locked,
+        ingest_lock_message=lock.message,
+        type_url=f"/companies/{slug}/documents/file-type",
+        book_url=f"/companies/{slug}/documents/file-book",
     )
 
 
 def build_data_screen(
-    session: Session, company: Company, *, add: int | None = None
+    session: Session,
+    company: Company,
+    *,
+    add: int | None = None,
+    raw_root: Path | None = None,
 ) -> DataScreen:
     """Ngữ cảnh màn dữ liệu của một doanh nghiệp — mọi kỳ, mới nhất trước.
 
@@ -665,6 +728,7 @@ def build_data_screen(
     thêm: dựng thành dòng trống để có chỗ tải file lên, kể cả khi kỳ đó chưa có gì.
     """
     slug = company.slug or company.code
+    root = Path(raw_root or settings.raw_data_path)
 
     files_by_year = _files_by_year(session, company.id)
     file_years = set(files_by_year)
@@ -687,7 +751,10 @@ def build_data_screen(
         ).all()
     }
 
-    years = file_years | data_years | finding_years | set(scores) | set(windows)
+    years = (
+        file_years | data_years | finding_years | set(scores) | set(windows)
+        | pending_years(root, company.code)
+    )
     if add is not None and YEAR_MIN <= add <= YEAR_MAX:
         years.add(add)
     ordered = sorted(years, reverse=True)
@@ -703,6 +770,7 @@ def build_data_screen(
             windows=windows,
             scores=scores,
             finding_years=finding_years,
+            raw_root=root,
         )
         for year in ordered
     )

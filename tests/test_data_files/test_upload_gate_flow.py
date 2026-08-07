@@ -24,7 +24,7 @@ from app.pipeline.data_files import _evidence_columns
 from app.pipeline.data_screen import ACTION_OPEN_FILE, build_data_screen
 from app.pipeline.readiness import BLOCKER_FILE
 from app.settings import settings
-from tests.helpers import drain_jobs, last_job_result
+from tests.helpers import drain_jobs, last_job_result, upload_and_ingest
 
 # Header bố cục chuẩn Mẫu 15 (cột đúng vị trí BALANCE_EXPECT: mã=1, tồn đầu=4,
 # nhập=5, xuất SX=8, tồn cuối=10) → mọi cột khớp tiêu đề → verified.
@@ -142,13 +142,7 @@ def test_verified_upload_auto_advances_to_parsed(tmp_path):
     try:
         client = TestClient(app)
         _login(client)
-        r = client.post(
-            "/companies/DN_GATE/upload",
-            data={"year": "2024"},
-            files={"m15": ("Mau15_NVL.xlsx", _clean_m15_bytes(),
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-            follow_redirects=False,
-        )
+        r = upload_and_ingest(client, "DN_GATE", "Mau15_NVL.xlsx", _clean_m15_bytes())
         assert r.status_code == 303
         assert r.headers["location"].startswith("/jobs/")
         drain_jobs()

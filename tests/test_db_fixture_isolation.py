@@ -20,7 +20,7 @@ from sqlalchemy.engine import Engine
 from app.main import app
 from app.models import Company, NvlBalance
 from tests.conftest import AppDb
-from tests.helpers import XLSX_MIME, drain_jobs, last_job_result, m15_xlsx_bytes
+from tests.helpers import drain_jobs, last_job_result, m15_xlsx_bytes, upload_and_ingest
 
 _COMPANY_CODE = "DN_FIXTURE_GUARD"
 
@@ -51,12 +51,7 @@ def test_ingest_through_the_queue_stays_in_the_fixture_db(app_db: AppDb, default
 
     client = TestClient(app)
     client.post("/login", data={"user": "admin", "password": "admin"}, follow_redirects=False)
-    r = client.post(
-        f"/companies/{_COMPANY_CODE}/upload",
-        data={"year": "2024"},
-        files={"m15": ("Mau15_NVL.xlsx", m15_xlsx_bytes(), XLSX_MIME)},
-        follow_redirects=False,
-    )
+    r = upload_and_ingest(client, _COMPANY_CODE, "Mau15_NVL.xlsx", m15_xlsx_bytes())
     assert r.status_code == 303
     assert drain_jobs() > 0, "phải có job chạy — không chạy thì test này không chứng minh gì"
 

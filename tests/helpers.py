@@ -36,6 +36,28 @@ def m15_xlsx_bytes(header: list[str] = M15_HEADER, rows: int = 3) -> bytes:
     return buf.getvalue()
 
 
+def upload_and_ingest(
+    client, code: str, name: str, content: bytes, year: int = 2024, mime: str = XLSX_MIME
+):
+    """Đường nạp qua web sau #88: thả file vào ô thả, RỒI bấm nút nạp.
+
+    Ô thả không xếp việc nạp — cán bộ còn phải sửa loại và gán sổ trước. Trả phản hồi
+    của bước nạp (303 về trang công việc), người gọi tự `drain_jobs()`.
+    """
+    r = client.post(
+        f"/companies/{code}/upload",
+        data={"year": str(year)},
+        files=[("files", (name, content, mime))],
+        follow_redirects=False,
+    )
+    assert r.status_code == 303, r.text
+    return client.post(
+        f"/companies/{code}/documents/ingest",
+        data={"year": str(year)},
+        follow_redirects=False,
+    )
+
+
 def drain_jobs(max_rounds: int = 5) -> int:
     """Chạy hết job đang `queued`, kể cả job do job khác xếp thêm. Trả số job đã chạy.
 

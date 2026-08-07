@@ -63,6 +63,10 @@ class DataFile(Base):
     )
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
     slot: Mapped[str] = mapped_column(String(8), nullable=False)
+    # Căn cứ của việc gán loại (#88): 'name' = chỉ khớp tên file, chưa mở file ·
+    # 'content' = đã mở file và khớp bố cục · 'officer' = cán bộ chọn. NULL = file
+    # đồng bộ từ đĩa ngoài luồng tải lên. Xem `app.pipeline.file_intake`.
+    slot_basis: Mapped[str | None] = mapped_column(String(16), nullable=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     # Đường dẫn TƯƠNG ĐỐI tới settings.raw_data_path (không lưu path tuyệt đối máy).
     stored_path: Mapped[str] = mapped_column(String(500), nullable=False)
