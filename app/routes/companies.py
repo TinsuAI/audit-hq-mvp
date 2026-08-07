@@ -1471,15 +1471,19 @@ def documents_review_file(
     )
 
 
-def _parse_column_answer(raw: str | None, default: list[int], label: str) -> list[int]:
+def _parse_column_answer(
+    raw: str | None, default: list[int], label: str, allow_groups: bool = False,
+) -> list[int]:
     """Chỉ số cột cán bộ nhập cho MỘT trường: `"8"` hoặc `"5,6"` (nhóm cột con).
 
     Ô trống = giữ vị trí đề xuất. Ô sai định dạng thì ném ``ValueError`` kèm câu nói
     cho cán bộ — không đoán, cũng không lặng lẽ giữ giá trị cũ.
 
-    Nhiều cột CHỈ hợp lệ khi vị trí đề xuất đã là nhóm, tức file có bố cục mở rộng và
-    trường này vốn đọc bằng tổng nhiều cột con. Ở bố cục chuẩn adapter đọc đúng một ô
-    mỗi trường, nhận "5,6" ở đó là hứa một việc hệ thống không làm (#95).
+    ``allow_groups`` theo BỐ CỤC CỦA FILE, không theo hình dạng hiện tại của trường:
+    ở bố cục mở rộng một trường đang đọc một cột (cột Tổng `(6)`) hoàn toàn có thể
+    phải đổi sang nhóm cột con `(6a)+(6b)`, và đó là bản sửa hợp lệ — đẳng thức của
+    biểu vẫn là cổng cuối. Ở bố cục chuẩn adapter đọc đúng một ô mỗi trường, nhận
+    "5,6" ở đó là hứa một việc hệ thống không làm (#95).
     """
     text = (raw or "").strip()
     if not text:
@@ -1499,9 +1503,10 @@ def _parse_column_answer(raw: str | None, default: list[int], label: str) -> lis
         cols.append(idx)
     if not cols:
         return list(default)
-    if len(cols) > 1 and len(default) <= 1:
+    if len(cols) > 1 and not allow_groups:
         raise ValueError(
-            f"{label}: trường này đọc bằng đúng một cột, không nhận nhiều cột."
+            f"{label}: bố cục file này đọc mỗi trường bằng đúng một cột, "
+            "không nhận nhiều cột."
         )
     return cols
 
@@ -1578,11 +1583,17 @@ async def documents_confirm_review(
     # giữ giá trị đề xuất để map không khuyết cột; ô SAI thì từ chối cả biểu mẫu thay vì
     # lặng lẽ giữ giá trị cũ — cán bộ vừa gõ một thứ và cần biết nó không dùng được.
     base_groups = column_groups(base_map)
+    # Nhóm cột chỉ có nghĩa ở bố cục MỞ RỘNG (một trường = tổng nhiều cột con). Xét
+    # theo bố cục của FILE chứ không theo hình dạng hiện tại của từng trường: đổi một
+    # trường từ cột Tổng sang các cột con là bản sửa hợp lệ trên chính bố cục đó.
+    allow_groups = row.parse_layout == "extended"
     groups: dict[str, list[int]] = {}
     try:
         for field, default_cols in base_groups.items():
             label = FIELD_LABEL_VI.get(field, field)
-            groups[field] = _parse_column_answer(form.get(f"col_{field}"), default_cols, label)
+            groups[field] = _parse_column_answer(
+                form.get(f"col_{field}"), default_cols, label, allow_groups,
+            )
         _reject_shared_columns(groups)
     except ValueError as e:
         return _redirect("error=" + quote_plus(str(e)))

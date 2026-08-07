@@ -191,11 +191,11 @@
           </td>
           <td class="text-muted">{% if c.checks %}{{ c.checks|join(', ') }}{% else %}—{% endif %}</td>
           <td>
-            {% if needs and c.col_group %}
+            {% if needs and (c.col_group or file.parse_layout == 'extended') %}
             <input type="text" class="form-input mono-input review-idx" name="col_{{ c.field }}"
                    value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*"
                    style="max-width:120px">
-            <div class="form-hint">Trường này cộng nhiều cột — ngăn bởi dấu phẩy.</div>
+            <div class="form-hint">Đọc bằng nhiều cột thì ghi các chỉ số, ngăn bởi dấu phẩy.</div>
             {% elif needs %}
             <input type="number" class="form-input mono-input review-idx" name="col_{{ c.field }}"
                    value="{{ c.col_value }}" min="0" step="1"
