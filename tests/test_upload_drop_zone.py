@@ -435,7 +435,10 @@ def test_tagging_every_settlement_file_releases_the_ingest(app_db: AppDb):
         data={"year": str(_YEAR)},
         follow_redirects=False,
     )
-    assert r.headers["location"].startswith("/jobs/")
+    # Bất biến của test này là "gán đủ sổ thì lượt nạp ĐƯỢC XẾP", không phải đích
+    # chuyển hướng: #89 bỏ việc sang `/jobs/{id}` để kết quả hiện tại chỗ ở dòng kỳ.
+    assert r.status_code == 303
+    assert r.headers["location"].endswith(f"/documents#ky-{_YEAR}")
     assert len(_jobs(app_db)) == 1
 
 
