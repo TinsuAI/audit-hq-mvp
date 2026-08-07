@@ -397,6 +397,31 @@ def test_chained_check_run_finished_lets_the_row_reload(app_db: AppDb, world: di
     assert st.reload_url is not None
 
 
+def test_orphaned_chained_check_run_also_falls_back(app_db: AppDb, world: dict):
+    """Ngưỡng job mồ côi phải áp cho job đang được BÁO CÁO, không riêng job nạp.
+
+    Tiến trình chết giữa lượt chạy kiểm tra nối tiếp cũng để lại bản ghi `running`
+    vĩnh viễn — nếu nhánh này không có đường lùi thì dòng kỳ quay vòng mãi mãi ở
+    câu "đang chạy kiểm tra", lần tải trang nào cũng vậy.
+    """
+    stale = _now() - timedelta(hours=2)
+    with app_db.SessionLocal() as db:
+        follow = _job(
+            db, world, kind=JobKind.RUN_CHECKS, status=JobStatus.RUNNING,
+            created_at=stale, started_at=stale,
+        )
+        _job(
+            db, world, status=JobStatus.DONE,
+            result={"status": "ok", "note": "Đã nạp dữ liệu.", "checks_job_id": follow.id},
+        )
+        st = _status(db, world)
+
+    assert st.active is False
+    assert st.reload_url is None
+    assert st.visible is True
+    assert "dừng giữa chừng" in st.title
+
+
 def test_chained_check_run_failure_is_reported_not_swallowed(app_db: AppDb, world: dict):
     with app_db.SessionLocal() as db:
         follow = _job(

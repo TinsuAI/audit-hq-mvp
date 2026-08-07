@@ -180,6 +180,15 @@ def _retry_action(slug: str, year: int, label: str = "Nạp lại dữ liệu") 
     )
 
 
+def _is_orphaned(job: Job) -> bool:
+    """Bản ghi kẹt ở `running`: tiến trình chết giữa chừng, mà việc thu hồi job treo
+    chỉ chạy lúc worker khởi động. Dùng đúng ngưỡng của việc thu hồi — một định nghĩa
+    duy nhất cho "chạy quá lâu thì coi như đã chết"."""
+    if job.status != JobStatus.RUNNING.value or job.started_at is None:
+        return False
+    return job.started_at < _now() - timedelta(seconds=ZOMBIE_THRESHOLD_SECONDS)
+
+
 def _first_line(text: str | None) -> str:
     for line in (text or "").splitlines():
         if line.strip():
@@ -226,8 +235,7 @@ def ingest_status(
         )
 
     if job.status == JobStatus.RUNNING.value:
-        cutoff = _now() - timedelta(seconds=ZOMBIE_THRESHOLD_SECONDS)
-        if job.started_at is None or job.started_at >= cutoff:
+        if not _is_orphaned(job):
             return IngestStatus(
                 **common,
                 status=JobStatus.RUNNING.value,
@@ -342,34 +350,47 @@ def _done_status(
     # trong hàng đợi thì CHƯA tải lại: tải lại lúc đó dựng dòng kỳ với gắn cờ "kết
     # quả cũ", mời cán bộ bấm chạy kiểm tra thêm một lần nữa cho cùng một việc.
     follow = _follow_up(session, result)
-    if follow is not None and follow.status in (
-        JobStatus.QUEUED.value, JobStatus.RUNNING.value,
-    ):
-        return IngestStatus(
-            **common,
-            active=True,
-            tone=TONE_INFO,
-            title="Đã nạp xong — đang chạy kiểm tra",
-            detail="Lượt nạp đã ghi dữ liệu. Hệ thống đang chạy các kiểm tra của kỳ.",
-            notes=(),
-            actions=(),
-            reload_url=None,
-        )
-    if follow is not None and follow.status == JobStatus.FAILED.value:
-        return IngestStatus(
-            **common,
-            active=False,
-            tone=TONE_WARNING,
-            title="Đã nạp dữ liệu — lượt chạy kiểm tra hỏng",
-            detail=_first_line(follow.error),
-            notes=(),
-            actions=(
-                StatusAction(
-                    ACTION_LINK, f"Xem công việc #{follow.id}", f"/jobs/{follow.id}",
+    if follow is not None:
+        # Ngưỡng job mồ côi áp cho CẢ job nối tiếp: báo cáo đang bám theo job nào thì
+        # job đó phải có đường lùi. Thiếu chỗ này, một tiến trình chết giữa lượt chạy
+        # kiểm tra dựng lại đúng vòng xoay vô tận mà vé này đi đóng.
+        stalled = _is_orphaned(follow)
+        if not stalled and follow.status in (
+            JobStatus.QUEUED.value, JobStatus.RUNNING.value,
+        ):
+            return IngestStatus(
+                **common,
+                active=True,
+                tone=TONE_INFO,
+                title="Đã nạp xong — đang chạy kiểm tra",
+                detail="Lượt nạp đã ghi dữ liệu. Hệ thống đang chạy các kiểm tra của kỳ.",
+                notes=(),
+                actions=(),
+                reload_url=None,
+            )
+        if stalled or follow.status == JobStatus.FAILED.value:
+            return IngestStatus(
+                **common,
+                active=False,
+                tone=TONE_WARNING,
+                title=(
+                    "Đã nạp dữ liệu — lượt chạy kiểm tra đã dừng giữa chừng"
+                    if stalled else "Đã nạp dữ liệu — lượt chạy kiểm tra hỏng"
                 ),
-            ),
-            reload_url=None,
-        )
+                detail=(
+                    "Lượt chạy kiểm tra dừng mà không báo kết quả — thường là do máy "
+                    "chủ khởi động lại. Dữ liệu đã nạp còn nguyên, bấm chạy kiểm tra "
+                    "lại khi cần."
+                    if stalled else _first_line(follow.error)
+                ),
+                notes=(),
+                actions=(
+                    StatusAction(
+                        ACTION_LINK, f"Xem công việc #{follow.id}", f"/jobs/{follow.id}",
+                    ),
+                ),
+                reload_url=None,
+            )
 
     msg = note or "Đã nạp dữ liệu."
     return IngestStatus(
