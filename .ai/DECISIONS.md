@@ -1268,17 +1268,29 @@ văn bản này.
    (`c4_norm.py:76` gọi `is_domestic_origin`, dòng 77 trừ các mã đó khỏi phạm vi check). Không bằng
    chứng, không badge, không ô sửa. → khai `("m16","note", INDIVIDUAL)` cho C4.1.
 2. **`_M16_DINHMUC_COLS` KHÔNG có khoá `note`** → mọi dòng của bố cục đó nhận `note=None`,
-   `is_domestic_origin` luôn False, **không mã nào từng bị loại**, và không tín hiệu nào phân biệt
-   với file thật sự không có hàng trong nước. Đo: `note` rỗng ở 269.505/270.385 dòng; **chỉ
-   PILOT_004 2025 (880 dòng) có giá trị** — 0,33% toàn kho.
+   `is_domestic_origin` luôn False, và không tín hiệu nào phân biệt với file thật sự không có hàng
+   trong nước. Đo lại 08/08 trên 270.385 dòng: **2.445 dòng có ghi chú** — 1.565 dòng giá trị `X`
+   (HONG_AN 2021: 715 · HONG_AN 2022: 850) và **880 dòng giá trị SỐ** (PILOT_004 2025); 267.940
+   dòng rỗng.
+   *(Bản đầu của mục này ghi "269.505 rỗng, chỉ PILOT_004 có giá trị" — SAI, do đọc nhầm bảng đếm
+   theo (DN, kỳ). Số đúng ở trên.)*
+2b. **`norms.note` của PILOT_004 2025 BẰNG ĐÚNG `norm_qty` ở cả 880/880 dòng.** Bố cục 004 có hai
+   cột định mức; `_detect_actual_norm_col` dời `norm_qty` sang cột ĐM thực tế, mà chỉ số 8 — chỗ
+   adapter đọc `note` — chính là cột đó. Tức adapter đọc MỘT cột vào HAI trường, và trường `note`
+   của DN này không mang ghi chú nào. Không gây loại nhầm (vì `is_domestic_origin` so `== "x"` nên
+   trả False), nhưng đúng lớp lỗi đọc sai im lặng — test chống trôi ở lát 1 phải bắt được.
 3. **`CHECK_COLUMNS` có 0 mục bcct** → cổng review chưa bao giờ bắn cho bcct (mục còn mở (b) ở
    STATUS), và cổng mức trường ở mục 8 cũng sẽ câm cho bcct tới khi khai bù.
 
-**Ghi chú — nợ đã biết, KHÔNG thuộc #110:** cột (9) Ghi chú của biểu có **năm** trạng thái theo
-hướng dẫn (`X` trong nước · để trống = nhập khẩu · `KXDĐM` không xác định được định mức · `TH` thu
-hồi từ SP tái nhập · `SPTN` sửa chữa/tái chế SP tái nhập), trong khi `is_domestic_origin` chỉ so
-`== "x"` nên ba mã còn lại bị xử lý y như "nhập khẩu". Cần vé riêng; nguồn hướng dẫn cũng mới là
-thứ cấp, phải đọc bản quét Công báo trước khi cài.
+**Ghi chú — nợ đã biết, KHÔNG thuộc #110, và CHƯA đủ căn cứ để cài:** có tài liệu thứ cấp nói cột
+(9) Ghi chú mang **năm** trạng thái (`X` trong nước · để trống = nhập khẩu · `KXDĐM` không xác định
+được định mức · `TH` thu hồi từ SP tái nhập · `SPTN` sửa chữa/tái chế SP tái nhập), trong khi
+`is_domestic_origin` chỉ so `== "x"`.
+
+**Mức bằng chứng của khẳng định này: THẤP — đừng trích như quy định đã xác nhận.** Nguồn duy nhất là
+bản tóm tắt kết quả tìm kiếm của các trang thứ cấp; chưa ai đọc hướng dẫn in dưới biểu ở bản Công
+báo. Và dữ liệu KHÔNG ủng hộ: trong 270.385 dòng, `KXDĐM` · `TH` · `SPTN` xuất hiện **0 lần**; mã
+duy nhất có thật là `X` (1.565 dòng). Phải đọc bản quét Công báo TRƯỚC khi mở vé cài.
 
 **Triển khai — ba lát, TIẾN LÊN, không backfill:** (1) module khai + đảo chiều suy bằng chứng ở
 m15/m15a/m16 + test chống trôi + `("m16","note")` vào `CHECK_COLUMNS` — đóng #109 và lỗ `note`,
