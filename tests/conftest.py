@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import random
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -28,6 +29,124 @@ from app.models import (
     UomCanonical,
 )
 from app.settings import settings
+
+# --------------------------------------------------------------------------
+# Xáo thứ tự chạy test (`--shuffle`, `--shuffle-seed=N`)
+#
+# Bộ test chạy cố định một thứ tự thì lỗi phụ thuộc trạng thái giữa các test
+# không bao giờ lộ ra (vé #81 tìm được 10 lỗi loại này chỉ vì tình cờ chạy khác
+# đi). Hook dưới đây xáo thứ tự ngay trong repo, không thêm phụ thuộc vào
+# `.venv` — `.venv` dùng chung nhiều worktree, mà `pytest-randomly` một khi cài
+# vào là xáo mặc định cho MỌI lượt chạy của mọi người.
+# --------------------------------------------------------------------------
+
+_SEED_ATTR = "_audit_hq_shuffle_seed"
+_SEED_MAX = 2**32
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    group = parser.getgroup("audit-hq")
+    group.addoption(
+        "--shuffle",
+        action="store_true",
+        default=False,
+        help="Xáo thứ tự chạy test bằng seed sinh ngẫu nhiên (seed được in ra để tái hiện).",
+    )
+    group.addoption(
+        "--shuffle-seed",
+        action="store",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Xáo thứ tự chạy test bằng đúng seed N — dùng để chạy lại y hệt một lượt đỏ.",
+    )
+
+
+def _group_in_order(items: list, key) -> list[list]:
+    """Gom item theo `key`, giữ nguyên thứ tự nhóm xuất hiện lần đầu.
+
+    Không dùng `set` ở bất kỳ đâu trong đường đi này: thứ tự lặp của `set` phụ
+    thuộc hash randomization của Python, seed sẽ không tái hiện được.
+    """
+    buckets: dict[object, list] = {}
+    for item in items:
+        buckets.setdefault(key(item), []).append(item)
+    return list(buckets.values())
+
+
+def _shuffled_order(items: list, seed: int) -> list:
+    """Trả về `items` đã xáo theo tầng, quyết định hoàn toàn bởi `seed`.
+
+    Xáo theo tầng chứ không xáo phẳng: thứ tự module được xáo, trong mỗi module
+    thì mỗi class là một khối và mỗi hàm mức module là một khối, các khối được
+    xáo, rồi mới xáo các item bên trong từng class. Giữ item cùng module liền
+    nhau để fixture `scope="module"` (vd `tests/test_smoke.py`) không bị dựng đi
+    dựng lại xen kẽ giữa các module khác.
+    """
+    rng = random.Random(seed)
+    modules = _group_in_order(items, lambda it: it.nodeid.split("::")[0])
+    rng.shuffle(modules)
+
+    ordered: list = []
+    for module_items in modules:
+        blocks: list[list] = []
+        class_block: dict[str, list] = {}
+        for item in module_items:
+            parts = item.nodeid.split("::")
+            # nodeid có >= 3 phần nghĩa là item nằm trong class:
+            # "tests/test_x.py::TestC::test_foo". Hàm mức module chỉ có 2 phần.
+            if len(parts) >= 3:
+                block = class_block.get(parts[1])
+                if block is None:
+                    block = []
+                    class_block[parts[1]] = block
+                    blocks.append(block)
+                block.append(item)
+            else:
+                blocks.append([item])
+        rng.shuffle(blocks)
+        for block in blocks:
+            rng.shuffle(block)
+            ordered.extend(block)
+    return ordered
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Chốt seed ở đây chứ không ở `pytest_collection_modifyitems`.
+
+    `pytest_report_header` chạy TRƯỚC lúc thu thập test, nên seed chốt lúc sửa
+    danh sách item thì dòng header không bao giờ thấy nó.
+    """
+    seed = config.getoption("shuffle_seed")
+    if seed is None and config.getoption("shuffle"):
+        seed = random.Random().randrange(_SEED_MAX)
+    setattr(config, _SEED_ATTR, seed)
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
+    seed = getattr(config, _SEED_ATTR, None)
+    if seed is None:
+        return
+    items[:] = _shuffled_order(items, seed)
+
+
+def pytest_report_header(config: pytest.Config) -> str | None:
+    seed = getattr(config, _SEED_ATTR, None)
+    if seed is None:
+        return None
+    return f"thứ tự test đã xáo — seed={seed} (chạy lại: --shuffle-seed={seed})"
+
+
+def pytest_terminal_summary(terminalreporter) -> None:
+    """In lại seed ở cuối lượt chạy.
+
+    `addopts = "-ra -q"` nên `pytest_report_header` bị nuốt; phần tóm tắt cuối
+    thì không. Seed phải nằm cạnh danh sách test đỏ, chỗ người đọc log tìm nó.
+    """
+    seed = getattr(terminalreporter.config, _SEED_ATTR, None)
+    if seed is None:
+        return
+    terminalreporter.write_line(f"thứ tự test đã xáo — seed={seed} (chạy lại: --shuffle-seed={seed})")
 
 
 @pytest.fixture(scope="session", autouse=True)
