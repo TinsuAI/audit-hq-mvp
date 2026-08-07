@@ -21,7 +21,7 @@ from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.settings import settings
-from tests.helpers import drain_jobs
+from tests.helpers import drain_jobs, upload_and_ingest
 
 _M15_HEADER = [
     "STT", "Mã NVL", "Tên NVL", "Đơn vị tính", "Tồn đầu kỳ", "Nhập trong kỳ",
@@ -92,13 +92,7 @@ def _login(client):
 
 
 def _upload(client):
-    r = client.post(
-        "/companies/DN_SHEET/upload",
-        data={"year": "2024"},
-        files={"m15": ("Mau15_NVL.xlsx", _two_sheet_m15(),
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        follow_redirects=False,
-    )
+    r = upload_and_ingest(client, "DN_SHEET", "Mau15_NVL.xlsx", _two_sheet_m15())
     assert r.status_code == 303
     drain_jobs()
 
@@ -207,13 +201,7 @@ def test_unreadable_file_still_offers_the_sheet_picker(tmp_path):
     try:
         client = TestClient(app)
         _login(client)
-        client.post(
-            "/companies/DN_SHEET/upload",
-            data={"year": "2024"},
-            files={"m15": ("Mau15_NVL.xlsx", _unreadable_m15(),
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-            follow_redirects=False,
-        )
+        upload_and_ingest(client, "DN_SHEET", "Mau15_NVL.xlsx", _unreadable_m15())
         drain_jobs()
 
         with dbmod.SessionLocal() as db:

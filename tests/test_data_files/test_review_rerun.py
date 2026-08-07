@@ -24,7 +24,7 @@ from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company, DataFile, DataFileStatus, Finding
 from app.settings import settings
-from tests.helpers import drain_jobs, last_job_result
+from tests.helpers import drain_jobs, last_job_result, upload_and_ingest
 
 # Header chuẩn NHƯNG cột xuất SX (col 8) nhãn không khớp từ khoá → needs_review → cổng
 # review bật (dừng ở `analyzed`), giống test màn review. Điều khiển production_out_qty.
@@ -102,13 +102,7 @@ def _login(client):
 
 def _upload_and_parse(client) -> tuple[int, dict]:
     """Upload (dừng ở `analyzed`) → confirm (advance `parsed`). Trả (file_id, base_map)."""
-    r = client.post(
-        "/companies/DN_RERUN/upload",
-        data={"year": "2024"},
-        files={"m15": ("Mau15_NVL.xlsx", _m15_bytes(),
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        follow_redirects=False,
-    )
+    r = upload_and_ingest(client, "DN_RERUN", "Mau15_NVL.xlsx", _m15_bytes())
     assert r.status_code == 303
     drain_jobs()
     with dbmod.SessionLocal() as db:

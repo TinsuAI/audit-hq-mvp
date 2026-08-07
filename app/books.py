@@ -8,10 +8,13 @@ pháp nhân một sổ (002/006) → KHÔNG có chrome theo sổ. Xem GLOSSARY `
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Finding, Norm, NvlBalance, SpBalance
+from app.models import DataFile, Finding, Norm, NvlBalance, SpBalance
+from app.models.data_file import SETTLEMENT_SLOTS
 
 # Known-map mã sổ → nhãn tiếng Việt. Book code là chuỗi tự do per-pháp-nhân
 # (không enum) — mã lạ dùng fallback `Sổ {code}`, null → "Liên sổ".
@@ -72,6 +75,76 @@ def company_books(db: Session, company_id: int, year: int) -> list[str]:
 def is_multi_book(db: Session, company_id: int, year: int) -> bool:
     """Pháp nhân nhiều sổ ⇔ ≥2 sổ quyết toán khác loại hình trong năm."""
     return len(company_books(db, company_id, year)) >= 2
+
+
+def company_book_codes(db: Session, company_id: int) -> list[str]:
+    """Mọi mã sổ của pháp nhân, MỌI kỳ — gồm cả nhãn đã gán cho file chưa nạp.
+
+    `company_books` bó theo năm, nên một kỳ vừa mở của DN nhiều sổ trả về rỗng: chưa
+    có dòng nào mang sổ. Nút nạp của kỳ đó khi ấy không khoá, và lượt nạp dựng lại
+    hai sổ thành một sổ gộp im lặng (004: EPE + GC). Ô chọn sổ và cổng khoá phải hỏi
+    ở mức pháp nhân, cộng thêm nhãn đã gán trên `data_files` của chính kỳ đang làm.
+    """
+    codes: set[str] = set()
+    for model, col in _BOOK_COLUMNS:
+        codes |= set(db.scalars(
+            select(col).where(model.company_id == company_id, col.is_not(None)).distinct()
+        ).all())
+    codes |= set(db.scalars(
+        select(DataFile.book).where(
+            DataFile.company_id == company_id, DataFile.book.is_not(None)
+        ).distinct()
+    ).all())
+    return sorted(codes)
+
+
+@dataclass(frozen=True)
+class BookLock:
+    """Tình trạng gán sổ của một kỳ — TẦNG CHẶN SỚM của nút nạp (#88).
+
+    Một hàm, hai nơi đọc: màn dữ liệu (khoá nút, in câu thiếu file nào) và handler
+    nạp (từ chối xếp việc). Tách đôi thì nút hiện một đằng, máy chủ làm một nẻo.
+
+    Chặt hơn `book_assignment_error` một cách có chủ ý: cổng kia bó theo năm nên kỳ
+    mới của DN nhiều sổ lọt qua cả hai tầng. `IngestPlanError` vẫn giữ nguyên làm
+    tầng chặn cuối cho đường dòng lệnh.
+    """
+
+    options: tuple[str, ...]
+    untagged: tuple[str, ...]
+
+    @property
+    def multi_book(self) -> bool:
+        return len(self.options) >= 2
+
+    @property
+    def locked(self) -> bool:
+        return self.multi_book and bool(self.untagged)
+
+    @property
+    def message(self) -> str:
+        if not self.locked:
+            return ""
+        return (
+            f"Chưa nạp được: còn {len(self.untagged)} file quyết toán chưa gán sổ — "
+            + ", ".join(self.untagged)
+            + ". Chọn sổ cho từng file rồi bấm nạp."
+        )
+
+
+def book_lock(db: Session, company_id: int, year: int) -> BookLock:
+    """Ô chọn sổ nào được hiện, và file quyết toán nào của kỳ còn chưa gán sổ."""
+    options = company_book_codes(db, company_id)
+    rows = db.scalars(
+        select(DataFile).where(
+            DataFile.company_id == company_id,
+            DataFile.period_year == year,
+            DataFile.slot.in_(SETTLEMENT_SLOTS),
+        )
+    ).all()
+    # Tờ khai (bcct) luôn toàn pháp nhân — không nằm trong phép đếm này.
+    untagged = sorted({r.original_filename for r in rows if not r.book})
+    return BookLock(options=tuple(options), untagged=tuple(untagged))
 
 
 def _nvl_code_counts(db: Session, company_id: int, year: int) -> dict[str, int]:

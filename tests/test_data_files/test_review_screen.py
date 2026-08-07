@@ -21,7 +21,7 @@ from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.pipeline.data_files import year_review_gate
 from app.pipeline.saved_map import load_column_map
 from app.settings import settings
-from tests.helpers import drain_jobs, last_job_result
+from tests.helpers import drain_jobs, last_job_result, upload_and_ingest
 
 # Header Mẫu 15 bố cục chuẩn NHƯNG cột xuất SX (col 8) dùng nhãn không khớp từ khoá
 # → `production_out_qty` chỉ `balance-checked`; cột này dùng RIÊNG LẺ (C4.3/C5.1) nên
@@ -103,13 +103,7 @@ def _login(client):
 
 
 def _upload_needs_review(client) -> None:
-    r = client.post(
-        "/companies/DN_REV/upload",
-        data={"year": "2024"},
-        files={"m15": ("Mau15_NVL.xlsx", _needs_review_m15_bytes(),
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        follow_redirects=False,
-    )
+    r = upload_and_ingest(client, "DN_REV", "Mau15_NVL.xlsx", _needs_review_m15_bytes())
     assert r.status_code == 303
     # Nạp chạy ở hàng đợi, chưa đọc file lúc request — cán bộ về lại đúng dòng kỳ.
     assert r.headers["location"].endswith("/documents#ky-2024")
@@ -195,12 +189,8 @@ def test_confirming_a_moved_column_reads_the_officer_column(tmp_path):
     try:
         client = TestClient(app)
         _login(client)
-        r = client.post(
-            "/companies/DN_REV/upload",
-            data={"year": "2024"},
-            files={"m15": ("Mau15_NVL.xlsx", _m15_with_spare_column_bytes(),
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-            follow_redirects=False,
+        r = upload_and_ingest(
+            client, "DN_REV", "Mau15_NVL.xlsx", _m15_with_spare_column_bytes()
         )
         assert r.status_code == 303
         drain_jobs()

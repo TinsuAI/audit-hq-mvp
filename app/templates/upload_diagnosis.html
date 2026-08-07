@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Chẩn đoán file — {{ company.name or company.code }} — Audit-HQ{% endblock %}
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/companies">Doanh nghiệp</a>
+  <span class="sep">›</span>
+  <a href="/companies/{{ company.slug or company.code }}">{{ company.name or company.code }}</a>
+  <span class="sep">›</span>
+  Chẩn đoán file kỳ {{ year }}
+</nav>
+
+<div class="page-header">
+  <div class="page-title-group">
+    <h1>Chẩn đoán file kỳ {{ year }}</h1>
+    <p class="page-subtitle">
+      <strong>{{ company.name or company.code }}</strong>
+      {% if company.tax_id %} · MST <span class="text-mono">{{ company.tax_id }}</span>{% endif %}
+    </p>
+  </div>
+</div>
+
+{% if error %}
+<div class="form-alert form-alert-error" role="alert">
+  <span class="form-alert-icon">⚠️</span>
+  <div><strong>Lỗi:</strong> {{ error }}</div>
+</div>
+{% endif %}
+
+{% if diagnosis %}
+<div class="diag-panel">
+  <div class="diag-head">
+    <span class="diag-icon">⚠️</span>
+    <div>
+      <h3>Dữ liệu chưa nạp được — phát hiện vấn đề khi đọc file</h3>
+      <p>Hệ thống chưa nạp để tránh phân tích nhầm trên dữ liệu đọc sai. Sửa file rồi tải lại, hoặc nhờ AI chẩn đoán cấu trúc file.</p>
+    </div>
+  </div>
+  {% for d in diagnosis.errors %}
+  <div class="diag-item diag-item-error">
+    <p class="diag-item-title">🔴 {{ d.title }}</p>
+    <p class="diag-item-detail">{{ d.detail }}</p>
+  </div>
+  {% endfor %}
+  {% for d in diagnosis.warnings %}
+  <div class="diag-item diag-item-warn">
+    <p class="diag-item-title">🟡 {{ d.title }}</p>
+    <p class="diag-item-detail">{{ d.detail }}</p>
+  </div>
+  {% endfor %}
+
+  {% if ai_result %}
+  <div class="diag-ai">
+    <p class="diag-ai-title">🤖 AI chẩn đoán cấu trúc file</p>
+    <div class="diag-ai-body">{{ ai_result }}</div>
+    <p class="form-hint">Gợi ý của AI mang tính tham khảo — cán bộ tự kiểm chứng trước khi sửa file.</p>
+  </div>
+  {% elif ai_enabled %}
+  <form method="post" action="/companies/{{ company.slug or company.code }}/diagnose-ai" class="diag-ai-form">
+    <input type="hidden" name="year" value="{{ year }}">
+    <button type="submit" class="btn btn-secondary">🤖 Nhờ AI chẩn đoán cấu trúc file</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="form-actions">
+  <a href="/companies/{{ company.slug or company.code }}/documents#ky-{{ year }}" class="btn btn-primary">← Về màn dữ liệu kỳ {{ year }}</a>
+</div>
+
+{% endblock %}

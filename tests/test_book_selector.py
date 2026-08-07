@@ -21,7 +21,7 @@ from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.settings import settings
-from tests.helpers import drain_jobs, last_job_result
+from tests.helpers import drain_jobs, last_job_result, upload_and_ingest
 
 # Header Mẫu 15 chuẩn nhưng cột xuất SX (col 8) nhãn không khớp từ khoá → cột dùng
 # riêng lẻ chỉ balance-checked → needs_review → cổng review bật (parse_detail có
@@ -82,13 +82,7 @@ def _login(client):
 
 
 def _upload_m15(client, codes: list[str], code="DN_SEL"):
-    r = client.post(
-        f"/companies/{code}/upload",
-        data={"year": "2024"},
-        files={"m15": ("Mau15_NVL.xlsx", _m15_bytes(codes),
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        follow_redirects=False,
-    )
+    r = upload_and_ingest(client, code, "Mau15_NVL.xlsx", _m15_bytes(codes))
     assert r.status_code == 303
     drain_jobs()
 
@@ -272,7 +266,16 @@ def _seed_two_m15_on_disk(tmp_path: Path, client) -> tuple[int, int, dict]:
         c = db.query(Company).filter_by(code="DN_SEL").first()
         rows = db.query(DataFile).filter_by(company_id=c.id, slot="m15").order_by(
             DataFile.original_filename).all()
-        return rows[0].id, rows[1].id, rows[0].parse_detail_obj.get("column_map", {})
+        epe_fid, gc_fid = rows[0].id, rows[1].id
+        base_map = dict(rows[0].parse_detail_obj.get("column_map", {}))
+
+    # Nút nạp đi qua cổng xác nhận cột (#88) nên lượt trên dừng ở `analyzed`. Xác nhận
+    # cột một lần để có DÒNG của "lượt nạp trước" — điều kiện của phép kiểm bên dưới.
+    client.post(f"/companies/DN_SEL/documents/file/{epe_fid}/review",
+                data={f"col_{f}": str(i) for f, i in base_map.items()},
+                follow_redirects=False)
+    drain_jobs()
+    return epe_fid, gc_fid, base_map
 
 
 def test_confirm_stops_with_a_message_when_another_file_has_no_book(tmp_path):

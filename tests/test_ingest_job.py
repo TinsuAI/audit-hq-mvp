@@ -25,6 +25,7 @@ from tests.helpers import (
     drain_jobs,
     last_job_result,
     m15_xlsx_bytes,
+    upload_and_ingest,
 )
 
 # Cột 8 nhãn không khớp từ khoá → `production_out_qty` chỉ balance-checked → needs_review.
@@ -41,12 +42,7 @@ def _client(app_db: AppDb) -> TestClient:
 
 
 def _upload(client, content: bytes, code: str = "DN_JOB", year: int = 2024):
-    return client.post(
-        f"/companies/{code}/upload",
-        data={"year": str(year)},
-        files={"m15": ("Mau15_NVL.xlsx", content, XLSX_MIME)},
-        follow_redirects=False,
-    )
+    return upload_and_ingest(client, code, "Mau15_NVL.xlsx", content, year)
 
 
 def _not_m15_bytes() -> bytes:
@@ -61,7 +57,23 @@ def _labels_ok(result: dict) -> bool:
     return set(result) <= set(RESULT_LABEL_VI)
 
 
-def test_upload_request_only_queues_a_job(app_db: AppDb):
+def test_dropping_a_file_queues_nothing(app_db: AppDb):
+    """Ô thả chỉ lưu file (#88) — cán bộ còn sửa loại và gán sổ trước khi nạp."""
+    client = _client(app_db)
+    r = client.post(
+        "/companies/DN_JOB/upload",
+        data={"year": "2024"},
+        files=[("files", ("Mau15_NVL.xlsx", m15_xlsx_bytes(), XLSX_MIME))],
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    with app_db.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_JOB").first()
+        assert db.query(Job).count() == 0
+        assert db.query(DataFile).filter_by(company_id=c.id, slot="m15").count() == 1
+
+
+def test_ingest_request_only_queues_a_job(app_db: AppDb):
     """Request KHÔNG đọc file: file đã lưu + job queued, chưa dòng nào vào DB."""
     client = _client(app_db)
     r = _upload(client, m15_xlsx_bytes())
@@ -170,8 +182,11 @@ def test_gate_stops_before_writing_rows(app_db: AppDb):
         assert db.query(NvlBalance).filter_by(company_id=c.id).count() == 0
 
 
-def test_reingest_button_does_not_stop_at_the_gate(app_db: AppDb):
-    """"Nạp lại dữ liệu" chạy với gate=False — cán bộ vừa quyết định xong ở trang tài liệu."""
+def test_the_ingest_button_keeps_stopping_until_the_columns_are_confirmed(app_db: AppDb):
+    """Nút nạp chạy với `gate=True` (#88): sau khi ô thả thôi xếp việc, đây là đường
+    nạp DUY NHẤT trên web — bỏ cổng ở đây là để cấu trúc chưa ai xác nhận ghi thẳng
+    dòng bằng cột đoán được. Bấm lại mà chưa xác nhận cột thì vẫn dừng, không ghi dòng.
+    """
     client = _client(app_db)
     _upload(client, m15_xlsx_bytes(_M15_HEADER_NEEDS_REVIEW))
     drain_jobs()
@@ -184,13 +199,13 @@ def test_reingest_button_does_not_stop_at_the_gate(app_db: AppDb):
     assert r.headers["location"].endswith("/documents#ky-2024")
     with app_db.SessionLocal() as db:
         job = db.query(Job).order_by(Job.id.desc()).first()
-        assert job.payload["gate"] is False
+        assert job.payload["gate"] is True
     drain_jobs()
 
-    assert last_job_result("ingest")["status"] == "ok"
+    assert last_job_result("ingest")["status"] == "needs_review"
     with app_db.SessionLocal() as db:
         c = db.query(Company).filter_by(code="DN_JOB").first()
-        assert db.query(NvlBalance).filter_by(company_id=c.id).count() == 3
+        assert db.query(NvlBalance).filter_by(company_id=c.id).count() == 0
 
 
 def test_failed_ingest_does_not_chain_check_job(app_db: AppDb):

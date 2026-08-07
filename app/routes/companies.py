@@ -38,6 +38,7 @@ from app.auth import SessionUser, require_user
 from app.books import (
     BOOK_LABELS,
     book_label,
+    book_lock,
     book_summary,
     company_books,
     is_multi_book,
@@ -447,13 +448,6 @@ def _existing_slot_files(dest_dir: Path, slot: str) -> list[Path]:
     ]
 
 
-def _save_upload(upload: UploadFile, dest: Path, slot: str) -> int:
-    """Lưu upload vào slot canonical (multi-slot form): thay file CÙNG SLOT đã có."""
-    for p in _existing_slot_files(dest.parent, slot):
-        p.unlink(missing_ok=True)
-    return _write_upload_stream(upload, dest, expected_ext=dest.suffix.lower())
-
-
 @router.get("/companies/new", response_class=HTMLResponse)
 def new_company_form(
     request: Request,
@@ -731,100 +725,152 @@ def _ai_available() -> bool:
         return False
 
 
-@router.get("/companies/{code}/upload", response_class=HTMLResponse)
+def _slot_destination(base: Path, slot: str, original: str, year: int, ext: str) -> Path:
+    """Đường dẫn canonical của một file trong slot. Tên phải để `_classify_slot` suy
+    lại đúng slot đó — registry lấy loại từ CHỖ ĐẶT + TÊN, không từ ý định của route."""
+    subdir, stem = _UPLOAD_SLOTS[slot]
+    if slot == "bcct":
+        return base / subdir / _bcct_filename(original, year, ext)
+    return base / subdir / f"{stem}_{year}{ext}"
+
+
+def _place_in_slot(src: Path, dest: Path, slot: str) -> bool:
+    """Đưa file đã lưu vào đúng slot; trả True nếu lượt này THAY file đã có.
+
+    m15/m15a/m16 mỗi biểu một bản → xoá file cùng slot đã có. bcct CỘNG DỒN: một kỳ
+    có thể gồm nhiều file rời (F1/F2/F3 của 006), xoá ở đây là buộc cán bộ gộp tay và
+    bản gộp tay đã mất 28,5 tỷ ở 2.076 ô công thức.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # So sánh theo THỰC THỂ, không theo cách viết đường dẫn: `data/` ở môi trường thật
+    # là symlink, nên cùng một file có hai cách viết. Nhầm ở đây thì vòng dưới xoá đúng
+    # file đang chuẩn bị chuyển đi.
+    same = src.exists() and dest.exists() and src.samefile(dest)
+    replaced = dest.exists() and not same
+    if slot != "bcct":
+        for p in _existing_slot_files(dest.parent, slot):
+            if not p.samefile(src):
+                p.unlink(missing_ok=True)
+                replaced = True
+    if not same:
+        src.replace(dest)
+    return replaced
+
+
+@router.get("/companies/{code}/upload", response_model=None)
 def upload_form(
     code: str,
-    request: Request,
     year: int | None = Query(default=None),
-    error: str | None = Query(default=None),
-    user: SessionUser = Depends(require_user),
-    db: Session = Depends(get_db),
-) -> HTMLResponse:
-    company = get_company_or_404(db, code, user)
-    from datetime import date
-    selected = year or date.today().year
-    return templates.TemplateResponse(
-        request, "upload_data.html",
-        {
-            "user": user,
-            "company": company,
-            "year": selected,
-            "year_options": _year_options(selected),
-            "year_min": YEAR_MIN,
-            "year_max": YEAR_MAX,
-            "error": error,
-        },
-    )
-
-
-@router.post("/companies/{code}/upload", response_model=None)
-def upload_data(
-    code: str,
-    request: Request,
-    year: int = Form(...),
-    m15: UploadFile | None = File(default=None),
-    m15a: UploadFile | None = File(default=None),
-    m16: UploadFile | None = File(default=None),
-    bcct: list[UploadFile] | None = File(default=None),
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    """Địa chỉ cũ của trang tải lên bốn ô — nay dẫn về màn dữ liệu (#88).
+
+    Trang bốn ô + ô chọn năm đã bỏ: ô chọn năm là chỗ nộp nhầm file kỳ này vào kỳ
+    khác, và dòng kỳ ở màn dữ liệu chính là năm. Giữ chuyển hướng để liên kết đã lưu
+    không hỏng.
+    """
+    company = get_company_or_404(db, code, user)
+    slug = company.slug or company.code
+    anchor = f"#ky-{year}" if year and YEAR_MIN <= year <= YEAR_MAX else ""
+    return RedirectResponse(url=f"/companies/{slug}/documents{anchor}", status_code=303)
+
+
+@router.post("/companies/{code}/upload", response_model=None)
+def upload_drop_zone(
+    code: str,
+    year: int = Form(...),
+    files: list[UploadFile] = File(default=[]),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Ô thả file của một kỳ: nhận mọi file, GỢI Ý loại cho từng file (#88).
+
+    Không xếp việc nạp. Cán bộ còn phải sửa loại và gán sổ trước khi nạp — nạp ngay
+    ở đây là cướp mất chính bước mà vé này dựng ra.
+
+    Mỗi file lưu vào thư mục chờ trước rồi mới xếp chỗ: có thế mới biết kích thước
+    thật để quyết định có mở nội dung hay không, và file cũ cùng slot chỉ bị xoá sau
+    khi file mới đã ghi xong (kiểm magic-byte có thể ném ở giữa chừng).
+    """
+    from app.pipeline.data_files import sync_data_files
+    from app.pipeline.file_intake import BASIS_NAME, propose, slot_from_name, staging_dir
+
     company = get_company_or_404(db, code, user)
     if not (YEAR_MIN <= year <= YEAR_MAX):
         raise HTTPException(status_code=400, detail=f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
 
-    def _ext_of(slot: str, upload: UploadFile) -> str:
-        ext = Path(upload.filename or "").suffix.lower()
-        if ext not in {".xls", ".xlsx"}:
-            raise HTTPException(status_code=400, detail=f"{slot}: chỉ chấp nhận .xls / .xlsx (gặp {ext})")
-        return ext
+    slug = company.slug or company.code
+    raw_root = Path(settings.raw_data_path)
+    base = raw_root / company.code / str(year)
+    staging = staging_dir(raw_root, company.code, year)
 
-    base = Path(settings.raw_data_path) / company.code / str(year)
-    saved_any = False
-    # Có lượt nào THAY file đã có không — chỉ thay mới dời phiên bản dữ liệu (#90).
-    replaced_any = False
+    def _back(**params: str) -> RedirectResponse:
+        from urllib.parse import urlencode
 
-    # m15/m15a/m16: mỗi biểu 1 bản → file mới thay file cũ cùng slot.
-    for slot, upload in (("m15", m15), ("m15a", m15a), ("m16", m16)):
-        if not upload or not upload.filename:
-            continue
-        ext = _ext_of(slot, upload)
-        subdir, stem = _UPLOAD_SLOTS[slot]
-        replaced_any = replaced_any or bool(_existing_slot_files(base / subdir, slot))
-        _save_upload(upload, base / subdir / f"{stem}_{year}{ext}", slot)
-        saved_any = True
-
-    # BCCT: CỘNG DỒN. Một kỳ có thể gồm nhiều file rời — xoá file cũ ở đây là buộc cán
-    # bộ gộp tay ngoài hệ thống, và bản gộp tay của 006 đã mất 28,5 tỷ ở ô công thức.
-    # Bỏ file thừa bằng nút xoá từng file ở trang Tài liệu.
-    bcct_subdir, _ = _UPLOAD_SLOTS["bcct"]
-    for upload in bcct or []:
-        if not upload or not upload.filename:
-            continue
-        ext = _ext_of("bcct", upload)
-        dest = base / bcct_subdir / _bcct_filename(upload.filename, year, ext)
-        replaced_any = replaced_any or dest.exists()
-        _write_upload_stream(upload, dest, expected_ext=ext)
-        saved_any = True
-
-    if not saved_any:
+        qs = f"?{urlencode(params)}" if params else ""
         return RedirectResponse(
-            url=f"/companies/{code}/upload?year={year}&error=Ch%C6%B0a+ch%E1%BB%8Dn+file+n%C3%A0o",
-            status_code=303,
+            url=f"/companies/{slug}/documents{qs}#ky-{year}", status_code=303
         )
 
-    # Cập nhật registry file ngay sau khi lưu (nhanh — chỉ đọc tên + kích thước).
-    from app.pipeline.data_files import sync_data_files
+    placed: list[tuple[str, str]] = []   # (đường dẫn tương đối, căn cứ)
+    waiting: list[str] = []
+    replaced_any = False
+    for upload in files or []:
+        if not upload or not upload.filename:
+            continue
+        ext = Path(upload.filename).suffix.lower()
+        if ext not in {".xls", ".xlsx"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{upload.filename}: chỉ chấp nhận .xls / .xlsx (gặp {ext})",
+            )
+        staged = staging / _bcct_filename(upload.filename, year, ext)
+        size = _write_upload_stream(upload, staged, expected_ext=ext)
+
+        # Khớp tên là TỨC THÌ — không mở file khi tên đã phân giải được.
+        slot = slot_from_name(upload.filename)
+        basis = BASIS_NAME
+        if slot is None:
+            proposal = propose(staged, year=year, size_bytes=size)
+            slot, basis = proposal.slot, proposal.basis
+        if slot is None:
+            waiting.append(staged.name)
+            continue
+        dest = _slot_destination(base, slot, upload.filename, year, ext)
+        replaced_any = _place_in_slot(staged, dest, slot) or replaced_any
+        placed.append((str(dest.relative_to(raw_root)), basis or ""))
+
+    if not placed and not waiting:
+        return _back(error="Chưa chọn file nào")
+
+    if staging.is_dir() and not any(staging.iterdir()):
+        staging.rmdir()
+
     sync_data_files(db, company)
 
-    if replaced_any:
-        bump_data_version(db, company.id, year)
-        db.commit()
+    from app.auth_users import get_user_by_username
 
-    # Chẩn đoán + nạp chạy ở worker, KHÔNG trong request: một bộ file lớn (BCCT 68MB
-    # của 006) mất vài phút, còn Cloudflare cắt kết nối ở 100 giây (lỗi 524).
-    _enqueue_ingest(db, user, company, year, gate=True)
-    return _back_to_period(company, year)
+    ur = get_user_by_username(db, user.name)
+    for rel, basis in placed:
+        # Một workbook đăng ký cho nhiều biểu là NHIỀU dòng cùng `stored_path` — căn
+        # cứ gán loại đúng cho cả nhóm.
+        for row in db.scalars(select(DataFile).where(
+            DataFile.company_id == company.id, DataFile.stored_path == rel
+        )).all():
+            row.slot_basis = basis
+            row.uploaded_by = ur.id if ur else None
+    if replaced_any:
+        # THAY file = dòng đã nạp là của bộ file trước → dời phiên bản dữ liệu (#90).
+        bump_data_version(db, company.id, year)
+    db.commit()
+
+    if waiting:
+        return _back(error=(
+            f"{len(waiting)} file chưa suy được loại: " + ", ".join(waiting)
+            + ". Chọn loại cho từng file rồi nạp."
+        ))
+    return _back()
 
 
 @router.post("/companies/{code}/diagnose-ai", response_model=None)
@@ -855,11 +901,9 @@ def diagnose_ai(
         ai_result = f"Không gọi được AI: {type(e).__name__}: {e}"
 
     return templates.TemplateResponse(
-        request, "upload_data.html",
+        request, "upload_diagnosis.html",
         {
-            "user": user, "company": company, "year": year,
-            "year_options": _year_options(year),
-            "year_min": YEAR_MIN, "year_max": YEAR_MAX, "error": None,
+            "user": user, "company": company, "year": year, "error": None,
             "diagnosis": diagnosis, "ai_enabled": True, "ai_result": ai_result,
         },
     )
@@ -879,16 +923,6 @@ def _human_size(n: int | None) -> str:
             return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
         size /= 1024
     return f"{size:.1f} GB"
-
-
-def _year_options(selected: int | None = None) -> list[int]:
-    """Danh sách năm gần đây cho dropdown chọn năm (gồm năm đang chọn nếu lệch range)."""
-    from datetime import date
-    this_year = date.today().year
-    opts = [y for y in range(this_year, this_year - 9, -1) if YEAR_MIN <= y <= YEAR_MAX]
-    if selected and selected not in opts and YEAR_MIN <= selected <= YEAR_MAX:
-        opts = sorted(set(opts) | {selected}, reverse=True)
-    return opts
 
 
 def _resolve_within_root(rel_path: str) -> Path:
@@ -1079,8 +1113,12 @@ def documents_upload_cell(
     from app.auth_users import get_user_by_username
     row = db.scalar(select(DataFile).where(DataFile.company_id == company.id, DataFile.stored_path == rel))
     if row is not None:
+        from app.pipeline.file_intake import BASIS_OFFICER
+
         ur = get_user_by_username(db, user.name)
         row.uploaded_by = ur.id if ur else None
+        # Nút này gắn với một loại đã biết — cán bộ chọn ô nào là chọn loại đó (#88).
+        row.slot_basis = BASIS_OFFICER
         db.commit()
 
     # THAY file (không phải thêm) = bộ file của kỳ đã đổi trong khi dòng đã nạp là của
@@ -1092,6 +1130,124 @@ def documents_upload_cell(
 
     label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
     return _redirect(f"msg={label}+{year}+%C4%91%C3%A3+t%E1%BA%A3i+l%C3%AAn")
+
+
+def _documents_redirect(company: Company, year: int, **params: str) -> RedirectResponse:
+    """Về màn dữ liệu, neo đúng dòng kỳ vừa thao tác."""
+    slug = company.slug or company.code
+    qs = f"?{urlencode(params)}" if params else ""
+    return RedirectResponse(url=f"/companies/{slug}/documents{qs}#ky-{year}", status_code=303)
+
+
+def _period_file_path(company: Company, year: int, rel: str) -> Path:
+    """Đường dẫn tuyệt đối của một file THUỘC kỳ đó, hoặc 400.
+
+    Nhận đường dẫn tương đối vì file đang chờ chọn loại chưa có trong registry: nó
+    nằm ngoài ba thư mục biểu nên `sync_data_files` không thấy, và `data_files.slot`
+    không nhận rỗng. Đường dẫn tự do phải chặn thoát thư mục ngay tại đây.
+    """
+    raw_root = Path(settings.raw_data_path)
+    target = raw_root / rel
+    period_dir = (raw_root / company.code / str(year)).resolve()
+    if (
+        not target.resolve().is_relative_to(period_dir)
+        or not target.is_file()
+        or target.suffix.lower() not in {".xls", ".xlsx"}
+    ):
+        raise HTTPException(status_code=400, detail="Đường dẫn file không hợp lệ.")
+    # Trả đường dẫn CHƯA resolve: mọi chỗ khác (registry, `_slot_destination`) làm việc
+    # trong không gian chưa resolve, mà `data/` ở môi trường thật là symlink.
+    return target
+
+
+@router.post("/companies/{code}/documents/file-type", response_model=None)
+def documents_set_file_type(
+    code: str,
+    year: int = Form(...),
+    path: str = Form(...),
+    slot: str = Form(...),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Cán bộ sửa loại của một file — căn cứ gán loại thành "cán bộ chọn" (#88).
+
+    Dùng chung cho file đã trong registry và file còn chờ chọn loại: cả hai đều được
+    ĐẶT LẠI CHỖ trên đĩa rồi đồng bộ, vì loại của một file là hệ quả của chỗ đặt và
+    tên, không phải một cột ghi đè được.
+    """
+    from app.pipeline.data_files import sync_data_files
+    from app.pipeline.file_intake import BASIS_OFFICER, STAGING_SUBDIR
+
+    company = get_company_or_404(db, code, user)
+    if slot not in _UPLOAD_SLOTS:
+        raise HTTPException(status_code=400, detail=f"Loại tài liệu không hợp lệ: {slot}")
+    if not (YEAR_MIN <= year <= YEAR_MAX):
+        raise HTTPException(status_code=400, detail=f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
+
+    src = _period_file_path(company, year, path)
+    raw_root = Path(settings.raw_data_path)
+    dest = _slot_destination(
+        raw_root / company.code / str(year), slot, src.name, year, src.suffix.lower()
+    )
+    staging = src.parent
+    replaced = _place_in_slot(src, dest, slot)
+    if staging.name == STAGING_SUBDIR and staging.is_dir() and not any(staging.iterdir()):
+        staging.rmdir()
+
+    sync_data_files(db, company)
+    rel = str(dest.relative_to(raw_root))
+    for row in db.scalars(select(DataFile).where(
+        DataFile.company_id == company.id, DataFile.stored_path == rel
+    )).all():
+        row.slot_basis = BASIS_OFFICER
+    if replaced:
+        bump_data_version(db, company.id, year)
+    db.commit()
+
+    label = SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
+    return _documents_redirect(company, year, msg=f"Đã đặt {dest.name} thành {label}.")
+
+
+@router.post("/companies/{code}/documents/file-book", response_model=None)
+def documents_set_file_book(
+    code: str,
+    year: int = Form(...),
+    path: str = Form(...),
+    book: str = Form(default=""),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Gán sổ quyết toán cho một file quyết toán, ngay trên dòng kỳ (#88).
+
+    Sửa được cả sau này, cho file đã nằm sẵn trong hệ thống — DN nạp bằng dòng lệnh
+    trước đây vẫn nạp lại được qua web. Một workbook đăng ký cho nhiều biểu là nhiều
+    dòng cùng `stored_path`: gán sổ cho CẢ nhóm, để lại một dòng không sổ là đúng ca
+    mà cổng kế hoạch nạp chặn.
+    """
+    company = get_company_or_404(db, code, user)
+    target = _period_file_path(company, year, path)
+    rel = str(target.relative_to(Path(settings.raw_data_path)))
+    rows = db.scalars(select(DataFile).where(
+        DataFile.company_id == company.id,
+        DataFile.stored_path == rel,
+        DataFile.slot.in_(SETTLEMENT_SLOTS),
+    )).all()
+    if not rows:
+        raise HTTPException(status_code=400, detail="File này không phải file quyết toán.")
+
+    new_book = normalize_book(book)
+    changed = any((r.book or None) != new_book for r in rows)
+    for row in rows:
+        row.book = new_book
+    if changed and any(r.parse_status == DataFileStatus.OK for r in rows):
+        # Dòng đã nạp mang sổ cũ — bộ file không còn khớp dữ liệu, kỳ phải báo nạp lại.
+        bump_data_version(db, company.id, year)
+    db.commit()
+    return _documents_redirect(
+        company, year,
+        msg=f"Đã gán {book_label(new_book)} cho {target.name}." if new_book
+        else f"Đã bỏ nhãn sổ của {target.name}.",
+    )
 
 
 @router.post("/companies/{code}/documents/file/{file_id}/delete", response_model=None)
@@ -1767,13 +1923,28 @@ def documents_ingest_year(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    """Nạp lại dữ liệu cho 1 năm từ file đã tải lên (không cần upload lại).
+    """Nạp dữ liệu của 1 kỳ từ file đã tải lên. ĐI QUA cổng xác nhận cột (`gate=True`).
 
-    Cán bộ vừa quyết định xong ở trang tài liệu nên KHÔNG dừng lại ở cổng review
-    (`gate=False`) — dừng nữa là quay vòng chính thao tác họ vừa làm.
+    Từ #88, ô thả file KHÔNG xếp việc nạp nữa, nên nút này là đường nạp DUY NHẤT
+    trên web. Chạy `gate=False` ở đây là để một cấu trúc chưa ai xác nhận ghi thẳng
+    dòng bằng cột đoán được — đúng kiểu hỏng ADR #15/#18 dựng cổng ra để chặn. Cổng
+    tự mở sau lần đầu: map cán bộ đã lưu được nâng lên "đã xác nhận" nên lượt sau
+    trả rỗng và đi thẳng (ADR #24 mục 8), không quay vòng cán bộ.
+
+    Tầng chặn SỚM của gán sổ (#88): còn file quyết toán chưa gán sổ thì không xếp
+    việc, để cán bộ không chờ hết một lượt nạp rồi mới nhận lỗi kế hoạch. Tầng chặn
+    muộn (`IngestPlanError`) giữ nguyên cho đường dòng lệnh và mọi đường khác.
     """
     company = get_company_or_404(db, code, user)
-    _enqueue_ingest(db, user, company, year, gate=False)
+    # Khoá sổ chặn TRƯỚC khi xếp job (#88): file quyết toán chưa gán sổ mà nạp tiếp
+    # thì các sổ gộp thành một, im lặng.
+    lock = book_lock(db, company.id, year)
+    if lock.locked:
+        return _documents_redirect(company, year, error=lock.message)
+    # `gate=True` (#88): từ khi ô thả file không tự xếp job nữa, đây là đường nạp DUY
+    # NHẤT trên web — để ngỏ cổng thì cấu trúc chưa ai xác nhận sẽ ghi dòng từ cột
+    # đoán. Cổng tự mở sau lần xác nhận đầu của mỗi (DN × cấu trúc) nên không quay vòng.
+    _enqueue_ingest(db, user, company, year, gate=True)
     return _back_to_period(company, year)
 
 
