@@ -25,13 +25,21 @@ from app.adapters.evidence import (
     evidence_m15_extended,
     evidence_m15_standard,
 )
-from app.adapters.extended_layout import ColMap, select_extended_m15
+from app.adapters.extended_layout import (
+    ColMap,
+    apply_officer_map,
+    resolve_m15,
+    select_extended_m15,
+)
 from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
-from app.adapters.sheet_select import SheetNotFound, select_sheet
+from app.adapters.sheet_select import SheetNotFound, select_sheet, standard_layout_colmap
 from app.adapters.templates import (
     MATCH_EXTENDED,
+    MATCH_OFFICER,
+    apply_officer_evidence,
     match_template,
+    officer_column_groups,
     resolve_columns,
     resolve_template_evidence,
 )
@@ -101,6 +109,7 @@ def parse_m15(
     # colmap select_sheet đã tính (nhãn tiêu đề khớp đúng vị trí) — giữ để tính nguồn
     # bằng chứng, không vứt như trước.
     cand_colmap: dict[str, int] | None = None
+    pinned = sheet is not None
     if sheet is None:
         try:
             cand = select_sheet(p, "m15", year)
@@ -118,10 +127,25 @@ def parse_m15(
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
+    if pinned and standard_layout_colmap(cells, "m15") is None:
+        # Trang tính do cán bộ ghim: nhãn tiêu đề trên chính trang đó KHÔNG xác nhận bố
+        # cục chuẩn, nên đọc bằng cột cố định là lệch mọi trường. Thử bố cục mở rộng —
+        # ghim trang là việc cán bộ làm ngay khi xác nhận cột, nên thiếu nhánh này thì
+        # mọi file mở rộng vừa xác nhận xong sẽ được nạp lại bằng cột cố định.
+        colmap = resolve_m15(cells)
+
     if colmap is not None:
+        form_sig = compute_form_signature(cells, "m15", colmap.data_start)
+        officer = officer_column_groups(officer_maps, form_sig, colmap.cols)
+        # Vị trí của cán bộ được ÁP, rồi đẳng thức cân đối của biểu kiểm lại trên map
+        # đã áp (#95). Không khớp → OfficerMapBalanceError, không quay lại map cũ.
+        colmap.cols, colmap.checked, colmap.matched = apply_officer_map(
+            cells, colmap, officer, "m15"
+        )
         rows = _rows_from_colmap(cells, colmap)
         scan_cols = [c for cols in colmap.cols.values() for c in cols]
         evidence = evidence_m15_extended([f for f in _EVIDENCE_FIELDS if colmap.has(f)])
+        apply_officer_evidence(evidence, officer)
         return M15File(
             header=header, rows=rows, source_file=str(p), sheet=sheet,
             issues=ParseIssues(
@@ -136,14 +160,14 @@ def parse_m15(
                     "matched": colmap.matched,
                     "checked": colmap.checked,
                     "match_rate": round(colmap.match_rate, 4),
-                    "form_signature": compute_form_signature(cells, "m15", colmap.data_start),
+                    "form_signature": form_sig,
+                    # CẢ nhóm cột, không phải cột đầu nhóm: màn xác nhận dựng ô nhập từ
+                    # đây và map cán bộ lưu lại chính hình dạng này (#95).
                     "column_map": {
-                        f: colmap.cols[f][0] for f in evidence if colmap.cols.get(f)
+                        f: list(colmap.cols[f]) for f in evidence if colmap.cols.get(f)
                     },
-                    # Bố cục mở rộng KHÔNG nhận vị trí của cán bộ: một trường ở đây có
-                    # thể là TỔNG nhiều cột con, map lưu chỉ giữ cột đầu nhóm.
                     "template_id": None,
-                    "match_source": MATCH_EXTENDED,
+                    "match_source": MATCH_OFFICER if officer else MATCH_EXTENDED,
                 },
                 evidence=evidence,
             ),

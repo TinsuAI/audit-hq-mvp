@@ -25,13 +25,21 @@ from app.adapters.evidence import (
     evidence_m15a_extended,
     evidence_m15a_standard,
 )
-from app.adapters.extended_layout import M15aResolution, select_extended_m15a
+from app.adapters.extended_layout import (
+    M15aResolution,
+    apply_officer_map,
+    resolve_m15a,
+    select_extended_m15a,
+)
 from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
-from app.adapters.sheet_select import SheetNotFound, select_sheet
+from app.adapters.sheet_select import SheetNotFound, select_sheet, standard_layout_colmap
 from app.adapters.templates import (
     MATCH_EXTENDED,
+    MATCH_OFFICER,
+    apply_officer_evidence,
     match_template,
+    officer_column_groups,
     resolve_columns,
     resolve_template_evidence,
 )
@@ -95,6 +103,7 @@ def parse_m15a(
     xls = pd.ExcelFile(p)
     resolution: M15aResolution | None = None
     cand_colmap: dict[str, int] | None = None
+    pinned = sheet is not None
     if sheet is None:
         try:
             cand = select_sheet(p, "m15a", year)
@@ -112,12 +121,24 @@ def parse_m15a(
     cells = df.values.tolist()
     header = parse_company_header(cells)
 
+    if pinned and standard_layout_colmap(cells, "m15a") is None:
+        # Xem chú thích cùng chỗ trong `app/adapters/m15.py`: trang tính đã ghim mà nhãn
+        # tiêu đề không xác nhận bố cục chuẩn thì phải thử bố cục mở rộng.
+        resolution = resolve_m15a(cells)
+
     if resolution is not None:
+        form_sig = compute_form_signature(cells, "m15a", resolution.data_start)
+        officer = officer_column_groups(officer_maps, form_sig, resolution.cols)
+        # Áp vị trí của cán bộ rồi KIỂM LẠI đẳng thức cân đối trên map đã áp (#95).
+        resolution.cols, resolution.checked, resolution.matched = apply_officer_map(
+            cells, resolution, officer, "m15a"
+        )
         rows = _rows_from_resolution(cells, resolution)
         scan_cols = [c for cols in resolution.cols.values() for c in cols]
         evidence = evidence_m15a_extended(
             [f for f in _EVIDENCE_FIELDS if resolution.cols.get(f)]
         )
+        apply_officer_evidence(evidence, officer)
         return M15aFile(
             header=header, rows=rows, source_file=str(p), sheet=sheet,
             issues=ParseIssues(
@@ -134,14 +155,13 @@ def parse_m15a(
                     "match_rate": round(resolution.match_rate, 4),
                     "export_col": resolution.cols["export_qty"][0],
                     "export_label": resolution.export_label,
-                    "form_signature": compute_form_signature(cells, "m15a", resolution.data_start),
+                    "form_signature": form_sig,
+                    # CẢ nhóm cột, không phải cột đầu nhóm — xem chú thích ở m15.py.
                     "column_map": {
-                        f: resolution.cols[f][0] for f in evidence if resolution.cols.get(f)
+                        f: list(resolution.cols[f]) for f in evidence if resolution.cols.get(f)
                     },
-                    # Bố cục mở rộng KHÔNG nhận vị trí của cán bộ: một trường ở đây có
-                    # thể là TỔNG nhiều cột con, map lưu chỉ giữ cột đầu nhóm.
                     "template_id": None,
-                    "match_source": MATCH_EXTENDED,
+                    "match_source": MATCH_OFFICER if officer else MATCH_EXTENDED,
                 },
                 evidence=evidence,
             ),

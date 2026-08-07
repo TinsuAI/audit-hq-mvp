@@ -191,13 +191,18 @@
           </td>
           <td class="text-muted">{% if c.checks %}{{ c.checks|join(', ') }}{% else %}—{% endif %}</td>
           <td>
-            {% if needs %}
+            {% if needs and c.col_group %}
+            <input type="text" class="form-input mono-input review-idx" name="col_{{ c.field }}"
+                   value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*"
+                   style="max-width:120px">
+            <div class="form-hint">Trường này cộng nhiều cột — ngăn bởi dấu phẩy.</div>
+            {% elif needs %}
             <input type="number" class="form-input mono-input review-idx" name="col_{{ c.field }}"
-                   value="{{ c.col_index if c.col_index is not none else '' }}" min="0" step="1"
+                   value="{{ c.col_value }}" min="0" step="1"
                    style="max-width:96px">
             {% else %}
-            <span class="text-mono">{{ c.col_index if c.col_index is not none else '—' }}</span>
-            <input type="hidden" name="col_{{ c.field }}" value="{{ c.col_index if c.col_index is not none else '' }}">
+            <span class="text-mono">{{ c.col_value or '—' }}</span>
+            <input type="hidden" name="col_{{ c.field }}" value="{{ c.col_value }}">
             {% endif %}
           </td>
         </tr>

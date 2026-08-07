@@ -23,9 +23,10 @@ test ca xung đột (`tests/test_officer_map_precedence.py`) còn xanh — đó 
 nhất chứng minh map cán bộ không bị template che. Trước bản sửa này cả bốn họ đã
 seed đều để `column_map` rỗng, nên lỗi che map chưa từng lộ ra trên dữ liệu thật.
 
-*Giới hạn còn lại:* nhánh bố cục MỞ RỘNG (Mẫu 15/15a suy map từ dòng đánh số) KHÔNG
-nhận vị trí của cán bộ — ở đó một trường có thể đọc bằng TỔNG nhiều cột con, mà map
-lưu chỉ giữ được cột đầu nhóm, nên áp vào là im lặng bỏ mất các cột con còn lại.
+*Bố cục MỞ RỘNG* (Mẫu 15/15a suy map từ dòng đánh số) NAY cũng nhận vị trí của cán
+bộ (#95): map lưu diễn đạt được `trường → [cột…]` nên nhóm cột con `(6a)+(6b)` giữ
+nguyên ngữ nghĩa, và sau khi áp thì đẳng thức cân đối của biểu được KIỂM LẠI — không
+khớp là ném ``OfficerMapBalanceError``, không nạp. Xem `app/adapters/extended_layout.py`.
 
 **Tầng này sống trong CODE, đổi qua PR.** ADR #23 đã chốt yêu cầu tương lai: quản
 lý template qua UI (bảng DB seed từ code). CHƯA build.
@@ -36,7 +37,7 @@ không chứa mã số thuế, tên DN hay số liệu, nên hằng số dưới
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 
 from app.adapters.evidence import BUILTIN_TEMPLATE, OFFICER_CONFIRMED, POSITION_ONLY
@@ -133,12 +134,36 @@ def match_template(
     return None
 
 
-def officer_columns(
-    officer_maps: dict[str, dict[str, int]] | None,
+def column_groups(raw: Mapping[str, object] | None) -> dict[str, list[int]]:
+    """Chuẩn hoá map cột về `trường → [cột…]`.
+
+    Giá trị lưu được phép là `int` (một cột — mọi map cũ trong DB và toàn bộ đường
+    bố cục chuẩn) hoặc `list[int]` (một trường đọc bằng TỔNG nhiều cột con, chỉ có ở
+    bố cục mở rộng: `(6a)+(6b)`). Một hàm chuẩn hoá duy nhất để chỗ nào so map với
+    map cũng so cùng một hình dạng — #95 sinh ra từ việc map lưu chỉ giữ được cột đầu
+    nhóm. Giá trị hỏng bị bỏ, không đoán.
+    """
+    out: dict[str, list[int]] = {}
+    for f, value in (raw or {}).items():
+        items = value if isinstance(value, list | tuple) else [value]
+        cols: list[int] = []
+        for item in items:
+            try:
+                cols.append(int(item))
+            except (TypeError, ValueError):
+                cols = []
+                break
+        if cols:
+            out[f] = cols
+    return out
+
+
+def officer_column_groups(
+    officer_maps: Mapping[str, Mapping[str, object]] | None,
     form_sig: str | None,
     known_fields: Iterable[str],
-) -> dict[str, int]:
-    """Map cột cán bộ đã xác nhận áp cho ĐÚNG vân tay này (rỗng nếu chưa có).
+) -> dict[str, list[int]]:
+    """Map cột cán bộ đã xác nhận áp cho ĐÚNG vân tay này, dạng nhóm (rỗng nếu chưa có).
 
     Khoá map là `(DN, slot, vân tay form)` — người gọi đã lọc theo DN + slot, ở đây
     chỉ còn lọc vân tay. Bỏ field slot không đọc: map lưu là dữ liệu cũ trong DB,
@@ -146,17 +171,28 @@ def officer_columns(
     """
     if not officer_maps or not form_sig:
         return {}
-    saved = officer_maps.get(form_sig) or {}
     known = set(known_fields)
-    out: dict[str, int] = {}
-    for f, idx in saved.items():
-        if f not in known:
-            continue
-        try:
-            out[f] = int(idx)
-        except (TypeError, ValueError):
-            continue
-    return out
+    saved = column_groups(officer_maps.get(form_sig))
+    return {f: cols for f, cols in saved.items() if f in known}
+
+
+def officer_columns(
+    officer_maps: Mapping[str, Mapping[str, object]] | None,
+    form_sig: str | None,
+    known_fields: Iterable[str],
+) -> dict[str, int]:
+    """Như trên nhưng cho đường bố cục CHUẨN — mỗi trường đúng MỘT cột.
+
+    Đường chuẩn đọc một ô cho mỗi trường, không cộng được nhóm cột, nên trường nào
+    map lưu ghi nhiều cột thì KHÔNG áp (áp cột đầu là im lặng bỏ phần còn lại). Không
+    áp thì cũng không gắn nhãn "cán bộ xác nhận" — trạng thái "cần xác nhận" ở lại,
+    hiện ra. Màn xác nhận đã chặn từ đầu: file bố cục chuẩn không nhận nhiều cột.
+    """
+    return {
+        f: cols[0]
+        for f, cols in officer_column_groups(officer_maps, form_sig, known_fields).items()
+        if len(cols) == 1
+    }
 
 
 def resolve_columns(
@@ -254,8 +290,10 @@ __all__ = [
     "MATCH_OFFICER",
     "BuiltinTemplate",
     "apply_officer_evidence",
+    "column_groups",
     "match_source_for",
     "match_template",
+    "officer_column_groups",
     "officer_columns",
     "resolve_columns",
     "resolve_template_evidence",

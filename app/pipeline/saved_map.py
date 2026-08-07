@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.evidence import OFFICER_CONFIRMED
+from app.adapters.templates import column_groups
 from app.models.saved_column_map import SavedColumnMap
 
 
@@ -42,13 +43,15 @@ def save_column_map(
     company_id: int,
     slot: str,
     form_signature: str,
-    column_map: dict[str, int],
+    column_map: dict[str, int | list[int]],
     evidence: dict[str, str] | None = None,
     confirmed_by: int | None = None,
 ) -> SavedColumnMap:
     """Upsert map cột cho `(DN, slot, vân tay)`. Idempotent: khoá đã có → ghi đè map.
 
-    Không commit — người gọi quyết định ranh giới transaction.
+    Giá trị mỗi trường là `int` (một cột) hoặc `list[int]` (một trường đọc bằng TỔNG
+    nhiều cột con — bố cục mở rộng, #95). Không commit — người gọi quyết định ranh
+    giới transaction.
     """
     row = load_column_map(session, company_id, slot, form_signature)
     col_json = json.dumps(column_map, ensure_ascii=False)
@@ -73,18 +76,20 @@ def save_column_map(
     return row
 
 
-def officer_maps(session: Session, company_id: int) -> dict[str, dict[str, dict[str, int]]]:
-    """`{slot: {vân tay: {field: chỉ số cột}}}` — map cán bộ đã xác nhận của một DN.
+def officer_maps(session: Session, company_id: int) -> dict[str, dict[str, dict[str, list[int]]]]:
+    """`{slot: {vân tay: {field: [chỉ số cột…]}}}` — map cán bộ đã xác nhận của một DN.
 
     Đúng hình dạng tham số `officer_maps` của các adapter: parser tính vân tay lúc
     mở file rồi tra thẳng, nên không phải mở file hai lần chỉ để biết tra khoá nào.
+    Chuẩn hoá về NHÓM cột ngay ở đây: map cũ trong DB lưu một `int` mỗi trường, map
+    của bố cục mở rộng lưu danh sách — người đọc chỉ nên gặp một hình dạng.
     """
-    out: dict[str, dict[str, dict[str, int]]] = defaultdict(dict)
+    out: dict[str, dict[str, dict[str, list[int]]]] = defaultdict(dict)
     rows = session.scalars(
         select(SavedColumnMap).where(SavedColumnMap.company_id == company_id)
     ).all()
     for row in rows:
-        out[row.slot][row.form_signature] = row.column_map_obj
+        out[row.slot][row.form_signature] = column_groups(row.column_map_obj)
     return dict(out)
 
 
@@ -94,7 +99,7 @@ def resolve_officer_confirmed(
     slot: str,
     form_signature: str | None,
     evidence: dict[str, str],
-    applied_columns: dict[str, int] | None = None,
+    applied_columns: dict[str, int | list[int]] | None = None,
 ) -> dict[str, str]:
     """Trả bản sao `evidence` với các cột có map lưu nâng lên ``officer-confirmed``.
 
@@ -102,9 +107,9 @@ def resolve_officer_confirmed(
     vừa nằm trong map lưu vừa có trong evidence hiện tại (map khớp ⇒ cùng bố cục).
 
     ``applied_columns`` là map cột lượt đọc THẬT SỰ đã dùng. Truyền vào thì chỉ nâng
-    field mà vị trí đã đọc ĐÚNG bằng vị trí trong map lưu: nhánh bố cục mở rộng không
-    nhận vị trí của cán bộ, dán nhãn "cán bộ xác nhận" lên một cột đọc theo vị trí
-    khác là nói sai với người đọc badge.
+    field mà vị trí đã đọc ĐÚNG bằng vị trí trong map lưu — dán nhãn "cán bộ xác nhận"
+    lên một cột đọc theo vị trí khác là nói sai với người đọc badge. So sánh theo NHÓM
+    cột đã chuẩn hoá: map cũ lưu `5`, lượt đọc ghi `[5]`, hai cái đó là một.
     """
     resolved = dict(evidence)
     if not form_signature:
@@ -112,10 +117,11 @@ def resolve_officer_confirmed(
     saved = load_column_map(session, company_id, slot, form_signature)
     if saved is None:
         return resolved
-    for field, idx in saved.column_map_obj.items():
+    applied = column_groups(applied_columns) if applied_columns is not None else None
+    for field, cols in column_groups(saved.column_map_obj).items():
         if field not in resolved:
             continue
-        if applied_columns is not None and applied_columns.get(field) != idx:
+        if applied is not None and applied.get(field) != cols:
             continue
         resolved[field] = OFFICER_CONFIRMED
     return resolved

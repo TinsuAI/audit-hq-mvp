@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 
 from app.adapters.cell_reader import CellReadError, SheetOutOfRange, UnsupportedFileFormat
 from app.adapters.cell_window import sheet_window
+from app.adapters.evidence import FIELD_LABEL_VI
+from app.adapters.templates import column_groups
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled
 from app.audit import (
@@ -1396,19 +1398,26 @@ def documents_review_file(
     from app.checks.registry import checks_reading
 
     # Đính check bị ảnh hưởng cho mỗi cột (banner ở màn này) — cùng nguồn với cổng review.
+    # Một trường ở bố cục mở rộng đọc bằng TỔNG nhiều cột con `(6a)+(6b)`, nên ô nhập
+    # nhận CẢ nhóm (viết ngăn bởi dấu phẩy) chứ không phải một chỉ số (#95).
+    groups = column_groups(column_map)
     view_cols = []
     for c in columns:
         field = c.get("field", "")
+        cols = groups.get(field, [])
         view_cols.append({
             **c,
-            "col_index": column_map.get(field),
+            "col_index": cols[0] if len(cols) == 1 else None,
+            "col_indexes": cols,
+            "col_value": ",".join(str(i) for i in cols),
+            "col_group": len(cols) > 1,
             "checks": checks_reading(row.slot, field),
         })
 
     # Grid preview nhúng: nội dung THẬT của file (dòng/cột đầu) để đối chiếu chỉ số cột —
     # bảng chỉ-số-không thì cán bộ không biết cột 8 là gì. Annotate mỗi cột grid bằng
     # field đã map (tô màu) + cột needs_review (vàng). Số cột grid phủ đủ chỉ số đã map.
-    mapped_idx = [i for i in column_map.values() if isinstance(i, int)]
+    mapped_idx = [i for cols in groups.values() for i in cols]
     grid_cols = min(max((max(mapped_idx) + 2 if mapped_idx else 0), 8), PREVIEW_COLS)
     abs_path = _resolve_within_root(row.stored_path)
     # Lưới xem trước phải là TRANG PARSER ĐỌC, không phải trang đầu workbook: file BCCT
@@ -1421,10 +1430,12 @@ def documents_review_file(
         )
         if abs_path.is_file() else None
     )
+    # Tô MỌI cột của nhóm, không riêng cột đầu: nhóm `(6a)+(6b)` mà chỉ sáng một cột
+    # thì cán bộ tưởng cột kia không được đọc.
     col_annot = {
-        c["col_index"]: {"label": c["label"], "needs": c.get("review") == "needs_review"}
+        idx: {"label": c["label"], "needs": c.get("review") == "needs_review"}
         for c in view_cols
-        if isinstance(c.get("col_index"), int)
+        for idx in c["col_indexes"]
     }
 
     # Selector chọn sổ quyết toán — chỉ file settlement (m15/m15a/m16), tờ khai không có
@@ -1458,6 +1469,55 @@ def documents_review_file(
             "period_conflict": period_window_conflict(db, company.id, row.period_year),
         },
     )
+
+
+def _parse_column_answer(raw: str | None, default: list[int], label: str) -> list[int]:
+    """Chỉ số cột cán bộ nhập cho MỘT trường: `"8"` hoặc `"5,6"` (nhóm cột con).
+
+    Ô trống = giữ vị trí đề xuất. Ô sai định dạng thì ném ``ValueError`` kèm câu nói
+    cho cán bộ — không đoán, cũng không lặng lẽ giữ giá trị cũ.
+
+    Nhiều cột CHỈ hợp lệ khi vị trí đề xuất đã là nhóm, tức file có bố cục mở rộng và
+    trường này vốn đọc bằng tổng nhiều cột con. Ở bố cục chuẩn adapter đọc đúng một ô
+    mỗi trường, nhận "5,6" ở đó là hứa một việc hệ thống không làm (#95).
+    """
+    text = (raw or "").strip()
+    if not text:
+        return list(default)
+    cols: list[int] = []
+    for token in re.split(r"[,\s;]+", text):
+        if not token:
+            continue
+        try:
+            idx = int(token)
+        except ValueError:
+            raise ValueError(f"{label}: “{token}” không phải chỉ số cột.") from None
+        if idx < 0:
+            raise ValueError(f"{label}: chỉ số cột phải từ 0 trở lên.")
+        if idx in cols:
+            raise ValueError(f"{label}: cột {idx} khai hai lần trong cùng một trường.")
+        cols.append(idx)
+    if not cols:
+        return list(default)
+    if len(cols) > 1 and len(default) <= 1:
+        raise ValueError(
+            f"{label}: trường này đọc bằng đúng một cột, không nhận nhiều cột."
+        )
+    return cols
+
+
+def _reject_shared_columns(groups: dict[str, list[int]]) -> None:
+    """Hai trường về cùng một cột thì map sai — từ chối thay vì nạp một cột cho hai chỗ."""
+    owner: dict[int, str] = {}
+    for field, cols in sorted(groups.items()):
+        label = FIELD_LABEL_VI.get(field, field)
+        for idx in cols:
+            if idx in owner:
+                raise ValueError(
+                    f"Cột {idx} được gán cho cả “{owner[idx]}” lẫn “{label}”. "
+                    "Mỗi cột chỉ đọc cho một trường."
+                )
+            owner[idx] = label
 
 
 @router.post("/companies/{code}/documents/file/{file_id}/review", response_model=None)
@@ -1514,21 +1574,28 @@ async def documents_confirm_review(
         job = _enqueue_ingest(db, user, company, year, gate=False)
         return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
-    # Map đầy đủ = cột officer sửa (field `needs_review`) chồng lên map đề xuất. Ô thiếu /
-    # không hợp lệ giữ giá trị đề xuất để map không khuyết cột.
-    column_map: dict[str, int] = {}
-    for field, default_idx in base_map.items():
-        raw = form.get(f"col_{field}")
-        try:
-            column_map[field] = int(raw) if raw not in (None, "") else int(default_idx)
-        except (TypeError, ValueError):
-            column_map[field] = int(default_idx)
+    # Map đầy đủ = cột officer sửa (field `needs_review`) chồng lên map đề xuất. Ô trống
+    # giữ giá trị đề xuất để map không khuyết cột; ô SAI thì từ chối cả biểu mẫu thay vì
+    # lặng lẽ giữ giá trị cũ — cán bộ vừa gõ một thứ và cần biết nó không dùng được.
+    base_groups = column_groups(base_map)
+    groups: dict[str, list[int]] = {}
+    try:
+        for field, default_cols in base_groups.items():
+            label = FIELD_LABEL_VI.get(field, field)
+            groups[field] = _parse_column_answer(form.get(f"col_{field}"), default_cols, label)
+        _reject_shared_columns(groups)
+    except ValueError as e:
+        return _redirect("error=" + quote_plus(str(e)))
+
+    # Ghi `int` khi một cột, `list` khi là nhóm cột con — giữ nguyên hình dạng map cũ
+    # cho bố cục chuẩn, và diễn đạt được nhóm cho bố cục mở rộng (#95).
+    column_map: dict[str, int | list[int]] = {
+        f: (cols[0] if len(cols) == 1 else cols) for f, cols in groups.items()
+    }
 
     # Cột đổi map so với map đã commit (base_map = map đang lưu ở parse_detail, đã sinh
     # ra dòng hiện tại). Chỉ có ý nghĩa khi file đã `parsed` → scoped re-run.
-    changed_fields = {
-        f for f, idx in column_map.items() if int(base_map.get(f, idx)) != int(idx)
-    }
+    changed_fields = {f for f, cols in groups.items() if base_groups.get(f) != cols}
 
     # Sổ quyết toán (book) — chỉ file settlement mang book; tờ khai luôn toàn pháp nhân.
     # Set NGAY trên row (cùng session) → commit dưới → run_ingest đọc data_files.book,
