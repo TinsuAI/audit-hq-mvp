@@ -256,3 +256,40 @@ def test_confirming_absent_writes_it_and_rejects_a_missing_row_key(env, app_db):
     assert saved is not None
     assert "note" in saved.absent_fields_obj
     assert "note" not in saved.column_map_obj
+
+
+def test_group_field_posts_one_value_not_two(env, app_db):
+    """Bố cục mở rộng: một trường = TỔNG nhiều cột con (ADR #25).
+
+    Dựng cả `<select>` lẫn ô chữ CÙNG `name` thì lúc phân tích biểu mẫu ô sau đè ô
+    trước — select thành ô câm và cột cán bộ vừa chọn biến mất không báo. Đúng loại
+    file mà màn này sinh ra để cứu (#95), nên phải chỉ có MỘT ô mỗi trường.
+    """
+    from app.models import Company as _C
+
+    client, _root = env
+    detail = {
+        "sheet": "BCTT39", "form_signature": "sig-grp",
+        "column_map": {"product_code": 1, "material_code": 4, "norm_qty": [7, 8]},
+        "column_choices": [
+            {"index": i, "header": f"cot{i}", "samples": ["x"]} for i in range(9)
+        ],
+    }
+    fid, slug = _register(app_db, detail, name="grp.xlsx")
+    with app_db.SessionLocal() as db:
+        db.query(DataFile).filter_by(id=fid).update({"parse_layout": "extended"})
+        db.commit()
+
+    html = client.get(f"/companies/{slug}/documents/file/{fid}").text
+    assert html.count('name="col_norm_qty"') == 1, "trường nhóm cột phải có đúng MỘT ô"
+
+    client.post(
+        f"/companies/{slug}/documents/file/{fid}",
+        data={"_field_major": "1", "col_product_code": "1",
+              "col_material_code": "4", "col_norm_qty": "7,8"},
+        follow_redirects=False,
+    )
+    with app_db.SessionLocal() as db:
+        c = db.query(_C).filter_by(code="DN_T112").one()
+        saved = load_column_map(db, c.id, "m16", "sig-grp")
+    assert saved.column_map_obj["norm_qty"] == [7, 8], "nhóm cột phải giữ nguyên cả nhóm"

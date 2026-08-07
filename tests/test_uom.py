@@ -9,6 +9,7 @@ import pytest
 
 from app.checks.uom import UomMatch, compare, get_family, resolve_canonical
 from app.models import UomAlias
+from scripts.seed_uom import _LEFT_UNRESOLVED_ON_PURPOSE
 
 
 def _add_alias(session, alias: str, canonical: str):
@@ -174,7 +175,7 @@ def test_measured_unit_strings_resolve(session, raw, canonical, _rows):
 
 # Chuỗi CỐ Ý để không resolve: không phải đơn vị, hoặc không tra được nguồn.
 # Chúng là lý do tồn tại của UNRESOLVED — gán bừa một canonical là bịa ra hiểu biết.
-_MEASURED_LEFT_UNRESOLVED = ["UNL", "UNK", "I/át", "I/at", "1000 viên", "Real Brasil", "Panh"]
+_MEASURED_LEFT_UNRESOLVED = _LEFT_UNRESOLVED_ON_PURPOSE
 
 
 @pytest.mark.parametrize("raw", _MEASURED_LEFT_UNRESOLVED)
@@ -308,3 +309,27 @@ def test_c3_3_real_mismatch_wins_over_unresolvable(session, company):
     by_code = {f.subject_key: f for f in check_c3_3(session, company.id, 2024)}
     assert by_code["F"].severity == "critical"
     assert by_code["F"].details["uom_match"] == "different"
+
+
+def test_unresolvable_predicate_is_the_one_compare_uses(session):
+    """`is_unresolvable` phải khớp ĐÚNG vị ngữ `compare()` dùng để trả UNRESOLVED.
+
+    Ca bắt lỗi: chuỗi ghép nhập nhằng canonical (`Kiện/Hộp/Bao/Gói` → BOX lẫn PKG) có
+    `resolve_canonical() is None` nhưng VẪN tra được họ. Lấy `resolve_canonical() is
+    None` làm vị ngữ thì C3.3 nêu tên nó trong câu "không có trong bảng đơn vị chuẩn"
+    — sai, vì nó CÓ trong bảng.
+    """
+    from app.checks.uom import is_unresolvable
+
+    _seed_full_uom(session)
+    ambiguous = "Kiện/Hộp/Bao/Gói"
+    assert resolve_canonical(session, ambiguous) is None
+    assert is_unresolvable(session, ambiguous) is False
+
+    for raw in _MEASURED_LEFT_UNRESOLVED:
+        assert is_unresolvable(session, raw) is True, raw
+
+    # Và vị ngữ khớp hành vi thật của compare(): nhập nhằng canonical mà rõ họ thì
+    # KHÔNG ra UNRESOLVED, còn chuỗi không tra được phần nào thì có.
+    assert compare(session, ambiguous, "KG") == UomMatch.DIFFERENT
+    assert compare(session, "UNL", "KG") == UomMatch.UNRESOLVED

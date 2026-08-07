@@ -26,7 +26,12 @@ from app.adapters._common import (
 from app.adapters.evidence import evidence_m16
 from app.adapters.form_signature import compute_form_signature
 from app.adapters.layout import find_data_start
-from app.adapters.m16_note import is_domestic_origin, is_unknown_note, normalize_note
+from app.adapters.m16_note import (
+    is_domestic_origin,
+    is_unknown_note,
+    normalize_note,
+    note_codes_for,
+)
 from app.adapters.sheet_select import SheetNotFound, select_sheet
 from app.adapters.templates import (
     apply_officer_evidence,
@@ -276,6 +281,9 @@ def parse_m16(
             error_cells=scan_error_cells(p, sheet, data_start, cols.values()),
             external_workbooks=count_external_workbooks(p),
             unknown_note_codes=unknown_notes,
+            note_codes_used=(
+                tuple(sorted(note_codes_for(period_end))) if period_end is not None else ()
+            ),
             scanned=True,
         ),
         provenance=provenance,

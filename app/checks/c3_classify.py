@@ -14,7 +14,7 @@ from app.checks.not_evaluable import CheckResult, NotEvaluable, RemedyClassifica
 from app.checks.registry import Severity
 from app.checks.scope import declaration_scope
 from app.checks.sources import classify_missing_sources
-from app.checks.uom import UomMatch, resolve_canonical
+from app.checks.uom import UomMatch, is_unresolvable
 from app.checks.uom import compare as uom_compare
 from app.models import DeclarationLine, Finding, Norm, NvlBalance
 
@@ -343,7 +343,7 @@ def check_c3_3(session: Session, company_id: int, year: int) -> CheckResult:
             # Cách gỡ nằm trong tay cán bộ: khai bí danh ở /admin/units rồi chạy lại.
             unresolved_units = sorted(
                 u for u in (unit_set | bcct_set | m16_set)
-                if resolve_canonical(session, u) is None
+                if is_unresolvable(session, u)
             )
             severity = Severity.WARNING
             title = (

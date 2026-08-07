@@ -142,6 +142,17 @@ def resolve_families(session: Session, unit: str | None) -> set[str]:
     }
 
 
+def is_unresolvable(session: Session, unit: str | None) -> bool:
+    """Chuỗi này KHÔNG tra được phần nào — đúng vị ngữ `compare()` dùng để trả UNRESOLVED.
+
+    Không phải `resolve_canonical(...) is None`: chuỗi ghép nhập nhằng canonical
+    (`Kiện/Hộp/Bao/Gói` → BOX lẫn PKG) vẫn tra được HỌ, nên nó KHÔNG phải "không có
+    trong bảng đơn vị chuẩn". Hai nơi tự định nghĩa lấy vị ngữ này thì câu thông báo
+    nói khác hành vi — nêu tên một đơn vị vốn có trong bảng.
+    """
+    return not resolve_families(session, unit)
+
+
 def compare(session: Session, unit_a: str | None, unit_b: str | None) -> UomMatch:
     """Trả mức độ tương đương của 2 đơn vị (ladder cho C3.3 severity)."""
     a_norm = normalize(unit_a)

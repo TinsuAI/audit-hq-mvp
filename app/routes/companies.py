@@ -1751,10 +1751,10 @@ async def documents_confirm_review(
 
     # Cột đổi map so với map đã commit (base_map = map đang lưu ở parse_detail, đã sinh
     # ra dòng hiện tại). Chỉ có ý nghĩa khi file đã `parsed` → scoped re-run.
-    # Trường CHUYỂN sang "không có trong file" cũng là đổi: check đọc nó phải chạy lại,
-    # nếu không thì phát hiện cũ vẫn nói theo cột vừa bị gỡ.
+    # Trường RỜI KHỎI map cũng là đổi — dù rời vì "không có trong file" hay vì bỏ gán.
+    # Check đọc nó phải chạy lại, nếu không thì phát hiện cũ vẫn nói theo cột vừa bị gỡ.
     changed_fields = {f for f, cols in groups.items() if base_groups.get(f) != cols}
-    changed_fields |= {f for f in absent_fields if base_groups.get(f)}
+    changed_fields |= {f for f in base_groups if f not in groups}
 
     # Sổ quyết toán (book) — chỉ file settlement mang book; tờ khai luôn toàn pháp nhân.
     # Set NGAY trên row (cùng session) → commit dưới → run_ingest đọc data_files.book,

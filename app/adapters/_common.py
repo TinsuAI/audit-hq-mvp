@@ -42,6 +42,9 @@ class ParseIssues:
     # (#114). Không đổi số liệu đã nạp — chỉ thôi nuốt im lặng: trước đây mọi mã ≠ "x"
     # được xử lý y hệt ô để trống, tức "nhập khẩu, có định mức bình thường".
     unknown_note_codes: dict[str, int] = field(default_factory=dict)
+    # Bộ mã đã dùng để phán "ngoài bộ mã" — bộ mã PHỤ THUỘC KỲ, nên câu cảnh báo
+    # phải trích đúng bộ mã của kỳ đó, không phải hợp của cả hai thế hệ văn bản.
+    note_codes_used: tuple[str, ...] = ()
     scanned: bool = False
 
     @property

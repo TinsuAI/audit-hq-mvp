@@ -166,7 +166,7 @@
           <th>Trường của biểu</th>
           <th>Nguồn bằng chứng</th>
           <th>Trạng thái gán</th>
-          <th>Cổng review</th>
+          <th>Cổng soát cột</th>
           <th>Kiểm tra đọc cột</th>
           <th>Cột trên file</th>
           <th>Chỉ số cột (đếm từ 0)</th>
@@ -182,7 +182,7 @@
           </td>
           <td><span class="badge muted doc-file-badge">{{ c.evidence_label }}</span></td>
           <td>
-            <span class="badge {{ 'muted' if c.is_absent else ('warning' if c.state == 'unassigned' else 'info') }} doc-file-badge">{{ c.state_label }}</span>
+            <span class="badge {{ c.state_badge }} doc-file-badge">{{ c.state_label }}</span>
           </td>
           <td>
             <span class="badge {{ 'warning' if c.needs_review else 'info' }} doc-file-badge">{{ c.review_label }}</span>
@@ -194,10 +194,19 @@
             <input type="hidden" name="_field_major" value="1">
             {# Chọn theo TIÊU ĐỀ + MẪU GIÁ TRỊ, không phải đếm cột. `<select>` gốc chịu
                được trang 257 cột mà không cần widget riêng, và không phụ thuộc lưới. #}
-            <select class="form-input" name="col_{{ c.field }}" style="max-width:320px"
-                    {% if c.is_absent %}disabled{% endif %}>
+            {% if c.is_group %}
+            {# Nhóm cột con (ADR #25) đọc bằng TỔNG nhiều cột, `<select>` một giá trị không
+               diễn đạt được — nên ô chữ, và KHÔNG dựng select cùng tên. Hai ô trùng `name`
+               thì ô sau đè ô trước lúc phân tích biểu mẫu: select thành ô câm, và cột cán
+               bộ vừa chọn biến mất không báo. #}
+            <input type="text" class="form-input mono-input review-idx" name="col_{{ c.field }}"
+                   value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*"
+                   style="max-width:160px">
+            <div class="form-hint">Trường này đọc bằng nhiều cột — ghi các chỉ số, ngăn bởi dấu phẩy.</div>
+            {% else %}
+            <select class="form-input" name="col_{{ c.field }}" style="max-width:320px">
               <option value="">— chưa gán —</option>
-              {% if not c.is_group and c.columns and c.columns[0] >= basis.choices | length %}
+              {% if c.columns and c.columns[0] >= basis.choices | length %}
               {# Map trỏ ra ngoài bề rộng file đã chụp — cột đó KHÔNG có trên trang tính.
                  Nêu đúng như vậy thay vì hiện "chưa gán": trạng thái nói đã gán, và hai
                  chỗ mâu thuẫn nhau thì cán bộ không biết tin chỗ nào. #}
@@ -206,16 +215,11 @@
               </option>
               {% endif %}
               {% for ch in basis.choices %}
-              <option value="{{ ch.index }}" {% if not c.is_group and c.columns and c.columns[0] == ch.index %}selected{% endif %}>
+              <option value="{{ ch.index }}" {% if c.columns and c.columns[0] == ch.index %}selected{% endif %}>
                 cột {{ ch.index }}{% if ch.header %} · «{{ ch.header }}»{% endif %}{% if ch.samples %} · {{ ch.samples | join(' / ') }}{% endif %}
               </option>
               {% endfor %}
             </select>
-            {% if c.is_group %}
-            <input type="text" class="form-input mono-input review-idx" name="col_{{ c.field }}"
-                   value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*"
-                   style="max-width:120px">
-            <div class="form-hint">Trường này đọc bằng nhiều cột — ghi các chỉ số, ngăn bởi dấu phẩy.</div>
             {% endif %}
             {% if not c.row_key %}
             <label class="form-hint" style="display:block;margin-top:var(--space-1)">

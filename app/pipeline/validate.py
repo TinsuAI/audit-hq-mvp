@@ -151,10 +151,15 @@ def _check_balance(
     _report_parse_issues(diag, slot, parsed)
 
 
-def _note_code_hint() -> str:
-    """Bộ mã cột (9) nêu kèm nhãn tiếng Việt, cả hai thế hệ văn bản (#114)."""
+def _note_code_hint(codes: tuple[str, ...]) -> str:
+    """Bộ mã cột (9) CỦA KỲ ĐÓ, kèm nhãn tiếng Việt (#114).
+
+    Bộ mã phụ thuộc kỳ (TT 39/2018 ba mã; TT 121/2025 thêm `TH`, `SPTN` từ
+    01/02/2026), nên nêu hợp của cả hai thế hệ là mời cán bộ dùng một mã chưa có
+    hiệu lực ở kỳ đang xem."""
     return "; ".join(
-        f"«{code}» {label.lower()}" for code, label in NOTE_LABEL_VI.items()
+        f"«{code}» {NOTE_LABEL_VI[code].lower()}"
+        for code in codes if code in NOTE_LABEL_VI
     ) + "; để trống = nhập khẩu"
 
 
@@ -194,7 +199,8 @@ def _report_parse_issues(diag: UploadDiagnosis, slot: str, parsed) -> None:
         )
         parts.append(
             f"{issues.unknown_note_total} dòng có ghi chú cột (9) ngoài bộ mã của kỳ "
-            f"này ({breakdown}). Bộ mã hợp lệ: {_note_code_hint()}. Hệ thống đọc các "
+            f"này ({breakdown}). Bộ mã hợp lệ: {_note_code_hint(issues.note_codes_used)}. "
+            "Hệ thống đọc các "
             "giá trị này y hệt ô để trống, tức 'nhập khẩu, có định mức bình thường' — "
             "kiểm tra lại trước khi kết luận theo kết quả Nhóm 4."
         )

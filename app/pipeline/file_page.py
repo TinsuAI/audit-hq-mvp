@@ -121,6 +121,11 @@ class BasisColumn:
         return self.state == ABSENT
 
     @property
+    def state_badge(self) -> str:
+        """Lớp badge theo trạng thái gán — giữ việc phân nhánh trên `state` ở MỘT chỗ."""
+        return {ABSENT: "muted", UNASSIGNED: "warning"}.get(self.state, "info")
+
+    @property
     def is_group(self) -> bool:
         return len(self.columns) > 1
 
