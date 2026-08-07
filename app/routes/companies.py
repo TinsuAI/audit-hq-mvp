@@ -81,11 +81,13 @@ from app.pipeline.audit_scope import (
     finding_scope_tag,
     scope_coverage,
 )
-from app.pipeline.coverage import bcct_coverage, coverage_gaps, overlapping_periods
+from app.pipeline.data_screen import build_data_screen
 from app.pipeline.export import build_export
 from app.pipeline.period import (
     FISCAL_START_MONTHS,
     QUARTER_START_MONTHS,
+    YEAR_MAX,
+    YEAR_MIN,
     duplicate_period_windows,
     fiscal_bounds,
     load_period_windows,
@@ -296,7 +298,6 @@ def list_companies(
 
 
 DEMO_SUFFIX = "(Demo)"
-YEAR_MIN, YEAR_MAX = 2015, 2030
 # Năm đầu nộp BCQT có thể sớm hơn cửa sổ dữ liệu đã nạp (YEAR_MIN), nên nới cận dưới.
 BCQT_YEAR_MIN = 2000
 
@@ -829,39 +830,6 @@ def _human_size(n: int | None) -> str:
     return f"{size:.1f} GB"
 
 
-def _data_years(db: Session, company_id: int) -> set[int]:
-    """Năm có dữ liệu Tầng 1 đã nạp (gộp 4 bảng)."""
-    years: set[int] = set()
-    for model in (NvlBalance, SpBalance, Norm, DeclarationLine):
-        years |= set(
-            db.scalars(
-                select(model.period_year).where(model.company_id == company_id).distinct()
-            ).all()
-        )
-    return years
-
-
-# Mỗi loại tài liệu BCQT ↔ 1 bảng Tầng 1 (để đếm "đã nạp mấy loại").
-_SLOT_MODELS = {
-    "m15": NvlBalance,
-    "m15a": SpBalance,
-    "m16": Norm,
-    "bcct": DeclarationLine,
-}
-
-
-def _slot_row_counts(db: Session, company_id: int, year: int) -> dict[str, int]:
-    """Số dòng Tầng 1 đã nạp theo TỪNG loại tài liệu cho (DN, năm)."""
-    return {
-        slot: db.scalar(
-            select(func.count()).select_from(model).where(
-                model.company_id == company_id, model.period_year == year
-            )
-        ) or 0
-        for slot, model in _SLOT_MODELS.items()
-    }
-
-
 def _year_options(selected: int | None = None) -> list[int]:
     """Danh sách năm gần đây cho dropdown chọn năm (gồm năm đang chọn nếu lệch range)."""
     from datetime import date
@@ -870,31 +838,6 @@ def _year_options(selected: int | None = None) -> list[int]:
     if selected and selected not in opts and YEAR_MIN <= selected <= YEAR_MAX:
         opts = sorted(set(opts) | {selected}, reverse=True)
     return opts
-
-
-def _doc_year_status(
-    has_files: bool,
-    has_data: bool,
-    total_rows: int,
-    loaded_types: int = 0,
-    total_types: int = len(SLOT_ORDER),
-) -> tuple[str, str]:
-    """Một nhãn trạng thái DUY NHẤT cho 1 năm.
-
-    'Đã nạp' (trơn) CHỈ khi đủ cả `total_types` loại tài liệu. Nạp thiếu loại →
-    'Đã nạp một phần · X/Y loại' để không hiểu nhầm nạp 1 loại = đã xong cả năm."""
-    if has_data:
-        if has_files:
-            if loaded_types >= total_types:
-                return f"Đã nạp · {total_rows:,} dòng", "ok"
-            return (
-                f"Đã nạp một phần · {loaded_types}/{total_types} loại · {total_rows:,} dòng",
-                "warn",
-            )
-        return "Đã nạp trước đó · file gốc không còn lưu", "warn"
-    if has_files:
-        return "Có file · chưa nạp", "pending"
-    return "Chưa có dữ liệu", "empty"
 
 
 def _resolve_within_root(rel_path: str) -> Path:
@@ -918,99 +861,14 @@ def company_documents(
 ) -> HTMLResponse:
     company = get_company_or_404(db, code, user)
 
-    from app.pipeline.data_files import (
-        files_by_year_slot,
-        review_gate_for_files,
-        sync_data_files,
-    )
+    from app.pipeline.data_files import sync_data_files
 
     # Reconcile registry với filesystem (bắt file demo có sẵn / xoá ngoài app).
     sync_data_files(db, company)
-    matrix = files_by_year_slot(db, company)
 
-    data_years = _data_years(db, company.id)
-    finding_years = set(
-        db.scalars(
-            select(Finding.period_year).where(Finding.company_id == company.id).distinct()
-        ).all()
-    )
-    score_rows = db.scalars(
-        select(CompanyYearScore).where(CompanyYearScore.company_id == company.id)
-    ).all()
-    scores = {r.period_year: r for r in score_rows}
-    period_rows = {
-        r.period_year: r
-        for r in db.scalars(
-            select(CompanyPeriod).where(CompanyPeriod.company_id == company.id)
-        ).all()
-    }
-
-    years = set(matrix) | data_years | finding_years | set(period_rows)
-    # "+ Thêm năm" → hiển thị năm trống (chưa có gì) để upload vào.
-    added_empty = add if (add and YEAR_MIN <= add <= YEAR_MAX and add not in years) else None
-    if added_empty:
-        years.add(added_empty)
-    years = sorted(years, reverse=True)
-
-    year_rows = []
-    for i, y in enumerate(years):
-        slots = {slot: matrix.get(y, {}).get(slot, []) for slot in SLOT_ORDER}
-        has_files = any(slots.values())
-        # Cổng review (ADR #18): cột `needs_review` + check bị ảnh hưởng — banner cảnh
-        # báo, KHÔNG chặn (trục review độc lập lifecycle; file có thể parsed + cần xác nhận).
-        review_gate = review_gate_for_files(
-            f for slot_files in slots.values() for f in slot_files
-        )
-        has_data = y in data_years
-        slot_counts = _slot_row_counts(db, company.id, y) if has_data else {}
-        total_rows = sum(slot_counts.values())
-        loaded_types = sum(1 for n in slot_counts.values() if n > 0)
-        status_label, status_kind = _doc_year_status(
-            has_files, has_data, total_rows, loaded_types
-        )
-        from datetime import date as _d
-
-        cp = period_rows.get(y)
-        pf_disp = cp.period_from if (cp and cp.period_from) else _d(y, 1, 1)
-        pt_disp = cp.period_to if (cp and cp.period_to) else _d(y, 12, 31)
-        period_custom = (pf_disp, pt_disp) != (_d(y, 1, 1), _d(y, 12, 31))
-        # Độ phủ BCCT tính lúc render (#48): dòng ngoài cửa sổ / không ngày / trùng
-        # khoá chéo nhãn. Từ #48 mọi dòng đều được lưu nên ba số này là thứ duy nhất
-        # nói cho cán bộ biết dữ liệu nạp vào có lệch cửa sổ kỳ hay không.
-        coverage = bcct_coverage(db, company.id, y) if has_data else None
-        gaps = coverage_gaps(db, company.id, y) if has_data else []
-        overlaps = overlapping_periods(db, company.id, y) if cp is not None else []
-        year_rows.append({
-            "year": y,
-            "slots": slots,
-            "has_files": has_files,
-            "review_gate": review_gate,
-            "has_data": has_data,
-            "total_rows": total_rows,
-            "status_label": status_label,
-            "status_kind": status_kind,
-            "checks_run": y in scores or y in finding_years,
-            "score": scores[y].score if y in scores else None,
-            "tier": scores[y].tier if y in scores else None,
-            "period_from": pf_disp,
-            "period_to": pt_disp,
-            "period_manual": cp.is_manual if cp else False,
-            "period_custom": period_custom,
-            "coverage": coverage,
-            "coverage_gaps": gaps,
-            "overlaps": overlaps,
-            # Mở sẵn: năm vừa thêm, hoặc năm mới nhất nếu không thêm.
-            "open": (y == added_empty) if added_empty else (i == 0),
-        })
-
-    # Năm có thể thêm: vài năm gần đây chưa có trong danh sách.
-    from datetime import date
-    this_year = date.today().year
-    present = set(years)
-    add_years = [
-        y for y in range(this_year, this_year - 8, -1)
-        if YEAR_MIN <= y <= YEAR_MAX and y not in present
-    ]
+    # Mọi con số và mọi câu vướng mắc dựng ở `build_data_screen` → `period_readiness`.
+    # Route KHÔNG tự đếm lại: hai đường đếm là hai đường lệch được nhau (ADR #24).
+    screen = build_data_screen(db, company, add=add)
 
     return templates.TemplateResponse(
         request,
@@ -1018,15 +876,88 @@ def company_documents(
         {
             "user": user,
             "company": company,
-            "year_rows": year_rows,
-            "add_years": add_years,
-            "year_min": YEAR_MIN,
-            "year_max": YEAR_MAX,
-            "human_size": _human_size,
+            "screen": screen,
+            "fiscal_options": FISCAL_MONTH_OPTIONS,
+            "bcqt_year_min": BCQT_YEAR_MIN,
+            "bcqt_year_max": YEAR_MAX,
             "msg": msg,
             "error": error,
         },
     )
+
+
+@router.post("/companies/{code}/documents/company", response_model=None)
+def documents_set_company_fields(
+    code: str,
+    first_bcqt_year: str = Form(default=""),
+    fiscal_start_month: str = Form(default="1"),
+    audit_decision_date: str = Form(default=""),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Sửa ba thuộc tính mức DN NGAY TRÊN màn dữ liệu (ADR #24 mục 3).
+
+    Route riêng, KHÔNG mượn `update_company`: form đó nhận cả tên/MST và lấy tên
+    rỗng làm tên mới, nên gửi từ đây sẽ ghi đè tên doanh nghiệp bằng mã.
+
+    Không dời `data_version` và không viết lại cửa sổ kỳ đã lưu: niên độ chỉ là mặc
+    định cho kỳ CHƯA có bản ghi, còn phạm vi KTSTQ là view tính lúc render (ADR #23).
+    """
+    from datetime import date as _date
+
+    company = get_company_or_404(db, code, user)
+
+    def _redirect(**params: str) -> RedirectResponse:
+        qs = f"?{urlencode(params)}" if params else ""
+        return RedirectResponse(url=f"/companies/{code}/documents{qs}", status_code=303)
+
+    # Trống = "chưa biết" (NULL), không phải 0 — kỳ sớm nhất đọc NULL để biết mình
+    # chưa đánh giá được. Nhập sai thì giữ nguyên giá trị cũ, không ghi đè bằng rác.
+    raw_year = first_bcqt_year.strip()
+    parsed_year: int | None = None
+    if raw_year:
+        try:
+            parsed_year = int(raw_year)
+        except ValueError:
+            parsed_year = None
+        if parsed_year is None or not (BCQT_YEAR_MIN <= parsed_year <= YEAR_MAX):
+            return _redirect(
+                error=f"Năm đầu nộp báo cáo quyết toán phải trong khoảng "
+                f"{BCQT_YEAR_MIN}–{YEAR_MAX}."
+            )
+
+    try:
+        month = int(fiscal_start_month)
+    except ValueError:
+        month = 0
+    if month not in FISCAL_START_MONTHS:
+        return _redirect(error="Tháng bắt đầu niên độ chỉ nhận giá trị từ 1 đến 12.")
+
+    decision_date = None
+    if audit_decision_date.strip():
+        try:
+            decision_date = _date.fromisoformat(audit_decision_date.strip())
+        except ValueError:
+            return _redirect(
+                error="Ngày quyết định kiểm tra sau thông quan không hợp lệ "
+                "(định dạng YYYY-MM-DD)."
+            )
+
+    company.first_bcqt_year = parsed_year
+    company.fiscal_start_month = month
+    company.audit_decision_date = decision_date
+    db.commit()
+
+    # Bốn mốc đầu quý là mốc luật; tháng khác vẫn lưu được nhưng phải nói rõ.
+    notice = (
+        ""
+        if month in QUARTER_START_MONTHS
+        else (
+            f" Lưu ý: niên độ bắt đầu tháng {month} nằm ngoài bốn mốc đầu quý mà "
+            "điểm a khoản 1 Điều 12 Luật Kế toán 88/2015 cho phép."
+        )
+    )
+    return _redirect(msg="Đã lưu thuộc tính doanh nghiệp." + notice)
 
 
 @router.post("/companies/{code}/documents/upload", response_model=None)

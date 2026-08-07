@@ -21,6 +21,8 @@ from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.pipeline.data_files import _evidence_columns
+from app.pipeline.data_screen import ACTION_OPEN_FILE, build_data_screen
+from app.pipeline.readiness import BLOCKER_FILE
 from app.settings import settings
 from tests.helpers import drain_jobs, last_job_result
 
@@ -84,7 +86,10 @@ def _login(client):
     client.post("/login", data={"user": "admin", "password": "admin"}, follow_redirects=False)
 
 
-def test_documents_page_shows_review_gate_banner(tmp_path):
+def test_a_column_still_to_confirm_becomes_a_blocker_pointing_at_that_file(tmp_path):
+    """Từ #86 màn dữ liệu không in danh sách cột nữa — nó nêu vướng mắc và mở đúng
+    trang file, nơi cột `needs_review` và các kiểm tra đọc cột đó vẫn được liệt kê
+    (`tests/test_data_files/test_review_screen.py`). Khẳng định ở mức dữ liệu."""
     new_engine, prev_root = _setup(tmp_path)
     try:
         # File thật trên đĩa để sync_data_files không prune (chỉ .stat, không mở).
@@ -111,13 +116,23 @@ def test_documents_page_shows_review_gate_banner(tmp_path):
             ))
             db.commit()
 
-        client = TestClient(app)
-        _login(client)
-        html = client.get("/companies/DN_GATE/documents").text
-        assert "Cần xác nhận cột trước khi nạp" in html   # banner cổng review
-        assert "Xuất sản xuất" in html                     # cột needs_review
-        # Check đọc m15/production_out_qty được nêu (ảnh hưởng).
-        assert "C4.3" in html and "C5.1" in html
+        with dbmod.SessionLocal() as db:
+            c = db.query(Company).filter_by(code="DN_GATE").first()
+            file_id = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first().id
+            row = next(
+                p for p in build_data_screen(db, c).periods if p.year == 2024
+            )
+            item = next(
+                i
+                for g in row.groups
+                for i in g.items
+                if i.kind == BLOCKER_FILE and i.slot == "m15"
+            )
+
+        # Cổng dừng lượt nạp và ghi 0 dòng, nên vướng mắc phải dẫn tới trang file —
+        # bảo cán bộ "tải lên" ở đây là bảo họ tải lại thứ vừa tải.
+        assert item.action.kind == ACTION_OPEN_FILE
+        assert item.action.url == f"/companies/DN_GATE/documents/file/{file_id}/review"
     finally:
         _teardown(new_engine, prev_root)
 
