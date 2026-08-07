@@ -10,7 +10,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.checks.not_evaluable import CheckResult, NotEvaluable
+from app.checks.not_evaluable import CheckResult, NotEvaluable, RemedyClassification
 from app.checks.registry import Severity
 from app.checks.scope import declaration_scope
 from app.checks.sources import classify_missing_sources
@@ -171,6 +171,45 @@ def check_c3_2(session: Session, company_id: int, year: int) -> list[Finding]:
 
 _MATCH_RANK = {UomMatch.EQUIVALENT: 0, UomMatch.SAME_FAMILY: 1, UomMatch.DIFFERENT: 2}
 
+_NO_COMPARISON_UNITS = (
+    "Kỳ này không có đơn vị tính nào để đối chiếu với Mẫu 15 — chưa có tờ "
+    "khai trong cửa sổ kỳ, cũng chưa có Mẫu 16."
+)
+
+
+def comparison_units_gate(
+    session: Session, company_id: int, year: int
+) -> tuple[str, RemedyClassification] | None:
+    """(lý do, (lớp, đích)) khi C3.3 không còn vế nào để đối chiếu; None nếu còn.
+
+    `registry.requires` chỉ khai được quan hệ VÀ, mà vế đối chiếu của C3.3 là tờ khai
+    HOẶC Mẫu 16 — nên cổng nằm ở đây. Hỏi bằng `LIMIT 1` với ĐÚNG bộ lọc mà thân check
+    dùng để dựng hai tập đơn vị (`item_code`/`unit` không rỗng trong cửa sổ kỳ;
+    `material_unit` không rỗng ở Mẫu 16), để hai đường không trả lời khác nhau.
+    """
+    has_bcct = session.scalar(
+        select(DeclarationLine.id)
+        .where(
+            declaration_scope(session, company_id, year),
+            DeclarationLine.item_code.is_not(None),
+            DeclarationLine.unit.is_not(None),
+        )
+        .limit(1)
+    )
+    has_m16 = session.scalar(
+        select(Norm.id)
+        .where(
+            Norm.company_id == company_id,
+            Norm.period_year == year,
+            Norm.material_unit.is_not(None),
+        )
+        .limit(1)
+    )
+    if has_bcct or has_m16:
+        return None
+    # Lớp 1: cả hai vế đối chiếu đều là file của CHÍNH kỳ này (ADR #24 mục 2).
+    return _NO_COMPARISON_UNITS, classify_missing_sources(("bcct", "m16"))
+
 
 def check_c3_3(session: Session, company_id: int, year: int) -> CheckResult:
     """Đơn vị tính không nhất quán giữa M15, M16 và BCCT cùng mã NVL.
@@ -187,6 +226,12 @@ def check_c3_3(session: Session, company_id: int, year: int) -> CheckResult:
     Neo vẫn là mã CÓ dòng M15: mã chỉ có ở M16 mà không có dòng M15 là ca thiếu
     nguồn của C4.1, không phải chuyện đơn vị tính.
     """
+    gated = comparison_units_gate(session, company_id, year)
+    if gated is not None:
+        # Thiếu cả hai vế mà vẫn chạy tiếp thì ra 0 phát hiện, đọc như "đơn vị nhất quán".
+        reason, (remedy, _target) = gated
+        return NotEvaluable(reason, remedy=remedy)
+
     m15_rows = session.execute(
         select(NvlBalance.book, NvlBalance.material_code, NvlBalance.unit).where(
             NvlBalance.company_id == company_id,
@@ -227,17 +272,6 @@ def check_c3_3(session: Session, company_id: int, year: int) -> CheckResult:
         ).distinct()
     ).all():
         m16_units[(book, code)].add(unit)
-
-    if not bcct_units and not m16_units:
-        # `requires` chỉ gác M15 (vế đối chiếu là HOẶC), nên phải tự chặn ở đây —
-        # không thì thiếu cả hai vế vẫn ra 0 phát hiện đọc như "đơn vị nhất quán".
-        # Lớp 1: cả hai vế đối chiếu đều là file của CHÍNH kỳ này (ADR #24 mục 2).
-        remedy, _ = classify_missing_sources(("bcct", "m16"))
-        return NotEvaluable(
-            "Kỳ này không có đơn vị tính nào để đối chiếu với Mẫu 15 — chưa có tờ "
-            "khai trong cửa sổ kỳ, cũng chưa có Mẫu 16.",
-            remedy=remedy,
-        )
 
     findings: list[Finding] = []
     for (book, code), unit_set in sorted(
@@ -356,3 +390,11 @@ CHECKS = {
     "C3.2": check_c3_2,
     "C3.3": check_c3_3,
 }
+
+__all__ = [
+    "CHECKS",
+    "check_c3_1",
+    "check_c3_2",
+    "check_c3_3",
+    "comparison_units_gate",
+]

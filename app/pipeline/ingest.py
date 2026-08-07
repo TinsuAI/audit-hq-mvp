@@ -138,6 +138,46 @@ def _books_already_stored(session, company_id: int, year: int) -> set[str]:
     return books
 
 
+def book_assignment_error(session, company_id: int, year: int) -> str | None:
+    """Lý do kế hoạch nạp settlement bị chặn vì gán sổ chưa đủ; None nếu qua được.
+
+    Hai điều kiện, cả hai đều dẫn tới gộp sổ im lặng nếu cho đi tiếp. Tách khỏi
+    `_plan_settlement_files` để màn dữ liệu hỏi được "kỳ này còn vướng gán sổ không"
+    mà không phải mở file nào, và hỏi bằng CHÍNH đoạn mã chặn lượt nạp.
+    """
+    rows = session.scalars(
+        select(DataFile).where(
+            DataFile.company_id == company_id,
+            DataFile.period_year == year,
+            DataFile.slot.in_(SETTLEMENT_SLOTS),
+        )
+    ).all()
+    if not any(r.book for r in rows):
+        # Tag book chỉ sống trong data_files, mà `sync_data_files` prune dòng khi file
+        # vắng trên đĩa. Mất tag + nạp tiếp = dựng lại pháp nhân nhiều sổ thành MỘT sổ
+        # gộp, im lặng. Đối chiếu với sổ đang có trong DB trước khi cho đi tiếp.
+        prior = _books_already_stored(session, company_id, year)
+        if prior:
+            return (
+                f"DN đang có sổ {', '.join(sorted(prior))} trong kỳ {year} nhưng không "
+                f"file nào còn nhãn sổ — nạp tiếp sẽ gộp tất cả thành một sổ. Hãy đồng "
+                f"bộ lại danh sách file rồi gán nhãn sổ cho từng file quyết toán và nạp lại."
+            )
+        return None
+
+    # Gán sổ phải là tất-cả-hoặc-không. Dòng của file chưa gán rơi vào book=NULL, mà ở
+    # pháp nhân nhiều sổ NULL nghĩa là "liên sổ" — C4.1/C4.3/C6.1 gom NULL thành sổ thứ
+    # ba và đối chiếu định mức/tồn kho bên trong cái sổ không tồn tại đó.
+    untagged = [f"{r.slot}: {r.stored_path}" for r in rows if not r.book]
+    if untagged:
+        return (
+            "Một số file quyết toán đã gán sổ, số khác chưa: "
+            + "; ".join(sorted(untagged))
+            + ". Gán sổ cho MỌI file quyết toán của kỳ rồi nạp lại."
+        )
+    return None
+
+
 def _plan_settlement_files(
     session, company_id: int, year: int, discovered_parsed: dict, raw_root: Path,
     officer: dict[str, dict[str, dict[str, int]]] | None = None,
@@ -159,30 +199,12 @@ def _plan_settlement_files(
             DataFile.slot.in_(SETTLEMENT_SLOTS),
         )
     ).all()
+    problem = book_assignment_error(session, company_id, year)
+    if problem:
+        raise IngestPlanError(problem)
     if not any(r.book for r in rows):
-        # Tag book chỉ sống trong data_files, mà `sync_data_files` prune dòng khi file
-        # vắng trên đĩa. Mất tag + nạp tiếp = dựng lại pháp nhân nhiều sổ thành MỘT sổ
-        # gộp, im lặng. Đối chiếu với sổ đang có trong DB trước khi cho đi tiếp.
-        prior = _books_already_stored(session, company_id, year)
-        if prior:
-            raise IngestPlanError(
-                f"DN đang có sổ {', '.join(sorted(prior))} trong kỳ {year} nhưng không "
-                f"file nào còn nhãn sổ — nạp tiếp sẽ gộp tất cả thành một sổ. Hãy đồng "
-                f"bộ lại danh sách file rồi gán nhãn sổ cho từng file quyết toán và nạp lại."
-            )
         # Single-book / CLI: file discover đã parse sẵn, book=NULL (hành vi cũ).
         return {slot: ([(obj, None)] if obj else []) for slot, obj in discovered_parsed.items()}
-
-    # Gán sổ phải là tất-cả-hoặc-không. Dòng của file chưa gán rơi vào book=NULL, mà ở
-    # pháp nhân nhiều sổ NULL nghĩa là "liên sổ" — C4.1/C4.3/C6.1 gom NULL thành sổ thứ
-    # ba và đối chiếu định mức/tồn kho bên trong cái sổ không tồn tại đó.
-    untagged = [f"{r.slot}: {r.stored_path}" for r in rows if not r.book]
-    if untagged:
-        raise IngestPlanError(
-            "Một số file quyết toán đã gán sổ, số khác chưa: "
-            + "; ".join(sorted(untagged))
-            + ". Gán sổ cho MỌI file quyết toán của kỳ rồi nạp lại."
-        )
 
     plan: dict[str, list[tuple]] = {"m15": [], "m15a": [], "m16": []}
     unusable: list[str] = []

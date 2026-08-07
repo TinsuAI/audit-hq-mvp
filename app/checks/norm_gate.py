@@ -141,19 +141,32 @@ def classify_norm_coverage(session: Session, company_id: int, year: int) -> Reme
     return REMEDY_NOTHING_TO_LOAD, None
 
 
-def norm_coverage_gate(session: Session, company_id: int, year: int) -> NotEvaluable | None:
-    """`NotEvaluable` kèm lý do + lớp cách gỡ nếu (DN, kỳ) vướng cổng; None nếu đánh
-    giá được. Lớp lấy từ chính hàm phân loại mà màn dữ liệu gọi lúc hiển thị — một
-    hàm cho cả hai đường thì trạng thái đã lưu và dự đoán không lệch nhau."""
+def norm_gate_outcome(
+    session: Session, company_id: int, year: int
+) -> tuple[str, RemedyClassification] | None:
+    """(lý do, (lớp, đích)) nếu (DN, kỳ) vướng cổng; None nếu đánh giá được.
+
+    MỘT nhánh cho cả hai đường đọc: C4.3 lấy lý do + lớp để ghi `check_runs`, màn dữ
+    liệu lấy lớp + đích để dựng nút "mở đúng kỳ cần nạp". Tách đôi nhánh thì dự đoán
+    của bảng điều khiển và trạng thái đã lưu lệch nhau đúng ở ca kỳ biên (ADR #24).
+    """
     if is_boundary_period(session, company_id, year):
-        remedy, _ = classify_boundary_period()
-        return NotEvaluable(_boundary_reason(year), remedy=remedy)
+        return _boundary_reason(year), classify_boundary_period()
 
     missing = products_without_norm(session, company_id, year)
     if missing:
-        remedy, _ = classify_norm_coverage(session, company_id, year)
-        return NotEvaluable(_coverage_reason(missing), remedy=remedy)
+        return _coverage_reason(missing), classify_norm_coverage(session, company_id, year)
     return None
+
+
+def norm_coverage_gate(session: Session, company_id: int, year: int) -> NotEvaluable | None:
+    """`NotEvaluable` kèm lý do + lớp cách gỡ nếu (DN, kỳ) vướng cổng; None nếu đánh
+    giá được."""
+    outcome = norm_gate_outcome(session, company_id, year)
+    if outcome is None:
+        return None
+    reason, (remedy, _target) = outcome
+    return NotEvaluable(reason, remedy=remedy)
 
 
 __all__ = [
@@ -162,5 +175,6 @@ __all__ = [
     "earliest_period_held",
     "is_boundary_period",
     "norm_coverage_gate",
+    "norm_gate_outcome",
     "periods_without_norms",
 ]
