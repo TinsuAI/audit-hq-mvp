@@ -300,8 +300,14 @@ class PeriodRow:
     anchor: str
     window_anchor: str
     sufficient_count: int
+    #: Mẫu số của tỷ lệ hiển thị — phần dự đoán được. Mã "biết khi chạy" đếm riêng.
+    predictable_count: int
+    #: MỌI kiểm tra áp dụng, kể cả mã "biết khi chạy" — mẫu số không co (US 51).
     total_count: int
     run_to_know_codes: tuple[str, ...]
+    #: Đủ nguồn cho mọi kiểm tra dự đoán được. Chép từ `PeriodReadiness.ready`, không
+    #: so lại ở đây — một phép so, một chỗ định nghĩa.
+    ready: bool
     #: Dữ liệu đã nạp không còn khớp bộ file — TRỤC RIÊNG, không vào phép đếm.
     stale: bool
     #: Phát hiện và điểm tính trên phiên bản dữ liệu cũ hơn hiện tại — cần CHẠY LẠI
@@ -335,10 +341,6 @@ class PeriodRow:
     ingest_lock_message: str = ""
     type_url: str = ""
     book_url: str = ""
-
-    @property
-    def ready(self) -> bool:
-        return self.sufficient_count >= self.total_count
 
     @property
     def blocker_count(self) -> int:
@@ -685,8 +687,10 @@ def _period_row(
         anchor=period_anchor(year),
         window_anchor=_window_anchor(year),
         sufficient_count=readiness.sufficient_count,
+        predictable_count=readiness.predictable_count,
         total_count=readiness.total_count,
         run_to_know_codes=readiness.run_to_know_codes,
+        ready=readiness.ready,
         stale=readiness.stale,
         results_stale=results_stale(session, company.id, year),
         groups=_groups(readiness, year, slug, years_present, findings_url),

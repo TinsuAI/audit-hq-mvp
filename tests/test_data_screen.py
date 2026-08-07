@@ -47,7 +47,7 @@ from app.pipeline.data_screen import (
 from app.pipeline.file_page import file_page_url
 from app.pipeline.readiness import BLOCKER_CHECK, BLOCKER_COVERAGE, BLOCKER_FILE, period_readiness
 from tests.conftest import AppDb, add_decl, add_norm, add_nvl, add_sp
-from tests.test_readiness import add_file
+from tests.test_readiness import add_file, load_every_predictable_source
 
 
 def _row(screen, year: int):
@@ -128,6 +128,43 @@ def test_a_check_that_cannot_be_predicted_stays_in_the_denominator(session, comp
     row = _row(build_data_screen(session, company), 2024)
     assert row.total_count == len(ALL_CHECKS) + 1
     assert "X.1" in row.run_to_know_codes
+    # Mã động ra khỏi tỷ lệ nhưng KHÔNG ra khỏi mẫu số: hai con số cộng lại vẫn đủ.
+    assert row.predictable_count + len(row.run_to_know_codes) == row.total_count
+
+
+def test_a_full_period_reads_complete_with_or_without_a_dynamic_check(session, company):
+    """Cùng dữ liệu đầy đủ, hai ca — có mã động và không — đều đọc là đủ (#103)."""
+    load_every_predictable_source(session, company.id, 2025)
+    session.commit()
+
+    plain = _row(build_data_screen(session, company), 2025)
+    assert plain.ready is True
+    assert plain.sufficient_count == plain.predictable_count == plain.total_count
+
+    session.add(CheckDefinition(
+        code="X.1", kind="sql", title="Mở rộng", description="", spec={},
+        sql_snippet="SELECT 1", status=CheckStatus.PUBLISHED,
+    ))
+    session.commit()
+
+    with_dynamic = _row(build_data_screen(session, company), 2025)
+    assert with_dynamic.ready is True
+    assert with_dynamic.total_count == plain.total_count + 1
+    assert with_dynamic.predictable_count == plain.predictable_count
+    assert with_dynamic.run_to_know_codes == ("X.1",)
+
+
+def test_the_row_copies_the_readiness_verdict_instead_of_comparing_again(
+    session, company
+):
+    load_every_predictable_source(session, company.id, 2025)
+    session.commit()
+
+    row = _row(build_data_screen(session, company), 2025)
+    expected = period_readiness(session, company.id, 2025)
+
+    assert row.ready is expected.ready
+    assert row.predictable_count == expected.predictable_count
 
 
 def test_filling_every_source_clears_the_missing_document_blockers(session, company):

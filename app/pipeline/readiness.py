@@ -24,7 +24,10 @@ khiển và kiểm tra khớp nhau vì chạy cùng một đoạn mã, không ph
 tình cờ giống nhau.
 
 Mã nào thật sự không dự đoán được (kiểm tra mở rộng do admin soạn) vẫn nằm trong MẪU
-SỐ, gắn "biết khi chạy" — rút mẫu số là cách làm doanh nghiệp trông sạch hơn.
+SỐ, gắn "biết khi chạy" — rút mẫu số là cách làm doanh nghiệp trông sạch hơn. Nhưng nó
+được đếm THÀNH MỘT CON SỐ RIÊNG (`predictable_count` · `run_to_know_codes`), vì gộp nó
+vào mẫu số của tỷ lệ thì tỷ lệ không bao giờ đóng và cán bộ nạp hết mọi thứ nạp được
+vẫn không thấy kỳ nào đủ (issue #103).
 """
 
 from __future__ import annotations
@@ -200,6 +203,26 @@ class PeriodReadiness:
     @property
     def run_to_know_codes(self) -> tuple[str, ...]:
         return tuple(c.code for c in self.checks if c.status == CHECK_RUN_TO_KNOW)
+
+    @property
+    def predictable_count(self) -> int:
+        """Mẫu số của phần DỰ ĐOÁN ĐƯỢC — hai con số tách nhau (issue #103).
+
+        `total_count` giữ nguyên nghĩa "mọi kiểm tra áp dụng" và mã "biết khi chạy" vẫn
+        nằm trong đó; nó chỉ được đếm riêng, không bị rút. Tỷ lệ hiển thị và `ready`
+        chạy trên con số này vì mã động do admin viết không khai `requires`: đưa nó vào
+        tử số là đoán bừa, để nó ở mẫu số của tỷ lệ là khoá tỷ lệ không bao giờ đóng.
+        """
+        return self.total_count - len(self.run_to_know_codes)
+
+    @property
+    def ready(self) -> bool:
+        """Kỳ đọc là ĐỦ: mọi kiểm tra dự đoán được đều có đủ nguồn Tầng 1.
+
+        Định nghĩa nằm ở đây chứ không ở lớp dựng UI — màn dữ liệu chép con số, không
+        tính lại phép so.
+        """
+        return self.sufficient_count >= self.predictable_count
 
     def slot(self, slot: str) -> SlotStatus | None:
         return next((s for s in self.slots if s.slot == slot), None)

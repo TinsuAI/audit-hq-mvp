@@ -292,6 +292,79 @@ def test_an_unpublished_dynamic_check_is_not_in_the_denominator(session, company
     assert "X.9" not in {c.code for c in r.checks}
 
 
+# --- Tử số đóng được: mã "biết khi chạy" ở lại mẫu số nhưng không khoá kỳ (#103) ---
+
+
+def load_every_predictable_source(session, company_id: int, year: int = 2025) -> None:
+    """Nạp mọi thứ cán bộ nạp được cho một kỳ — cả bốn nguồn và cả ba cổng riêng.
+
+    Kỳ N−1 có dòng M15 vì hai lý do cùng lúc: C6.1 đối chiếu tồn cuối kỳ trước, và
+    cổng định mức chỉ thôi chặn khi kỳ đang xét không còn là kỳ sớm nhất hệ thống giữ.
+    """
+    add_nvl(session, company_id, material_code="A", unit="KG", closing=10,
+            year=year - 1)
+    add_nvl(session, company_id, material_code="A", unit="KG", opening=10, imported=100,
+            production_out=100, closing=10, year=year)
+    add_sp(session, company_id, product_code="TP", unit="PCE", intake=100,
+           export_qty=100, year=year)
+    add_norm(session, company_id, product_code="TP", material_code="A", norm_qty=1.0,
+             material_unit="KG", year=year)
+    add_decl(session, company_id, declaration_no="1", customs_code="E31", item_code="A",
+             unit="KG", quantity=100, year=year)
+
+
+def test_a_period_with_every_loadable_source_read_as_complete(session, company):
+    """Không có mã động: nạp hết nguồn nạp được thì tử số chạm mẫu số."""
+    load_every_predictable_source(session, company.id)
+    session.commit()
+
+    r = period_readiness(session, company.id, 2025)
+
+    assert [(c.code, c.reason) for c in r.checks if not c.data_sufficient] == []
+    assert r.sufficient_count == r.total_count == len(ALL_CHECKS)
+    assert r.predictable_count == len(ALL_CHECKS)
+    assert r.ready is True
+
+
+def test_a_published_dynamic_check_does_not_keep_a_full_period_from_reading_complete(
+    session, company
+):
+    """Cùng dữ liệu đầy đủ, có thêm mã động: vẫn đọc là đủ, mẫu số vẫn không co."""
+    load_every_predictable_source(session, company.id)
+    session.add(CheckDefinition(
+        code="X.1", kind="sql", title="Mở rộng", description="", spec={},
+        sql_snippet="SELECT 1", status=CheckStatus.PUBLISHED,
+    ))
+    session.commit()
+
+    r = period_readiness(session, company.id, 2025)
+
+    assert r.ready is True
+    # Mẫu số giữ nguyên mã động — rút nó ra là cách làm doanh nghiệp trông sạch hơn.
+    assert r.total_count == len(ALL_CHECKS) + 1
+    assert r.run_to_know_codes == ("X.1",)
+    # Hai con số tách nhau: phần dự đoán được đã đủ, phần biết khi chạy đứng riêng.
+    assert r.predictable_count == len(ALL_CHECKS)
+    assert r.sufficient_count == len(ALL_CHECKS)
+
+
+def test_a_dynamic_check_does_not_make_a_half_loaded_period_read_complete(
+    session, company
+):
+    """Tử số không được mở toang: thiếu nguồn thật thì kỳ vẫn chưa đủ."""
+    add_nvl(session, company.id, material_code="A", imported=10, closing=10, year=2025)
+    session.add(CheckDefinition(
+        code="X.1", kind="sql", title="Mở rộng", description="", spec={},
+        sql_snippet="SELECT 1", status=CheckStatus.PUBLISHED,
+    ))
+    session.commit()
+
+    r = period_readiness(session, company.id, 2025)
+
+    assert r.ready is False
+    assert r.sufficient_count < r.predictable_count
+
+
 def test_class_three_counts_as_data_sufficient(session, company):
     """"Chưa từng khai định mức" là kết luận về DN — không phải lỗ hổng dữ liệu."""
     add_norm(session, company.id, product_code="TP", material_code="X", norm_qty=2.0,

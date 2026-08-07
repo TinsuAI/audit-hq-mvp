@@ -89,11 +89,12 @@
 
   <header class="ds-period-head">
     <h2 class="ds-period-year">Kỳ {{ p.year }}</h2>
-    <span class="badge {% if p.ready %}info{% else %}warning{% endif %}">
-      Đủ dữ liệu cho {{ p.sufficient_count }}/{{ p.total_count }} kiểm tra
+    <span class="badge {% if p.ready %}info{% else %}warning{% endif %}"
+          title="Đếm trên {{ p.predictable_count }} kiểm tra dự đoán trước được. Kỳ này có tất cả {{ p.total_count }} kiểm tra áp dụng.">
+      Đủ nguồn cho {{ p.sufficient_count }}/{{ p.predictable_count }} kiểm tra
     </span>
     {% if p.run_to_know_codes %}
-    <span class="badge muted" title="{{ p.run_to_know_codes|join(', ') }}">
+    <span class="badge muted" title="{{ p.run_to_know_codes|join(', ') }} — kiểm tra mở rộng không khai nguồn cần, chỉ biết đủ dữ liệu hay không sau khi chạy. Vẫn tính trong {{ p.total_count }} kiểm tra của kỳ.">
       {{ p.run_to_know_codes|length }} kiểm tra biết khi chạy
     </span>
     {% endif %}
