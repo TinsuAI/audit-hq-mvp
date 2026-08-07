@@ -8,19 +8,14 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy.pool import StaticPool
 
-import app.database as dbmod
-from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.pipeline.data_files import year_review_gate
 from app.pipeline.saved_map import load_column_map
-from app.settings import settings
 from tests.helpers import drain_jobs, last_job_result
 
 # Header Mẫu 15 bố cục chuẩn NHƯNG cột xuất SX (col 8) dùng nhãn không khớp từ khoá
@@ -67,35 +62,10 @@ def _m15_with_spare_column_bytes() -> bytes:
     return buf.getvalue()
 
 
-def _setup(tmp_path: Path):
-    import app.pipeline.ingest as ingmod
-    from app.auth_users import seed_default_admin
-
-    new_engine = dbmod.create_engine(
-        "sqlite://", connect_args={"check_same_thread": False},
-        poolclass=StaticPool, future=True,
-    )
-    new_session = dbmod.sessionmaker(bind=new_engine, autoflush=False, autocommit=False, future=True)
-    dbmod.engine = new_engine
-    dbmod.SessionLocal = new_session
-    ingmod.SessionLocal = new_session
-    Base.metadata.create_all(new_engine)
-    with new_session() as db:
-        seed_default_admin(db, "admin", "admin")
+def _company(app_db) -> None:
+    with app_db.SessionLocal() as db:
         db.add(Company(code="DN_REV", name="Rev", tax_id="1"))
         db.commit()
-    prev_root = settings.raw_data_path
-    settings.raw_data_path = str(tmp_path)
-    return new_engine, prev_root
-
-
-def _teardown(new_engine, prev_root):
-    import app.pipeline.ingest as ingmod
-    settings.raw_data_path = prev_root
-    new_engine.dispose()
-    dbmod.engine = engine
-    dbmod.SessionLocal = SessionLocal
-    ingmod.SessionLocal = SessionLocal
 
 
 def _login(client):
@@ -118,117 +88,108 @@ def _upload_needs_review(client) -> None:
     assert last_job_result("ingest")["status"] == "needs_review"
 
 
-def test_review_get_renders_map_and_badges(tmp_path):
-    new_engine, prev_root = _setup(tmp_path)
-    try:
-        client = TestClient(app)
-        _login(client)
-        _upload_needs_review(client)
+def test_review_get_renders_map_and_badges(app_db):
+    client = TestClient(app)
+    _login(client)
+    _company(app_db)
+    _upload_needs_review(client)
 
-        with dbmod.SessionLocal() as db:
-            c = db.query(Company).filter_by(code="DN_REV").first()
-            row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
-            assert row.parse_status == DataFileStatus.ANALYZED  # dừng, chưa parsed
-            fid = row.id
+    with app_db.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_REV").first()
+        row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
+        assert row.parse_status == DataFileStatus.ANALYZED  # dừng, chưa parsed
+        fid = row.id
 
-        html = client.get(f"/companies/DN_REV/documents/file/{fid}/review").text
-        assert "Xuất sản xuất" in html          # nhãn field production_out_qty
-        assert "Khớp đẳng thức" in html          # badge evidence balance-checked
-        assert "Cần xác nhận" in html            # trạng thái review cột
-        assert 'name="col_production_out_qty"' in html  # ô sửa cột needs_review
-    finally:
-        _teardown(new_engine, prev_root)
+    html = client.get(f"/companies/DN_REV/documents/file/{fid}/review").text
+    assert "Xuất sản xuất" in html          # nhãn field production_out_qty
+    assert "Khớp đẳng thức" in html          # badge evidence balance-checked
+    assert "Cần xác nhận" in html            # trạng thái review cột
+    assert 'name="col_production_out_qty"' in html  # ô sửa cột needs_review
 
 
-def test_review_confirm_saves_map_and_advances_to_parsed(tmp_path):
-    new_engine, prev_root = _setup(tmp_path)
-    try:
-        client = TestClient(app)
-        _login(client)
-        _upload_needs_review(client)
+def test_review_confirm_saves_map_and_advances_to_parsed(app_db):
+    client = TestClient(app)
+    _login(client)
+    _company(app_db)
+    _upload_needs_review(client)
 
-        with dbmod.SessionLocal() as db:
-            c = db.query(Company).filter_by(code="DN_REV").first()
-            cid = c.id
-            row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
-            fid = row.id
-            detail = row.parse_detail_obj
-            form_sig = detail["form_signature"]
-            base_map = detail["column_map"]
-            # Trước xác nhận: cổng review còn bật.
-            assert year_review_gate(db, c, 2024) is not None
-            # Chưa commit dòng nào (dry-run).
-            assert db.query(NvlBalance).filter_by(company_id=cid, period_year=2024).count() == 0
+    with app_db.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_REV").first()
+        cid = c.id
+        row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
+        fid = row.id
+        detail = row.parse_detail_obj
+        form_sig = detail["form_signature"]
+        base_map = detail["column_map"]
+        # Trước xác nhận: cổng review còn bật.
+        assert year_review_gate(db, c, 2024) is not None
+        # Chưa commit dòng nào (dry-run).
+        assert db.query(NvlBalance).filter_by(company_id=cid, period_year=2024).count() == 0
 
-        data = {f"col_{field}": str(idx) for field, idx in base_map.items()}
-        r = client.post(
-            f"/companies/DN_REV/documents/file/{fid}/review",
-            data=data, follow_redirects=False,
-        )
-        assert r.status_code == 303
-        assert r.headers["location"].startswith("/jobs/")
-        drain_jobs()
+    data = {f"col_{field}": str(idx) for field, idx in base_map.items()}
+    r = client.post(
+        f"/companies/DN_REV/documents/file/{fid}/review",
+        data=data, follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"].startswith("/jobs/")
+    drain_jobs()
 
-        with dbmod.SessionLocal() as db:
-            c = db.query(Company).filter_by(code="DN_REV").first()
-            saved = load_column_map(db, c.id, "m15", form_sig)
-            assert saved is not None
-            assert saved.column_map_obj == base_map
-            row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
-            assert row.parse_status == DataFileStatus.OK  # advance analyzed→parsed
-            assert row.parse_detail_obj["review"] == "verified"  # officer-confirmed
-            # Cổng review đã clear + dòng dữ liệu đã commit.
-            assert year_review_gate(db, c, 2024) is None
-            assert db.query(NvlBalance).filter_by(company_id=c.id, period_year=2024).count() == 3
-    finally:
-        _teardown(new_engine, prev_root)
+    with app_db.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_REV").first()
+        saved = load_column_map(db, c.id, "m15", form_sig)
+        assert saved is not None
+        assert saved.column_map_obj == base_map
+        row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
+        assert row.parse_status == DataFileStatus.OK  # advance analyzed→parsed
+        assert row.parse_detail_obj["review"] == "verified"  # officer-confirmed
+        # Cổng review đã clear + dòng dữ liệu đã commit.
+        assert year_review_gate(db, c, 2024) is None
+        assert db.query(NvlBalance).filter_by(company_id=c.id, period_year=2024).count() == 3
 
 
-def test_confirming_a_moved_column_reads_the_officer_column(tmp_path):
+def test_confirming_a_moved_column_reads_the_officer_column(app_db):
     """Cán bộ sửa chỉ số cột → lượt nạp kế ĐỌC ĐÚNG cột đó (#84, ADR #24 mục 5).
 
     Trước bản sửa, map lưu chỉ nâng NHÃN bằng chứng lên `officer-confirmed`; adapter
     vẫn đọc cột cũ, nên số liệu Tầng 1 không đổi và cán bộ tin là đã sửa xong trong
     khi hệ thống vẫn đọc sai — im lặng.
     """
-    new_engine, prev_root = _setup(tmp_path)
-    try:
-        client = TestClient(app)
-        _login(client)
-        r = client.post(
-            "/companies/DN_REV/upload",
-            data={"year": "2024"},
-            files={"m15": ("Mau15_NVL.xlsx", _m15_with_spare_column_bytes(),
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-            follow_redirects=False,
-        )
-        assert r.status_code == 303
-        drain_jobs()
+    client = TestClient(app)
+    _login(client)
+    _company(app_db)
+    r = client.post(
+        "/companies/DN_REV/upload",
+        data={"year": "2024"},
+        files={"m15": ("Mau15_NVL.xlsx", _m15_with_spare_column_bytes(),
+                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    drain_jobs()
 
-        with dbmod.SessionLocal() as db:
-            c = db.query(Company).filter_by(code="DN_REV").first()
-            row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
-            fid, base_map = row.id, dict(row.parse_detail_obj["column_map"])
-            assert base_map["closing_qty"] != _SPARE_COL  # tiền đề: đang đọc cột chuẩn
+    with app_db.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_REV").first()
+        row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
+        fid, base_map = row.id, dict(row.parse_detail_obj["column_map"])
+        assert base_map["closing_qty"] != _SPARE_COL  # tiền đề: đang đọc cột chuẩn
 
-        data = {f"col_{field}": str(idx) for field, idx in base_map.items()}
-        data["col_closing_qty"] = str(_SPARE_COL)
-        r = client.post(
-            f"/companies/DN_REV/documents/file/{fid}/review",
-            data=data, follow_redirects=False,
-        )
-        assert r.status_code == 303
-        drain_jobs()
+    data = {f"col_{field}": str(idx) for field, idx in base_map.items()}
+    data["col_closing_qty"] = str(_SPARE_COL)
+    r = client.post(
+        f"/companies/DN_REV/documents/file/{fid}/review",
+        data=data, follow_redirects=False,
+    )
+    assert r.status_code == 303
+    drain_jobs()
 
-        with dbmod.SessionLocal() as db:
-            c = db.query(Company).filter_by(code="DN_REV").first()
-            rows = db.query(NvlBalance).filter_by(company_id=c.id, period_year=2024).all()
-            assert len(rows) == 3
-            # Số liệu đọc từ ĐÚNG cột cán bộ chỉ, không phải cột chuẩn (30).
-            assert {r.closing_qty for r in rows} == {_SPARE_VALUE}
-            row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
-            assert row.parse_status == DataFileStatus.OK
-            assert row.match_source == "officer-map"
-            assert row.parse_detail_obj["column_map"]["closing_qty"] == _SPARE_COL
-    finally:
-        _teardown(new_engine, prev_root)
+    with app_db.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_REV").first()
+        rows = db.query(NvlBalance).filter_by(company_id=c.id, period_year=2024).all()
+        assert len(rows) == 3
+        # Số liệu đọc từ ĐÚNG cột cán bộ chỉ, không phải cột chuẩn (30).
+        assert {r.closing_qty for r in rows} == {_SPARE_VALUE}
+        row = db.query(DataFile).filter_by(company_id=c.id, slot="m15").first()
+        assert row.parse_status == DataFileStatus.OK
+        assert row.match_source == "officer-map"
+        assert row.parse_detail_obj["column_map"]["closing_qty"] == _SPARE_COL
