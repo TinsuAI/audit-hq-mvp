@@ -1929,6 +1929,44 @@ p { margin: 0 0 var(--space-3); }
 .ds-upload-pick { cursor: pointer; white-space: nowrap; }
 .ds-upload-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
+.ds-part { border-top: 1px solid var(--c-border); padding-top: var(--space-2); margin-top: var(--space-2); }
+.ds-part-title { font-size: var(--fs-sm); font-weight: 700; margin: 0 0 var(--space-2); }
+.ds-part-hint { font-size: var(--fs-xs); margin: var(--space-2) 0 0; }
+
+.ds-type-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ds-type {
+  display: flex; flex-direction: column; gap: 2px; min-width: 150px;
+  border: 1px solid var(--c-border); border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3); font-size: var(--fs-sm);
+}
+.ds-type-absent { color: var(--c-text-muted); background: var(--c-surface-alt); }
+.ds-type-label { font-weight: 600; }
+.ds-type-count { font-size: var(--fs-sm); }
+.ds-type-files { font-size: var(--fs-xs); }
+.ds-type-pending { font-size: var(--fs-xs); color: var(--c-warning-fg); }
+
+.ds-file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ds-file {
+  display: grid; grid-template-columns: 1fr auto; gap: var(--space-2) var(--space-3);
+  align-items: center; padding: var(--space-2) 0; border-top: 1px solid var(--c-border);
+  font-size: var(--fs-sm);
+}
+.ds-file:first-child { border-top: none; }
+.ds-file-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.ds-file-name { font-weight: 600; word-break: break-all; }
+.ds-file-size { font-size: var(--fs-xs); }
+.ds-file-slot { font-size: var(--fs-xs); }
+.ds-file-notes { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; }
+.ds-file-note { margin: 0; font-size: var(--fs-xs); color: var(--c-warning-fg); }
+.ds-file-note-error { color: var(--c-critical-fg); font-weight: 600; }
+.ds-file-actions { display: flex; gap: var(--space-1); align-items: center; }
+.ds-file-actions form { margin: 0; }
+.ds-file-delete { color: var(--c-critical-fg); }
+.ds-file-delete:hover { background: var(--c-critical-bg); border-color: var(--c-critical-border); }
+@media (max-width: 620px) {
+  .ds-file { grid-template-columns: 1fr; }
+}
+
 .ds-group { border-top: 1px solid var(--c-border); padding-top: var(--space-2); margin-top: var(--space-2); }
 .ds-group-title { font-size: var(--fs-sm); font-weight: 700; margin: 0; }
 .ds-group-uncounted .ds-group-title { color: var(--c-text-muted); }

@@ -61,9 +61,16 @@ def add_file(
     needs_review: bool = False,
     message: str | None = None,
     name: str | None = None,
+    path: str | None = None,
+    rows: int | None = None,
+    size: int = 1024,
 ) -> DataFile:
-    """Một dòng registry `data_files` — không đụng đĩa, không chạy hàng đợi."""
-    filename = name or f"{slot}.xlsx"
+    """Một dòng registry `data_files` — không đụng đĩa, không chạy hàng đợi.
+
+    `path` cho phép nhiều dòng cùng trỏ vào MỘT file thật: registry đánh khoá theo
+    (đường dẫn, loại) nên một workbook phục vụ ba biểu là ba dòng cùng `stored_path`.
+    """
+    filename = name or (path.rsplit("/", 1)[-1] if path else f"{slot}.xlsx")
     detail = None
     if needs_review:
         detail = json.dumps(
@@ -85,12 +92,13 @@ def add_file(
         period_year=year,
         slot=slot,
         original_filename=filename,
-        stored_path=f"DN/{year}/{slot}/{filename}",
-        size_bytes=1024,
+        stored_path=path or f"DN/{year}/{slot}/{filename}",
+        size_bytes=size,
         book=book,
         parse_status=status,
         parse_message=message,
         parse_detail=detail,
+        row_count=rows,
     )
     session.add(row)
     return row

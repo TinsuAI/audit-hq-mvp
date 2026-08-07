@@ -879,6 +879,7 @@ def company_documents(
             "user": user,
             "company": company,
             "screen": screen,
+            "human_size": _human_size,
             "fiscal_options": FISCAL_MONTH_OPTIONS,
             "bcqt_year_min": BCQT_YEAR_MIN,
             "bcqt_year_max": YEAR_MAX,
@@ -1037,13 +1038,27 @@ def documents_delete_file(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    """Xoá MỘT FILE THẬT, tức mọi đăng ký loại của nó.
+
+    Registry đánh khoá theo (đường dẫn, loại): một workbook phục vụ ba biểu quyết
+    toán là ba dòng cùng `stored_path`. Xoá một dòng rồi bỏ file khỏi đĩa để lại hai
+    dòng trỏ vào chỗ trống — chúng chỉ biến mất ở lượt đồng bộ sau, nên cho tới lúc
+    đó màn hình vẫn kể tên file đã xoá.
+    """
     company = get_company_or_404(db, code, user)
     row = db.get(DataFile, file_id)
     if row is None or row.company_id != company.id:
         raise HTTPException(status_code=404, detail="Không tìm thấy file")
     abs_path = _resolve_within_root(row.stored_path)
     abs_path.unlink(missing_ok=True)
-    db.delete(row)
+    siblings = db.scalars(
+        select(DataFile).where(
+            DataFile.company_id == company.id,
+            DataFile.stored_path == row.stored_path,
+        )
+    ).all()
+    for sibling in siblings:
+        db.delete(sibling)
     db.commit()
     return RedirectResponse(
         url=f"/companies/{code}/documents?msg=%C4%90%C3%A3+xo%C3%A1+file",

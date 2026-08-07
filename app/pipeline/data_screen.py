@@ -16,9 +16,17 @@ nạp; nút thì theo bản ghi file. File đã có mà chưa đọc lần nào 
 liệu", không phải "tải lên" — bảo cán bộ tải lên thứ họ vừa tải là lỗi mà cả spec
 lẫn ADR #24 gọi tên.
 
-Phạm vi vé: khung màn + dòng kỳ + phép đếm + danh sách vướng mắc. Phần mở rộng dòng
-kỳ (số dòng theo loại + danh sách file thật) là #87, ô thả file là #88, phản hồi nạp
-tại chỗ là #89.
+**Số dòng thuộc LOẠI tài liệu, danh sách thuộc FILE THẬT (#87).** `record_parse_result`
+ghi tổng dòng của cả kỳ lên mọi bản ghi file cùng loại, nên in số đó cạnh từng file làm
+kỳ có hai file BCCT đọc thành gấp đôi (PILOT_006 kỳ 2025: 270.505 × 2 dòng file cho
+270.505 dòng thật). Vì vậy `DocTypeSummary` mang số dòng còn `PeriodFile` KHÔNG mang.
+Ngược lại, một workbook đăng ký cho ba biểu là ba bản ghi cùng `stored_path`, phải gộp
+lại thành một dòng file mang ba nhãn.
+
+Phạm vi vé: khung màn + dòng kỳ + phép đếm + danh sách vướng mắc + phần mở rộng dòng
+kỳ. Ô thả file là #88, phản hồi nạp tại chỗ là #89, trang riêng của file là #92 — toàn
+bộ căn cứ đọc (bằng chứng từng cột, bố cục, vân tay biểu, họ biểu) thuộc về trang đó,
+không thuộc dòng file ở đây (ADR #24 sửa ADR #18).
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.adapters.evidence import NEEDS_REVIEW
 from app.checks.not_evaluable import (
     REMEDY_NEED_FILE_THIS_PERIOD,
     REMEDY_NEED_OTHER_PERIOD_OR_CONFIRMATION,
@@ -50,6 +59,7 @@ from app.models import (
     NvlBalance,
     SpBalance,
 )
+from app.models.data_file import SLOT_LABEL_VI, SLOT_ORDER, DataFileStatus
 from app.pipeline.period import YEAR_MAX, YEAR_MIN
 from app.pipeline.readiness import (
     BLOCKER_CHECK,
@@ -196,6 +206,55 @@ class BlockerGroup:
 
 
 @dataclass(frozen=True)
+class DocTypeSummary:
+    """Một loại tài liệu của một kỳ — mức mà SỐ DÒNG thật sự tồn tại.
+
+    `row_count` là tổng dòng của cả kỳ cho loại này, đọc thẳng từ registry (nơi
+    `record_parse_result` đã ghi nó). `None` = chưa nạp lần nào, khác hẳn 0 dòng.
+    """
+
+    slot: str
+    label: str
+    short_label: str
+    state: str
+    row_count: int | None
+    #: Số FILE THẬT phục vụ loại này (một workbook ba biểu đếm 1 ở cả ba).
+    file_count: int
+    has_rows: bool
+
+
+@dataclass(frozen=True)
+class PeriodFile:
+    """Một FILE THẬT của kỳ — một dòng, kể cả khi nó đăng ký cho nhiều loại.
+
+    KHÔNG mang số dòng: số dòng là của loại, không của file (xem docstring module).
+
+    Chỉ mang thứ có HỆ QUẢ tới việc cán bộ phải làm — cần xác nhận cột, đọc hỏng,
+    có cảnh báo. Cảnh báo là CHỮ trong `notes`, không phải mã của một biểu tượng.
+    """
+
+    #: Bản ghi đại diện — đích của mở · tải · xoá.
+    file_id: int
+    #: Mọi bản ghi registry trỏ vào chính file này (một workbook ba biểu = ba id).
+    file_ids: tuple[int, ...]
+    name: str
+    size_bytes: int
+    slots: tuple[str, ...]
+    slot_labels: tuple[str, ...]
+    needs_column_review: bool
+    unreadable: bool
+    notes: tuple[str, ...]
+    open_url: str
+    download_url: str
+    delete_url: str
+
+    @property
+    def plain(self) -> bool:
+        """Không có gì có hệ quả — dòng chỉ còn tên, kích thước, các loại nó phục vụ."""
+        return not (self.needs_column_review or self.unreadable or self.notes)
+
+
+@dataclass(frozen=True)
 class PeriodRow:
     """Một kỳ = một dòng."""
 
@@ -208,6 +267,10 @@ class PeriodRow:
     #: Dữ liệu đã nạp không còn khớp bộ file — TRỤC RIÊNG, không vào phép đếm.
     stale: bool
     groups: tuple[BlockerGroup, ...]
+    #: Tóm tắt theo loại tài liệu — bốn loại, đúng thứ tự hiển thị.
+    doc_types: tuple[DocTypeSummary, ...]
+    #: Danh sách file thật của kỳ, mỗi file một dòng.
+    files: tuple[PeriodFile, ...]
     window_from: date
     window_to: date
     #: Chỉ hiện cửa sổ khi khác năm dương lịch (spec mục 15).
@@ -289,14 +352,17 @@ def _data_years(session: Session, company_id: int) -> set[int]:
     return years
 
 
-def _file_years(session: Session, company_id: int) -> set[int]:
-    return set(
-        session.scalars(
-            select(DataFile.period_year)
-            .where(DataFile.company_id == company_id)
-            .distinct()
-        ).all()
-    )
+def _files_by_year(session: Session, company_id: int) -> dict[int, list[DataFile]]:
+    """Mọi bản ghi registry của DN, gom theo kỳ — một lượt truy vấn cho cả màn."""
+    out: dict[int, list[DataFile]] = {}
+    rows = session.scalars(
+        select(DataFile)
+        .where(DataFile.company_id == company_id)
+        .order_by(DataFile.period_year.desc(), DataFile.original_filename)
+    ).all()
+    for row in rows:
+        out.setdefault(row.period_year, []).append(row)
+    return out
 
 
 def _open_period_action(year: int, slug: str, years_present: set[int]) -> ScreenAction:
@@ -452,6 +518,88 @@ def _groups(
     )
 
 
+def _short_label(slot: str) -> str:
+    """"Mẫu 15 — Cân đối NVL" → "Mẫu 15"; nhãn dài không vừa một con chip."""
+    return SLOT_LABEL_VI.get(slot, slot).split(" — ")[0]
+
+
+def _slot_rank(slot: str) -> int:
+    return SLOT_ORDER.index(slot) if slot in SLOT_ORDER else len(SLOT_ORDER)
+
+
+def _doc_types(
+    readiness: PeriodReadiness, files: list[DataFile]
+) -> tuple[DocTypeSummary, ...]:
+    """Tóm tắt theo loại — số dòng lấy từ registry, KHÔNG đếm lại bảng Tầng 1.
+
+    Mọi bản ghi cùng loại mang cùng con số (tổng của cả kỳ); file BCCT bị bỏ qua lúc
+    nạp mang 0. Lấy giá trị lớn nhất là lấy đúng tổng của kỳ, cộng lại là nhân đôi.
+    """
+    by_slot: dict[str, list[DataFile]] = {}
+    for f in files:
+        by_slot.setdefault(f.slot, []).append(f)
+
+    out: list[DocTypeSummary] = []
+    for status in readiness.slots:
+        rows = by_slot.get(status.slot, [])
+        counts = [f.row_count for f in rows if f.row_count is not None]
+        out.append(DocTypeSummary(
+            slot=status.slot,
+            label=SLOT_LABEL_VI.get(status.slot, status.slot),
+            short_label=_short_label(status.slot),
+            state=status.state,
+            row_count=max(counts) if counts else None,
+            file_count=len({f.stored_path for f in rows}),
+            has_rows=status.has_rows,
+        ))
+    return tuple(out)
+
+
+def _period_files(files: list[DataFile], slug: str) -> tuple[PeriodFile, ...]:
+    """Gom bản ghi registry theo FILE THẬT: khoá registry là (đường dẫn, loại).
+
+    Một workbook phục vụ ba biểu là ba bản ghi cùng `stored_path` — hiện ba dòng là
+    nói với cán bộ rằng họ đã tải ba file, và mời họ xoá nhầm.
+    """
+    groups: dict[str, list[DataFile]] = {}
+    for f in files:
+        if f.id is None:
+            continue
+        groups.setdefault(f.stored_path, []).append(f)
+
+    entries: list[PeriodFile] = []
+    for rows in groups.values():
+        ids = tuple(sorted(f.id for f in rows))
+        slots = tuple(sorted({f.slot for f in rows}, key=_slot_rank))
+        # Thông điệp cũng bị đóng dấu theo loại như số dòng — ba đăng ký của một
+        # workbook mang cùng một câu, cán bộ chỉ cần đọc một lần.
+        notes: list[str] = []
+        for f in sorted(rows, key=lambda r: _slot_rank(r.slot)):
+            text = (f.parse_message or "").strip()
+            if text and text not in notes:
+                notes.append(text)
+        base = f"/companies/{slug}/documents/file/{ids[0]}"
+        entries.append(PeriodFile(
+            file_id=ids[0],
+            file_ids=ids,
+            name=rows[0].original_filename,
+            size_bytes=rows[0].size_bytes or 0,
+            slots=slots,
+            slot_labels=tuple(_short_label(s) for s in slots),
+            needs_column_review=any(
+                f.parse_detail_obj.get("review") == NEEDS_REVIEW for f in rows
+            ),
+            unreadable=any(f.parse_status == DataFileStatus.ERROR for f in rows),
+            notes=tuple(notes),
+            open_url=f"{base}/preview",
+            download_url=f"{base}/download",
+            delete_url=f"{base}/delete",
+        ))
+
+    entries.sort(key=lambda e: (_slot_rank(e.slots[0]), e.name))
+    return tuple(entries)
+
+
 def _period_row(
     session: Session,
     company: Company,
@@ -459,6 +607,7 @@ def _period_row(
     *,
     slug: str,
     years_present: set[int],
+    files: list[DataFile],
     file_years: set[int],
     data_years: set[int],
     windows: dict[int, CompanyPeriod],
@@ -479,6 +628,8 @@ def _period_row(
         run_to_know_codes=readiness.run_to_know_codes,
         stale=readiness.stale,
         groups=_groups(readiness, year, slug, years_present, findings_url),
+        doc_types=_doc_types(readiness, files),
+        files=_period_files(files, slug),
         window_from=window_from,
         window_to=window_to,
         # Năm dương lịch là mặc định ai cũng hiểu — chỉ in cửa sổ khi nó khác.
@@ -505,7 +656,8 @@ def build_data_screen(
     """
     slug = company.slug or company.code
 
-    file_years = _file_years(session, company.id)
+    files_by_year = _files_by_year(session, company.id)
+    file_years = set(files_by_year)
     data_years = _data_years(session, company.id)
     finding_years = set(session.scalars(
         select(Finding.period_year)
@@ -535,6 +687,7 @@ def build_data_screen(
             session, company, year,
             slug=slug,
             years_present=years,
+            files=files_by_year.get(year, []),
             file_years=file_years,
             data_years=data_years,
             windows=windows,
@@ -582,6 +735,8 @@ __all__ = [
     "BlockerItem",
     "CompanyFields",
     "DataScreen",
+    "DocTypeSummary",
+    "PeriodFile",
     "PeriodRow",
     "ScreenAction",
     "build_data_screen",
