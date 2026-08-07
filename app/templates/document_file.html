@@ -168,7 +168,11 @@
           <td class="text-muted">{% if c.checks %}{{ c.checks|join(', ') }}{% else %}—{% endif %}</td>
           <td class="text-mono">{{ c.column_ref or '—' }}</td>
           <td>
-            {% if basis.can_confirm and c.needs_review and (c.is_group or basis.layout == 'extended') %}
+            {% if not c.columns %}
+            {# Có bằng chứng nhưng map không giữ vị trí — nêu ra, đừng mời sửa một ô
+               mà đường xác nhận không đọc. #}
+            <span class="text-muted">không có vị trí lưu</span>
+            {% elif basis.can_confirm and c.needs_review and (c.is_group or basis.layout == 'extended') %}
             <input type="text" class="form-input mono-input review-idx" name="col_{{ c.field }}"
                    value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*"
                    style="max-width:120px">

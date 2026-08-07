@@ -159,6 +159,58 @@ def test_read_basis_of_a_file_never_read_says_so_instead_of_breaking(env):
     assert basis.match_source_label                        # có câu nói, không rỗng
 
 
+def test_read_basis_keeps_a_column_that_has_evidence_but_no_stored_position(env):
+    """Bằng chứng ghi cho một trường mà map không giữ vị trí — vẫn phải nêu ra.
+
+    `resolve_template_evidence` lọc `column_map` theo các trường có trong map, nên
+    một trường có bằng chứng mà không có vị trí là ca có thật. Bỏ nó khỏi khối căn
+    cứ là giấu một cột hệ thống đang đọc.
+    """
+    _client, root = env
+    write_xlsx(root / REL_DIR / "m15.xlsx", [["Mã", 1]])
+    fid = _register(parse_detail={
+        "sheet": "BCQT_NVL", "form_signature": "sig-m15",
+        "column_map": {"material_code": 1},
+        "columns": [
+            {"field": "material_code", "label": "Mã NVL",
+             "evidence": "header-matched", "review": "verified"},
+            {"field": "closing_qty", "label": "Tồn cuối",
+             "evidence": "balance-checked", "review": "needs_review"},
+        ],
+    })
+
+    basis = file_read_basis(_row(fid))
+
+    by_field = {c.field: c for c in basis.columns}
+    assert set(by_field) == {"material_code", "closing_qty"}
+    assert by_field["closing_qty"].columns == ()
+    assert by_field["closing_qty"].column_ref == ""
+    assert by_field["closing_qty"].evidence_label == "Khớp đẳng thức"
+    assert "Tồn cuối" in basis.needs_confirmation
+    # Vẫn xác nhận được: trường KHÁC có vị trí lưu, biểu mẫu còn việc để làm.
+    assert basis.can_confirm is True
+
+
+def test_a_file_with_evidence_but_no_stored_position_offers_no_input_for_it(env):
+    client, root = env
+    write_xlsx(root / REL_DIR / "m15.xlsx", [["Mã", 1]])
+    fid = _register(parse_detail={
+        "sheet": "BCQT_NVL", "form_signature": "sig-m15",
+        "column_map": {"material_code": 1},
+        "columns": [
+            {"field": "material_code", "label": "Mã NVL",
+             "evidence": "header-matched", "review": "verified"},
+            {"field": "closing_qty", "label": "Tồn cuối",
+             "evidence": "balance-checked", "review": "needs_review"},
+        ],
+    })
+
+    text = client.get(file_page_url("DN_FP", fid)).text
+
+    assert "Tồn cuối" in text                              # có mặt ở khối căn cứ
+    assert 'name="col_closing_qty"' not in text            # không hứa một việc không làm
+
+
 def test_read_basis_keeps_a_group_of_sub_columns_together(env):
     """Bố cục mở rộng đọc một trường bằng TỔNG nhiều cột con (ADR #25)."""
     _client, root = env

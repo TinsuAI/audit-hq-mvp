@@ -124,8 +124,13 @@ class ReadBasis:
 
     @property
     def can_confirm(self) -> bool:
-        """Có bố cục cột để xác nhận không. Không có thì chỉ còn ghim trang tính."""
-        return bool(self.form_signature and self.columns)
+        """Có VỊ TRÍ cột để xác nhận không. Không có thì chỉ còn ghim trang tính.
+
+        Đo theo vị trí đã lưu chứ không theo số cột có bằng chứng: đường xác nhận đọc
+        `column_map`, nên một file chỉ có bằng chứng mà không có vị trí nào sẽ hiện nút
+        xác nhận rồi báo lỗi khi bấm.
+        """
+        return bool(self.form_signature) and any(c.columns for c in self.columns)
 
 
 def file_read_basis(row: DataFile) -> ReadBasis:
@@ -134,12 +139,13 @@ def file_read_basis(row: DataFile) -> ReadBasis:
     groups = column_groups(detail.get("column_map"))
     meta = {c.get("field"): c for c in (detail.get("columns") or []) if c.get("field")}
 
-    # Thứ tự hiển thị theo `columns` (đã sắp theo biểu ở `_evidence_columns`), rồi tới
-    # các trường chỉ có trong map — map là thứ parser THẬT SỰ đọc, bỏ sót trường nào ở
-    # đây là giấu một cột đang được đọc.
-    order = [f for f in meta if f in groups] + [f for f in groups if f not in meta]
+    # HỢP của hai nguồn, thứ tự theo `columns` (đã sắp theo biểu ở `_evidence_columns`)
+    # rồi tới các trường chỉ có trong map. Bỏ bên nào cũng là giấu một cột: map là thứ
+    # parser THẬT SỰ đọc, còn bằng chứng ghi cho một trường mà map không giữ vị trí
+    # (`resolve_template_evidence` lọc map theo trường có vị trí) vẫn là căn cứ đọc.
+    order = list(meta) + [f for f in groups if f not in meta]
     columns = tuple(
-        _basis_column(row.slot, field, meta.get(field) or {}, groups[field])
+        _basis_column(row.slot, field, meta.get(field) or {}, groups.get(field, []))
         for field in order
     )
     parsed = bool(columns) or bool(detail)
