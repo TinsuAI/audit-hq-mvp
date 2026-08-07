@@ -55,6 +55,19 @@ CANONICALS: list[tuple[str, str, float, str, str]] = [
     ("BAG", "count_packaging", 1.0, "Túi",    "Túi / bag"),
     ("BTL", "count_packaging", 1.0, "Chai / lọ / tuýp", "Chai / bottle / jar / tube"),
     ("CTN", "count_packaging", 1.0, "Thùng / carton", "Thùng carton"),
+    # --- #115: chuỗi đơn vị đo được trong kho mà bảng chưa có ---
+    # Họ đơn vị chọn theo ĐƠN VỊ ĐỐI CHIẾU THẬT trong kho, không theo cảm nhận về
+    # từ: đặt sai họ thì phát hiện đang là "chưa tra được" bị đẩy thành "khác họ"
+    # = Nghiêm trọng, tức là sửa alias lại đẻ ra phát hiện nặng mới.
+    # `Lon/Can` (1.720 dòng) chỉ từng đối chiếu với `Cái/Chiếc` (PCE, họ count) →
+    # để họ count thì ra Cùng họ (Thông tin), không phải Khác họ (Nghiêm trọng).
+    ("CAN", "count", 1.0, "Lon / can", "Lon, can — đếm theo vỏ chứa"),
+    ("VOL", "count", 1.0, "Quyển / tập", "Ấn phẩm đóng tập"),
+    ("BAR", "count", 1.0, "Thanh / mảnh / miếng", "Đếm theo thanh, mảnh, miếng rời"),
+    ("STR", "count", 1.0, "Sợi", "Sợi chỉ, sợi dây"),
+    ("PKG", "count_packaging", 1.0, "Gói / vỉ", "Gói, packet, vỉ"),
+    ("RIM", "count_packaging", 1.0, "Ram giấy", "1 ram = 500 tờ"),
+    ("YDK", "length", 0.9144, "Yard", "1 yard = 0.9144 m"),
 ]
 
 
@@ -104,7 +117,40 @@ ALIASES: list[tuple[str, str]] = [
     ("BTL", "BTL"), ("BOTTLE", "BTL"), ("BOTTLES", "BTL"), ("CHAI", "BTL"),
     ("LO", "BTL"), ("LỌ", "BTL"), ("JAR", "BTL"), ("TUYP", "BTL"), ("TUÝP", "BTL"), ("TUBE", "BTL"),
     ("CTN", "CTN"), ("CARTON", "CTN"), ("CARTONS", "CTN"), ("THUNG", "CTN"), ("THÙNG", "CTN"),
+    # --- #115: bí danh cho chuỗi đơn vị đo được trong kho (08/08, 7 DN) ---
+    # Khai từng PHẦN của chuỗi ghép, không khai cả chuỗi: `resolve_canonical` tách
+    # theo [/,;|] rồi tra từng phần, nên `LON` + `CAN` phủ cả "Lon/Can" lẫn "Can/Lon".
+    ("LON", "CAN"), ("CAN", "CAN"), ("TIN", "CAN"),
+    ("QUYỂN", "VOL"), ("QUYEN", "VOL"), ("TẬP", "VOL"), ("TAP", "VOL"),
+    ("THANH", "BAR"), ("MẢNH", "BAR"), ("MANH", "BAR"), ("MIẾNG", "BAR"), ("MIENG", "BAR"),
+    ("SỢI", "STR"), ("SOI", "STR"),
+    ("GÓI", "PKG"), ("GOI", "PKG"), ("PACK", "PKG"), ("PACKET", "PKG"),
+    # Chỉ bản có dấu: "VI" trần hai chữ cái dễ đụng chuỗi khác, mà kho chỉ có "Vỉ".
+    ("VỈ", "PKG"),
+    ("RAM", "RIM"), ("REAM", "RIM"), ("RIM", "RIM"),
+    ("YRD", "YDK"), ("YARD", "YDK"), ("YARDS", "YDK"), ("YD", "YDK"),
+    # `Ống`/`ONG` = tuýp — BTL đã gom chai/lọ/tuýp/tube.
+    ("ỐNG", "BTL"), ("ONG", "BTL"),
+    # `Quả`, `Cây` là danh từ đếm cá thể — cùng canonical với cái/chiếc.
+    ("QUẢ", "PCE"), ("QUA", "PCE"), ("CÂY", "PCE"), ("CAY", "PCE"),
+    # `Cuốn` (dấu sắc) trong kho được dùng LẪN với `CUON` (=cuộn) trên cùng mã NVL —
+    # đo được ở 3 phát hiện C3.3. Theo dữ liệu, không theo nghĩa từ điển của "cuốn".
+    ("CUỐN", "ROL"),
+    # `Phút vuông` chỉ từng đối chiếu thẳng với FTK, và FTK vốn khai là đơn vị da giày.
+    ("PHÚT VUÔNG", "FTK"), ("PHUT VUONG", "FTK"),
+    # Tấn có chú thích hàm lượng kim loại vẫn là tấn.
+    ("TẤN (HÀM LƯỢNG KL)", "TNE"),
 ]
+
+# Chuỗi ĐO ĐƯỢC nhưng CỐ Ý không khai bí danh — chúng đi vào nhánh UNRESOLVED (#115).
+# Gán bừa một canonical ở đây là bịa ra hiểu biết hệ thống không có:
+#   UNL (277 dòng) · UNK (12)      — chỗ giữ chỗ "không rõ", đúng nghĩa là chưa biết
+#   I/át (23) · I/at (9)           — chỉ từng đối chiếu với YRD, chưa tra được nguồn
+#   1000 viên (2)                  — mã hoá cả lượng lẫn đơn vị, không phải đơn vị đơn
+#   Real Brasil (1) · Panh (1)     — giá trị rác, #115 ghi rõ để ngoài phạm vi
+_LEFT_UNRESOLVED_ON_PURPOSE = (
+    "UNL", "UNK", "I/át", "I/at", "1000 viên", "Real Brasil", "Panh",
+)
 
 
 def seed_canonicals(session) -> int:
