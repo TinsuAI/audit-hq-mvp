@@ -195,3 +195,22 @@ bộ nhập.
 phát hiện, nghĩa là đã đánh giá và không thấy sai phạm. Kiểm tra ở trạng thái này KHÔNG tham gia
 vào điểm rủi ro — cả phần cộng điểm lẫn phần trần — vì nếu tham gia thì dữ liệu thiếu đi lại làm
 điểm đẹp lên. Ví dụ: độ phủ định mức của kỳ sớm nhất khi chưa biết năm đầu nộp BCQT.
+
+## Gán loại file khi nạp (thiết kế lại luồng nạp)
+
+**Gán loại (slot assignment)** — kết luận rằng một file đã tải phục vụ slot nào (`m15` · `m15a` ·
+`m16` · `bcct`). Là một PHÉP GÁN, không phải một sự thật đọc được từ file: cùng một file có thể
+được gán bằng ba đường khác nhau với độ tin cậy khác hẳn nhau, nên phép gán luôn đi kèm nguồn bằng
+chứng. Cùng cấu trúc với evidence source của việc gán CỘT (ADR #18), khác cấp: cột ↔ file.
+
+**Slot evidence source** — nguồn bằng chứng cho MỘT phép gán loại file. Ba nguồn, mạnh→yếu:
+- `officer-assigned` — cán bộ tự chọn loại cho file này.
+- `content-matched` — đã MỞ file và `select_sheet` khớp bố cục slot đó. Chỉ có cho `m15`/`m15a`/
+  `m16`; `bcct` KHÔNG có đường này.
+- `name-matched` — chỉ tên file + thư mục khớp mẫu đặt tên. Là PHỎNG ĐOÁN: tên do người gõ, file
+  006 gộp tay mang tên hợp lệ mà cấu trúc sai.
+
+**"Nhận ra" (đã xác nhận đọc được)** — CHỈ dùng cho file đã mở và khớp bố cục, tức
+`content-matched` hoặc đã qua `diagnose_upload` trong lượt nạp. KHÔNG dùng cho `name-matched`:
+nói "nhận ra" về một phép đoán theo tên là nói với cán bộ rằng file đã hợp lệ trong khi hệ thống
+chưa mở file lần nào. Từ dùng cho `name-matched` là **gợi ý** / **gán tạm**.

@@ -1041,3 +1041,49 @@ nên chọn nhầm ra **dòng sai**, không phải 0 dòng.
 **Alternatives loại:** lưu trang trong `parse_layout`/provenance theo slot (một kỳ có nhiều file
 BCCT, mỗi file một trang — provenance chỉ giữ một bản cho cả slot); chỉ hiện trang mà không cho
 sửa (biết sai vẫn không sửa được, phải sửa file nguồn).
+
+## 2026-08-07 — Thiết kế lại luồng tải lên → nạp dữ liệu
+
+### 24. Đủ dữ liệu đo theo kiểm tra chạy được; vướng mắc xếp theo cách gỡ; xem trước trích xuất một lần (2026-08-07, grill-with-docs; spec ở issue #80; SỬA ADR #18 mục nhãn truy nguồn)
+
+**Quyết định:**
+
+(1) **"Đủ dữ liệu" = mọi kiểm tra áp dụng cho DN đều có đủ nguồn Tầng 1 nó khai cần**, không phải "đủ 4 loại tài liệu". Phép đếm đo theo DÒNG đã nạp (kiểm tra đọc dòng), nhưng câu chữ cách gỡ tra `data_files` trước khi chọn động từ — nếu không hệ thống bảo cán bộ tải lên thứ vừa tải (ca lượt nạp dừng ở cổng review ghi 0 dòng trong khi file đã có).
+
+(2) **Vướng mắc xếp theo CÁCH GỠ, ba lớp:** `need-file-this-period` · `need-other-period-or-confirmation` · `nothing-to-load` (là phát hiện về DN, không phải lỗ hổng dữ liệu). Đo trên dữ liệu thật: 10 lần `not_evaluable` chia 1 / 6 / 3 — tức 9/10 vướng mắc KHÔNG gỡ bằng file của chính kỳ đó. Lớp là **trường bắt buộc trên `NotEvaluable`, per-instance**, không suy theo mã kiểm tra (C4.3 sinh cả ba lớp) và không gán tĩnh theo chỗ gọi (nhánh độ phủ ĐM sinh lớp 2 hay 3 tuỳ còn kỳ trước nào chưa nạp). **Có NĂM nguồn sinh, không phải bốn** — `run_checks` tự ghi trạng thái từ cổng thiếu nguồn mà không dựng đối tượng; đường đó phải dựng `NotEvaluable` và bỏ lệnh ghi thẳng, để còn đúng một kiểu và một đường lưu. Thêm cột `check_runs.remedy` (nullable, `op.add_column` thẳng). Ba cổng mà `requires` không diễn đạt được (C3.3 OR, C6.1 kỳ N−1, cổng ĐM xuyên kỳ) đánh giá bằng cách GỌI chính hàm điều kiện kiểm tra gọi, không viết lại song song.
+
+(3) **Vật chứa màn chuẩn bị dữ liệu = MỘT DN, các kỳ là dòng**, trường mức DN ở đầu màn. Tách khỏi màn phát hiện (giữ tab năm, một kỳ một lúc) — hai phạm vi kỳ khác nhau, gộp thì bộ chọn năm chỉ chi phối nửa trang. Phản hồi nạp hiện TẠI CHỖ, không chuyển sang trang công việc.
+
+(4) **Xem trước Excel: trích xuất một lần vào kho đệm SQLite mỗi (file, trang tính)**, mọi cửa sổ sau là truy vấn khoảng dòng. Ba bộ đọc nhận dạng theo BYTE ĐẦU chứ không theo đuôi file. Bỏ cả ba hạn mức 100 dòng / 40 cột / 25MB.
+
+(5) **Giữ khoá map cột `(DN, slot, chữ ký cấu trúc)`**, không mở rộng liên DN. **Map cán bộ thắng mẫu biểu curate ở mức từng trường, lúc đọc file.**
+
+**Lý do:**
+
+(1) Đủ 4 loại vẫn có thể thiếu ba tháng dòng tờ khai; thước đo phải gắn với thứ sản phẩm làm ra là kết luận kiểm tra. Nhưng `available_sources` trả lời "đã nạp dòng chưa" chứ không phải "đã có file chưa" — hai câu hỏi khác nhau, và trộn lẫn thì thông báo sai.
+
+(2) Cùng một câu lý do không nói được cách gỡ. Đo 9/10 không gỡ bằng file kỳ đó nghĩa là một danh sách phẳng khiến cán bộ đi tìm file không tồn tại. Gắn lớp tại chỗ QUYẾT ĐỊNH là cách duy nhất để bảng điều khiển (tính trước khi chạy) và trạng thái đã lưu (sinh lúc chạy) không lệch nhau.
+
+(3) Cách gỡ lớp 2 trỏ tới **kỳ khác** hoặc **trường của DN** — không cấu trúc theo kỳ đơn lẻ nào chứa được hai thứ đó. `first_bcqt_year` rỗng trên cả 7 DN, tức đang chặn kỳ sớm nhất của mọi DN, mà chỗ sửa nó lại nằm ngoài luồng nạp.
+
+(4) Đo: mở file 71,3MB ở chế độ đọc tuần tự chỉ 1,19 s — hạn mức 25MB là hệ quả của việc đọc trọn trang bằng pandas, không phải chi phí mở. Nhưng chế độ đó CHỈ ĐI TỚI: nhảy tới dòng 200.000 mất 3,87 s, nên cuộn một trang 270k dòng theo cửa sổ là ~1.000 lượt đọc với chi phí tăng dần. Trích xuất trả chi phí đúng một lần. Nhận dạng theo byte đầu vì đuôi file NÓI DỐI: đếm 493 file ra 268 xlsx thật · 185 xls thật · **38 file đuôi `.xls` thật ra là XML SpreadsheetML** (190,8MB) · 2 hỏng — khớp ghi chú "40 file không mở được" sẵn có trong mã. 38 file đó đọc bằng thư viện XML chuẩn hết 3,49 s cho file 64,5MB.
+
+(5) Chữ ký cấu trúc KHÔNG phải định danh đầy đủ của bố cục (chính hàm khớp mẫu từ chối ca cùng chữ ký khác dòng bắt đầu; chữ ký gộp hoa thường, bỏ dấu, bỏ chữ số năm). Tin nhau xuyên DN biến một lần xác nhận sai thành cột đọc lệch im lặng trên cả đội — đúng dạng lỗi đã làm mất 28,5 tỷ. Lợi ích gần bằng 0: bố cục dùng chung giữa các DN chính là 4 họ đã curate, vốn đã tự qua cổng.
+
+**Alternatives loại:**
+
+- *Giữ thước đo "đủ 4 loại"* — rejected: nói "Đã nạp" trong khi kiểm tra âm thầm bỏ qua hoặc chạy trên kỳ khuyết.
+- *Đếm cả lớp 3 vào bảng điều khiển* — rejected: "chưa từng khai ĐM" là kết luận về DN, đưa vào phép đếm thì con số không bao giờ đầy và cán bộ đi tìm file không có.
+- *Tự chạy lại kiểm tra sau mỗi lượt nạp* — rejected: `run_checks` xoá rồi dựng lại `Finding`, đưa `status`/`notes` cán bộ đã đánh về `new`. Hiện chưa lộ (15.356 finding đều `new`) nhưng lộ ngay khi thí điểm bắt đầu.
+- *Giấu điểm rủi ro khi kết quả cũ* — rejected: DN rơi khỏi bảng xếp hạng vì có người tải file lên, cùng dạng sai lầm với việc bỏ luật khỏi thang điểm làm DN sạch hơn (issue #65).
+- *Xoá file thì xoá luôn dòng của file đó* — rejected: bảng Tầng 1 không có tham chiếu file nguồn, cần đổi lược đồ. Thay bằng: xoá/thay file dời `data_version`, dòng kỳ báo "cần nạp lại".
+- *Đọc thẳng workbook mỗi cửa sổ, không kho đệm* — rejected: đọc tuần tự chỉ đi tới, nhảy sâu là O(n) từ dòng 0.
+- *Giữ handle mở xuyên request* — rejected: không giải quyết nhảy lùi, và rò handle.
+- *Chuyển 38 file XML bằng LibreOffice/ssconvert* — rejected: phụ thuộc ngoài nặng; thư viện XML chuẩn đủ và đo được 3,49 s.
+- *Mở rộng khoá map cột ra liên DN* — rejected, xem lý do (5). Đường tin nhau xuyên DN đã có và CÓ KIỂM DUYỆT: nâng thành mẫu biểu curate qua PR kèm fixture.
+- *Gộp màn dữ liệu vào màn phát hiện* — rejected: tab năm sẽ chỉ chi phối nửa dưới trang.
+- *Bỏ tab năm, màn phát hiện cũng liệt kê mọi kỳ* — rejected: viết lại 704 dòng template phát hiện, ngoài phạm vi luồng nạp.
+
+**SỬA ADR #18:** mục "nhãn truy nguồn hiện ngay trên dòng file để không hộp đen" — nay dòng file CHỈ hiện thứ có hệ quả (cần xác nhận cột · đọc hỏng · có cảnh báo), toàn bộ căn cứ đọc chuyển sang trang riêng của file. Truy nguồn cách một cú bấm chứ không mất. Nền của thay đổi: `match_source` đang RỖNG trên 15/15 file (đọc một khoá đường parse hiện tại không sinh ra) nên ba trong bốn nhãn đó chưa bao giờ hiện; `parse_layout` rỗng 11/15.
+
+**KHÔNG phải sửa ADR #18:** cổng review. Bản nháp spec ban đầu nói cổng dừng ở MỌI lượt nạp và đề xuất nối tham số `has_saved_map` — SAI. `record_parse_result` đã nâng cột có map lưu lên `officer-confirmed` → `verified` nên cổng trả rỗng và lượt nạp đi thẳng. `has_saved_map` là tham số CHẾT, không lời gọi nào trong sản phẩm. Hành vi "dừng lần đầu mỗi (DN × cấu trúc)" đã đúng như mong muốn.

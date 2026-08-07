@@ -30,6 +30,20 @@
 - `/tdd` — viết test trước cho check. Mỗi rule có test fixture nhỏ (3-5 dòng Excel mock).
 - `/rev` — review trước khi merge mỗi nhóm check.
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues của `TinsuAI/audit-hq-mvp`, thao tác qua `gh`. PR KHÔNG phải kênh nhận yêu cầu — `/triage` chỉ đọc issue. Xem `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Dùng đúng 5 nhãn chuẩn: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. Xem `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context, nhưng KHÔNG dùng `CONTEXT.md` + `docs/adr/`. Glossary là `.ai/GLOSSARY.md`, ADR là `.ai/DECISIONS.md` (một file, đánh số toàn cục, tham chiếu dạng "ADR #N"). Xem `docs/agents/domain.md`.
+
 ## Không làm
 
 - Không viết check ngoài 16 MVP trước tuần 6.
