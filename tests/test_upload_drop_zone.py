@@ -475,6 +475,53 @@ def test_the_period_row_carries_the_book_of_each_settlement_file(app_db: AppDb):
     assert [(f.is_settlement, f.book) for f in files] == [(True, "GC")]
 
 
+def test_the_review_screen_hands_back_the_book_the_period_row_assigned(app_db: AppDb):
+    """Xác nhận cột KHÔNG được xoá nhãn sổ vừa gán ở dòng kỳ (#93).
+
+    Gỡ trạng thái của DN nhiều sổ nạp bằng dòng lệnh đi qua hai màn: gán sổ ở dòng kỳ
+    rồi xác nhận cột (bố cục mở rộng bật cổng review). Màn xác nhận ghi đè
+    `data_files.book` bằng ô sổ của chính nó, nên ô đó phải mang sẵn nhãn đã gán — trả
+    về rỗng là mỗi lượt xác nhận cột lại xoá nhãn và quy trình quay vòng.
+    """
+    import json
+    import re
+
+    company_id = _company(app_db)
+    _make_multi_book(app_db, company_id)
+    client = _client()
+    _drop(client, [_f("NhapXuatTon_NVL_2024.xlsx", m15_xlsx_bytes())])
+    path = _rows(app_db)[0].stored_path
+    client.post(
+        f"/companies/{_CODE}/documents/file-book",
+        data={"year": str(_YEAR), "path": path, "book": "EPE"},
+        follow_redirects=False,
+    )
+
+    fid = _rows(app_db)[0].id
+    with app_db.SessionLocal() as db:
+        row = db.get(DataFile, fid)
+        row.parse_detail = json.dumps({
+            "form_signature": "sig_m15",
+            "column_map": {"material_code": 1, "closing_qty": 10},
+            "columns": [{"field": "material_code", "label": "Mã NVL",
+                         "evidence": "header-matched", "review": "verified"}],
+        }, ensure_ascii=False)
+        db.commit()
+
+    html = client.get(f"/companies/{_CODE}/documents/file/{fid}/review").text
+    field = re.search(r'<input[^>]*name="book"[^>]*>', html).group(0)
+    assert re.search(r'value="([^"]*)"', field).group(1) == "EPE"
+
+    # Gửi lại đúng cái biểu mẫu đó → nhãn còn nguyên, lượt nạp lại được xếp.
+    r = client.post(
+        f"/companies/{_CODE}/documents/file/{fid}/review",
+        data={"book": "EPE", "sheet": ""},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert [x.book for x in _rows(app_db)] == ["EPE"]
+
+
 def test_the_late_layer_still_blocks_a_plan_that_would_merge_two_books(app_db: AppDb):
     """Tầng chặn muộn giữ nguyên: đường dòng lệnh không đi qua nút nạp của màn dữ liệu."""
     from app.pipeline.ingest import IngestPlanError, ingest
