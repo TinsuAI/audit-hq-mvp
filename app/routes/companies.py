@@ -45,7 +45,6 @@ from app.books import (
 )
 from app.checks.combos import COMBO_SPECS
 from app.checks.detail_labels import column_headers, describe_details, row_cells
-from app.checks.not_evaluable import load_not_evaluable
 from app.checks.registry import SEVERITY_BADGE, SEVERITY_LABEL_VI, SPECS, Severity, get_all_specs
 from app.checks.scope import declaration_scope
 from app.checks.scoring import score_coverage, tier_css_for, tier_for
@@ -85,6 +84,7 @@ from app.pipeline.audit_scope import (
 )
 from app.pipeline.data_screen import build_data_screen
 from app.pipeline.export import build_export
+from app.pipeline.findings_screen import not_evaluable_panel
 from app.pipeline.period import (
     FISCAL_START_MONTHS,
     QUARTER_START_MONTHS,
@@ -2241,17 +2241,15 @@ def company_detail(
     # Kiểm tra CHƯA ĐÁNH GIÁ ĐƯỢC — tách khỏi "đã đánh giá, 0 phát hiện". Cả hai đều
     # không sinh nhóm phát hiện nào, nên nếu không liệt kê riêng thì trên trang chúng
     # giống hệt nhau. Không phụ thuộc bộ lọc ?book= (trạng thái tính theo toàn pháp nhân).
-    not_evaluable_checks: list[dict] = []
+    #
+    # Gom theo LỚP CÁCH GỠ ĐÃ LƯU (#97) — đây là nơi đọc thứ hai của spec mục 2. Đích
+    # tính lại lúc hiển thị, không lưu (ADR #24 mục 2).
+    not_evaluable_groups: tuple = ()
     if selected_year is not None:
-        for ccode, reason in sorted(
-            load_not_evaluable(db, company.id, selected_year).items()
-        ):
-            spec = all_specs.get(ccode) or SPECS.get(ccode)
-            not_evaluable_checks.append({
-                "code": ccode,
-                "title": spec.title if spec else ccode,
-                "reason": reason,
-            })
+        not_evaluable_groups = not_evaluable_panel(
+            db, company, selected_year, specs=all_specs
+        )
+    not_evaluable_count = sum(len(g.items) for g in not_evaluable_groups)
 
     # Danh sách mã có finding — cho panel "Xuất các test đã chọn" (WS2-3). Gồm mọi
     # mã regular (không phụ thuộc focus) + combo (mã như mọi check khi export).
@@ -2353,7 +2351,8 @@ def company_detail(
             "books_list": books_list,
             "book_selected": book_selected,
             "book_empty": book_empty,
-            "not_evaluable_checks": not_evaluable_checks,
+            "not_evaluable_groups": not_evaluable_groups,
+            "not_evaluable_count": not_evaluable_count,
             "focus_check": focus,
             "page": page,
             "page_size": _PAGE_SIZE,

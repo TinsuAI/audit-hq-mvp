@@ -336,7 +336,7 @@ class DataScreen:
 # --- Dựng ngữ cảnh ---------------------------------------------------------------
 
 
-def _period_anchor(year: int) -> str:
+def period_anchor(year: int) -> str:
     return f"ky-{year}"
 
 
@@ -377,7 +377,7 @@ def _open_period_action(year: int, slug: str, years_present: set[int]) -> Screen
     Kỳ chưa có gì thì chưa phải một dòng — đường dẫn phải mang `add` để màn hình
     dựng dòng trống cho nó, nếu không nút trỏ vào chỗ không tồn tại.
     """
-    anchor = f"#{_period_anchor(year)}"
+    anchor = f"#{period_anchor(year)}"
     url = anchor if year in years_present else f"/companies/{slug}/documents?add={year}{anchor}"
     return ScreenAction(
         ACTION_OPEN_PERIOD, f"{ACTION_LABEL_VI[ACTION_OPEN_PERIOD]} {year}",
@@ -630,7 +630,7 @@ def _period_row(
     score_row = scores.get(year)
     return PeriodRow(
         year=year,
-        anchor=_period_anchor(year),
+        anchor=period_anchor(year),
         window_anchor=_window_anchor(year),
         sufficient_count=readiness.sufficient_count,
         total_count=readiness.total_count,
@@ -750,4 +750,5 @@ __all__ = [
     "PeriodRow",
     "ScreenAction",
     "build_data_screen",
+    "period_anchor",
 ]
