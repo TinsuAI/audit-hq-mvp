@@ -107,6 +107,11 @@ class BasisColumn:
     state: str = ASSIGNED
     required: bool = False
     row_key: bool = False
+    # Tiêu đề + mẫu giá trị của CỘT ĐANG GÁN, lấy từ ảnh chụp cột lúc parse. Màn
+    # hiện giá trị thật thay cho chỉ số cột trần: "cột 7" không nói được máy đang
+    # đọc đúng ô hay lệch một ô, còn `1.5 / 1.51 / 1.52` thì nói được.
+    header: str = ""
+    samples: tuple[str, ...] = ()
 
     @property
     def review_label(self) -> str:
@@ -218,10 +223,13 @@ def file_read_basis(
         seen: set[str] = set()
         order = [f for f in declared + extra if not (f in seen or seen.add(f))]
         absent = set(absent_fields or ())
+        choices = detail.get("column_choices") or ()
+        by_index = {c.get("index"): c for c in choices if isinstance(c, dict)}
         columns = tuple(
             _basis_column(
                 row.slot, field, meta.get(field) or {}, groups.get(field, []),
                 absent=field in absent,
+                choice=by_index.get((groups.get(field) or [None])[0]),
             )
             for field in order
         )
@@ -247,6 +255,7 @@ def file_read_basis(
 
 def _basis_column(
     slot: str, field: str, meta: dict, cols: list[int], absent: bool = False,
+    choice: dict | None = None,
 ) -> BasisColumn:
     evidence = meta.get("evidence")
     declared = {f.name: f for f in declared_fields(slot)}.get(field)
@@ -288,6 +297,8 @@ def _basis_column(
         state=state,
         required=bool(declared and declared.required),
         row_key=bool(declared and declared.row_key),
+        header=str((choice or {}).get("header") or ""),
+        samples=tuple((choice or {}).get("samples") or ()),
     )
 
 

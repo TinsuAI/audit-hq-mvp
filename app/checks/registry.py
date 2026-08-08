@@ -482,6 +482,49 @@ CHECK_COLUMNS: dict[str, tuple[tuple[str, str, str], ...]] = {
     ),
 }
 
+# --- Tờ khai (bcct) — khai bù, #113 -------------------------------------------
+#
+# Registry trước đây có ĐÚNG 0 mục bcct trong khi tám kiểm tra đọc `declaration_lines`,
+# nên cổng review chưa bao giờ bắn cho biểu tờ khai và cổng trường vắng cũng sẽ câm.
+#
+# **Quy tắc khai:** chỉ khai trường mà THIẾU NÓ THÌ KẾT LUẬN CỦA CHECK KHÔNG CÒN ĐỨNG
+# VỮNG — không khai mọi trường check chạm tới. `value_total` là ví dụ ngược: C1.1 đọc nó
+# qua `valuation.py` để gắn số tiền vào phát hiện, nhưng thiếu nó thì C1.1 vẫn phát hiện
+# đúng chênh lệch, chỉ là không kèm giá trị. Khai vào đây là dựng một cổng
+# `not_evaluable` giả cho một check vẫn kết luận được.
+#
+# **Cách biểu diễn cho `denominators.py` / `company_type.py` / `scope.py`** (câu hỏi vé
+# #113 giao lại): ba module này đọc `declaration_lines` nhưng KHÔNG có mã check và không
+# có dòng `check_runs` nào để mang `not_evaluable`. Không bịa mã giả cho chúng — thay vào
+# đó quy phần đọc của chúng về CHÍNH các mã check gọi chúng. Đó là sự thật: C1.1 không
+# tự đọc `customs_code`, nhưng mẫu số của nó thì có, nên `customs_code` vắng là C1.1
+# không kết luận được. `declaration_date` vào mọi mục vì `scope.py` dựng cửa sổ kỳ bằng
+# nó — thiếu nó thì không dòng tờ khai nào vào phạm vi và check trả 0 phát hiện, mà 0
+# phát hiện đọc như "sạch".
+#
+# C1.7 và C5.1 KHÔNG có mục bcct: đo lại bằng đồ thị gọi thì cả hai chỉ đọc `NvlBalance`.
+# Vé #113 liệt chúng vào danh sách "10 check đọc declaration_lines" — đo ra là tám.
+_BCCT_SCOPE = ("bcct", "declaration_date", INDIVIDUAL)
+_BCCT_KEY = ("bcct", "item_code", INDIVIDUAL)
+_BCCT_TYPE = ("bcct", "customs_code", INDIVIDUAL)
+_BCCT_QTY = ("bcct", "quantity", SUM)
+
+_BCCT_USES: dict[str, tuple[tuple[str, str, str], ...]] = {
+    "C1.1": (_BCCT_KEY, _BCCT_SCOPE, _BCCT_TYPE, _BCCT_QTY),
+    "C1.2": (_BCCT_KEY, _BCCT_SCOPE, _BCCT_TYPE, _BCCT_QTY),
+    "C1.3": (_BCCT_KEY, _BCCT_SCOPE, _BCCT_TYPE),
+    "C1.4": (_BCCT_KEY, _BCCT_SCOPE, _BCCT_TYPE, _BCCT_QTY),
+    "C1.6": (_BCCT_KEY, _BCCT_SCOPE, _BCCT_TYPE),
+    # Nhóm 3 chưa từng có mục nào trong registry — ba mã này là khoá MỚI, không phải
+    # bổ sung vào mục sẵn có.
+    "C3.1": (_BCCT_KEY, _BCCT_SCOPE, _BCCT_TYPE),
+    "C3.2": (_BCCT_KEY, _BCCT_SCOPE, ("bcct", "hs_code", INDIVIDUAL)),
+    "C3.3": (_BCCT_KEY, _BCCT_SCOPE, ("bcct", "unit", INDIVIDUAL)),
+}
+
+for _code, _uses in _BCCT_USES.items():
+    CHECK_COLUMNS[_code] = CHECK_COLUMNS.get(_code, ()) + _uses
+
 
 def checks_reading(slot: str, field: str) -> list[str]:
     """Mã các check đọc `(slot, field)` — cho banner cổng review nêu check bị ảnh hưởng."""

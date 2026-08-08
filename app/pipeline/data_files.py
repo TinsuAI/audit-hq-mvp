@@ -33,7 +33,7 @@ from app.checks.registry import checks_reading, review_state
 from app.models import Company, DataFile, DataFileStatus
 from app.models.data_file import SLOT_SUBDIR
 from app.pipeline.discover import content_slots
-from app.pipeline.saved_map import resolve_officer_confirmed
+from app.pipeline.saved_map import absent_fields_for, resolve_officer_confirmed
 from app.settings import settings
 
 _EXCEL_EXT = {".xls", ".xlsx"}
@@ -279,6 +279,17 @@ def record_parse_result(
                 NEEDS_REVIEW if any(c["review"] == NEEDS_REVIEW for c in columns)
                 else VERIFIED
             )
+        # Trường cán bộ đã XÁC NHẬN VẮNG cho đúng cấu trúc này, đóng dấu vào
+        # `parse_detail` của lượt nạp (#113). Ghi ở đây chứ không đọc thẳng
+        # `saved_column_maps` lúc chạy check: map lưu khoá theo (DN, slot, vân tay) nên
+        # dùng chung giữa các KỲ, còn cổng trường vắng là chuyện của một (DN, kỳ) — phải
+        # đi qua file của chính kỳ đó mới đúng hạt.
+        if has_prov:
+            absent = absent_fields_for(
+                session, company.id, row.slot, detail.get("form_signature"),
+            )
+            if absent:
+                detail["absent_fields"] = absent
         # Trang tính đã đọc — theo TỪNG FILE. Không có nó thì màn review vẽ lưới ô của
         # trang đầu workbook trong khi parser đọc trang khác (BCCT 006: `Tổng hợp` vs
         # `Chi tiết`), cán bộ xác nhận chỉ số cột trên đúng cái lưới sai đó.

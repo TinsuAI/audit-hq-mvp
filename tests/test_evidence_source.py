@@ -189,11 +189,22 @@ def test_extended_evidence_balance_checked_except_export_label():
 
 
 def test_every_registered_column_has_known_field():
-    # Vệ sinh registry: consumed_as chỉ nhận individual|sum.
-    for uses in CHECK_COLUMNS.values():
-        for slot, _field, how in uses:
-            assert slot in ("m15", "m15a", "m16")
-            assert how in ("individual", "sum")
+    """Vệ sinh registry: slot có thật, `consumed_as` hợp lệ, và TRƯỜNG phải được KHAI.
+
+    `bcct` vào danh sách slot từ #113 — trước đó registry có đúng 0 mục tờ khai nên
+    test này chốt ba slot quyết toán. Vế trường-phải-khai là mới: khai một tên trường
+    gõ sai thì `checks_reading()` không bao giờ khớp, cổng trường vắng câm lặng cho
+    đúng cột đó, và không gì đỏ.
+    """
+    from app.adapters.declared_fields import declared_names
+
+    for code, uses in CHECK_COLUMNS.items():
+        for slot, field, how in uses:
+            assert slot in ("m15", "m15a", "m16", "bcct"), (code, slot)
+            assert how in ("individual", "sum"), (code, slot, how)
+            assert field in declared_names(slot), (
+                f"{code} khai đọc {slot}.{field} nhưng biểu {slot} không có trường đó"
+            )
 
 
 def test_every_evidence_source_and_field_has_a_vietnamese_label():
