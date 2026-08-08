@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Mapping
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.adapters.declared_fields import row_key_fields
 from app.adapters.evidence import OFFICER_CONFIRMED
 from app.adapters.templates import column_groups
 from app.models.saved_column_map import SavedColumnMap
@@ -98,7 +100,11 @@ def save_column_map(
         row.column_map = col_json
         row.evidence = ev_json
         row.confirmed_by = confirmed_by
-        row.absent_fields = absent_json
+        # `absent is None` = biểu mẫu lần này KHÔNG dựng ô "không có trong file"
+        # (file nạp trước #112 không có ảnh chụp cột). Ghi đè thành rỗng ở đó là
+        # xoá lời khai cán bộ đã lưu mà không báo gì. `[]` mới là "bỏ hết tick".
+        if absent is not None:
+            row.absent_fields = absent_json
     # Flush để lần upsert kế trong CÙNG transaction thấy dòng vừa thêm (session
     # autoflush=False) — giữ idempotent theo khoá mà không commit.
     session.flush()
@@ -113,6 +119,61 @@ def absent_fields_for(
         return []
     row = load_column_map(session, company_id, slot, form_signature)
     return row.absent_fields_obj if row is not None else []
+
+
+def apply_absent_fields(
+    parsed, slot: str, absent_maps: Mapping[str, list[str]] | None,
+) -> list[str]:
+    """Gỡ trường cán bộ XÁC NHẬN VẮNG khỏi kết quả parse, sửa tại chỗ. Trả tập đã gỡ.
+
+    Cán bộ nói "kỳ này biểu không có cột đó". Trước bản vá này lời khai chỉ chặn ở cổng
+    check (#113): adapter VẪN đọc cột mặc định và ghi giá trị vào dòng Tầng 1, nên màn
+    dữ liệu gốc hiện số của đúng cột mà hệ thống bảo là không có. Hai màn nói ngược nhau
+    — đúng lớp lỗi đọc sai im lặng mà cả loạt #110 sinh ra để diệt.
+
+    Làm ở đây chứ không trong adapter: adapter nhận `officer_maps` qua tham số thứ tư và
+    `parse_cache` băm khoá theo đúng bốn tham số đó, nên thêm tham số thứ năm là phải sửa
+    cả khoá cache ở bốn biểu. Một chỗ sau parse rẻ hơn và không có đường nào lách qua.
+
+    KHOÁ DÒNG không bao giờ bị gỡ: thiếu nó thì không dựng được dòng nào. Đường xác nhận
+    đã từ chối biểu mẫu như vậy (`_reject_missing_row_keys`); map cũ còn sót thì bỏ qua,
+    không được làm hỏng lượt parse.
+    """
+    prov = getattr(parsed, "provenance", None)
+    detail = getattr(prov, "detail", None) or {}
+    sig = detail.get("form_signature")
+    if not sig or not absent_maps:
+        return []
+    keys = row_key_fields(slot)
+    absent = [f for f in absent_maps.get(sig) or () if f not in keys]
+    if not absent:
+        return []
+
+    column_map = detail.get("column_map")
+    for field in absent:
+        if isinstance(column_map, dict):
+            column_map.pop(field, None)
+        if isinstance(prov.evidence, dict):
+            prov.evidence.pop(field, None)
+        for row in getattr(parsed, "rows", ()) or ():
+            if hasattr(row, field):
+                setattr(row, field, None)
+    return absent
+
+
+def officer_absent_maps(
+    session: Session, company_id: int,
+) -> dict[str, dict[str, list[str]]]:
+    """`{slot: {vân tay: [trường khai vắng]}}` — song song với `officer_maps`."""
+    out: dict[str, dict[str, list[str]]] = {}
+    rows = session.scalars(
+        select(SavedColumnMap).where(SavedColumnMap.company_id == company_id)
+    ).all()
+    for row in rows:
+        absent = row.absent_fields_obj
+        if absent:
+            out.setdefault(row.slot, {})[row.form_signature] = absent
+    return out
 
 
 def officer_maps(session: Session, company_id: int) -> dict[str, dict[str, dict[str, list[int]]]]:
@@ -168,6 +229,8 @@ def resolve_officer_confirmed(
 
 __all__ = [
     "absent_fields_for",
+    "apply_absent_fields",
+    "officer_absent_maps",
     "load_column_map",
     "officer_maps",
     "resolve_officer_confirmed",

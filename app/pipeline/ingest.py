@@ -31,6 +31,8 @@ from app.models import (
 from app.models.data_file import SETTLEMENT_SLOTS
 from app.pipeline.discover import DiscoveredFiles, discover
 from app.pipeline.period import default_bounds, in_period, resolve_period_bounds
+from app.pipeline.saved_map import apply_absent_fields
+from app.pipeline.saved_map import officer_absent_maps as saved_officer_absent
 from app.pipeline.saved_map import officer_maps as saved_officer_maps
 from app.settings import settings
 
@@ -109,6 +111,15 @@ def officer_column_maps(company_code: str) -> dict[str, dict[str, dict[str, int]
         if company is None:
             return {}
         return saved_officer_maps(session, company.id)
+
+
+def officer_absent_maps(company_code: str) -> dict[str, dict[str, list[str]]]:
+    """`{slot: {vân tay: [trường khai vắng]}}` — cùng đường đọc với `officer_column_maps`."""
+    with SessionLocal() as session:
+        company = session.scalar(select(Company).where(Company.code == company_code))
+        if company is None:
+            return {}
+        return saved_officer_absent(session, company.id)
 
 
 class IngestPlanError(RuntimeError):
@@ -251,6 +262,10 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
     picked = sheet_overrides(company_code, year, Path(raw_root))
     # Map cột cán bộ đã xác nhận — thắng template lẫn cột mặc định ở TỪNG trường.
     officer = officer_column_maps(company_code)
+    # Trường cán bộ XÁC NHẬN VẮNG — gỡ khỏi kết quả parse TRƯỚC khi dựng dòng Tầng 1,
+    # nếu không thì cột đó vẫn nạp theo vị trí mặc định trong khi cổng check bảo
+    # "chưa đánh giá được", và hai màn nói ngược nhau.
+    absent = officer_absent_maps(company_code)
 
     # `year` để chọn sheet: hai sheet cùng bố cục khác kỳ chỉ phân biệt được bằng kỳ.
     m15 = (
@@ -277,6 +292,12 @@ def ingest(company_code: str, year: int, raw_root: Path | None = None, dry_run: 
         except SheetNotFound:
             bcct_skipped.append(bp.name)
     stats.bcct_skipped = bcct_skipped
+    for _slot, _parsed in (("m15", m15), ("m15a", m15a), ("m16", m16)):
+        if _parsed is not None:
+            apply_absent_fields(_parsed, _slot, absent.get(_slot))
+    for _parsed in bcct_files:
+        apply_absent_fields(_parsed, "bcct", absent.get("bcct"))
+
     # Trang tính THỰC SỰ đã đọc mỗi file — trang tài liệu và màn review hiện lại đúng
     # trang đó, thay vì mặc định xem trang đầu workbook.
     stats.sheets = {

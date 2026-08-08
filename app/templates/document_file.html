@@ -194,7 +194,12 @@
                    value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*">
             {% else %}
             <select class="form-input" name="col_{{ c.field }}">
-              <option value="">— chưa gán —</option>
+              {% if not c.columns %}
+              {# Chỉ nêu khi trường THẬT SỰ chưa gán. Mời bỏ gán một trường đã gán là
+                 hứa một việc không giữ được: ô trống nghĩa là “giữ nguyên”, và cách
+                 thôi đọc một cột là tick “Không có trong file”. #}
+              <option value="" selected>— chưa gán —</option>
+              {% endif %}
               {% if c.columns and c.columns[0] >= basis.choices | length %}
               <option value="{{ c.columns[0] }}" selected>cột {{ c.columns[0] }} · không có trên trang tính</option>
               {% endif %}

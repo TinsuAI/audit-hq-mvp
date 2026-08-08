@@ -221,9 +221,12 @@ def test_screen_survives_a_very_wide_sheet(env, app_db):
 
 def test_confirming_absent_writes_it_and_rejects_a_missing_row_key(env, app_db):
     client, _root = env
+    # `product_code` KHÔNG có trong map: máy không đặt được khoá dòng này. Ô trống nay
+    # nghĩa là "giữ nguyên", nên cách duy nhất để khoá dòng còn thiếu là nó chưa từng
+    # được gán — đúng ca cổng từ chối sinh ra để chặn.
     detail = {
         "sheet": "BCTT39", "form_signature": "sig-post",
-        "column_map": {"product_code": 1, "material_code": 4, "norm_qty": 7},
+        "column_map": {"material_code": 4, "norm_qty": 7},
         "column_choices": [
             {"index": i, "header": f"cot{i}", "samples": ["x"]} for i in range(9)
         ],
