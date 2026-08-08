@@ -1329,3 +1329,74 @@ m15/m15a/m16 + test chống trôi + `("m16","note")` vào `CHECK_COLUMNS` — đ
 không đổi schema; (2) màn gán cột + cột `absent_fields` + migration; (3) cổng `not_evaluable` mức
 trường + khai bù bcct vào `CHECK_COLUMNS`. File đã nạp GIỮ `parse_detail` cũ tới khi có người nạp
 lại — mã mới chỉ đổi thứ một lượt parse MỚI sinh ra.
+
+## 2026-08-08 — Thiết kế lại luồng cán bộ: ba trục nhãn · màn gán cột theo trường
+
+### 29. Nhãn hiện theo NGOẠI LỆ trên ba trục; màn gán cột quay về bố cục THEO TRƯỜNG và nối với lưới (2026-08-08, grill-with-docs; audit `DESIGN-IS-2026-08-08/`; THI HÀNH mục 6 của ADR #28)
+
+**Bối cảnh.** Audit thiết kế theo 10 nguyên tắc Dieter Rams chấm luồng cán bộ **13/30**, phán quyết
+REDESIGN. Ba lỗi trung thực nặng nhất đã vá ở `d75f07a` (lời khai vắng tới adapter · bịt đường xoá
+âm thầm · ô trống luôn nghĩa "giữ nguyên"), kéo điểm lên khoảng 16–17 — vẫn dưới ngưỡng 20. Phần
+còn lại KHÔNG phải lỗi dữ liệu mà là hai quyết định trình bày đã đóng cứng vào màn hình.
+
+**Quyết định — hai phần.**
+
+**(1) Ba trục nhãn, hiện theo NGOẠI LỆ.** Mọi nhãn trên luồng cán bộ thuộc đúng một trục: *gán cột*
+(trường đọc ở đâu) · *căn cứ* (vì sao tin là cột đó) · *việc còn lại* (cán bộ còn phải làm gì).
+Trục 3 SUY từ trục 2 + `CHECK_COLUMNS`, không phải sự thật độc lập. Nhãn chỉ hiện khi trạng thái
+KHÁC trường hợp mong đợi: trường đã gán không đeo nhãn "Đã gán" (bộ chọn đã nói rồi), trường không
+còn việc gì không đeo nhãn nào. Chuỗi **"Đã kiểm" thôi được render**. Trục *căn cứ* nói bằng CÂU đủ
+nghĩa tại chỗ dùng, không bằng chip thuật ngữ; `MATCH_SOURCE_LABEL_VI` (`file_page.py:44-54`) bỏ
+hẳn vì nó là bản nói lại ở mức trang của cùng năm nguồn bằng chứng.
+
+Số đo làm căn cứ: một file Mẫu 16 tám trường hiện **21 badge cùng lúc**; `Đã gán` và `Đã kiểm` cùng
+là `.badge.info`, cùng màu xanh, cạnh nhau ở mọi cột; một màn mang **10 bộ từ vựng nhãn**.
+`review_state` (`registry.py:567-580`) trả `VERIFIED` khi **không check nào đọc trường đó**, nên
+"Đã kiểm" hiện cạnh "Chỉ theo vị trí" và nghĩa thật của nó là "không có gì phụ thuộc cột này". Thôi
+render thì lời nói sai đó mất, không phải đổi tên quanh nó.
+
+**(2) Màn gán cột quay về bố cục THEO TRƯỜNG — mỗi trường một DÒNG; chọn trường thì cột tương ứng
+sáng lên ở lưới xem trước cùng trang.** Bảng chuyển vị (trường thành CỘT) bỏ. Chuỗi
+`wireColumnInputs → setHighlight → showColumn` (`cell-grid.js:484-489`) nối lại vào bộ điều khiển
+mới thay vì xoá. Lưới là phần TĂNG THÊM: mỗi dòng trường tự nói đủ cột đang gán, tiêu đề cột và căn
+cứ, vì đường lạnh của lưới trả 202 rồi poll (`POLL_MAX_TRIES` ≈ 13 phút) và file chưa từng đọc thì
+không có ảnh chụp nào.
+
+**Lý do.** Bảng chuyển vị đặt toàn bộ `<select>` trên một hàng và toàn bộ checkbox "không có trong
+file" ở hàng sau, nên mỗi bộ chọn cách ô xác nhận vắng CỦA CHÍNH NÓ **8–12 chặng tab**; bảng cuộn
+ngang bằng chuột và cắt mất trường cuối ở khung nhìn thường; 9 `<th>` không có `scope`, mà bảng đã
+chuyển vị thì một ô cần cả hai trục mới có tên. Bố cục theo trường sửa cả ba cùng lúc và đưa mã
+nguồn về đúng mục 6 của ADR #28 — trước quyết định này ADR và mã nói khác nhau.
+
+Ý "thấy dòng dữ liệu thật đọc qua cột đang chọn" GIỮ, nhưng chuyển chỗ thể hiện sang lưới. Lưới hiện
+dòng NGUYÊN VẸN của trang tính nên không thể vi phạm quy tắc ở `document_file.html:165-167` (không
+ghép mẫu giá trị từng cột thành một dòng không có trong file); còn năm dòng mẫu dưới bảng chuyển vị
+thì lấy theo hàng, nên với file có ô trống ở đầu bảng chúng hiện "trống" hàng loạt và không chứng
+minh được phép gán.
+
+**Alternatives loại.**
+- *Giữ bảng chuyển vị, chỉ vá thứ tự focus và tràn ngang.* Thứ tự focus là hệ quả của việc chuyển
+  vị, không vá rời được; và `scope` một trục vẫn không đặt tên đủ cho ô.
+- *Đổi tên "Đã kiểm" cho đúng nghĩa.* Vẫn là một nhãn nói lại điều trục căn cứ đã nói, và vẫn để
+  21 badge trên màn.
+- *Dựng trạng thái thứ ba (chưa gán) thành lời khai của cán bộ.* Cần tập lưu thứ ba, bất biến thứ
+  ba, và một nhánh trong mọi adapter, trong khi không có hành vi hạ nguồn nào khác *xác nhận vắng*.
+  Giữ nguyên quyết định `d75f07a`: cán bộ có đúng HAI lời khai.
+- *Lưới điều hướng được bằng bàn phím ở cấp ô.* Roving tabindex trên lưới ảo hoá 400 dòng là khối
+  việc lớn, dễ sai; đường bàn phím cần thiết nằm ở danh sách trường và đã được bố cục theo trường
+  giải quyết.
+
+**Hàng rào phạm vi.** Trong: trình bày, và nửa phía màn hình của tương tác (nút xác nhận nói đúng
+việc nó làm, quay về trang file, nêu rõ việc chưa chạy kiểm tra ở cả trang file lẫn trang kỳ).
+Ngoài: mô hình miền, thang nguồn bằng chứng (ADR #18), cổng `not_evaluable`, hằng cột của adapter,
+hình dạng lưu trữ (`column_map` / `absent_fields`), catalog check, thang điểm rủi ro. Đơn vị nạp dữ
+liệu GIỮ ở `(company_code, year)` — nạp theo từng file không tồn tại (`ingest.py:246`) và dựng nó là
+việc của tầng miền.
+
+**Nghiệm thu bằng số, không bằng điểm.** Mỗi vé mang một tiêu chí đo được lấy từ chính số liệu
+audit: bộ từ vựng nhãn trên trang file ≤ 3 · badge của một file 8 trường sạch ≤ 3 (từ 21) · ô xác
+nhận vắng là chặng focus KẾ TIẾP của bộ chọn cột cùng trường · `:disabled`, `.empty-state`,
+`.badge.danger` có rule và vòng focus đạt 3:1 · lớp CSS chết đã nêu bằng 0 và style sheet parse sạch
+· `input.review-idx` hoặc được template phát ra hoặc bị xoá, kèm test bắt được nếu nó chết lại.
+Chạy lại audit thiết kế sau khi xong là để ĐỌC, không phải cổng: điểm do model chấm, và gate theo
+điểm thì mời người ta chỉnh cho vừa thước đo.

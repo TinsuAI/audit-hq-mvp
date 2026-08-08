@@ -5,17 +5,22 @@ Ngôn ngữ chung của dự án. Chỉ định nghĩa thuật ngữ — không 
 
 ## Parse review (WS1)
 
-**Evidence source** — nguồn bằng chứng cho việc gán MỘT cột đã đọc. Bốn nguồn, mạnh→yếu:
+**Evidence source** — nguồn bằng chứng cho việc gán MỘT cột đã đọc. Năm nguồn, mạnh→yếu:
 - `officer-confirmed` — cán bộ đã duyệt, hoặc có map đã lưu cho form này.
+- `builtin-template` — khớp vân tay một họ biểu đã curate trong code (ADR #23): cấu trúc đã có người
+  xem lúc viết template, mạnh hơn khớp tiêu đề tại chỗ, yếu hơn map cán bộ tự xác nhận cho DN đó.
 - `header-matched` — tiêu đề tại vị trí đó khớp nhãn mong đợi (pin đúng cột).
 - `balance-checked` — đẳng thức cân đối của biểu khớp nếu lấy cột này. Đủ cho cột chỉ dùng dạng
   TỔNG; KHÔNG phân biệt hai cột cùng dấu.
 - `position-only` — chỉ số cột cố định, không tín hiệu nào khác. Là phỏng đoán.
 
-**Review state** — badge gộp evidence source về hai trạng thái cán bộ hành động:
-- `verified` (xanh) — tin được, không cần làm gì.
-- `needs_review` (vàng) — cột được một check tiêu thụ nhưng nguồn tốt nhất là `position-only`, hoặc
-  dùng riêng lẻ mà chỉ có `balance-checked`. UI render tiếng Việt: "Đã kiểm" / "Cần xác nhận".
+**Review state** — suy evidence source + `CHECK_COLUMNS` về hai trạng thái cán bộ hành động:
+- `verified` — không còn việc phải làm. `review_state` trả giá trị này CẢ KHI không kiểm tra nào đọc
+  trường đó, nên nó nghĩa "không có gì phụ thuộc cột này", KHÔNG phải "đã được kiểm".
+- `needs_review` — cột được một check tiêu thụ nhưng nguồn tốt nhất là `position-only`, hoặc dùng
+  riêng lẻ mà chỉ có `balance-checked`.
+Cách render: xem *Hiện theo ngoại lệ* (ADR #29) — `verified` không đeo nhãn nào, chuỗi "Đã kiểm"
+thôi được dùng.
 
 **Individually-consumed column** — cột một check đọc TRỰC TIẾP (không qua tổng cân đối), nên cần
 `header-matched`/`officer-confirmed`. Ví dụ: `production_out` (C4.3, C5), `repurpose` (C1.x), cột con
@@ -242,7 +247,7 @@ chứng. Cùng cấu trúc với evidence source của việc gán CỘT (ADR #1
 nói "nhận ra" về một phép đoán theo tên là nói với cán bộ rằng file đã hợp lệ trong khi hệ thống
 chưa mở file lần nào. Từ dùng cho `name-matched` là **gợi ý** / **gán tạm**.
 
-## Gán cột theo trường khai (ADR #28 — chưa cài)
+## Gán cột theo trường khai (ADR #28)
 
 **Declared field set** (tập trường khai) — danh sách trường một BIỂU có, khai một lần ở module khai
 dưới `app/adapters/`, mỗi trường mang: nhãn tiếng Việt · một cột hay nhóm cột · có bắt buộc theo
@@ -269,3 +274,22 @@ Hai tập `column_map` và `absent_fields` bất biến không giao nhau.
 check nào `CHECK_COLUMNS` khai đọc một `(slot, trường)` đã xác nhận vắng thì `not_evaluable`, lớp
 cách gỡ `need-file-this-period`. Cảnh báo trên màn gán và hành vi lúc chạy cùng suy từ
 `checks_reading()` nên không nói khác nhau được.
+
+## Hệ nhãn luồng cán bộ (redesign 2026-08-08)
+
+**Lời khai của cán bộ** (officer statement) — điều cán bộ tự phát biểu về một trường khai. Có ĐÚNG
+HAI: "đọc ở cột N" và "không có trong file". *Chưa gán* KHÔNG phải lời khai — đó là báo cáo của máy
+("chưa đặt được trường này"), nên giao diện phải trình bày nó khác hẳn hai điều kia. Ô trống của bộ
+chọn luôn nghĩa "giữ nguyên"; đường DUY NHẤT để thôi đọc một cột là khai "không có trong file".
+
+**Ba trục nhãn** (label axes) — mọi nhãn trên luồng cán bộ thuộc đúng một trong ba trục, không trục
+nào được nói lại điều trục khác đã nói:
+- *gán cột* — trường này đọc ở đâu (`assigned` · `absent` · `unassigned`);
+- *căn cứ* — vì sao hệ thống tin là cột đó (evidence source, năm mức);
+- *việc còn lại* — cán bộ còn phải làm gì. SUY từ căn cứ + `CHECK_COLUMNS`, không phải sự thật độc
+  lập, nên không bao giờ mâu thuẫn được với trục căn cứ.
+
+**Hiện theo ngoại lệ** (exception-only rendering) — nhãn chỉ hiện khi trạng thái KHÁC trường hợp
+mong đợi. Trường đã gán không đeo nhãn "Đã gán" (bộ chọn đã nói rồi); trường không còn việc gì
+không đeo nhãn nào. Hệ quả: chuỗi "Đã kiểm" thôi được render — nó vốn cũng có nghĩa "không kiểm tra
+nào đọc trường này", một điều thuộc trục *căn cứ* và phải nói bằng câu chữ ở đó.
