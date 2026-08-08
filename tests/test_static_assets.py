@@ -30,6 +30,9 @@ PINNED_TEXT_PAIRS = [
     ("--c-text-subtle", "--c-bg"),
     ("--c-text-subtle", "--c-surface"),
     ("--c-text-muted", "--c-bg"),
+    # Dòng cán bộ đã khai vắng ở màn gán cột (#121): nền `--c-surface-alt`, chữ căn cứ
+    # `--c-text-muted`. Đây là chỗ thay `opacity: .55` (đo được 2,55), nên cặp phải ghim.
+    ("--c-text-muted", "--c-surface-alt"),
     ("--c-critical-fg", "--c-critical-bg"),
     ("--c-warning-fg", "--c-warning-bg"),
     ("--c-info-fg", "--c-info-bg"),

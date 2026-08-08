@@ -93,8 +93,9 @@ NO_EVIDENCE_RECORDED = "Không ghi nhận bằng chứng nào cho cột đang đ
 # Hai trạng thái KHÔNG có nguồn bằng chứng để nói, vì không đọc cột nào. Nhãn trạng thái
 # ("Chưa gán") chỉ nêu trạng thái, không nêu thao tác phải làm — hai câu dưới nêu thao tác.
 UNASSIGNED_MEANS = (
-    "Chưa gán cột nào nên hệ thống không đọc gì cho trường này — chọn cột ở hàng "
-    "“Cột trên file”, hoặc tích “Không có trong file” nếu biểu này không có trường đó."
+    "Chưa gán cột nào nên hệ thống không đọc gì cho trường này — chọn cột ở ô "
+    "“Cột trên file” của dòng này, hoặc tích “Không có trong file” ngay cạnh nếu biểu "
+    "này không có trường đó."
 )
 ABSENT_MEANS = (
     "Cán bộ đã xác nhận file không có trường này; kiểm tra nào cần tới nó sẽ trả "
@@ -214,10 +215,11 @@ class ReadBasis:
     needs_confirmation: tuple[str, ...]
     # Ảnh chụp cột của file lúc parse — bộ chọn cột dựng từ đây. Rỗng với file nạp
     # trước #112 (tiến lên, không backfill): màn rơi về ô nhập chỉ số như cũ.
+    #
+    # `parse_detail["sample_rows"]` KHÔNG còn đọc ở đây (#121): dòng dữ liệu thật hiện ở
+    # lưới, nguyên vẹn theo hàng trang tính. Adapter vẫn ghi khoá đó — thôi ghi là đổi
+    # thứ một lượt nạp ghi xuống DB, không thuộc vé bố cục này.
     choices: tuple[dict, ...] = ()
-    # Vài DÒNG dữ liệu thật, nguyên vẹn theo hàng — bảng gán cột dựng theo dòng nên
-    # phải là dòng có thật, không phải mẫu ghép từ nhiều dòng khác nhau.
-    sample_rows: tuple[dict, ...] = ()
 
     @property
     def needs_count(self) -> int:
@@ -334,7 +336,6 @@ def file_read_basis(
         columns=columns,
         needs_confirmation=tuple(c.label for c in columns if c.needs_review),
         choices=tuple(detail.get("column_choices") or ()),
-        sample_rows=tuple(detail.get("sample_rows") or ()),
     )
 
 
