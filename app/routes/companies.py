@@ -95,7 +95,7 @@ from app.pipeline.audit_scope import (
 )
 from app.pipeline.data_screen import build_data_screen
 from app.pipeline.export import build_export
-from app.pipeline.file_page import file_page_url, file_read_basis
+from app.pipeline.file_page import column_label, file_page_url, file_read_basis
 from app.pipeline.findings_screen import not_evaluable_panel
 from app.pipeline.ingest_status import ingest_status, mark_seen
 from app.pipeline.period import (
@@ -136,6 +136,9 @@ templates.env.globals["PERCENTILE_LABEL"] = PERCENTILE_LABEL_VI
 templates.env.globals["SOURCE_SENTENCE"] = SOURCE_SENTENCE_VI
 # Nhãn sổ quyết toán (book) — dùng ở company_detail (split line) + finding_detail (field).
 templates.env.globals["book_label"] = book_label
+# Tên một cột như cán bộ đọc nó — nhãn lựa chọn của bộ chọn cột và câu tự khai của
+# dòng nhóm cột con phải là CÙNG một chuỗi, xem `column_label`.
+templates.env.globals["column_label"] = column_label
 # Cột số của bảng phát hiện + nhãn tiếng Việt cho `finding.details`.
 templates.env.globals["finding_columns"] = column_headers
 templates.env.globals["finding_cells"] = row_cells

@@ -141,6 +141,12 @@
      của trang tính, còn năm dòng mẫu lấy theo hàng thì với file có ô trống ở đầu bảng
      hiện “trống” hàng loạt và không chứng minh được phép gán (ADR #29). #}
   {% set with_absent = basis.can_confirm and basis.has_choices %}
+  {# Ô nhập chỉ số chỉ hiện `7,8`. Nhãn lựa chọn của `<select>` mang sẵn tên cột, ô nhập
+     thì không — mà dòng phải tự nói cột đang gán kể cả khi lưới còn đang trích xuất
+     (#122): đường lạnh trả 202 rồi poll. Câu dựng ở `BasisColumn`, không ở đây. #}
+  {% macro col_note(c) %}
+  {%- if c.column_note %}<p class="form-hint">{{ c.column_note }}</p>{% endif -%}
+  {% endmacro %}
   <div class="card fieldmap-card">
     {# `_field_major` nói biểu mẫu LẦN NÀY có dựng ô khai vắng hay không — thuộc về cả
        biểu mẫu, không về từng trường, nên phát đúng một lần. Phát nó ở biểu mẫu KHÔNG
@@ -173,10 +179,7 @@
                không diễn đạt được, và hai ô trùng `name` thì ô sau đè ô trước. #}
             <input type="text" class="form-input mono-input js-col-pick" name="col_{{ c.field }}"
                    value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*">
-            {# Ô nhập chỉ hiện `7,8`. Nhãn lựa chọn của `<select>` mang sẵn tiêu đề cột, ô
-               nhập thì không — mà dòng phải tự nói cột đang gán kể cả khi lưới còn đang
-               trích xuất (#122). Câu dựng ở `BasisColumn`, không ở đây. #}
-            <p class="form-hint">{{ c.column_note }}</p>
+            {{ col_note(c) }}
             {% else %}
             <select class="form-input js-col-pick" name="col_{{ c.field }}">
               {% if not c.columns %}
@@ -190,7 +193,7 @@
               {% endif %}
               {% for ch in basis.choices %}
               <option value="{{ ch.index }}" {% if c.columns and c.columns[0] == ch.index %}selected{% endif %}>
-                cột {{ ch.index }}{% if ch.header %} · «{{ ch.header }}»{% endif %}
+                {{ column_label(ch.index, ch.header) }}
               </option>
               {% endfor %}
             </select>
@@ -203,6 +206,7 @@
             {% elif basis.can_confirm and c.needs_review %}
             <input type="text" class="form-input mono-input js-col-pick" name="col_{{ c.field }}"
                    value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*">
+            {{ col_note(c) }}
             {% else %}
             <span class="text-mono">{{ c.column_ref or '—' }}</span>
             {% if basis.can_confirm %}<input type="hidden" name="col_{{ c.field }}" value="{{ c.col_value }}">{% endif %}

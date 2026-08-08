@@ -1,14 +1,16 @@
 """Chuỗi làm nổi cột: bộ chọn của một trường → cột đó sáng lên trong lưới cùng trang (#122).
 
-Chuỗi `wireColumnInputs → setHighlight → showColumn` có sẵn trong `cell-grid.js` từ #92
+Chuỗi `wireColumnPickers → setHighlight → showColumn` có sẵn trong `cell-grid.js` từ #92
 nhưng CHẾT: nó truy `input.review-idx`, mà không template nào phát chuỗi đó kể từ khi màn
 gán cột được dựng lại. `querySelectorAll` trả rỗng nên không có lỗi nào ném ra — cả chuỗi
-cùng hai rule `.cg-col-hi` / `.cg-cell-hi` không đường nào tới.
+cùng hai rule `.cg-col-hi` / `.cg-cell-hi` không đường nào tới. (Vé #122 và ADR #29 gọi mắt
+đầu chuỗi bằng tên cũ `wireColumnInputs`: nó chỉ nối `<input>` nên bỏ sót một nửa số dòng,
+và tên đó là một phần của chính lỗi.)
 
 Chết im lặng thì phải có test bắt được chính kiểu chết đó, nên ở đây khẳng định HAI ĐẦU
 của mối nối và bắt chúng khớp nhau ở mức chuỗi:
 
-* đầu JS — lớp mà `wireColumnInputs` truy, đọc thẳng từ `app/static/cell-grid.js`;
+* đầu JS — lớp mà `wireColumnPickers` truy, đọc thẳng từ `app/static/cell-grid.js`;
 * đầu HTML — lớp mà biểu mẫu thật sự phát ra, đọc từ trang đã dựng.
 
 Lấy lớp từ JS rồi đem đối chiếu với HTML (chứ không ghim một hằng trong test) làm mối nối
@@ -33,7 +35,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models import Company, DataFile
-from app.pipeline.file_page import file_page_url
+from app.pipeline.file_page import column_label, file_page_url
 from app.settings import settings
 from tests.excel_fixtures import write_xlsx
 
@@ -57,6 +59,18 @@ _DETAIL = {
     ],
     "column_choices": [
         {"index": i, "header": f"cot{i}", "samples": ["x"]} for i in range(9)
+    ],
+}
+
+# File nạp trước #112: lượt nạp không lưu ảnh chụp cột, nên màn không dựng nổi `<select>`
+# nào. Cột nào còn chờ xác nhận thì rơi về ô nhập chỉ số — nhánh thứ ba của biểu mẫu, và
+# là nhánh không bộ dữ liệu nào khác ở đây đi qua.
+_NO_SNAPSHOT = {
+    k: v for k, v in _DETAIL.items() if k != "column_choices"
+} | {
+    "columns": [
+        dict(c, review="needs_review") if c["field"] == "material_unit" else c
+        for c in _DETAIL["columns"]
     ],
 }
 
@@ -90,9 +104,9 @@ def _body(name: str) -> str:
 
 
 def _picker_selector() -> str:
-    """Bộ chọn mà `wireColumnInputs` dùng để tìm bộ chọn cột."""
-    m = re.search(r"querySelectorAll\(\s*'([^']+)'", _body("wireColumnInputs"))
-    assert m, "`wireColumnInputs` không truy phần tử nào nữa"
+    """Bộ chọn mà `wireColumnPickers` dùng để tìm bộ chọn cột."""
+    m = re.search(r"querySelectorAll\(\s*'([^']+)'", _body("wireColumnPickers"))
+    assert m, "`wireColumnPickers` không truy phần tử nào nữa"
     return m.group(1)
 
 
@@ -150,6 +164,12 @@ def _column_controls(text: str) -> list[str]:
     return [t for t in tags if 'type="hidden"' not in t]
 
 
+def _row(table: str, name: str) -> str:
+    """Dòng của bảng mang ô điều khiển tên `name`."""
+    rows = re.findall(r"<tr\b[^>]*>.*?</tr>", table, re.S)
+    return next(r for r in rows if f'name="{name}"' in r)
+
+
 def _page(client, fid: int) -> str:
     r = client.get(file_page_url("DN_HL", fid))
     assert r.status_code == 200
@@ -185,6 +205,23 @@ def test_both_shapes_of_picker_are_hooked(env):
     assert any(t.startswith("<input") for t in hooked)
 
 
+def test_the_picker_of_a_file_with_no_column_snapshot_is_hooked_too(env):
+    """Nhánh thứ BA của biểu mẫu, và là nhánh dễ chết lại nhất: file nạp trước #112 không có
+    ảnh chụp cột nên không dựng `<select>` — cột chờ xác nhận rơi về ô nhập chỉ số. Bộ dữ
+    liệu chính của bài này luôn có ảnh chụp, nên không lượt nào đi qua nhánh đó."""
+    client, root = env
+    fid = _register(root, _NO_SNAPSHOT)
+
+    table = _table(_page(client, fid))
+    hook = _hook_class()
+    controls = _column_controls(_row(table, "col_material_unit"))
+
+    assert "<select" not in table, "bố cục này lẽ ra không dựng nổi bộ chọn nào"
+    assert controls, "dòng chờ xác nhận không dựng ô nhập chỉ số nào"
+    for tag in controls:
+        assert re.search(rf'class="[^"]*\b{re.escape(hook)}\b', tag), tag
+
+
 def test_nothing_outside_the_field_map_wears_the_hook(env):
     """Ô "Tới dòng", bộ chọn trang tính, ô mã sổ đều KHÔNG mang vị trí cột — nối chúng vào
     chuỗi là làm nổi một cột lấy từ số không liên quan."""
@@ -202,7 +239,7 @@ def test_nothing_outside_the_field_map_wears_the_hook(env):
 
 def test_the_picker_hook_reacts_to_both_typing_and_choosing():
     """AC 1. `<select>` phát `change`, ô nhập phát `input`; đưa focus vào là đủ để soi."""
-    body = _body("wireColumnInputs")
+    body = _body("wireColumnPickers")
 
     for event in ("input", "change", "focus"):
         assert re.search(rf"addEventListener\(\s*'{event}'", body), event
@@ -214,7 +251,7 @@ def test_the_picker_hook_reacts_to_both_typing_and_choosing():
 
 def test_the_hook_is_wired_during_grid_start_up():
     """Chuỗi chết kiểu thứ hai: lớp còn phát, hàm còn đó, nhưng không ai gọi nó."""
-    assert "wireColumnInputs()" in _body("wireControls")
+    assert "wireColumnPickers()" in _body("wireControls")
     assert "wireControls()" in _body("init")
 
 
@@ -229,6 +266,16 @@ def test_bringing_a_column_into_view_never_moves_the_row_position():
 
     assert "scrollLeft" in body
     assert "scrollTop" not in body
+
+
+def test_a_group_field_can_light_every_column_it_sums():
+    """Dòng nhóm cột con nói ra CẢ nhóm ("cột 7 · «…» + cột 8 · «…»") vì trường đó đọc bằng
+    tổng các cột (ADR #25). Soi mỗi cột đầu thì lưới nói ngược lại chính dòng đang gõ.
+
+    Điều kiện đủ, khẳng định được ở mức mã nguồn: trạng thái làm nổi là một DANH SÁCH và
+    phép hỏi "cột này có sáng không" là phép tìm trong danh sách đó."""
+    assert re.search(r"highlight:\s*\[\]", _grid_source()), "trạng thái làm nổi không phải danh sách"
+    assert "indexOf" in _body("isHighlighted"), "so bằng `===` thì chỉ một cột sáng được"
 
 
 def test_a_column_is_only_brought_into_view_where_it_can_be_marked():
@@ -246,12 +293,22 @@ def test_a_group_row_names_every_column_it_sums_with_that_columns_header(env):
     client, root = env
     fid = _register(root, _DETAIL)
 
-    table = _table(_page(client, fid))
-    row = next(r for r in re.findall(r"<tr\b[^>]*>.*?</tr>", table, re.S)
-               if 'name="col_norm_qty"' in r)
+    row = _row(_table(_page(client, fid)), "col_norm_qty")
 
-    assert "cột 7 «cot7»" in row
-    assert "cột 8 «cot8»" in row
+    assert "cột 7 · «cot7»" in row
+    assert "cột 8 · «cot8»" in row
+
+
+def test_the_row_and_the_picker_label_name_a_column_the_same_way(env):
+    """Cùng một cột hiện ở hai chỗ trên cùng màn: nhãn lựa chọn của `<select>` và câu tự
+    khai của dòng nhóm. Lệch câu chữ thì cán bộ phải tự khớp hai cách gọi."""
+    client, root = env
+    fid = _register(root, _DETAIL)
+
+    table = _table(_page(client, fid))
+
+    assert column_label(7, "cot7") in _row(table, "col_norm_qty")
+    assert column_label(7, "cot7") in _row(table, "col_material_code")
 
 
 def test_a_column_outside_the_snapshot_is_named_without_a_header(env):
@@ -261,14 +318,23 @@ def test_a_column_outside_the_snapshot_is_named_without_a_header(env):
     detail = dict(_DETAIL, column_map=dict(_DETAIL["column_map"], norm_qty=[7, 40]))
     fid = _register(root, detail)
 
-    table = _table(_page(client, fid))
-    row = next(r for r in re.findall(r"<tr\b[^>]*>.*?</tr>", table, re.S)
-               if 'name="col_norm_qty"' in r)
+    row = _row(_table(_page(client, fid)), "col_norm_qty")
 
     assert "cột 40" in row
-    assert "cột 40 «" not in row
+    assert "cột 40 ·" not in row
 
 
-def test_the_dead_selector_is_gone_from_the_repo():
+def test_a_row_with_no_snapshot_still_names_the_column_it_reads(env):
+    """Cùng AC 5, nhánh không có ảnh chụp cột: ô nhập chỉ hiện `6`, và không có tiêu đề nào
+    để nói — nhưng dòng vẫn phải nói ra nó đang đọc cột nào."""
+    client, root = env
+    fid = _register(root, _NO_SNAPSHOT)
+
+    row = _row(_table(_page(client, fid)), "col_material_unit")
+
+    assert column_label(6) in row
+
+
+def test_the_dead_selector_is_gone_from_the_grid_script():
     """`input.review-idx` là chính chuỗi đã chết — còn sót một bản là còn một đường không tới."""
     assert "review-idx" not in _grid_source()
