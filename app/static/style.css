@@ -21,7 +21,7 @@
   /* Text */
   --c-text:        #0f172a;
   --c-text-muted:  #475569;
-  --c-text-subtle: #64748b;
+  --c-text-subtle: #616e83;
   --c-text-inverse: #ffffff;
 
   /* Border */
@@ -361,6 +361,7 @@ p { margin: 0 0 var(--space-3); }
 .badge.warning  { background: var(--c-warning-bg);  color: var(--c-warning-fg);  border-color: var(--c-warning-border); }
 .badge.info     { background: var(--c-info-bg);     color: var(--c-info-fg);     border-color: var(--c-info-border); }
 .badge.muted    { background: var(--c-status-new-bg); color: var(--c-status-new-fg); border-color: var(--c-border); }
+.badge.danger   { background: var(--c-critical-bg);  color: var(--c-critical-fg);  border-color: var(--c-critical-border); }
 
 .badge-dot {
   display: inline-block;
@@ -760,9 +761,9 @@ p { margin: 0 0 var(--space-3); }
   cursor: pointer;
 }
 .toolbar-search:focus, .toolbar-select:focus {
-  outline: none;
+  outline: 2px solid var(--c-border-focus);
+  outline-offset: 1px;
   border-color: var(--c-brand-500);
-  box-shadow: 0 0 0 3px var(--c-overlay);
 }
 .toolbar-toggle {
   display: inline-flex;
@@ -843,12 +844,38 @@ p { margin: 0 0 var(--space-3); }
   width: 100%;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
+/* Vòng focus là OUTLINE, không phải box-shadow: `--c-brand-100` trên nền ô trắng chỉ đạt 1,34
+   nên ô đang nhận bàn phím nhìn gần như ô thường. Outline vẽ ngoài viền, không đẩy bố cục. */
 .form-input:focus, .form-select:focus, .form-textarea:focus {
-  outline: none;
+  outline: 2px solid var(--c-border-focus);
+  outline-offset: 1px;
   border-color: var(--c-brand-500);
-  box-shadow: 0 0 0 3px var(--c-brand-100);
 }
 .form-textarea { min-height: 80px; font-family: inherit; resize: vertical; }
+
+/* Ô bị khoá: nền xám + con trỏ chặn. Không dùng `opacity` — nó kéo cả chữ xuống dưới ngưỡng
+   đọc được, mà lý do khoá thì cán bộ vẫn phải đọc được giá trị đang giữ. */
+.form-input:disabled, .form-select:disabled, .form-textarea:disabled,
+.btn:disabled, button:disabled {
+  background: var(--c-surface-alt);
+  color: var(--c-text-muted);
+  border-color: var(--c-border);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.btn:disabled, button:disabled { opacity: 1; }
+
+/* Vùng không có dữ liệu tự nói là không có, thay vì để một khoảng trắng không giải thích. */
+.empty-state {
+  margin: 0;
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  background: var(--c-surface-alt);
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--radius-md);
+}
 .form-help { font-size: var(--fs-xs); color: var(--c-text-subtle); }
 .form-error { color: var(--c-critical-fg); font-size: var(--fs-sm); }
 
@@ -1325,14 +1352,13 @@ p { margin: 0 0 var(--space-3); }
 .fm-col-absent { opacity: 0.55; }
 .fieldmap-table th:last-child, .fieldmap-table td:last-child { padding-right: var(--space-6); }
 .fm-foot { padding: var(--space-2) var(--space-6); margin: 0; }
-}
 
 .badge-success { background: var(--c-success-bg); color: var(--c-success-fg); padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; }
 .badge-warning { background: var(--c-warning-bg); color: var(--c-warning-fg); padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; }
 .badge-op-import { background: #dbeafe; color: #1e40af; padding: 1px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
 .badge-op-export { background: #dcfce7; color: #166534; padding: 1px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
 .badge-op-other  { background: #f3f4f6; color: #4b5563; padding: 1px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
-.badge-op-unknown { background: #f3f4f6; color: #6b7280; padding: 1px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
+.badge-op-unknown { background: #f3f4f6; color: #686f7c; padding: 1px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
 
 /* SVG charts */
 .chart { display: block; width: 100%; height: auto; max-height: 280px; }
