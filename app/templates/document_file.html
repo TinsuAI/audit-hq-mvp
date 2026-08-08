@@ -141,6 +141,12 @@
      của trang tính, còn năm dòng mẫu lấy theo hàng thì với file có ô trống ở đầu bảng
      hiện “trống” hàng loạt và không chứng minh được phép gán (ADR #29). #}
   {% set with_absent = basis.can_confirm and basis.has_choices %}
+  {# Ô nhập chỉ số chỉ hiện `7,8`. Nhãn lựa chọn của `<select>` mang sẵn tên cột, ô nhập
+     thì không — mà dòng phải tự nói cột đang gán kể cả khi lưới còn đang trích xuất
+     (#122): đường lạnh trả 202 rồi poll. Câu dựng ở `BasisColumn`, không ở đây. #}
+  {% macro col_note(c) %}
+  {%- if c.column_note %}<p class="form-hint">{{ c.column_note }}</p>{% endif -%}
+  {% endmacro %}
   <div class="card fieldmap-card">
     {# `_field_major` nói biểu mẫu LẦN NÀY có dựng ô khai vắng hay không — thuộc về cả
        biểu mẫu, không về từng trường, nên phát đúng một lần. Phát nó ở biểu mẫu KHÔNG
@@ -171,10 +177,11 @@
             {% if c.is_group %}
             {# Nhóm cột con (ADR #25) đọc bằng TỔNG nhiều cột — `<select>` một giá trị
                không diễn đạt được, và hai ô trùng `name` thì ô sau đè ô trước. #}
-            <input type="text" class="form-input mono-input" name="col_{{ c.field }}"
+            <input type="text" class="form-input mono-input js-col-pick" name="col_{{ c.field }}"
                    value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*">
+            {{ col_note(c) }}
             {% else %}
-            <select class="form-input" name="col_{{ c.field }}">
+            <select class="form-input js-col-pick" name="col_{{ c.field }}">
               {% if not c.columns %}
               {# Chỉ nêu khi trường THẬT SỰ chưa gán. Mời bỏ gán một trường đã gán là
                  hứa một việc không giữ được: ô trống nghĩa là “giữ nguyên”, và cách
@@ -186,7 +193,7 @@
               {% endif %}
               {% for ch in basis.choices %}
               <option value="{{ ch.index }}" {% if c.columns and c.columns[0] == ch.index %}selected{% endif %}>
-                cột {{ ch.index }}{% if ch.header %} · «{{ ch.header }}»{% endif %}
+                {{ column_label(ch.index, ch.header) }}
               </option>
               {% endfor %}
             </select>
@@ -197,8 +204,9 @@
                hệ thống không làm. Nạp lại file là có bộ chọn. #}
             <span class="text-muted">không có vị trí lưu</span>
             {% elif basis.can_confirm and c.needs_review %}
-            <input type="text" class="form-input mono-input" name="col_{{ c.field }}"
+            <input type="text" class="form-input mono-input js-col-pick" name="col_{{ c.field }}"
                    value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*">
+            {{ col_note(c) }}
             {% else %}
             <span class="text-mono">{{ c.column_ref or '—' }}</span>
             {% if basis.can_confirm %}<input type="hidden" name="col_{{ c.field }}" value="{{ c.col_value }}">{% endif %}

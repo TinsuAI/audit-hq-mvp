@@ -52,6 +52,16 @@ def file_page_url(slug: str, file_id: int) -> str:
     return f"/companies/{slug}/documents/file/{file_id}"
 
 
+def column_label(index: int, header: str | None = None) -> str:
+    """Tên một cột như cán bộ đọc nó: chỉ số, kèm tiêu đề thật khi ảnh chụp cột có.
+
+    MỘT chỗ dựng chuỗi này, dùng cho cả nhãn lựa chọn của bộ chọn cột lẫn câu tự khai
+    của dòng nhóm cột con — hai chỗ nói cùng một thứ mà lệch câu chữ thì cán bộ phải tự
+    khớp "cột 7" ở dòng này với "cột 7 · «…»" ở dòng kia.
+    """
+    return f"cột {index} · «{header}»" if header else f"cột {index}"
+
+
 def column_letter(index: int) -> str:
     """Chỉ số cột 0-based → chữ cái cột của Excel (0 = A)."""
     out = ""
@@ -142,11 +152,11 @@ class BasisColumn:
     # của trạng thái *chưa gán*: câu gọi tên hai ô đó, nên nhánh không dựng được chúng
     # phải nói việc khác. Mặc định `True` là ca thường — file có ảnh chụp cột.
     has_picker: bool = True
-    # Tiêu đề + mẫu giá trị của CỘT ĐANG GÁN, lấy từ ảnh chụp cột lúc parse. Màn
-    # hiện giá trị thật thay cho chỉ số cột trần: "cột 7" không nói được máy đang
-    # đọc đúng ô hay lệch một ô, còn `1.5 / 1.51 / 1.52` thì nói được.
-    header: str = ""
-    samples: tuple[str, ...] = ()
+    # Tiêu đề THẬT của từng cột đang gán, lấy từ ảnh chụp cột lúc parse: "cột 7" không
+    # nói được máy đang đọc đúng ô hay lệch một ô, còn tiêu đề của chính cột đó thì nói
+    # được. Xếp CÙNG THỨ TỰ với `columns`; phần tử rỗng = cột nằm ngoài ảnh chụp (vị trí
+    # đã lưu trỏ ra ngoài trang tính lượt nạp sau đọc được).
+    headers: tuple[str, ...] = ()
 
     @property
     def labels(self) -> tuple[FieldLabel, ...]:
@@ -208,6 +218,22 @@ class BasisColumn:
     def col_value(self) -> str:
         """Giá trị ô nhập của biểu mẫu xác nhận: `"8"` hoặc `"5,6"` (nhóm cột con)."""
         return ",".join(str(i) for i in self.columns)
+
+    @property
+    def column_note(self) -> str:
+        """Cột đang gán, thành CÂU cho dòng không có nhãn lựa chọn để nói hộ (#122).
+
+        Lưới xem trước là phần TĂNG THÊM: lượt trích xuất đầu trả 202 rồi poll, và file
+        chưa từng đọc thì không có ảnh chụp nào — dòng trường phải tự nói nó đang đọc cột
+        nào kể cả khi lưới còn trống. `<select>` nói sẵn trong nhãn lựa chọn đang chọn;
+        ô nhập chỉ số của nhóm cột con chỉ hiện `7,8`, nên câu này bù đúng chỗ đó.
+
+        Dấu `+` là phép cộng thật: nhóm cột con đọc bằng TỔNG các cột (ADR #25).
+        """
+        return " + ".join(
+            column_label(index, self.headers[i] if i < len(self.headers) else "")
+            for i, index in enumerate(self.columns)
+        )
 
 
 @dataclass(frozen=True)
@@ -325,7 +351,7 @@ def file_read_basis(
         order = [f for f in declared + extra if not (f in seen or seen.add(f))]
         absent = set(absent_fields or ())
         choices = detail.get("column_choices") or ()
-        by_index = {c.get("index"): c for c in choices if isinstance(c, dict)}
+        snapshot = {c.get("index"): c for c in choices if isinstance(c, dict)}
         # Điều kiện màn dựng bộ chọn + ô khai vắng, đúng như template hỏi
         # (`basis.can_confirm and basis.has_choices`): map ghi theo `(DN, slot, vân tay)`
         # nên không có vân tay thì không có khoá ghi, và không có ảnh chụp cột thì
@@ -335,7 +361,7 @@ def file_read_basis(
             _basis_column(
                 row.slot, field, meta.get(field) or {}, groups.get(field, []),
                 absent=field in absent,
-                choice=by_index.get((groups.get(field) or [None])[0]),
+                snapshot=snapshot,
                 has_picker=has_picker,
             )
             for field in order
@@ -359,9 +385,10 @@ def file_read_basis(
 
 def _basis_column(
     slot: str, field: str, meta: dict, cols: list[int], absent: bool = False,
-    choice: dict | None = None, has_picker: bool = True,
+    snapshot: dict | None = None, has_picker: bool = True,
 ) -> BasisColumn:
     evidence = meta.get("evidence")
+    snapshot = snapshot or {}
     declared = {f.name: f for f in declared_fields(slot)}.get(field)
     if absent:
         state = ABSENT
@@ -402,8 +429,7 @@ def _basis_column(
         required=bool(declared and declared.required),
         row_key=bool(declared and declared.row_key),
         has_picker=has_picker,
-        header=str((choice or {}).get("header") or ""),
-        samples=tuple((choice or {}).get("samples") or ()),
+        headers=tuple(str((snapshot.get(i) or {}).get("header") or "") for i in cols),
     )
 
 
@@ -411,6 +437,7 @@ __all__ = [
     "NEVER_PARSED",
     "BasisColumn",
     "ReadBasis",
+    "column_label",
     "column_letter",
     "file_page_url",
     "file_read_basis",

@@ -39,7 +39,7 @@
     url: '', sheet: 0, parsedSheet: '', mapped: {},
     meta: null, win: null,
     showMapped: false, showFormula: false,
-    highlight: null,
+    highlight: [],
     tries: 0, timer: null, fetching: false, gen: 0,
     lastKey: '',
   };
@@ -154,14 +154,14 @@
   }
 
   function isHighlighted(colIndex) {
-    return state.highlight !== null && state.highlight === colIndex && onParsedSheet();
+    return state.highlight.indexOf(colIndex) !== -1 && onParsedSheet();
   }
 
   function render(force) {
     if (!state.meta) return;
     var v = visibleRange();
     var key = [v.firstRow, v.lastRow, v.firstCol, v.lastCol,
-               state.showMapped, state.showFormula, state.highlight,
+               state.showMapped, state.showFormula, state.highlight.join(','),
                state.win ? state.win.rowStart : -1,
                state.win ? state.win.colStart : -1].join(':');
     if (!force && key === state.lastKey) return;
@@ -459,6 +459,10 @@
   function showColumn(index) {
     // Cuộn NGANG tới cột đang soi, không đụng vị trí dòng: cán bộ đang đối chiếu
     // đúng những dòng trước mắt, kéo họ về dòng 1 là bắt tìm lại.
+    //
+    // Cùng điều kiện với `isHighlighted`: chỉ số cột chỉ có nghĩa trên trang tính parser
+    // đọc. Cuộn mà không đánh dấu được gì thì lưới dời đi vì một lý do không hiện ra.
+    if (!onParsedSheet()) return;
     if (!state.meta || index >= state.meta.total_cols) return;
     var left = index * COL_W;
     var view = el.body.scrollLeft;
@@ -469,25 +473,37 @@
   }
 
   function setHighlight(raw) {
-    // Ô nhập của bố cục mở rộng chứa cả NHÓM cột (`5,6`) — soi cột đầu nhóm, đủ để
-    // cán bộ biết mình đang gõ vào vùng nào của biểu.
-    var first = String(raw === null || raw === undefined ? '' : raw).split(/[,\s;]+/)[0];
-    var idx = parseInt(first, 10);
-    var next = isNaN(idx) || idx < 0 ? null : idx;
-    if (next === state.highlight) return;
+    // Ô nhập của nhóm cột con chứa CẢ NHÓM (`7,8`) và dòng trường nói ra cả nhóm ("cột 7
+    // · «…» + cột 8 · «…»"): trường đó đọc bằng TỔNG các cột (ADR #25). Soi mỗi cột đầu
+    // thì lưới nói ngược lại chính dòng đang gõ, nên làm nổi cả nhóm.
+    var next = [];
+    String(raw === null || raw === undefined ? '' : raw).split(/[,\s;]+/).forEach(function (part) {
+      var idx = parseInt(part, 10);
+      if (!isNaN(idx) && idx >= 0 && next.indexOf(idx) === -1) next.push(idx);
+    });
+    if (next.join(',') === state.highlight.join(',')) return;
     state.highlight = next;
     render(true);
-    if (next !== null) showColumn(next);
+    // Cuộn tới cột ĐẦU nhóm. Nhóm cột con thường liền nhau nên một cú cuộn là thấy cả
+    // nhóm; map đã lưu vẫn giữ được nhóm rải rộng hơn khung nhìn, và ở đó không cú cuộn
+    // nào thấy hết — cột đầu là mốc để cán bộ đọc tiếp sang phải.
+    if (next.length) showColumn(next[0]);
   }
 
-  function wireColumnInputs() {
-    // Biểu mẫu xác nhận cột nằm CÙNG TRANG với lưới đầy đủ (#92): gõ một chỉ số thì
-    // đúng cột đó sáng lên trong lưới, thay cho lưới rút gọn 15 dòng của màn cũ.
-    var inputs = document.querySelectorAll('input.review-idx');
-    Array.prototype.forEach.call(inputs, function (inp) {
-      inp.addEventListener('input', function () { setHighlight(inp.value); });
-      inp.addEventListener('focus', function () { setHighlight(inp.value); });
-      inp.addEventListener('blur', function () { setHighlight(''); });
+  function wireColumnPickers() {
+    // Biểu mẫu xác nhận cột nằm CÙNG TRANG với lưới đầy đủ (#92): chọn một cột thì đúng
+    // cột đó sáng lên trong lưới, thay cho lưới rút gọn 15 dòng của màn cũ.
+    //
+    // Bộ chọn là LỚP TRẦN, không có tiền tố thẻ: từ #121 dòng cột đơn dùng `<select>` còn
+    // dòng nhóm cột con dùng ô nhập, nên `input.…` (dạng cũ) bỏ sót một nửa số dòng — và
+    // `querySelectorAll` trả rỗng thì cả chuỗi chết mà không ném lỗi nào.
+    var picks = document.querySelectorAll('.js-col-pick');
+    Array.prototype.forEach.call(picks, function (pick) {
+      function onPick() { setHighlight(pick.value); }
+      pick.addEventListener('input', onPick);   // ô nhập chỉ số
+      pick.addEventListener('change', onPick);  // `<select>`
+      pick.addEventListener('focus', onPick);
+      pick.addEventListener('blur', function () { setHighlight(''); });
     });
   }
 
@@ -518,7 +534,7 @@
       });
     }
 
-    wireColumnInputs();
+    wireColumnPickers();
 
     var formula = document.getElementById('cg-toggle-formula');
     if (formula) {
