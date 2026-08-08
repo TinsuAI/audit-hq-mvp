@@ -1,15 +1,22 @@
 # STATUS — Audit-HQ MVP
 
-> **(2026-08-08 — LOẠT #110 KHÉP LẠI VÀ ĐÃ LÊN PROD. `main` = `388cb06`, CI xanh, deploy
-> xong, issue #109–#116 đóng hết, DB dev + prod đều ở head `b5c6d7e8f9a0`. Bộ test **1.747**,
-> `PYTEST_EXIT=0`, xanh cả khi xáo (seed `2302101317`), `ruff` sạch, cây làm việc sạch.)**
+> **(2026-08-09 — LOẠT REDESIGN ĐANG CHẠY, 3/12 VÉ ĐÃ LÊN PROD. `main` = `ab01811`, CI xanh,
+> deploy xong, #118 + #119 + #120 đóng. Bộ test **1.796** + 1 xfail, `ruff` sạch, xanh cả khi
+> xáo (seed `4020044574`), cây làm việc sạch. Không migration trong ba vé này.)**
 >
-> ## 👉 PHIÊN SAU LÀM GÌ: đọc `.ai/sessions/2026-08-08-handoff-redesign.md` TRƯỚC
+> ## 👉 PHIÊN SAU LÀM GÌ: `/implement #121` trong phiên MỚI (xoá ngữ cảnh trước)
 >
-> Việc: **REDESIGN màn gán cột + lưới xem trước + hệ nhãn/badge**. Lệnh đầu tiên:
-> `/grill-with-docs` với `DESIGN-IS-2026-08-08/03-verdict.md` làm đầu vào, rồi `/to-spec`
-> → `/to-tickets`. **Ba lệnh đó người dùng phải tự gõ** — model không gọi được.
-> CHƯA mở vé nào cho việc này.
+> **Grill / spec / tickets ĐÃ XONG — đừng chạy lại.** `/grill-with-docs` → `/to-spec` →
+> `/to-tickets` đã chạy phiên 2026-08-08, kết quả là **ADR #29** + vé tracker **#117** và
+> 12 vé con **#118–#129** (nay thêm **#130**). Mỗi vé cắt thẳng từ `main`, review hai trục
+> (`/code-review`), gấp phát hiện vào commit thứ hai, merge từng vé một.
+>
+> Thứ tự còn lại: **121 → 122 → 123 → 124 → 125 → 127 → 128 → 126 → 129** (+ #130 khi rảnh).
+> Trạng thái loạt vé sống ở **#117**, không ở file này — đọc comment mới nhất của #117.
+>
+> **Trước khi bắt đầu #121:** đọc comment ràng buộc ở chính #121. #120 để lại hai thứ chỉ
+> đúng tới khi #121 đổi bố cục — câu "chưa gán" gọi tên control của bảng chuyển vị, và chặn
+> CSS `18rem` nhân theo số cột trường.
 >
 > **Cảnh báo vận hành: push vào `main` KÉO THEO DEPLOY LÊN PROD**, không chỉ chạy test
 > (workflow `Test & Deploy to Tinsu`, runner self-hosted, `entrypoint.sh` tự
@@ -28,15 +35,12 @@
 > Sau vá, #6 lên 2–3, tổng khoảng 16–17 — **vẫn dưới 20, vẫn REDESIGN**, nhưng nay là
 > nợ thiết kế có kiểm soát chứ không phải lỗi đang chảy máu.
 >
-> **Việc tiếp theo:**
-> 1. **REDESIGN màn gán cột + lưới xem trước + hệ badge** — phạm vi đã chốt ở
->    `DESIGN-IS-2026-08-08/03-verdict.md`, prompt bàn giao tự chứa ở `04-handoff-prompt.md`.
->    Đường đi: `/grill-with-docs` → `/to-spec` → `/to-tickets`. **Ba lệnh này người
->    dùng phải tự gõ** — chúng chặn model gọi. CHƯA mở vé.
-> 2. Nợ audit chưa vá (không chặn ai): 42 class CSS chết · 13 selector khai trùng xung
->    khắc · tính năng làm nổi cột chết hẳn (`cell-grid.js:486` bắt class không template
->    nào phát) · `:disabled` và `.empty-state` không có rule nào · vòng focus tương phản
->    1,34 (ngưỡng 3:1) · không có skip-link · 83% JS tải về là thanh AI không dùng.
+> **Việc tiếp theo:** chạy tiếp loạt vé redesign, mỗi vé một phiên. Kế tiếp là **#121**.
+>
+> Nợ audit nay ĐÃ THÀNH VÉ, không còn là danh sách rời — đừng vá lẻ ngoài vé:
+> `:disabled` + `.empty-state` + vòng focus 1,34 → **#118 (xong)** · 42 class CSS chết +
+> 13 selector khai trùng → **#127** · skip-link + thanh AI 83% JS → **#126** · tính năng
+> làm nổi cột chết (`cell-grid.js` bắt class không template nào phát) → **#122**.
 >
 > **#115 chỉ tra được 17/25 chuỗi đơn vị.** Bảy chuỗi để nguyên có chủ ý (`UNL` 277 dòng,
 > `UNK`, `I/át`, `I/at`, `1000 viên`) — đúng nghĩa là "không rõ", gán bí danh cho chúng là
