@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from app.adapters.templates import MATCH_BUILTIN, MATCH_EXTENDED, MATCH_OFFICER
 from app.main import app
 from app.models import Company, DataFile
-from app.pipeline.file_page import file_page_url, file_read_basis
+from app.pipeline.file_page import NEVER_PARSED, file_page_url, file_read_basis
 from app.settings import settings
 from tests.excel_fixtures import write_xlsx
 
@@ -132,7 +132,13 @@ def test_read_basis_lists_the_columns_still_waiting_for_confirmation(env):
     assert basis.needs_count == 1
 
 
-def test_read_basis_says_which_layer_decided_the_column_positions(env):
+def test_read_basis_passes_through_the_layer_that_decided_the_column_positions(env):
+    """Giá trị thô của `match_source` đi thẳng từ dòng registry sang căn cứ đọc.
+
+    Câu ở MỨC TRANG nói tầng nào quyết định vị trí cột đã bỏ ở #120: mỗi cột mang căn
+    cứ của riêng nó, còn một câu mô tả cả file bằng tên một tầng thì đi stale. Nên
+    không còn `match_source_label` để khẳng định — chỉ còn đường dữ liệu ở đây.
+    """
     _client, root = env
     write_xlsx(root / REL_DIR / "m15.xlsx", [["Mã", 1]])
     fid = _register(parse_detail=_M15_DETAIL, match_source=MATCH_OFFICER)
@@ -140,12 +146,14 @@ def test_read_basis_says_which_layer_decided_the_column_positions(env):
     basis = file_read_basis(_row(fid))
 
     assert basis.match_source == MATCH_OFFICER
-    assert basis.match_source_label != MATCH_OFFICER      # đã dịch, không in mã thô
-    assert "cán bộ" in basis.match_source_label.lower()
 
 
 def test_read_basis_of_a_file_never_read_says_so_instead_of_breaking(env):
-    """#84 mới nối đường ghi `match_source`; file cũ và file chưa nạp vẫn phải mở được."""
+    """#84 mới nối đường ghi `match_source`; file cũ và file chưa nạp vẫn phải mở được.
+
+    Câu nói ra ca này chuyển sang `status_note` ở #120 — bảng gán cột chỉ render khi có
+    cột đọc được, nên đây là chỗ duy nhất còn nói được “chưa đọc lần nào”.
+    """
     _client, root = env
     write_xlsx(root / REL_DIR / "m15.xlsx", [["Mã", 1]])
     fid = _register(row_count=None)                        # không parse_detail, không match_source
@@ -156,7 +164,7 @@ def test_read_basis_of_a_file_never_read_says_so_instead_of_breaking(env):
     assert basis.columns == ()
     assert basis.needs_confirmation == ()
     assert basis.match_source is None
-    assert basis.match_source_label                        # có câu nói, không rỗng
+    assert basis.status_note == NEVER_PARSED
 
 
 def test_read_basis_keeps_a_column_that_has_evidence_but_no_stored_position(env):
@@ -231,7 +239,7 @@ def test_read_basis_keeps_a_group_of_sub_columns_together(env):
     by_field = {c.field: c for c in basis.columns}
     assert by_field["import_qty"].columns == (5, 6)
     assert by_field["import_qty"].column_ref == "F, G"           # chữ cái cột, đếm từ 0
-    assert basis.layout_label
+    assert basis.layout == "extended"                            # bố cục thô, không nhãn (#120)
 
 
 # ───────────────────────────── một địa chỉ cho mỗi file ─────────────────────────

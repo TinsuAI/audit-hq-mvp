@@ -13,6 +13,14 @@ khẳng định được ở mức dữ liệu, và để một chỗ duy nhất
 Hàm KHÔNG nhận `Session`: mọi thứ nó cần nằm trên chính dòng registry. File chưa nạp
 lần nào (và mọi file nạp trước #84, khi `match_source` còn rỗng trên 15/15 file) vẫn
 phải mở được — nên đường thiếu dữ liệu nói ra điều đó chứ không ném lỗi.
+
+#120 bỏ lớp nói ở MỨC TRANG. Trước đây một câu mô tả cả file bằng tên tầng đã quyết
+định vị trí cột ("Khớp mẫu biểu có sẵn"), đặt cạnh phần mỗi cột tự khai căn cứ của
+mình — hai giọng nói về cùng một việc, và giọng mức trang đi stale vì các cột trong
+cùng một file không nhất thiết cùng nguồn. Nay chỉ còn hai thứ: câu CỦA TỪNG CỘT
+(`BasisColumn.evidence_sentence`, nêu cơ chế và giới hạn của cơ chế đó) và câu về CẢ
+FILE mà không cột nào nói hộ được (`status_note`, `sheet_note` — trang tính nào, mấy
+dòng, còn mấy cột chờ xác nhận).
 """
 
 from __future__ import annotations
@@ -25,36 +33,18 @@ from app.adapters.declared_fields import label_of
 from app.adapters.evidence import (
     NEEDS_REVIEW,
     SOURCE_LABEL_VI,
+    SOURCE_SENTENCE_VI,
     VERIFIED,
 )
-from app.adapters.templates import (
-    MATCH_BUILTIN,
-    MATCH_DEFAULT,
-    MATCH_EXTENDED,
-    MATCH_KEYWORD,
-    MATCH_OFFICER,
-    column_groups,
-)
+from app.adapters.templates import column_groups
 from app.checks.registry import checks_reading
 from app.models import DataFile
 
-# Tầng đã quyết định vị trí cột → câu nói cho cán bộ. Nêu CƠ CHẾ chứ không chỉ tên
-# tầng: "khớp mẫu" và "suy từ dòng đánh số" là hai mức tin cậy khác hẳn nhau.
-MATCH_SOURCE_LABEL_VI: dict[str, str] = {
-    MATCH_OFFICER: "Cán bộ đã xác nhận vị trí cột cho cấu trúc biểu này",
-    MATCH_BUILTIN: "Khớp mẫu biểu có sẵn của hệ thống",
-    MATCH_EXTENDED: "Suy cột từ dòng đánh số của chính file, kiểm lại bằng đẳng thức cân đối",
-    MATCH_KEYWORD: "Dò từ khoá ở dòng tiêu đề của file",
-    MATCH_DEFAULT: "Đọc theo vị trí mặc định của biểu — không nhãn nào khớp",
-}
-MATCH_SOURCE_UNKNOWN = "Không ghi nhận được tầng nào đã quyết định vị trí cột"
+# Câu cho dòng trạng thái khi file chưa qua lượt nạp nào. Bảng gán cột chỉ render khi có
+# cột đọc được, nên nếu chỗ này im thì file chưa đọc được ra một trang không lời giải
+# thích. Tầng nào quyết định vị trí cột thì KHÔNG còn nói ở mức trang nữa (#120): mỗi
+# cột mang căn cứ của riêng nó, còn một câu mô tả cả file bằng tên một tầng thì đi stale.
 NEVER_PARSED = "Hệ thống chưa đọc file này lần nào"
-
-PARSE_LAYOUT_LABEL_VI: dict[str, str] = {
-    "standard": "Bố cục chuẩn của biểu",
-    "extended": "Bố cục mở rộng — một trường đọc bằng tổng nhiều cột con",
-    "labeled": "Đọc theo nhãn cột ghi trên chính file",
-}
 
 
 def file_page_url(slug: str, file_id: int) -> str:
@@ -97,7 +87,19 @@ TONE_BLOCKING = "critical"
 TONE_ATTENTION = "warning"
 TONE_QUIET = "muted"
 
-NO_CHECK_READS_IT = "Không kiểm tra nào đọc trường này"
+NO_CHECK_READS_IT = "Không kiểm tra nào đọc trường này."
+NO_EVIDENCE_RECORDED = "Không ghi nhận bằng chứng nào cho cột đang đọc."
+
+# Hai trạng thái KHÔNG có nguồn bằng chứng để nói, vì không đọc cột nào. Nhãn trạng thái
+# ("Chưa gán") chỉ nêu trạng thái, không nêu thao tác phải làm — hai câu dưới nêu thao tác.
+UNASSIGNED_MEANS = (
+    "Chưa gán cột nào nên hệ thống không đọc gì cho trường này — chọn cột ở hàng "
+    "“Cột trên file”, hoặc tích “Không có trong file” nếu biểu này không có trường đó."
+)
+ABSENT_MEANS = (
+    "Cán bộ đã xác nhận file không có trường này; kiểm tra nào cần tới nó sẽ trả "
+    "“chưa đánh giá được” thay vì tính trên số thiếu."
+)
 
 
 @dataclass(frozen=True)
@@ -156,14 +158,31 @@ class BasisColumn:
 
     @property
     def evidence_sentence(self) -> str:
-        """Trục căn cứ, thành câu. Trường không kiểm tra nào đọc thì nói thẳng ra điều đó.
+        """Trục căn cứ, thành CÂU tại dòng của trường (#120) — cơ chế VÀ giới hạn của nó.
 
-        `review_state` trả `verified` cho chính trường hợp này, nên nhãn dựng từ `review`
-        đọc ra là "đã được kiểm" trong khi sự thật là "không có gì phụ thuộc cột này".
+        Nói theo TRẠNG THÁI trước: trường chưa gán hay đã khai vắng thì không đọc cột nào,
+        nên không có nguồn bằng chứng để nói — cái chúng cần là nghĩa của trạng thái và
+        việc phải làm, vì nhãn trạng thái ("Chưa gán") chỉ nói được nửa đầu.
+
+        Trường không kiểm tra nào đọc thì nói thẳng ra: `review_state` trả `verified` cho
+        chính ca này, nên nhãn dựng từ `review` đọc ra là "đã được kiểm" trong khi sự thật
+        là "không có gì phụ thuộc cột này".
         """
+        if self.state == UNASSIGNED:
+            return UNASSIGNED_MEANS
+        if self.state == ABSENT:
+            return ABSENT_MEANS
+        if not self.evidence:
+            return NO_EVIDENCE_RECORDED
+        # Thuật ngữ ĐỨNG TRƯỚC nghĩa của nó, không bị thay bằng nghĩa. Xoá hẳn thuật ngữ
+        # khỏi màn này thì cán bộ đọc mục B7 cẩm nang (liên kết ngay ở dòng trạng thái)
+        # thấy một bộ từ vựng không khớp thứ gì trên màn hình, mà màn dữ liệu vẫn hiện
+        # đúng những chữ đó ở chip. Giữ chữ, gắn nghĩa vào cạnh — đó là điều AC 6 đòi.
+        term = SOURCE_LABEL_VI.get(self.evidence, self.evidence)
+        sentence = f"{term} — {SOURCE_SENTENCE_VI.get(self.evidence, '')}".rstrip(" —")
         if not self.checks:
-            return f"{self.evidence_label} — {NO_CHECK_READS_IT}"
-        return self.evidence_label
+            return f"{sentence} {NO_CHECK_READS_IT}"
+        return sentence
 
     @property
     def is_absent(self) -> bool:
@@ -185,11 +204,8 @@ class ReadBasis:
 
     parsed: bool
     match_source: str | None
-    match_source_label: str
     template_id: str | None
-    template_name: str | None
     layout: str | None
-    layout_label: str
     sheet: str | None
     sheet_pinned: bool
     row_count: int | None
@@ -223,6 +239,35 @@ class ReadBasis:
             c.label for c in self.columns
             if c.required and not c.row_key and c.state != ASSIGNED
         )
+
+    @property
+    def status_note(self) -> str:
+        """Câu cho dòng trạng thái dưới lưới — thứ nói về CẢ FILE, không về một trường.
+
+        Bốn ca, và ca đầu là ca dễ mất nhất: bảng gán cột chỉ render khi có cột đọc được,
+        nên file chưa nạp lần nào mà chỗ này im thì trang không còn chỗ nào nói ra điều đó.
+        """
+        if not self.parsed:
+            return NEVER_PARSED
+        if self.needs_count:
+            return (
+                f"Còn {self.needs_count} cột cần cán bộ xác nhận vị trí: "
+                f"{', '.join(self.needs_confirmation)}."
+            )
+        if self.columns:
+            return "Mọi cột đang đọc đều có bằng chứng đủ mạnh cho các kiểm tra dùng tới chúng."
+        return (
+            "Lượt nạp gần nhất không đọc ra bố cục cột nào — chọn đúng trang tính chứa "
+            "dữ liệu chi tiết rồi nạp lại."
+        )
+
+    @property
+    def sheet_note(self) -> str:
+        """Trang tính đang đọc + ai quyết định nó."""
+        if not self.sheet:
+            return "Chưa xác định trang tính nào chứa biểu."
+        who = "cán bộ ghim" if self.sheet_pinned else "hệ thống tự nhận diện"
+        return f"Đọc trang tính “{self.sheet}” ({who})."
 
     @property
     def can_confirm(self) -> bool:
@@ -280,11 +325,8 @@ def file_read_basis(
     return ReadBasis(
         parsed=parsed,
         match_source=row.match_source,
-        match_source_label=_match_source_label(row.match_source, parsed),
         template_id=row.template_id or detail.get("template_id"),
-        template_name=detail.get("template_name"),
         layout=row.parse_layout,
-        layout_label=PARSE_LAYOUT_LABEL_VI.get(row.parse_layout or "", ""),
         sheet=row.sheet_override or detail.get("sheet") or None,
         sheet_pinned=row.sheet_override is not None,
         row_count=row.row_count,
@@ -345,15 +387,8 @@ def _basis_column(
     )
 
 
-def _match_source_label(match_source: str | None, parsed: bool) -> str:
-    if match_source:
-        return MATCH_SOURCE_LABEL_VI.get(match_source, match_source)
-    return MATCH_SOURCE_UNKNOWN if parsed else NEVER_PARSED
-
-
 __all__ = [
-    "MATCH_SOURCE_LABEL_VI",
-    "PARSE_LAYOUT_LABEL_VI",
+    "NEVER_PARSED",
     "BasisColumn",
     "ReadBasis",
     "column_letter",

@@ -54,7 +54,12 @@
   {% if parse_detail.columns %}
     <div class="evidence-cols">
       {% for c in parse_detail.columns %}
-        <span class="evidence-col" title="{{ c.label }}: nguồn {{ c.evidence_label }}">
+        {# Tooltip nói NGHĨA, không lặp lại thuật ngữ. Bản cũ đọc ra "…: nguồn Khớp tiêu đề"
+           — đúng bằng chữ đã hiện trên chip, nên không thêm gì cho người đọc. Tra theo mã
+           nguồn THÔ (`c.evidence`) lúc render: bản lưu trong `parse_detail` chỉ có nhãn
+           ngắn, file nạp trước #120 không mang câu nào, nên tra lúc render là cách duy nhất
+           để file cũ cũng đọc được nghĩa. Chip vẫn giữ chữ ngắn — câu không nhét vừa chip. #}
+        <span class="evidence-col" title="{{ c.label }}: {{ SOURCE_SENTENCE.get(c.get('evidence', ''), '') }}">
           <span class="evidence-col-name">{{ c.label }}</span>
           <span class="badge {{ 'info' if c.review == 'verified' else 'warning' }}"
                 data-axis="evidence">{{ c.evidence_label }}</span>
