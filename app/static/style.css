@@ -342,6 +342,16 @@ p { margin: 0 0 var(--space-3); }
 
 .btn-sm { padding: var(--space-1) var(--space-3); font-size: var(--fs-xs); }
 
+/* Nút bị khoá: nền và viền đổi hẳn, không chỉ đổi con trỏ — `cursor` chỉ hiện lúc rê chuột nên
+   bàn phím và cảm ứng không thấy gì. */
+.btn:disabled, button:disabled {
+  background: var(--c-border);
+  color: var(--c-text-muted);
+  border-color: var(--c-border-strong);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .btn-group { display: inline-flex; gap: var(--space-2); flex-wrap: wrap; }
 
 /* — Badges — */
@@ -357,11 +367,13 @@ p { margin: 0 0 var(--space-3); }
   border: 1px solid transparent;
   white-space: nowrap;
 }
-.badge.critical { background: var(--c-critical-bg); color: var(--c-critical-fg); border-color: var(--c-critical-border); }
+/* `danger` dùng cho nhãn khoá dòng, `critical` cho mức nghiêm trọng của phát hiện — hai tên gọi
+   khác nhau, cùng một bộ màu, khai chung một chỗ để không lệch nhau về sau. */
+.badge.critical,
+.badge.danger   { background: var(--c-critical-bg); color: var(--c-critical-fg); border-color: var(--c-critical-border); }
 .badge.warning  { background: var(--c-warning-bg);  color: var(--c-warning-fg);  border-color: var(--c-warning-border); }
 .badge.info     { background: var(--c-info-bg);     color: var(--c-info-fg);     border-color: var(--c-info-border); }
 .badge.muted    { background: var(--c-status-new-bg); color: var(--c-status-new-fg); border-color: var(--c-border); }
-.badge.danger   { background: var(--c-critical-bg);  color: var(--c-critical-fg);  border-color: var(--c-critical-border); }
 
 .badge-dot {
   display: inline-block;
@@ -853,28 +865,16 @@ p { margin: 0 0 var(--space-3); }
 }
 .form-textarea { min-height: 80px; font-family: inherit; resize: vertical; }
 
-/* Ô bị khoá: nền xám + con trỏ chặn. Không dùng `opacity` — nó kéo cả chữ xuống dưới ngưỡng
-   đọc được, mà lý do khoá thì cán bộ vẫn phải đọc được giá trị đang giữ. */
-.form-input:disabled, .form-select:disabled, .form-textarea:disabled,
-.btn:disabled, button:disabled {
-  background: var(--c-surface-alt);
+/* Ô bị khoá: nền `--c-border` chứ không phải `--c-surface-alt` — nền nhạt kia chỉ chênh 1,03 với
+   ô trắng đang sửa được, tức là không phân biệt được. Viền giữ `--c-border-strong` để không nhạt
+   hơn ô thường. Không dùng `opacity`: nó hạ luôn tương phản của chữ, mà giá trị đang giữ thì cán
+   bộ vẫn phải đọc được. */
+.form-input:disabled, .form-select:disabled, .form-textarea:disabled {
+  background: var(--c-border);
   color: var(--c-text-muted);
-  border-color: var(--c-border);
+  border-color: var(--c-border-strong);
   cursor: not-allowed;
   box-shadow: none;
-}
-.btn:disabled, button:disabled { opacity: 1; }
-
-/* Vùng không có dữ liệu tự nói là không có, thay vì để một khoảng trắng không giải thích. */
-.empty-state {
-  margin: 0;
-  padding: var(--space-6);
-  text-align: center;
-  color: var(--c-text-muted);
-  font-size: var(--fs-sm);
-  background: var(--c-surface-alt);
-  border: 1px dashed var(--c-border-strong);
-  border-radius: var(--radius-md);
 }
 .form-help { font-size: var(--fs-xs); color: var(--c-text-subtle); }
 .form-error { color: var(--c-critical-fg); font-size: var(--fs-sm); }
@@ -1121,6 +1121,19 @@ p { margin: 0 0 var(--space-3); }
 .form-radio-card table { max-width: 320px; }
 
 /* — Utilities — */
+/* Vùng rỗng: khung nét đứt + dòng chữ giải thích, thay cho một khoảng trắng không nói gì.
+   Dùng ở danh sách công việc và danh sách tài liệu. */
+.empty-state {
+  margin: 0;
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  background: var(--c-surface-alt);
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--radius-md);
+}
+
 .text-muted    { color: var(--c-text-muted); }
 .text-subtle   { color: var(--c-text-subtle); }
 .text-mono     { font-family: var(--font-mono); }
