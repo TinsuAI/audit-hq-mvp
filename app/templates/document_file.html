@@ -152,12 +152,13 @@
           <th scope="col" class="fm-h-field">Trường</th>
           <th scope="col" class="fm-h-pick">Cột trên file</th>
           {% if with_absent %}<th scope="col" class="fm-h-absent">Không có trong file</th>{% endif %}
-          <th scope="col" class="fm-h-evi">Căn cứ</th>
+          {# Cột căn cứ không khai bề rộng: nó lấy phần còn lại của 100%. #}
+          <th scope="col">Căn cứ</th>
         </tr>
       </thead>
       <tbody>
         {% for c in basis.columns %}
-        <tr class="fm-row{% if c.is_absent %} fm-row-absent{% endif %}">
+        <tr{% if c.is_absent %} class="fm-row-absent"{% endif %}>
           <th scope="row" class="fm-field">
             <span class="fm-fname">{{ c.label }}</span>
             {# Vòng lặp thuần: quyết định nhãn nào hiện nằm ở bộ dựng ngữ cảnh, không ở đây. #}
@@ -211,7 +212,7 @@
             {% else %}<span class="text-muted" title="Khoá dòng thì không thể vắng">—</span>{% endif %}
           </td>
           {% endif %}
-          <td class="fm-meta">
+          <td>
             <div class="fm-evi">{{ c.evidence_sentence }}</div>
             {% if c.checks %}
             <div class="fm-checks">{{ c.checks | join(', ') }}{% if c.is_absent %} — sẽ trả “chưa đánh giá được”{% endif %}</div>

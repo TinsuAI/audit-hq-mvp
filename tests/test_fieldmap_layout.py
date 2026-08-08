@@ -23,7 +23,14 @@ from fastapi.testclient import TestClient
 from app.adapters.declared_fields import declared as declared_fields
 from app.main import app
 from app.models import Company, DataFile
-from app.pipeline.file_page import UNASSIGNED_MEANS, file_page_url
+from app.pipeline.file_page import (
+    ABSENT,
+    STATE_LABEL_VI,
+    UNASSIGNED,
+    UNASSIGNED_MEANS,
+    UNASSIGNED_NO_PICKER,
+    file_page_url,
+)
 from app.pipeline.saved_map import load_column_map, save_column_map
 from app.settings import settings
 from tests.excel_fixtures import write_xlsx
@@ -206,7 +213,8 @@ def test_the_absent_box_is_the_next_focus_stop_after_its_own_picker(env):
 
 
 def test_a_row_key_field_offers_no_absent_box(env):
-    """Khoá dòng vắng thì không dựng nổi một dòng Tầng 1 nào — ô đó là lời hứa không giữ được."""
+    """Khoá dòng vắng thì không dựng nổi một dòng Tầng 1 nào, nên biểu mẫu từ chối lượt
+    gửi khai vắng khoá dòng — dựng ô đó là mời cán bộ làm một việc hệ thống sẽ chặn."""
     client, root = env
     fid = _register(root, _M16)
 
@@ -322,7 +330,9 @@ def test_an_assigned_field_renders_back_the_column_it_was_saved_with(env):
                if 'name="col_material_code"' in r)
 
     assert re.search(r'<option value="4"[^>]*selected', row)
-    assert "chưa gán" not in row, "trường đã gán không được mời bỏ gán: ô trống nghĩa là giữ nguyên"
+    # Không có lựa chọn RỖNG ở trường đã gán: ô trống nghĩa là "giữ nguyên", nên chọn nó
+    # không bỏ gán được gì. Cách thôi đọc một cột là tích "Không có trong file".
+    assert '<option value=""' not in row
 
 
 def test_an_unassigned_field_keeps_the_empty_option_that_means_keep_as_is(env):
@@ -365,8 +375,8 @@ def test_the_officers_absent_statement_reads_differently_from_a_field_never_plac
     unassigned = next(r for r in rows if 'name="col_product_name"' in r)
 
     # Nhãn trục *gán cột* nói nguồn của trạng thái, và chỉ một trong hai dòng đổi nền.
-    assert _assignment_badges(absent) == ["Không có trong file"]
-    assert _assignment_badges(unassigned) == ["Chưa gán"]
+    assert _assignment_badges(absent) == [STATE_LABEL_VI[ABSENT]]
+    assert _assignment_badges(unassigned) == [STATE_LABEL_VI[UNASSIGNED]]
     assert "fm-row-absent" in absent and "fm-row-absent" not in unassigned
     assert "checked" in _checkbox(absent, "note")
     assert "checked" not in _checkbox(unassigned, "product_name")
@@ -400,6 +410,22 @@ def test_the_unassigned_sentence_names_controls_that_exist_on_the_screen(env):
     assert quoted, "câu không gọi tên control nào"
     for name in quoted:
         assert name in headers, f"câu chỉ tới “{name}”, bảng không có cột nào tên đó"
+
+
+def test_a_row_with_no_picker_says_what_to_do_instead_of_naming_absent_controls(env):
+    """Cùng lỗi, nhánh khác: file nạp trước #112 không có ảnh chụp cột nên dòng chỉ hiện
+    “không có vị trí lưu” — câu chỉ tới “ô Cột trên file” và “Không có trong file” là chỉ
+    tới hai ô không dựng ra ở dòng đó."""
+    client, root = env
+    detail = {k: v for k, v in _M16.items() if k != "column_choices"}
+    fid = _register(root, detail)
+
+    table = _table(client.get(file_page_url("DN_FM", fid)).text)
+    row = next(r for r in re.findall(r"<tr\b[^>]*>.*?</tr>", table, re.S)
+               if "Ghi chú" in r)
+
+    assert UNASSIGNED_NO_PICKER in row
+    assert UNASSIGNED_MEANS not in row
 
 
 def test_the_absent_row_is_not_rendered_by_dimming() -> None:

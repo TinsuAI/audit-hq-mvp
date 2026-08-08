@@ -1301,9 +1301,9 @@ p { margin: 0 0 var(--space-3); }
    tràn `100vw` + tự cuộn ngang vì bảng chuyển vị nới thêm một cột cho mỗi trường. */
 .fieldmap-card { padding: 0; overflow: hidden; }
 
-/* `table-layout: fixed` là thứ giữ lời hứa trên: bề rộng cột do khai báo dưới quyết
-   định, không do nội dung dài nhất. Không có nó thì một tiêu đề cột dài trong nhãn
-   lựa chọn hoặc một câu căn cứ dài lại nới bảng vượt khung. */
+/* `table-layout: fixed` là cơ chế thi hành điều trên: bề rộng cột lấy theo khai báo
+   dưới đây, không theo nội dung dài nhất. Không có nó thì một tiêu đề cột dài trong
+   nhãn lựa chọn hoặc một câu căn cứ dài lại nới bảng vượt khung. */
 .fieldmap-table {
   border-collapse: collapse;
   width: 100%;
@@ -1335,8 +1335,10 @@ p { margin: 0 0 var(--space-3); }
 
 /* Dòng cán bộ đã khai vắng. KHÔNG dùng `opacity`: bản cũ để `.55`, đo được tương phản
    2,55 — vừa không đọc được, vừa nói sai việc. Đây là LỜI KHAI của cán bộ, không phải
-   chỗ hệ thống bớt tin, nên nó phải đọc rõ như mọi dòng khác; nền khác màu đủ để phân
-   biệt, còn nghĩa thì ô đã tích và câu căn cứ nói ra. */
+   chỗ hệ thống bớt tin, nên chữ phải đọc rõ như mọi dòng khác.
+   Nền `--c-surface-alt` chỉ chênh 1,03 với `--c-surface` nên nó là dấu hiệu PHỤ, không
+   đủ để phân biệt một mình: thứ nói ra trạng thái là nhãn “Không có trong file”, ô đã
+   tích, và câu căn cứ. */
 .fm-row-absent th, .fm-row-absent td { background: var(--c-surface-alt, #f8fafc); }
 
 .badge-success { background: var(--c-success-bg); color: var(--c-success-fg); padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; }
