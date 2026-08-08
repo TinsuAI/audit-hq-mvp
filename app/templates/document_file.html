@@ -84,9 +84,10 @@
   <div class="card" style="margin-bottom:var(--space-4)">
     <label for="sheet-input" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Trang tính (sheet) được đọc</label>
     <p class="form-hint" style="margin:0 0 var(--space-2)">
-      {% if basis.sheet %}
-      Hệ thống đang đọc trang <strong>{{ basis.sheet }}</strong>{% if basis.sheet_pinned %} theo chỉ định của cán bộ{% else %} do tự nhận diện{% endif %}.
-      {% else %}
+      {# Trang tính đang đọc nói ở DÒNG TRẠNG THÁI dưới lưới (#120), không nhắc lại ở đây:
+         nhắc hai chỗ là hai chỗ phải sửa khi lượt nạp sau đổi trang. Chỗ này chỉ giải
+         thích cái ô điều khiển làm gì và vì sao chọn sai thì nguy hiểm. #}
+      {% if not basis.sheet %}
       Hệ thống <strong>không tự nhận ra</strong> trang nào đúng biểu trong file này.
       {% endif %}
       Một workbook kết xuất từ hải quan thường có cả trang tổng hợp cấp tờ khai lẫn trang chi tiết dòng hàng —

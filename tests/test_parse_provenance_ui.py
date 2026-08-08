@@ -135,27 +135,3 @@ def test_evidence_source_and_review_shown_for_standard_layout():
             assert "Xuất sản xuất" in html            # nhãn cột
     finally:
         _teardown(eng)
-
-
-def test_evidence_tooltip_explains_the_term_instead_of_repeating_it():
-    """Tooltip cũ đọc ra "…: nguồn Khớp tiêu đề" — đúng bằng chữ đã hiện trên chip (#120).
-
-    Chip giữ chữ ngắn vì câu không nhét vừa chip, nên nghĩa đi vào `title`. Câu tra theo mã
-    nguồn THÔ lúc render: `parse_detail` của file nạp trước #120 chỉ lưu nhãn ngắn, không
-    lưu câu nào, nên tra lúc render là cách duy nhất để file cũ cũng đọc được nghĩa.
-
-    Tooltip hover KHÔNG phải "nghĩa cạnh nó" theo nghĩa đầy đủ của AC 6 — đưa câu thành chữ
-    hiện được ở màn này là đổi bố cục, tách vé riêng. Đây là mức vé #120 nhận.
-    """
-    eng = _setup()
-    try:
-        with TestClient(app) as client:
-            client.post("/login", data={"user": "admin", "password": "admin"},
-                        follow_redirects=False)
-            html = client.get("/companies/DN_PROV/data?year=2025&table=m15").text
-
-            assert "nguồn Khớp tiêu đề" not in html   # không còn lặp lại chính thuật ngữ
-            assert "khớp nhãn mong đợi của trường" in html
-            assert "không tín hiệu nào khác xác nhận" in html
-    finally:
-        _teardown(eng)

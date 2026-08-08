@@ -91,7 +91,7 @@ NO_CHECK_READS_IT = "Không kiểm tra nào đọc trường này."
 NO_EVIDENCE_RECORDED = "Không ghi nhận bằng chứng nào cho cột đang đọc."
 
 # Hai trạng thái KHÔNG có nguồn bằng chứng để nói, vì không đọc cột nào. Nhãn trạng thái
-# ("Chưa gán") nói ra trạng thái nhưng không nói lối ra, nên câu ở đây gánh phần việc.
+# ("Chưa gán") chỉ nêu trạng thái, không nêu thao tác phải làm — hai câu dưới nêu thao tác.
 UNASSIGNED_MEANS = (
     "Chưa gán cột nào nên hệ thống không đọc gì cho trường này — chọn cột ở hàng "
     "“Cột trên file”, hoặc tích “Không có trong file” nếu biểu này không có trường đó."

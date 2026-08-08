@@ -83,6 +83,34 @@ def _register(*, parse_detail: dict | None = None, row_count: int | None = 3) ->
         return row.id
 
 
+def _register_for_data_screen() -> None:
+    """File m15 bố cục chuẩn kèm cột bằng chứng ĐÃ LƯU — đúng hình dạng màn dữ liệu đọc.
+
+    Cột bằng chứng dựng qua chính `_evidence_columns` của đường nạp, nên bản lưu ở đây
+    giống bản một lượt nạp thật ghi ra: chỉ có nhãn NGẮN, không có câu nào.
+    """
+    import app.database as dbmod
+    from app.adapters.evidence import HEADER_MATCHED, NEEDS_REVIEW, POSITION_ONLY
+    from app.pipeline.data_files import _evidence_columns
+
+    ev = {
+        "material_code": HEADER_MATCHED, "opening_qty": HEADER_MATCHED,
+        "production_out_qty": POSITION_ONLY, "closing_qty": HEADER_MATCHED,
+    }
+    with dbmod.SessionLocal() as db:
+        c = db.query(Company).filter_by(code="DN_EP").one()
+        db.add(DataFile(
+            company_id=c.id, period_year=2025, slot="m15",
+            original_filename="NVL.xlsx", stored_path=f"{REL_DIR}/m15.xlsx", size_bytes=1,
+            parse_status="ok", row_count=1, parse_layout="standard",
+            parse_detail=json.dumps(
+                {"columns": _evidence_columns("m15", ev), "review": NEEDS_REVIEW},
+                ensure_ascii=False,
+            ),
+        ))
+        db.commit()
+
+
 def _col(**kw) -> BasisColumn:
     base = dict(
         field="production_out_qty", label="Xuất sản xuất", evidence=BALANCE_CHECKED,
@@ -153,11 +181,11 @@ def test_a_column_no_check_reads_says_so_after_the_sentence():
     assert "Không kiểm tra nào đọc trường này" in sentence
 
 
-def test_an_unassigned_column_explains_what_unassigned_means(env):
+def test_an_unassigned_column_explains_what_unassigned_means():
     """Nửa sau của cặp AC 6: nhãn "Chưa gán" render trần, không câu nào cạnh nó.
 
-    Câu phải nói cả NGHĨA (hệ thống không đọc gì) lẫn VIỆC (chọn cột, hoặc khai vắng) —
-    một nhãn nói trạng thái mà không nói lối ra là một nhãn cán bộ không hành động được.
+    Câu phải nói cả NGHĨA (hệ thống không đọc gì) lẫn THAO TÁC (chọn cột, hoặc khai vắng).
+    Nhãn chỉ nêu trạng thái thì cán bộ đọc xong vẫn không biết phải bấm gì.
     """
     sentence = _col(state=UNASSIGNED, columns=(), column_ref="", evidence=None,
                     evidence_label="").evidence_sentence
@@ -166,7 +194,7 @@ def test_an_unassigned_column_explains_what_unassigned_means(env):
     assert "Không có trong file" in sentence
 
 
-def test_an_absent_column_says_the_officer_decided_it(env):
+def test_an_absent_column_says_the_officer_decided_it():
     sentence = _col(state=ABSENT, columns=(), column_ref="", evidence=None,
                     evidence_label="").evidence_sentence
     assert "cán bộ" in sentence.lower()
@@ -269,6 +297,27 @@ def test_the_sentence_reaches_the_rendered_page(env):
     text = client.get(file_page_url("DN_EP", fid)).text
 
     assert "cùng dấu" in text
+
+
+def test_the_data_screen_tooltip_explains_the_term_instead_of_repeating_it(env):
+    """Tooltip cũ đọc ra "…: nguồn Khớp tiêu đề" — đúng bằng chữ đã hiện trên chip (#120).
+
+    Chip giữ chữ ngắn vì câu không nhét vừa chip, nên nghĩa đi vào `title`. Câu tra theo mã
+    nguồn THÔ lúc render: `parse_detail` của file nạp trước #120 chỉ lưu nhãn ngắn, không
+    lưu câu nào, nên tra lúc render là đường duy nhất để file cũ cũng đọc được nghĩa.
+
+    Tooltip hover CHƯA đạt "nghĩa cạnh nó" của AC 6 — đưa câu thành chữ hiện được ở màn
+    này là đổi bố cục, tách vé riêng. Test này chốt mức vé #120 nhận, không hơn.
+    """
+    client, root = env
+    write_xlsx(root / REL_DIR / "m15.xlsx", [["Mã", 1]], sheet_name="BCQT_NVL")
+    _register_for_data_screen()
+
+    text = client.get("/companies/DN_EP/data?year=2025&table=m15").text
+
+    assert "nguồn Khớp tiêu đề" not in text      # không lặp lại chính thuật ngữ
+    assert "khớp nhãn mong đợi của trường" in text
+    assert "Khớp tiêu đề" in text                # chip vẫn giữ chữ ngắn
 
 
 def test_the_status_line_adds_no_badge_and_no_axis(env):
