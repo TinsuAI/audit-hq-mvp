@@ -174,8 +174,6 @@
           {% for c in basis.columns %}
           <th class="{% if c.is_absent %}fm-col-absent{% endif %}">
             <span class="fm-fname">{{ c.label }}</span>
-            {% if c.row_key %}<span class="badge danger doc-file-badge">khoá dòng</span>
-            {% elif c.required %}<span class="badge warning doc-file-badge">bắt buộc</span>{% endif %}
           </th>
           {% endfor %}
         </tr>
@@ -244,9 +242,11 @@
           <th scope="row">Căn cứ</th>
           {% for c in basis.columns %}
           <td class="{% if c.is_absent %}fm-col-absent{% endif %}">
-            <span class="badge {{ c.state_badge }} doc-file-badge">{{ c.state_label }}</span>
-            <span class="badge {{ 'warning' if c.needs_review else 'info' }} doc-file-badge">{{ c.review_label }}</span>
-            <div class="fm-evi">{{ c.evidence_label }}</div>
+            {# Vòng lặp thuần: quyết định nhãn nào hiện nằm ở bộ dựng ngữ cảnh, không ở đây. #}
+            {% for lb in c.labels %}
+            <span class="badge {{ lb.tone }} doc-file-badge" data-axis="{{ lb.axis }}">{{ lb.text }}</span>
+            {% endfor %}
+            <div class="fm-evi">{{ c.evidence_sentence }}</div>
             {% if c.checks %}
             <div class="fm-checks">{{ c.checks | join(', ') }}{% if c.is_absent %} — sẽ trả “chưa đánh giá được”{% endif %}</div>
             {% endif %}

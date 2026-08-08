@@ -214,15 +214,10 @@ def test_every_evidence_source_and_field_has_a_vietnamese_label():
     không bao giờ chạy với dữ liệu thật.
     """
     from app.adapters.declared_fields import FIELD_LABEL_VI
-    from app.adapters.evidence import (
-        _RANK,
-        REVIEW_LABEL_VI,
-        SOURCE_LABEL_VI,
-    )
+    from app.adapters.evidence import _RANK, SOURCE_LABEL_VI
     from app.pipeline.data_files import _EVIDENCE_ORDER
 
     assert set(_RANK) == set(SOURCE_LABEL_VI)
-    assert {VERIFIED, NEEDS_REVIEW} == set(REVIEW_LABEL_VI)
     for slot, fields in _EVIDENCE_ORDER.items():
         missing = set(fields) - set(FIELD_LABEL_VI)
         assert not missing, f"slot {slot} thiếu nhãn cho: {missing}"
