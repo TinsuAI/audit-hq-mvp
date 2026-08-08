@@ -29,7 +29,11 @@ from app.checks.not_evaluable import (
 )
 from app.checks.registry import missing_sources
 from app.checks.sources import (
+    absent_fields_for_period,
+    absent_fields_reason,
     available_sources,
+    blocking_absent_fields,
+    classify_absent_fields,
     classify_missing_sources,
     missing_sources_reason,
 )
@@ -147,6 +151,10 @@ def run_checks(
         # nguồn chạy ra join rỗng → 0 phát hiện, mà 0 phát hiện đọc như "sạch"; trả
         # `not_evaluable` kèm lý do thay vì chạy.
         present = available_sources(s, company.id, year)
+        # Cổng mức TRƯỜNG (#113): nguồn có mặt nhưng cán bộ đã xác nhận kỳ này không có
+        # một CỘT mà check đọc. Cùng lớp lỗi cổng nguồn đã diệt, chỉ ở hạt nhỏ hơn —
+        # check vẫn chạy được nhưng đọc trên cột không tồn tại và trả 0 phát hiện.
+        absent_by_slot = absent_fields_for_period(s, company.id, year)
 
         # Trạng thái mỗi check để ghi check_runs: 'ok' | 'error' (check ĐỘNG raise)
         # | 'not_evaluable' (thiếu nguồn Tầng 1, hoặc check trả `NotEvaluable`).
@@ -165,6 +173,14 @@ def run_checks(
                     gate_remedy, _ = classify_missing_sources(missing)
                     findings, status, reason, remedy = _split_result(
                         NotEvaluable(missing_sources_reason(missing), remedy=gate_remedy)
+                    )
+                elif (blocked := blocking_absent_fields(code, absent_by_slot)):
+                    # Nguồn có, nhưng CỘT check đọc thì cán bộ đã xác nhận không có.
+                    # Cùng kiểu mang, cùng cột trạng thái, cùng đường loại khỏi điểm
+                    # rủi ro như cổng nguồn — không dựng nhánh thứ hai.
+                    gate_remedy, _ = classify_absent_fields(blocked)
+                    findings, status, reason, remedy = _split_result(
+                        NotEvaluable(absent_fields_reason(blocked), remedy=gate_remedy)
                     )
                 else:
                     fn = ALL_CHECKS[code]

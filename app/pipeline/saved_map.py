@@ -105,6 +105,16 @@ def save_column_map(
     return row
 
 
+def absent_fields_for(
+    session: Session, company_id: int, slot: str, form_signature: str | None,
+) -> list[str]:
+    """Trường cán bộ đã xác nhận VẮNG cho `(DN, slot, vân tay)`. Rỗng nếu chưa ai nói gì."""
+    if not form_signature:
+        return []
+    row = load_column_map(session, company_id, slot, form_signature)
+    return row.absent_fields_obj if row is not None else []
+
+
 def officer_maps(session: Session, company_id: int) -> dict[str, dict[str, dict[str, list[int]]]]:
     """`{slot: {vân tay: {field: [chỉ số cột…]}}}` — map cán bộ đã xác nhận của một DN.
 
@@ -157,6 +167,7 @@ def resolve_officer_confirmed(
 
 
 __all__ = [
+    "absent_fields_for",
     "load_column_map",
     "officer_maps",
     "resolve_officer_confirmed",
