@@ -1359,6 +1359,18 @@ p { margin: 0 0 var(--space-3); }
 }
 .fm-absentrow td { text-align: center; }
 .fm-evi, .fm-checks { font-size: var(--fs-xs); color: var(--c-text-muted); margin-top: 2px; }
+/* Chặn bề rộng ô căn cứ: ô này giữ nguyên một CÂU nêu cơ chế và giới hạn, không còn là
+   thuật ngữ hai chữ. Bảng đặt `width: max-content` nên nếu không chặn thì mỗi cột nới ra
+   bằng câu dài nhất của nó và cả bảng phải cuộn ngang mới đọc hết một hàng. Chặn ở 18rem
+   để câu xuống dòng trong cột. Đặt trên cả ô lẫn khối bên trong: `max-width` của ô bảng
+   không được mọi trình duyệt áp dụng, còn `.fm-evi` là `div` nên chặn ở đó luôn có tác
+   dụng và kéo theo bề rộng cột. */
+.fm-metarow td { max-width: 18rem; }
+.fm-metarow .fm-evi, .fm-metarow .fm-checks {
+  max-width: 18rem;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
 .fm-datarow td { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: var(--fs-xs); white-space: nowrap; }
 .fm-datarow:nth-child(even) td { background: var(--c-surface-alt, #f8fafc); }
 .fm-blank { color: var(--c-text-muted); font-style: italic; font-family: inherit; }
@@ -2572,10 +2584,3 @@ p { margin: 0 0 var(--space-3); }
   margin-bottom: var(--space-4);
 }
 .fp-grid .cg-frame { height: 46vh; min-height: 240px; }
-
-.fp-basis {
-  display: grid; grid-template-columns: minmax(12rem, max-content) 1fr;
-  gap: var(--space-2) var(--space-4); margin: 0;
-}
-.fp-basis dt { color: var(--c-text-muted); font-size: var(--fs-sm); }
-.fp-basis dd { margin: 0; }

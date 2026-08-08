@@ -97,7 +97,9 @@ def test_review_get_renders_map_and_badges(app_db: AppDb):
 
     html = client.get(f"/companies/DN_REV/documents/file/{fid}/review").text
     assert "Xuất sản xuất" in html          # nhãn field production_out_qty
-    assert "Khớp đẳng thức" in html          # badge evidence balance-checked
+    # Căn cứ của cột balance-checked hiện thành CÂU, và câu đó phải mang GIỚI HẠN của
+    # cơ chế (#120) — thuật ngữ trần "Khớp đẳng thức" không nói được khi nào không tin được.
+    assert "không phân biệt hai cột cùng dấu" in html
     assert "Cần xác nhận" in html            # trạng thái review cột
     assert 'name="col_production_out_qty"' in html  # ô sửa cột needs_review
 

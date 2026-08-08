@@ -218,6 +218,10 @@ def test_unmatched_file_keeps_the_old_path_and_names_its_source(tmp_path):
 
 # Khẳng định ở mức DỮ LIỆU trên cấu trúc trang file dựng ra (#92), không dò câu chữ
 # trong HTML: chỗ hiện đã dời một lần (dòng file → trang file, ADR #24) và sẽ còn dời.
+# Từ #120, `ReadBasis` chỉ còn GHI tầng đã quyết định (`match_source`, `template_id`);
+# câu mức trang gọi tên tầng đó đã bỏ khỏi sản phẩm, vì một câu mô tả cả file bằng tên
+# một tầng đi stale ngay khi cán bộ sửa một cột. Căn cứ nói theo TỪNG cột, qua
+# `BasisColumn.evidence_sentence` — câu chữ của nó khẳng định ở `test_evidence_prose.py`.
 
 
 def _basis(match_source: str | None, template_id: str | None = None):
@@ -234,26 +238,35 @@ def _basis(match_source: str | None, template_id: str | None = None):
     ))
 
 
-def test_read_basis_says_which_template_matched():
+def test_read_basis_records_which_template_matched():
+    """Khớp template builtin thì căn cứ giữ ĐỊNH DANH template, không chỉ nguồn khớp.
+
+    `template_id` là thứ truy nguồn được về họ biểu đã seed; tên hiển thị của template
+    thì không còn trên `ReadBasis` từ #120, vì nó chỉ nuôi thẻ tóm tắt đã bỏ.
+    """
     basis = _basis(MATCH_BUILTIN, template_id="m15-tt39-chuan")
 
     assert basis.match_source == MATCH_BUILTIN
     assert basis.template_id == "m15-tt39-chuan"
-    assert basis.template_name == "Mẫu 15 TT39 — bố cục chuẩn"
-    assert "mẫu biểu" in basis.match_source_label.lower()
 
 
-def test_read_basis_says_officer_map_when_the_company_map_won():
+def test_read_basis_records_the_officer_map_as_the_match_source():
+    """Map officer-confirmed thắng thì nguồn khớp ghi đúng tầng đó, không rơi về mặc định.
+
+    Chỉ khẳng định phần GHI: câu gọi tên tầng ở mức trang đã bỏ ở #120.
+    """
     from app.adapters.templates import MATCH_OFFICER
 
     basis = _basis(MATCH_OFFICER)
 
     assert basis.match_source == MATCH_OFFICER
-    assert "cán bộ" in basis.match_source_label.lower()
 
 
-def test_read_basis_names_the_default_positions_when_nothing_matched():
+def test_read_basis_records_the_default_positions_when_nothing_matched():
+    """Không tầng nào khớp thì nguồn vẫn ghi ra là vị trí mặc định, không để rỗng.
+
+    Chỉ khẳng định phần GHI: câu gọi tên tầng ở mức trang đã bỏ ở #120.
+    """
     basis = _basis(MATCH_DEFAULT)
 
     assert basis.match_source == MATCH_DEFAULT
-    assert "vị trí mặc định" in basis.match_source_label.lower()

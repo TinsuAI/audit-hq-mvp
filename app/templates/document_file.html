@@ -16,8 +16,9 @@
   <div class="page-title-group">
     <h1 style="word-break:break-all">{{ file.original_filename }}</h1>
     <p class="page-subtitle">
+      {# Số dòng nạp KHÔNG nói ở đây nữa: nó thuộc dòng trạng thái dưới lưới cùng trang
+         tính đã đọc (#120), nói hai chỗ là hai chỗ phải sửa khi lượt nạp sau đổi số. #}
       {{ slot_label }} · Năm {{ file.period_year }} · {{ human_size(file.size_bytes) }}
-      {% if file.row_count is not none %} · đã nạp {{ fmt_int(file.row_count) }} dòng{% endif %}
       {% if file.book %} · sổ {{ book_label(file.book) }}{% endif %}
     </p>
   </div>
@@ -66,48 +67,18 @@
   <p class="form-hint cg-status" id="cg-status"></p>
 </div>
 
-<h2 style="font-size:var(--fs-md);margin:0 0 var(--space-2)">Căn cứ đọc file</h2>
-<div class="card" style="margin-bottom:var(--space-4)">
-  <dl class="fp-basis">
-    <dt>Vị trí cột quyết định bằng</dt>
-    <dd>{{ basis.match_source_label }}</dd>
-    {% if basis.template_name %}
-    <dt>Mẫu biểu khớp</dt>
-    <dd>{{ basis.template_name }}</dd>
-    {% endif %}
-    {% if basis.layout_label %}
-    <dt>Bố cục đọc được</dt>
-    <dd>{{ basis.layout_label }}</dd>
-    {% endif %}
-    <dt>Trang tính đã đọc</dt>
-    <dd>
-      {% if basis.sheet %}{{ basis.sheet }}
-        <span class="text-muted">— {% if basis.sheet_pinned %}cán bộ ghim{% else %}hệ thống tự nhận diện{% endif %}</span>
-      {% else %}<span class="text-muted">chưa xác định</span>{% endif %}
-    </dd>
-    <dt>Số dòng đã nạp</dt>
-    <dd>{% if file.row_count is not none %}{{ fmt_int(file.row_count) }}{% else %}<span class="text-muted">chưa nạp dòng nào</span>{% endif %}</dd>
-  </dl>
-
-  {% if basis.needs_count %}
-  <p class="form-hint" style="margin:var(--space-3) 0 0">
-    ⚠️ Còn <strong>{{ basis.needs_count }}</strong> cột cần cán bộ xác nhận vị trí:
-    <strong>{{ basis.needs_confirmation | join(', ') }}</strong>.
-    Các cột này đọc theo <strong>vị trí</strong> hoặc chỉ khớp <strong>đẳng thức cân đối</strong> —
-    chưa đủ để chắc đúng cột, vì đẳng thức không phân biệt hai cột cùng dấu.
-    Đối chiếu với lưới ở trên rồi sửa chỉ số cột trong bảng dưới.
-  </p>
-  {% elif basis.columns %}
-  <p class="form-hint" style="margin:var(--space-3) 0 0">
-    Mọi cột đều có bằng chứng đủ mạnh cho các kiểm tra đọc chúng — không cột nào đang chờ xác nhận.
-  </p>
-  {% else %}
-  <p class="form-hint" style="margin:var(--space-3) 0 0">
-    Chưa có căn cứ đọc cho file này: lượt nạp gần nhất không đọc ra bố cục cột nào.
-    Chọn đúng trang tính chứa dữ liệu chi tiết ở dưới rồi nạp lại.
-  </p>
-  {% endif %}
-</div>
+{# Dòng trạng thái: thứ nói về CẢ FILE, không về một trường khai (#120). Thẻ tổng hợp
+   "Căn cứ đọc file" đứng ở đây trước kia đã xoá — mỗi cột nay mang câu căn cứ của chính
+   nó ở bảng dưới, nên thẻ đó là giọng thứ hai nói lại cùng một điều, và là giọng đi
+   stale (nó mô tả cả file bằng tên MỘT tầng). Câu chữ dựng ở `ReadBasis`, không ở đây.
+   KHÔNG đặt `badge` hay `data-axis` vào khối này: nhãn hiện theo ngoại lệ (#119) và
+   được đếm trên toàn trang — thêm một chip ở đây là thêm một nhãn không thuộc trục nào. #}
+<p class="form-hint fp-status" id="fp-status">
+  {{ basis.sheet_note }}
+  {% if file.row_count is not none %}Đã nạp {{ fmt_int(file.row_count) }} dòng.{% else %}Chưa nạp dòng nào.{% endif %}
+  {{ basis.status_note }}
+  <a href="/static/docs/huong-dan/index.html#b7">Cẩm nang: nguồn bằng chứng của cột →</a>
+</p>
 
 <form method="post" action="{{ page_url }}">
   <div class="card" style="margin-bottom:var(--space-4)">

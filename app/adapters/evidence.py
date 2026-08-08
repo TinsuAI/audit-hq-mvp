@@ -42,12 +42,46 @@ _RANK = {
 VERIFIED = "verified"
 NEEDS_REVIEW = "needs_review"
 
+# Nhãn NGẮN — đi vào chip ở màn dữ liệu, VÀ đi vào `parse_detail` lúc nạp
+# (`data_files.py`). Đổi chuỗi ở đây là đổi dữ liệu đã lưu của mọi file nạp trước, nên
+# câu giải nghĩa nằm ở `SOURCE_SENTENCE_VI` bên dưới chứ không viết đè lên đây.
 SOURCE_LABEL_VI = {
     OFFICER_CONFIRMED: "Cán bộ xác nhận",
     BUILTIN_TEMPLATE: "Khớp mẫu có sẵn",
     HEADER_MATCHED: "Khớp tiêu đề",
     BALANCE_CHECKED: "Khớp đẳng thức",
     POSITION_ONLY: "Chỉ theo vị trí",
+}
+
+# Câu ở DÒNG CỦA TRƯỜNG (#120). Mỗi câu nói hai phần: cơ chế đã dùng, và giới hạn của
+# chính cơ chế đó — thuật ngữ trần ("Khớp đẳng thức") không cho cán bộ biết khi nào
+# KHÔNG tin được, mà đó mới là lúc họ phải mở file ra đối chiếu. Nội dung lấy từ
+# docstring của module này, không phải một cách nói thứ hai dựng riêng cho màn hình.
+# Tra lúc render, KHÔNG ghi xuống `parse_detail`: sửa câu chữ là file cũ đọc câu mới.
+SOURCE_SENTENCE_VI = {
+    OFFICER_CONFIRMED: (
+        "Cán bộ đã tự xác nhận cột này cho cấu trúc biểu của doanh nghiệp; "
+        "vị trí đã lưu chỉ áp dụng cho file cùng vân tay biểu, bố cục khác thì phải "
+        "xác nhận lại."
+    ),
+    BUILTIN_TEMPLATE: (
+        "Khớp vân tay một họ biểu đã dựng sẵn trong hệ thống; cấu trúc đã có người soát "
+        "lúc viết mẫu, nhưng mẫu dựng theo biểu chung nên không bắt được sửa đổi riêng "
+        "của doanh nghiệp."
+    ),
+    HEADER_MATCHED: (
+        "Tiêu đề ngay tại cột này khớp nhãn mong đợi của trường; chỉ chắc khi người lập "
+        "file ghi tiêu đề đúng nghĩa, vì tiêu đề viết tắt hoặc gộp ô thì không dò ra."
+    ),
+    BALANCE_CHECKED: (
+        "Đẳng thức cân đối của biểu khớp khi lấy cột này; đủ cho cột dùng dạng tổng, "
+        "nhưng đẳng thức không phân biệt hai cột cùng dấu nên vẫn có thể đang lấy nhầm "
+        "cột liền kề."
+    ),
+    POSITION_ONLY: (
+        "Đọc theo chỉ số cột mặc định của biểu, không tín hiệu nào khác xác nhận; "
+        "file lệch bố cục thì đọc sai cột mà không có dấu hiệu nào báo."
+    ),
 }
 
 
@@ -306,6 +340,7 @@ __all__ = [
     "OFFICER_CONFIRMED",
     "POSITION_ONLY",
     "SOURCE_LABEL_VI",
+    "SOURCE_SENTENCE_VI",
     "VERIFIED",
     "evidence_m15_extended",
     "evidence_m15_standard",

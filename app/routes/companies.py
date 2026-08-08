@@ -29,6 +29,7 @@ from app.adapters.cell_window import (
 )
 from app.adapters.declared_fields import FIELD_LABEL_VI, label_of, row_key_fields
 from app.adapters.declared_fields import declared as declared_fields
+from app.adapters.evidence import SOURCE_SENTENCE_VI
 from app.adapters.templates import column_groups
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled
@@ -129,6 +130,10 @@ templates.env.globals["tier_for"] = tier_for
 # Độ phủ chấm điểm — mọi chỗ hiện điểm phải hiện kèm, xem `score_coverage`.
 templates.env.globals["score_coverage"] = score_coverage
 templates.env.globals["PERCENTILE_LABEL"] = PERCENTILE_LABEL_VI
+# Nghĩa của mỗi nguồn bằng chứng, tra theo mã nguồn THÔ lúc render (#120). Bản lưu trong
+# `parse_detail` chỉ có nhãn ngắn, và file nạp trước khi có hằng này thì không có câu nào
+# trong đó — tra lúc render là cách duy nhất để file cũ cũng đọc được nghĩa.
+templates.env.globals["SOURCE_SENTENCE"] = SOURCE_SENTENCE_VI
 # Nhãn sổ quyết toán (book) — dùng ở company_detail (split line) + finding_detail (field).
 templates.env.globals["book_label"] = book_label
 # Cột số của bảng phát hiện + nhãn tiếng Việt cho `finding.details`.
