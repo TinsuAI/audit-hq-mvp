@@ -1,7 +1,7 @@
 # STATUS — Audit-HQ MVP
 
-> **(2026-08-08 — CÀI XONG BỐN VÉ của loạt #110. cả bốn ĐÃ GỘP vào `main`
-> (`9dfb697`), suite xanh. **#113 CHƯA LÀM.**)**
+> **(2026-08-08 — CÀI XONG CẢ NĂM VÉ của loạt #110, tất cả ĐÃ GỘP vào `main`
+> (`350d016`), suite xanh. Loạt #110 khép lại.)**
 >
 > Chi tiết: `.ai/sessions/2026-08-08-implement-111-115-bon-ve.md`.
 >
@@ -11,7 +11,7 @@
 > | #115 ĐVT không tra được | đã gộp `main` | `50a374c` | 2980988246 |
 > | #112 S2 màn gán cột | đã gộp `main` | `8b65837` | 3430776063 |
 > | #114 cột (9) theo kỳ | đã gộp `main` | `f12bd25` | 1340095647 |
-> | #113 S3 cổng trường vắng | **chưa làm** | — | — |
+> | #113 S3 cổng trường vắng | đã gộp `main` | `46f9325` | 4164449907 | — |
 >
 > Bộ test **1.724** trên `main` đã gộp, xanh cả thứ tự thường lẫn `--shuffle`
 > (`PYTEST_EXIT=0`, seed hợp nhất **331433647**), `ruff` sạch.
@@ -21,16 +21,17 @@
 > (`data_files.py`) là danh sách giữ tay lọc khối căn cứ đọc xuống 2 cột cho m16, nên phủ
 > đủ bằng chứng thôi thì `product_code` vẫn không hiện. Nay suy từ tập trường khai.
 >
+> **#113 — hai chỗ vé nói sai, đã đo lại:** vé liệt **10** check đọc `declaration_lines`;
+> đi đồ thị gọi ra **tám** (C1.7 và C5.1 chỉ đọc `NvlBalance`). Và chỉ khai trường mà
+> THIẾU NÓ THÌ KẾT LUẬN KHÔNG ĐỨNG VỮNG — `value_total` cố ý để ngoài: C1.1 đọc nó qua
+> `valuation.py` chỉ để gắn số tiền, thiếu nó vẫn phát hiện đúng chênh lệch.
+> Cách biểu diễn cho `denominators.py` / `company_type.py` / `scope.py` (không có mã
+> check): quy phần đọc của chúng về CHÍNH các mã check gọi chúng — không bịa mã giả.
+>
 > **Việc tiếp theo, theo thứ tự:**
-> 1. **#113** — mở cổng tiền-dispatch `sources.py` từ mức NGUỒN xuống mức TRƯỜNG (đã có
->    `saved_column_maps.absent_fields` để đọc), và khai bù **10 mục bcct** vào
->    `CHECK_COLUMNS` (hiện 0 mục → cổng review chưa bao giờ bắn cho bcct).
->    Câu hỏi vé giao lại: `denominators.py` / `company_type.py` đọc `declaration_lines`
->    nhưng không có mã check → khuyến nghị để NGOÀI `CHECK_COLUMNS` + ghi lý do trong PR.
->    **Vé cấm bịa mã giả.**
-> 2. **Migrate DB dev**: hai revision mới (`a4b5c6d7e8f9`, `b5c6d7e8f9a0`) mới chỉ chạy
+> 1. **Migrate DB dev**: hai revision mới (`a4b5c6d7e8f9`, `b5c6d7e8f9a0`) mới chỉ chạy
 >    trên DB scratch. Sao lưu kèm `-wal`/`-shm` TRƯỚC khi `alembic upgrade head`.
-> 3. `/code-review` cả loạt `e0863b3..HEAD`.
+> 2. `/code-review` lượt hai cho #113 (lượt một đã chạy cho bốn vé kia).
 >
 > **#115 chỉ tra được 17/25 chuỗi đơn vị.** Bảy chuỗi để nguyên có chủ ý (`UNL` 277 dòng,
 > `UNK`, `I/át`, `I/at`, `1000 viên`) — đúng nghĩa là "không rõ", gán bí danh cho chúng là
