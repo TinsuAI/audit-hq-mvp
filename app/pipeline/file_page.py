@@ -160,6 +160,9 @@ class ReadBasis:
     # Ảnh chụp cột của file lúc parse — bộ chọn cột dựng từ đây. Rỗng với file nạp
     # trước #112 (tiến lên, không backfill): màn rơi về ô nhập chỉ số như cũ.
     choices: tuple[dict, ...] = ()
+    # Vài DÒNG dữ liệu thật, nguyên vẹn theo hàng — bảng gán cột dựng theo dòng nên
+    # phải là dòng có thật, không phải mẫu ghép từ nhiều dòng khác nhau.
+    sample_rows: tuple[dict, ...] = ()
 
     @property
     def needs_count(self) -> int:
@@ -250,6 +253,7 @@ def file_read_basis(
         columns=columns,
         needs_confirmation=tuple(c.label for c in columns if c.needs_review),
         choices=tuple(detail.get("column_choices") or ()),
+        sample_rows=tuple(detail.get("sample_rows") or ()),
     )
 
 

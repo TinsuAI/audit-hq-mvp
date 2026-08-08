@@ -150,3 +150,40 @@ def test_m16_parent_child_forward_fill_follows_the_product_code_column(tmp_path)
     assert len(parsed.rows) == 3
     assert {r.product_code for r in parsed.rows} == {"SP1"}
     assert [r.material_code for r in parsed.rows] == ["MAT0", "MAT1", "MAT2"]
+
+
+def test_sample_rows_are_real_rows_not_stitched_from_columns(tmp_path):
+    """Bảng gán cột dựng theo DÒNG, nên dòng mẫu phải là dòng CÓ THẬT.
+
+    `column_choices` lấy mẫu RIÊNG từng cột và bỏ ô trống, nên mẫu thứ nhất của cột mã
+    SP (chỉ có ở dòng cha) và của cột mã NVL (có ở mọi dòng) đến từ hai dòng khác nhau.
+    Xếp cạnh nhau là dựng ra một dòng không tồn tại — cùng lớp lỗi đọc sai im lặng mà
+    cả loạt vé này đi diệt.
+    """
+    path = _write_grid(tmp_path / "m16.xlsx", "BCTT39", _m16_grid())
+    parsed = parse_m16(path, sheet="BCTT39")
+    rows = parsed.provenance.detail["sample_rows"]
+    assert rows, "phải có dòng mẫu"
+
+    cols = _column_map(parsed)
+    sp, nvl = cols["product_code"], cols["material_code"]
+    # Dòng cha mang mã SP; các dòng con để TRỐNG ô đó — giữ nguyên, không dồn lên.
+    assert rows[0]["cells"][sp] == "SP1"
+    assert rows[1]["cells"][sp] == ""
+    assert [r["cells"][nvl] for r in rows[:3]] == ["MAT0", "MAT1", "MAT2"]
+    # Số dòng tăng đều 1 và khớp số dòng trên trang tính (đối chiếu được với lưới).
+    assert [r["row"] for r in rows[:3]] == [rows[0]["row"], rows[0]["row"] + 1,
+                                            rows[0]["row"] + 2]
+
+
+def test_column_choices_and_sample_rows_disagree_on_purpose(tmp_path):
+    """Chốt đúng cái bẫy: mẫu theo CỘT khác mẫu theo DÒNG, và đó là lý do có hai hàm."""
+    path = _write_grid(tmp_path / "m16.xlsx", "BCTT39", _m16_grid())
+    parsed = parse_m16(path, sheet="BCTT39")
+    detail = parsed.provenance.detail
+    sp = _column_map(parsed)["product_code"]
+    by_col = next(c for c in detail["column_choices"] if c["index"] == sp)
+    # Theo CỘT: bỏ ô trống → chỉ toàn mã SP.
+    assert "" not in by_col["samples"]
+    # Theo DÒNG: giữ ô trống → phản ánh đúng bố cục cha-con của file.
+    assert detail["sample_rows"][1]["cells"][sp] == ""

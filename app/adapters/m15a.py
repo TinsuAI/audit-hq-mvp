@@ -18,6 +18,7 @@ from app.adapters._common import (
     normalize_name,
     parse_company_header,
     safe_get,
+    sample_rows,
     scan_error_cells,
     to_float,
     to_str,
@@ -165,6 +166,7 @@ def parse_m15a(
                     "template_id": None,
                     "match_source": MATCH_OFFICER if officer else MATCH_EXTENDED,
                     "column_choices": column_choices(cells, resolution.data_start),
+                    "sample_rows": sample_rows(cells, resolution.data_start),
                 },
                 evidence=evidence,
             ),
@@ -210,6 +212,7 @@ def parse_m15a(
         officer=officer,
     )
     detail["column_choices"] = column_choices(cells, data_start)
+    detail["sample_rows"] = sample_rows(cells, data_start)
     return M15aFile(
         header=header, rows=rows, source_file=str(p), sheet=sheet,
         issues=ParseIssues(

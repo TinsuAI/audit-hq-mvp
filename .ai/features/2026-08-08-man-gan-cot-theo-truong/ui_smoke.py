@@ -103,6 +103,13 @@ def seed() -> int:
 
 
 def shot(pg, name: str, caption: str, *, full: bool = True) -> None:
+    # Kéo bảng gán cột vào khung trước khi chụp — ảnh chụp cả trang mà vị trí cuộn
+    # đang ở giữa thì ra một mảng trắng lớn phía trên.
+    try:
+        pg.locator('.fieldmap-table').scroll_into_view_if_needed(timeout=1500)
+        pg.wait_for_timeout(200)
+    except Exception:  # noqa: BLE001
+        pass
     path = OUT / f"{name}.png"
     pg.screenshot(path=str(path), full_page=full)
     SHOTS.append((path.name, caption))
@@ -138,7 +145,7 @@ def main() -> int:
         cookie = make_session_cookie(SessionUser(name="can_bo", role="admin"))
         with sync_playwright() as p:
             br = p.chromium.launch()
-            ctx = br.new_context(viewport={"width": 1500, "height": 1400},
+            ctx = br.new_context(viewport={"width": 2200, "height": 1400},
                                  device_scale_factor=2)
             ctx.add_cookies([{"name": SESSION_COOKIE_NAME, "value": cookie,
                               "domain": "127.0.0.1", "path": "/"}])

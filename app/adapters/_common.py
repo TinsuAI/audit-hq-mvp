@@ -377,3 +377,33 @@ def column_choices(
             "samples": samples,
         })
     return out
+
+
+_SAMPLE_ROWS = 5
+
+
+def sample_rows(
+    cells: list[list[Any]], data_start: int, rows: int = _SAMPLE_ROWS,
+    max_cols: int = _CHOICE_MAX_COLS,
+) -> list[dict[str, Any]]:
+    """`[{row, cells}]` — vài DÒNG dữ liệu đầu tiên, nguyên vẹn theo hàng.
+
+    Khác `column_choices`: ở đó mẫu giá trị lấy RIÊNG từng cột và BỎ ô trống, nên mẫu
+    thứ nhất của cột này có thể ở dòng 12 còn của cột kia ở dòng 18. Xếp cạnh nhau là
+    dựng ra một dòng KHÔNG có trong file — đúng lớp lỗi đọc sai im lặng mà cả loạt vé
+    này đi diệt. Màn gán cột dựng bảng theo dòng nên phải dùng dòng thật, giữ cả ô
+    trống, và mang theo số dòng trên trang tính để cán bộ đối chiếu với lưới ở trên.
+    """
+    scan = cells[: data_start + _CHOICE_SCAN_ROWS]
+    width = min(max((len(r) for r in scan), default=0), max_cols)
+    out: list[dict[str, Any]] = []
+    for offset, raw in enumerate(cells[data_start:]):
+        if len(out) >= rows:
+            break
+        values = [_clip(to_str(safe_get(raw, c)) or "", _CHOICE_SAMPLE_CHARS)
+                  for c in range(width)]
+        if not any(values):
+            continue          # dòng trắng hoàn toàn không nói được gì
+        out.append({"row": data_start + offset + 1, "cells": values})
+    return out
+

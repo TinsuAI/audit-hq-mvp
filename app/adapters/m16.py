@@ -19,6 +19,7 @@ from app.adapters._common import (
     normalize_name,
     parse_company_header,
     safe_get,
+    sample_rows,
     scan_error_cells,
     to_float,
     to_str,
@@ -213,6 +214,7 @@ def parse_m16(
         "template_id": None,
         "match_source": match_source_for(officer, None, evidence),
         "column_choices": column_choices(cells, data_start),
+        "sample_rows": sample_rows(cells, data_start),
     }
     if norm_labeled:
         provenance = ParseProvenance(
