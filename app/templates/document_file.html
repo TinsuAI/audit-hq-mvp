@@ -171,10 +171,14 @@
             {% if c.is_group %}
             {# Nhóm cột con (ADR #25) đọc bằng TỔNG nhiều cột — `<select>` một giá trị
                không diễn đạt được, và hai ô trùng `name` thì ô sau đè ô trước. #}
-            <input type="text" class="form-input mono-input" name="col_{{ c.field }}"
+            <input type="text" class="form-input mono-input js-col-pick" name="col_{{ c.field }}"
                    value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*">
+            {# Ô nhập chỉ hiện `7,8`. Nhãn lựa chọn của `<select>` mang sẵn tiêu đề cột, ô
+               nhập thì không — mà dòng phải tự nói cột đang gán kể cả khi lưới còn đang
+               trích xuất (#122). Câu dựng ở `BasisColumn`, không ở đây. #}
+            <p class="form-hint">{{ c.column_note }}</p>
             {% else %}
-            <select class="form-input" name="col_{{ c.field }}">
+            <select class="form-input js-col-pick" name="col_{{ c.field }}">
               {% if not c.columns %}
               {# Chỉ nêu khi trường THẬT SỰ chưa gán. Mời bỏ gán một trường đã gán là
                  hứa một việc không giữ được: ô trống nghĩa là “giữ nguyên”, và cách
@@ -197,7 +201,7 @@
                hệ thống không làm. Nạp lại file là có bộ chọn. #}
             <span class="text-muted">không có vị trí lưu</span>
             {% elif basis.can_confirm and c.needs_review %}
-            <input type="text" class="form-input mono-input" name="col_{{ c.field }}"
+            <input type="text" class="form-input mono-input js-col-pick" name="col_{{ c.field }}"
                    value="{{ c.col_value }}" inputmode="numeric" pattern="[0-9]+([ ,]+[0-9]+)*">
             {% else %}
             <span class="text-mono">{{ c.column_ref or '—' }}</span>

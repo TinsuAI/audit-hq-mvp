@@ -459,6 +459,10 @@
   function showColumn(index) {
     // Cuộn NGANG tới cột đang soi, không đụng vị trí dòng: cán bộ đang đối chiếu
     // đúng những dòng trước mắt, kéo họ về dòng 1 là bắt tìm lại.
+    //
+    // Cùng điều kiện với `isHighlighted`: chỉ số cột chỉ có nghĩa trên trang tính parser
+    // đọc. Cuộn mà không đánh dấu được gì thì lưới dời đi vì một lý do không hiện ra.
+    if (!onParsedSheet()) return;
     if (!state.meta || index >= state.meta.total_cols) return;
     var left = index * COL_W;
     var view = el.body.scrollLeft;
@@ -481,13 +485,19 @@
   }
 
   function wireColumnInputs() {
-    // Biểu mẫu xác nhận cột nằm CÙNG TRANG với lưới đầy đủ (#92): gõ một chỉ số thì
-    // đúng cột đó sáng lên trong lưới, thay cho lưới rút gọn 15 dòng của màn cũ.
-    var inputs = document.querySelectorAll('input.review-idx');
-    Array.prototype.forEach.call(inputs, function (inp) {
-      inp.addEventListener('input', function () { setHighlight(inp.value); });
-      inp.addEventListener('focus', function () { setHighlight(inp.value); });
-      inp.addEventListener('blur', function () { setHighlight(''); });
+    // Biểu mẫu xác nhận cột nằm CÙNG TRANG với lưới đầy đủ (#92): chọn một cột thì đúng
+    // cột đó sáng lên trong lưới, thay cho lưới rút gọn 15 dòng của màn cũ.
+    //
+    // Bộ chọn là LỚP TRẦN, không có tiền tố thẻ: từ #121 dòng cột đơn dùng `<select>` còn
+    // dòng nhóm cột con dùng ô nhập, nên `input.…` (dạng cũ) bỏ sót một nửa số dòng — và
+    // `querySelectorAll` trả rỗng thì cả chuỗi chết mà không ném lỗi nào.
+    var picks = document.querySelectorAll('.js-col-pick');
+    Array.prototype.forEach.call(picks, function (el) {
+      function onPick() { setHighlight(el.value); }
+      el.addEventListener('input', onPick);   // ô nhập chỉ số
+      el.addEventListener('change', onPick);  // `<select>`
+      el.addEventListener('focus', onPick);
+      el.addEventListener('blur', function () { setHighlight(''); });
     });
   }
 

@@ -145,7 +145,9 @@ class BasisColumn:
     # Tiêu đề + mẫu giá trị của CỘT ĐANG GÁN, lấy từ ảnh chụp cột lúc parse. Màn
     # hiện giá trị thật thay cho chỉ số cột trần: "cột 7" không nói được máy đang
     # đọc đúng ô hay lệch một ô, còn `1.5 / 1.51 / 1.52` thì nói được.
-    header: str = ""
+    # `headers` xếp CÙNG THỨ TỰ với `columns`; phần tử rỗng = cột nằm ngoài ảnh chụp
+    # (vị trí đã lưu trỏ ra ngoài trang tính lượt nạp sau đọc được).
+    headers: tuple[str, ...] = ()
     samples: tuple[str, ...] = ()
 
     @property
@@ -208,6 +210,23 @@ class BasisColumn:
     def col_value(self) -> str:
         """Giá trị ô nhập của biểu mẫu xác nhận: `"8"` hoặc `"5,6"` (nhóm cột con)."""
         return ",".join(str(i) for i in self.columns)
+
+    @property
+    def column_note(self) -> str:
+        """Cột đang gán, thành CÂU cho dòng không có nhãn lựa chọn để nói hộ (#122).
+
+        Lưới xem trước là phần TĂNG THÊM: lượt trích xuất đầu trả 202 rồi poll, và file
+        chưa từng đọc thì không có ảnh chụp nào — dòng trường phải tự nói nó đang đọc cột
+        nào kể cả khi lưới còn trống. `<select>` nói sẵn trong nhãn lựa chọn đang chọn;
+        ô nhập chỉ số của nhóm cột con chỉ hiện `7,8`, nên câu này bù đúng chỗ đó.
+
+        Dấu `+` là phép cộng thật: nhóm cột con đọc bằng TỔNG các cột (ADR #25).
+        """
+        parts = []
+        for i, index in enumerate(self.columns):
+            header = self.headers[i] if i < len(self.headers) else ""
+            parts.append(f"cột {index} «{header}»" if header else f"cột {index}")
+        return " + ".join(parts)
 
 
 @dataclass(frozen=True)
@@ -335,7 +354,7 @@ def file_read_basis(
             _basis_column(
                 row.slot, field, meta.get(field) or {}, groups.get(field, []),
                 absent=field in absent,
-                choice=by_index.get((groups.get(field) or [None])[0]),
+                by_index=by_index,
                 has_picker=has_picker,
             )
             for field in order
@@ -359,9 +378,10 @@ def file_read_basis(
 
 def _basis_column(
     slot: str, field: str, meta: dict, cols: list[int], absent: bool = False,
-    choice: dict | None = None, has_picker: bool = True,
+    by_index: dict | None = None, has_picker: bool = True,
 ) -> BasisColumn:
     evidence = meta.get("evidence")
+    snapshot = by_index or {}
     declared = {f.name: f for f in declared_fields(slot)}.get(field)
     if absent:
         state = ABSENT
@@ -402,8 +422,8 @@ def _basis_column(
         required=bool(declared and declared.required),
         row_key=bool(declared and declared.row_key),
         has_picker=has_picker,
-        header=str((choice or {}).get("header") or ""),
-        samples=tuple((choice or {}).get("samples") or ()),
+        headers=tuple(str((snapshot.get(i) or {}).get("header") or "") for i in cols),
+        samples=tuple((snapshot.get(cols[0]) or {}).get("samples") or ()) if cols else (),
     )
 
 
