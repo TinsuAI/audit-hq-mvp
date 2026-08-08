@@ -22,6 +22,9 @@ from app.pipeline.file_page import (
     AXES,
     AXIS_ASSIGNMENT,
     AXIS_WORK,
+    TONE_ATTENTION,
+    TONE_BLOCKING,
+    TONE_QUIET,
     file_page_url,
     file_read_basis,
 )
@@ -40,6 +43,7 @@ def env(app_db, tmp_path, monkeypatch):
     client = TestClient(app)
     client.post("/login", data={"user": "admin", "password": "admin"}, follow_redirects=False)
     return client, Path(app_db.raw_root)
+
 
 _M16_FIELDS = (
     "product_code", "product_name", "product_unit", "material_code",
@@ -110,9 +114,13 @@ def test_an_unassigned_row_key_is_louder_than_an_unassigned_plain_field(env):
     by_field = _by_field(file_read_basis(_row(fid)))
 
     row_key = by_field["product_code"].labels[0]
+    required = by_field["product_unit"].labels[0]
     plain = by_field["product_name"].labels[0]
     assert row_key.axis == plain.axis == AXIS_ASSIGNMENT
-    assert row_key.tone != plain.tone
+    # Ghim từng sắc thái, không chỉ "khác nhau": đảo hai giá trị cho nhau vẫn khác nhau.
+    assert (row_key.tone, required.tone, plain.tone) == (
+        TONE_BLOCKING, TONE_ATTENTION, TONE_QUIET,
+    )
 
 
 def test_a_field_still_to_confirm_carries_a_work_axis_label(env):
@@ -161,9 +169,36 @@ def test_a_clean_m16_page_renders_at_most_three_labels(env):
     client, root = env
     fid = _seed_clean_m16(root)
 
+    page = client.get(file_page_url("DN_FP", fid))
+
+    assert page.status_code == 200
+    assert "fm-evi" in page.text, "trang không dựng được khối gán cột"
+    assert len(_badges(page.text)) <= 3
+
+
+def test_the_page_renders_exactly_the_labels_the_context_builder_returned(env):
+    """Trang SẠCH không bắt được template phát nhãn thừa — nó có 0 nhãn để đếm lệch.
+
+    Ở đây một trường phải soát, nên số badge trên trang phải bằng đúng tổng số nhãn.
+    """
+    client, root = env
+    detail = dict(
+        _M16_CLEAN,
+        columns=[
+            {"field": name, "evidence": "header-matched", "review": "verified"}
+            for name in _M16_FIELDS if name != "norm_qty"
+        ] + [{"field": "norm_qty", "evidence": "position-only", "review": "needs_review"}],
+    )
+    write_xlsx(root / REL_DIR / "m16.xlsx", [["Mã SP", 1]], sheet_name="BCQT_DM")
+    fid = _register("m16.xlsx", slot="m16", parse_detail=detail)
+
+    basis = file_read_basis(_row(fid))
     text = client.get(file_page_url("DN_FP", fid)).text
 
-    assert len(_badges(text)) <= 3
+    expected = sum(len(c.labels) for c in basis.columns)
+    assert expected == 1
+    assert len(_badges(text)) == expected
+    assert len(_axes_on_page(text)) == expected
 
 
 def test_every_badge_on_the_file_page_declares_its_axis(env):
@@ -174,13 +209,11 @@ def test_every_badge_on_the_file_page_declares_its_axis(env):
 
     for tag in _badges(text):
         assert "data-axis=" in tag, tag
-    assert len(set(_axes_on_page(text))) <= 3
+    assert set(_axes_on_page(text)) <= set(AXES)
 
 
 def test_the_checked_label_is_gone_from_the_product() -> None:
     """"Đã kiểm" cũng có nghĩa "không kiểm tra nào đọc trường này" — hai nghĩa trong một chuỗi."""
-    from pathlib import Path
-
     app_dir = Path(__file__).resolve().parents[1] / "app"
     hits = [
         path

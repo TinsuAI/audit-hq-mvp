@@ -56,7 +56,8 @@
       {% for c in parse_detail.columns %}
         <span class="evidence-col" title="{{ c.label }}: nguồn {{ c.evidence_label }}">
           <span class="evidence-col-name">{{ c.label }}</span>
-          <span class="badge {{ 'info' if c.review == 'verified' else 'warning' }}">{{ c.evidence_label }}</span>
+          <span class="badge {{ 'info' if c.review == 'verified' else 'warning' }}"
+                data-axis="evidence">{{ c.evidence_label }}</span>
         </span>
       {% endfor %}
     </div>

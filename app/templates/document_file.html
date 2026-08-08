@@ -246,7 +246,7 @@
             {% for lb in c.labels %}
             <span class="badge {{ lb.tone }} doc-file-badge" data-axis="{{ lb.axis }}">{{ lb.text }}</span>
             {% endfor %}
-            <div class="fm-evi" data-axis="evidence">{{ c.evidence_sentence }}</div>
+            <div class="fm-evi">{{ c.evidence_sentence }}</div>
             {% if c.checks %}
             <div class="fm-checks">{{ c.checks | join(', ') }}{% if c.is_absent %} — sẽ trả “chưa đánh giá được”{% endif %}</div>
             {% endif %}

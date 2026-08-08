@@ -91,8 +91,9 @@ AXIS_EVIDENCE = "evidence"      # vì sao tin là cột đó
 AXIS_WORK = "work"              # cán bộ còn phải làm gì
 AXES = (AXIS_ASSIGNMENT, AXIS_EVIDENCE, AXIS_WORK)
 
-# Sắc thái của nhãn — cùng bộ với class badge của stylesheet.
-TONE_BLOCKING = "danger"
+# Sắc thái của nhãn. Giá trị phải là lớp CÓ THẬT trong `style.css` (`.badge.critical`,
+# `.badge.warning`, `.badge.muted`) — `danger` không có rule nào nên nhãn sẽ hiện trần.
+TONE_BLOCKING = "critical"
 TONE_ATTENTION = "warning"
 TONE_QUIET = "muted"
 
@@ -101,8 +102,6 @@ NO_CHECK_READS_IT = "Không kiểm tra nào đọc trường này"
 
 @dataclass(frozen=True)
 class FieldLabel:
-    """Một nhãn HIỆN được trên màn, kèm trục nó thuộc về."""
-
     axis: str
     text: str
     tone: str

@@ -50,6 +50,7 @@ SOURCE_LABEL_VI = {
     POSITION_ONLY: "Chỉ theo vị trí",
 }
 
+
 def strongest(*sources: str) -> str:
     """Nguồn mạnh nhất trong các nguồn đưa vào (mặc định position-only)."""
     best = POSITION_ONLY
