@@ -1,7 +1,8 @@
 # STATUS — Audit-HQ MVP
 
-> **(2026-08-08 — CÀI XONG CẢ NĂM VÉ của loạt #110, tất cả ĐÃ GỘP vào `main`
-> (`350d016`), suite xanh. Loạt #110 khép lại.)**
+> **(2026-08-08 — LOẠT #110 KHÉP LẠI VÀ ĐÃ LÊN PROD. Năm vé gộp vào `main`, đã push
+> (`036a549`), CI xanh, deploy chạy, issue #109–#116 đóng hết. DB dev đã migrate lên
+> head. Cộng một lượt AUDIT THIẾT KẾ và ba bản vá TRUNG THỰC sinh ra từ đó.)**
 >
 > Chi tiết: `.ai/sessions/2026-08-08-implement-111-115-bon-ve.md`.
 >
@@ -28,10 +29,28 @@
 > Cách biểu diễn cho `denominators.py` / `company_type.py` / `scope.py` (không có mã
 > check): quy phần đọc của chúng về CHÍNH các mã check gọi chúng — không bịa mã giả.
 >
-> **Việc tiếp theo, theo thứ tự:**
-> 1. **Migrate DB dev**: hai revision mới (`a4b5c6d7e8f9`, `b5c6d7e8f9a0`) mới chỉ chạy
->    trên DB scratch. Sao lưu kèm `-wal`/`-shm` TRƯỚC khi `alembic upgrade head`.
-> 2. `/code-review` lượt hai cho #113 (lượt một đã chạy cho bốn vé kia).
+> **AUDIT THIẾT KẾ (`DESIGN-IS-2026-08-08/`) — luồng cán bộ chấm 13/30, phán quyết
+> REDESIGN.** Chấm theo 10 nguyên tắc Dieter Rams, mỗi điểm có `file:line`, bốn
+> subagent thu bằng chứng và bị cấm tự chấm. Nguyên tắc chịu lực **#6 Trung thực
+> chấm 0** vì **ba lỗi do CHÍNH loạt #110 gây ra** — đã vá ở `d75f07a`:
+> 1. Lời khai "không có trong file" không tới adapter (`grep -rn absent app/adapters/`
+>    → 0) nên cột đó vẫn nạp vào Tầng 1 theo vị trí mặc định, trong khi cổng check
+>    báo "chưa đánh giá được". Hai màn nói ngược nhau.
+> 2. Gửi biểu mẫu từ file không dựng ô đó → xoá sạch lời khai đã lưu, không báo gì.
+> 3. "— chưa gán —" bị gán lại ở lượt parse sau, giao diện quay về "Đã gán".
+>
+> Sau vá, #6 lên 2–3, tổng khoảng 16–17 — **vẫn dưới 20, vẫn REDESIGN**, nhưng nay là
+> nợ thiết kế có kiểm soát chứ không phải lỗi đang chảy máu.
+>
+> **Việc tiếp theo:**
+> 1. **REDESIGN màn gán cột + lưới xem trước + hệ badge** — phạm vi đã chốt ở
+>    `DESIGN-IS-2026-08-08/03-verdict.md`, prompt bàn giao tự chứa ở `04-handoff-prompt.md`.
+>    Đường đi: `/grill-with-docs` → `/to-spec` → `/to-tickets`. **Ba lệnh này người
+>    dùng phải tự gõ** — chúng chặn model gọi. CHƯA mở vé.
+> 2. Nợ audit chưa vá (không chặn ai): 42 class CSS chết · 13 selector khai trùng xung
+>    khắc · tính năng làm nổi cột chết hẳn (`cell-grid.js:486` bắt class không template
+>    nào phát) · `:disabled` và `.empty-state` không có rule nào · vòng focus tương phản
+>    1,34 (ngưỡng 3:1) · không có skip-link · 83% JS tải về là thanh AI không dùng.
 >
 > **#115 chỉ tra được 17/25 chuỗi đơn vị.** Bảy chuỗi để nguyên có chủ ý (`UNL` 277 dòng,
 > `UNK`, `I/át`, `I/at`, `1000 viên`) — đúng nghĩa là "không rõ", gán bí danh cho chúng là
