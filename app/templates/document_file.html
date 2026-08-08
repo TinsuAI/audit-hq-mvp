@@ -34,9 +34,9 @@
 </div>
 {% endif %}
 
-{# Lưới xem trước file. KHÔNG còn dính mép trên: bảng gán cột bên dưới nay hiện sẵn
-   mẫu giá trị thật của từng cột theo từng dòng, nên không phải ngước lên lưới để
-   đối chiếu nữa — mà giữ dính thì lưới che mất hàng tên trường của chính bảng đó. #}
+{# Lưới xem trước file — chỗ DUY NHẤT hiện dòng dữ liệu thật, và hiện nguyên vẹn theo
+   hàng của trang tính (#121, ADR #29). KHÔNG dính mép trên: dính thì lưới che mất
+   chính những dòng trường của bảng gán cột bên dưới. #}
 <div class="fp-grid">
   <div class="cg-sheets" id="cg-sheets" hidden></div>
 
@@ -132,31 +132,42 @@
   {% endif %}
 
   {% if basis.columns %}
-  {# Bảng CHUYỂN VỊ: mỗi TRƯỜNG khai là một cột, đọc từ trái sang. Hàng "Cột trên
-     file" là bộ chọn (đã điền sẵn cột máy đặt), rồi tới các DÒNG DỮ LIỆU THẬT đọc
-     theo đúng cột đang chọn. Cán bộ thấy ngay bảng Tầng 1 sẽ dựng ra, thay vì phải
-     tự dịch từ chỉ số cột sang nội dung.
-     Dòng mẫu lấy nguyên vẹn theo HÀNG (`sample_rows`), không ghép từ mẫu riêng của
-     từng cột — ghép thì dựng ra một dòng không có trong file. #}
+  {# Mỗi TRƯỜNG khai một DÒNG (#121, mục 6 ADR #28). Bảng chuyển vị trước đây đặt mọi
+     bộ chọn trên một hàng và mọi ô khai vắng ở hàng sau, nên bộ chọn cách ô khai vắng
+     CỦA CHÍNH NÓ 8–12 chặng tab, và bảng nới ngang theo số trường (19 trường ở biểu tờ
+     khai) nên phải cuộn ngang mới thấy hết. Bố cục theo trường: số cột của bảng cố định
+     nên bề ngang không theo số trường, và ô khai vắng nằm ngay sau bộ chọn cùng dòng.
+     Dòng dữ liệu thật KHÔNG dựng ở đây nữa — lưới trên cùng trang hiện dòng nguyên vẹn
+     của trang tính, còn năm dòng mẫu lấy theo hàng thì với file có ô trống ở đầu bảng
+     hiện “trống” hàng loạt và không chứng minh được phép gán (ADR #29). #}
+  {% set with_absent = basis.can_confirm and basis.has_choices %}
   <div class="card fieldmap-card">
+    {# `_field_major` nói biểu mẫu LẦN NÀY có dựng ô khai vắng hay không — thuộc về cả
+       biểu mẫu, không về từng trường, nên phát đúng một lần. Phát nó ở biểu mẫu KHÔNG
+       dựng ô đó thì lượt gửi tính ra `absent_fields=[]` và xoá sạch lời khai đã lưu. #}
+    {% if with_absent %}<input type="hidden" name="_field_major" value="1">{% endif %}
     <table class="fieldmap-table">
       <thead>
         <tr>
-          <th class="fm-corner">Trường</th>
-          {% for c in basis.columns %}
-          <th class="{% if c.is_absent %}fm-col-absent{% endif %}">
-            <span class="fm-fname">{{ c.label }}</span>
-          </th>
-          {% endfor %}
+          <th scope="col" class="fm-h-field">Trường</th>
+          <th scope="col" class="fm-h-pick">Cột trên file</th>
+          {% if with_absent %}<th scope="col" class="fm-h-absent">Không có trong file</th>{% endif %}
+          {# Cột căn cứ không khai bề rộng: nó lấy phần còn lại của 100%. #}
+          <th scope="col">Căn cứ</th>
         </tr>
       </thead>
       <tbody>
-        <tr class="fm-pickrow">
-          <th scope="row">Cột trên file</th>
-          {% for c in basis.columns %}
-          <td class="{% if c.is_absent %}fm-col-absent{% endif %}">
-            {% if basis.can_confirm and basis.has_choices %}
-            <input type="hidden" name="_field_major" value="1">
+        {% for c in basis.columns %}
+        <tr{% if c.is_absent %} class="fm-row-absent"{% endif %}>
+          <th scope="row" class="fm-field">
+            <span class="fm-fname">{{ c.label }}</span>
+            {# Vòng lặp thuần: quyết định nhãn nào hiện nằm ở bộ dựng ngữ cảnh, không ở đây. #}
+            {% for lb in c.labels %}
+            <span class="badge {{ lb.tone }} doc-file-badge" data-axis="{{ lb.axis }}">{{ lb.text }}</span>
+            {% endfor %}
+          </th>
+          <td class="fm-pick">
+            {% if with_absent %}
             {% if c.is_group %}
             {# Nhóm cột con (ADR #25) đọc bằng TỔNG nhiều cột — `<select>` một giá trị
                không diễn đạt được, và hai ô trùng `name` thì ô sau đè ô trước. #}
@@ -193,68 +204,24 @@
             {% if basis.can_confirm %}<input type="hidden" name="col_{{ c.field }}" value="{{ c.col_value }}">{% endif %}
             {% endif %}
           </td>
-          {% endfor %}
-        </tr>
-
-        {% if basis.can_confirm and basis.has_choices %}
-        <tr class="fm-absentrow">
-          <th scope="row">Không có</th>
-          {% for c in basis.columns %}
-          <td class="{% if c.is_absent %}fm-col-absent{% endif %}">
+          {% if with_absent %}
+          <td class="fm-absent">
             {% if not c.row_key %}
             <input type="checkbox" name="absent_{{ c.field }}" value="1" {% if c.is_absent %}checked{% endif %}
                    aria-label="{{ c.label }} không có trong file">
             {% else %}<span class="text-muted" title="Khoá dòng thì không thể vắng">—</span>{% endif %}
           </td>
-          {% endfor %}
-        </tr>
-        {% endif %}
-
-        <tr class="fm-metarow">
-          <th scope="row">Căn cứ</th>
-          {% for c in basis.columns %}
-          <td class="{% if c.is_absent %}fm-col-absent{% endif %}">
-            {# Vòng lặp thuần: quyết định nhãn nào hiện nằm ở bộ dựng ngữ cảnh, không ở đây. #}
-            {% for lb in c.labels %}
-            <span class="badge {{ lb.tone }} doc-file-badge" data-axis="{{ lb.axis }}">{{ lb.text }}</span>
-            {% endfor %}
+          {% endif %}
+          <td>
             <div class="fm-evi">{{ c.evidence_sentence }}</div>
             {% if c.checks %}
             <div class="fm-checks">{{ c.checks | join(', ') }}{% if c.is_absent %} — sẽ trả “chưa đánh giá được”{% endif %}</div>
             {% endif %}
           </td>
-          {% endfor %}
-        </tr>
-
-        {% if basis.sample_rows %}
-        {% for srow in basis.sample_rows %}
-        <tr class="fm-datarow">
-          <th scope="row">dòng {{ srow.row }}</th>
-          {% for c in basis.columns %}
-          <td class="fm-data {% if c.is_absent %}fm-col-absent{% endif %}">
-            {% if c.is_absent %}<span class="text-muted">—</span>
-            {% elif c.columns %}
-              {%- set vals = [] -%}
-              {%- for idx in c.columns -%}
-                {%- if idx < srow.cells | length -%}{{ vals.append(srow.cells[idx]) or '' }}{%- endif -%}
-              {%- endfor -%}
-              {%- if vals | select | list -%}{{ vals | select | join(' + ') }}
-              {%- else -%}<span class="fm-blank">trống</span>{%- endif -%}
-            {% else %}<span class="text-muted">—</span>{% endif %}
-          </td>
-          {% endfor %}
         </tr>
         {% endfor %}
-        {% endif %}
       </tbody>
     </table>
-    {% if basis.sample_rows %}
-    <p class="form-hint fm-foot">
-      Dòng dữ liệu lấy nguyên vẹn theo hàng của trang tính (số dòng khớp lưới ở trên),
-      giữ cả ô trống — đổi cột ở hàng “Cột trên file” rồi lưu là lượt nạp sau đọc theo
-      đúng cột vừa chọn.
-    </p>
-    {% endif %}
   </div>
   {% endif %}
 

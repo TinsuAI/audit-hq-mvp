@@ -1293,90 +1293,53 @@ p { margin: 0 0 var(--space-3); }
 .evidence-col-name { color: var(--c-text-muted, inherit); }
 .doc-file-badge { font-size: 0.68rem; }
 
-/* Màn gán cột theo TRƯỜNG (#112) — bảng CHUYỂN VỊ: trường là CỘT, đọc từ trái sang.
-   Dưới mỗi trường là bộ chọn cột rồi tới dòng dữ liệu thật đọc theo cột đang chọn. */
+/* Màn gán cột theo TRƯỜNG (#121) — mỗi trường khai một DÒNG, đọc từ trên xuống theo
+   đúng thứ tự việc: tên trường → bộ chọn cột → ô khai vắng → câu căn cứ. */
 
-/* Tràn hết bề ngang khung nhìn: `.app-main` giới hạn 1280px, mà biểu tờ khai khai 19
-   trường nên mỗi cột còn vài chục điểm ảnh. `scrollbar-gutter: stable` ở `html` giữ
-   cho `100vw` bằng đúng bề rộng dùng được — không có nó thì `100vw` tính cả thanh
-   cuộn dọc và cả TRANG bị đẩy lệch ngang. */
-/* Lưới xem trước ở trên là `position: sticky`, nên nội dung cuộn CHUI XUỐNG DƯỚI
-   nó. Không chừa lề neo cuộn thì hàng tên trường — hàng quan trọng nhất — nằm
-   khuất ngay dưới lưới. */
-.fieldmap-card {
-  scroll-margin-top: 60vh;
-  width: 100vw;
-  margin-inline: calc(50% - 50vw);
-  border-radius: 0;
-  padding: 0;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  /* Thanh cuộn LUÔN hiện, không phải kiểu overlay chỉ ló ra lúc kéo: bảng rộng hơn
-     khung mà không có dấu hiệu nào thì cán bộ tưởng chỉ có mấy trường đầu. */
-  scrollbar-width: auto;
-  scrollbar-color: var(--c-text-subtle, #94a3b8) transparent;
-}
-.fieldmap-card::-webkit-scrollbar { height: 12px; }
-.fieldmap-card::-webkit-scrollbar-track { background: var(--c-surface-alt, #f1f5f9); }
-.fieldmap-card::-webkit-scrollbar-thumb {
-  background: var(--c-text-subtle, #94a3b8); border-radius: 6px;
-  border: 3px solid var(--c-surface-alt, #f1f5f9);
-}
+/* Bề ngang KHÔNG theo số trường: bảng có bốn cột dù biểu khai 8 trường hay 19, nên
+   thẻ nằm gọn trong `.app-main` (giới hạn 1280px) và không cần cuộn ngang. Bản cũ
+   tràn `100vw` + tự cuộn ngang vì bảng chuyển vị nới thêm một cột cho mỗi trường. */
+.fieldmap-card { padding: 0; overflow: hidden; }
 
-.fieldmap-table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: var(--fs-sm); }
+/* `table-layout: fixed` là cơ chế thi hành điều trên: bề rộng cột lấy theo khai báo
+   dưới đây, không theo nội dung dài nhất. Không có nó thì một tiêu đề cột dài trong
+   nhãn lựa chọn hoặc một câu căn cứ dài lại nới bảng vượt khung. */
+.fieldmap-table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+  font-size: var(--fs-sm);
+}
 .fieldmap-table th, .fieldmap-table td {
   border-bottom: 1px solid var(--c-border);
-  border-right: 1px solid var(--c-border);
-  padding: 6px var(--space-2);
+  padding: var(--space-2) var(--space-3);
   vertical-align: top;
   text-align: left;
-}
-/* Cột nhãn dính trái để cuộn ngang vẫn biết đang đọc hàng nào. */
-.fieldmap-table th[scope="row"], .fm-corner {
-  position: sticky; left: 0; z-index: 1;
-  background: var(--c-surface-alt, #f8fafc);
-  font-weight: 600; font-size: var(--fs-xs);
-  color: var(--c-text-muted); white-space: nowrap;
-  text-transform: uppercase; letter-spacing: 0.03em;
-  /* Bề rộng CHỐT: để tự co thì nhãn dài nhất bị cắt mất chữ, mà cột này dính trái nên
-     lúc nào cũng nhìn thấy. Đệm trái theo lề trang vì bảng tràn hết khung nhìn. */
-  width: 7.5rem; min-width: 7.5rem;
-  padding-left: var(--space-6);
-  border-right: 2px solid var(--c-border);
-}
-.fieldmap-table thead th { background: var(--c-surface-alt, #f8fafc); border-bottom-width: 2px; }
-.fm-corner { z-index: 2; }
-.fm-fname { display: block; font-size: var(--fs-sm); color: var(--c-text); text-transform: none; letter-spacing: 0; }
-
-/* Ô hẹp lại: bộ chọn trước đây giữ 10rem tối thiểu nên cột nào cũng rộng bằng nhau và
-   thừa khoảng trắng. Cho select co theo ô, chữ nhỏ hơn; danh sách bung ra lúc mở
-   vẫn đọc đủ vì trình duyệt tự nới. */
-.fieldmap-table thead th { min-width: 7.5rem; }
-.fm-pickrow td { min-width: 7.5rem; }
-.fm-pickrow .form-input {
-  width: 100%; max-width: 100%; min-width: 0;
-  padding: 3px 22px 3px 6px; font-size: var(--fs-xs); height: auto;
-}
-.fm-absentrow td { text-align: center; }
-.fm-evi, .fm-checks { font-size: var(--fs-xs); color: var(--c-text-muted); margin-top: 2px; }
-/* Chặn bề rộng ô căn cứ: ô này giữ nguyên một CÂU nêu cơ chế và giới hạn, không còn là
-   thuật ngữ hai chữ. Bảng đặt `width: max-content` nên nếu không chặn thì mỗi cột nới ra
-   bằng câu dài nhất của nó và cả bảng phải cuộn ngang mới đọc hết một hàng. Chặn ở 18rem
-   để câu xuống dòng trong cột. Đặt trên cả ô lẫn khối bên trong: `max-width` của ô bảng
-   không được mọi trình duyệt áp dụng, còn `.fm-evi` là `div` nên chặn ở đó luôn có tác
-   dụng và kéo theo bề rộng cột. */
-.fm-metarow td { max-width: 18rem; }
-.fm-metarow .fm-evi, .fm-metarow .fm-checks {
-  max-width: 18rem;
-  white-space: normal;
   overflow-wrap: break-word;
 }
-.fm-datarow td { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: var(--fs-xs); white-space: nowrap; }
-.fm-datarow:nth-child(even) td { background: var(--c-surface-alt, #f8fafc); }
-.fm-blank { color: var(--c-text-muted); font-style: italic; font-family: inherit; }
-.fm-col-absent { opacity: 0.55; }
-.fieldmap-table th:last-child, .fieldmap-table td:last-child { padding-right: var(--space-6); }
-.fm-foot { padding: var(--space-2) var(--space-6); margin: 0; }
+.fieldmap-table thead th {
+  background: var(--c-surface-alt, #f8fafc);
+  border-bottom-width: 2px;
+  font-size: var(--fs-xs); color: var(--c-text-muted);
+  text-transform: uppercase; letter-spacing: 0.03em;
+}
+.fieldmap-table tbody tr:last-child th, .fieldmap-table tbody tr:last-child td { border-bottom: 0; }
+.fm-h-field { width: 18%; }
+.fm-h-pick { width: 28%; }
+.fm-h-absent { width: 12%; }
+.fm-fname { display: block; font-weight: 600; color: var(--c-text); }
+.fm-field .badge { margin-top: var(--space-1); }
+.fm-pick .form-input { width: 100%; max-width: 100%; min-width: 0; }
+.fm-absent { text-align: center; }
+.fm-evi, .fm-checks { font-size: var(--fs-xs); color: var(--c-text-muted); margin-top: 2px; }
+
+/* Dòng cán bộ đã khai vắng. KHÔNG dùng `opacity`: bản cũ để `.55`, đo được tương phản
+   2,55 — vừa không đọc được, vừa nói sai việc. Đây là LỜI KHAI của cán bộ, không phải
+   chỗ hệ thống bớt tin, nên chữ phải đọc rõ như mọi dòng khác.
+   Nền `--c-surface-alt` chỉ chênh 1,03 với `--c-surface` nên nó là dấu hiệu PHỤ, không
+   đủ để phân biệt một mình: thứ nói ra trạng thái là nhãn “Không có trong file”, ô đã
+   tích, và câu căn cứ. */
+.fm-row-absent th, .fm-row-absent td { background: var(--c-surface-alt, #f8fafc); }
 
 .badge-success { background: var(--c-success-bg); color: var(--c-success-fg); padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; }
 .badge-warning { background: var(--c-warning-bg); color: var(--c-warning-fg); padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; }

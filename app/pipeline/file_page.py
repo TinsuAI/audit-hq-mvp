@@ -93,8 +93,16 @@ NO_EVIDENCE_RECORDED = "Không ghi nhận bằng chứng nào cho cột đang đ
 # Hai trạng thái KHÔNG có nguồn bằng chứng để nói, vì không đọc cột nào. Nhãn trạng thái
 # ("Chưa gán") chỉ nêu trạng thái, không nêu thao tác phải làm — hai câu dưới nêu thao tác.
 UNASSIGNED_MEANS = (
-    "Chưa gán cột nào nên hệ thống không đọc gì cho trường này — chọn cột ở hàng "
-    "“Cột trên file”, hoặc tích “Không có trong file” nếu biểu này không có trường đó."
+    "Chưa gán cột nào nên hệ thống không đọc gì cho trường này — chọn cột ở ô "
+    "“Cột trên file” của dòng này, hoặc tích “Không có trong file” ngay cạnh nếu biểu "
+    "này không có trường đó."
+)
+# Cùng trạng thái, nhưng màn KHÔNG dựng được hai ô kia: file nạp trước #112 không có ảnh
+# chụp cột, nên dòng chỉ hiện “không có vị trí lưu”. Câu trên chỉ tới hai ô không tồn tại
+# ở dòng đó — đúng lỗi mà vé này sinh ra để sửa, chỉ khác nhánh.
+UNASSIGNED_NO_PICKER = (
+    "Chưa gán cột nào nên hệ thống không đọc gì cho trường này — lượt nạp của file này "
+    "không lưu ảnh chụp cột nên màn chưa dựng được bộ chọn; nạp lại file rồi gán cột."
 )
 ABSENT_MEANS = (
     "Cán bộ đã xác nhận file không có trường này; kiểm tra nào cần tới nó sẽ trả "
@@ -130,6 +138,10 @@ class BasisColumn:
     state: str = ASSIGNED
     required: bool = False
     row_key: bool = False
+    # Màn CÓ dựng bộ chọn cột + ô khai vắng cho dòng này không. Quyết định câu chỉ đường
+    # của trạng thái *chưa gán*: câu gọi tên hai ô đó, nên nhánh không dựng được chúng
+    # phải nói việc khác. Mặc định `True` là ca thường — file có ảnh chụp cột.
+    has_picker: bool = True
     # Tiêu đề + mẫu giá trị của CỘT ĐANG GÁN, lấy từ ảnh chụp cột lúc parse. Màn
     # hiện giá trị thật thay cho chỉ số cột trần: "cột 7" không nói được máy đang
     # đọc đúng ô hay lệch một ô, còn `1.5 / 1.51 / 1.52` thì nói được.
@@ -169,7 +181,7 @@ class BasisColumn:
         là "không có gì phụ thuộc cột này".
         """
         if self.state == UNASSIGNED:
-            return UNASSIGNED_MEANS
+            return UNASSIGNED_MEANS if self.has_picker else UNASSIGNED_NO_PICKER
         if self.state == ABSENT:
             return ABSENT_MEANS
         if not self.evidence:
@@ -200,7 +212,12 @@ class BasisColumn:
 
 @dataclass(frozen=True)
 class ReadBasis:
-    """Toàn bộ căn cứ đọc của một file — nguồn duy nhất của khối trên trang file."""
+    """Toàn bộ căn cứ đọc của một file — nguồn duy nhất của khối trên trang file.
+
+    `parse_detail["sample_rows"]` KHÔNG đọc vào đây nữa (#121): dòng dữ liệu thật hiện ở
+    lưới, nguyên vẹn theo hàng trang tính. Adapter vẫn ghi khoá đó — thôi ghi là đổi thứ
+    một lượt nạp ghi xuống DB, không thuộc vé bố cục này.
+    """
 
     parsed: bool
     match_source: str | None
@@ -215,9 +232,6 @@ class ReadBasis:
     # Ảnh chụp cột của file lúc parse — bộ chọn cột dựng từ đây. Rỗng với file nạp
     # trước #112 (tiến lên, không backfill): màn rơi về ô nhập chỉ số như cũ.
     choices: tuple[dict, ...] = ()
-    # Vài DÒNG dữ liệu thật, nguyên vẹn theo hàng — bảng gán cột dựng theo dòng nên
-    # phải là dòng có thật, không phải mẫu ghép từ nhiều dòng khác nhau.
-    sample_rows: tuple[dict, ...] = ()
 
     @property
     def needs_count(self) -> int:
@@ -312,11 +326,17 @@ def file_read_basis(
         absent = set(absent_fields or ())
         choices = detail.get("column_choices") or ()
         by_index = {c.get("index"): c for c in choices if isinstance(c, dict)}
+        # Điều kiện màn dựng bộ chọn + ô khai vắng, đúng như template hỏi
+        # (`basis.can_confirm and basis.has_choices`): map ghi theo `(DN, slot, vân tay)`
+        # nên không có vân tay thì không có khoá ghi, và không có ảnh chụp cột thì
+        # không dựng nổi danh sách lựa chọn.
+        has_picker = bool(detail.get("form_signature")) and bool(choices)
         columns = tuple(
             _basis_column(
                 row.slot, field, meta.get(field) or {}, groups.get(field, []),
                 absent=field in absent,
                 choice=by_index.get((groups.get(field) or [None])[0]),
+                has_picker=has_picker,
             )
             for field in order
         )
@@ -334,13 +354,12 @@ def file_read_basis(
         columns=columns,
         needs_confirmation=tuple(c.label for c in columns if c.needs_review),
         choices=tuple(detail.get("column_choices") or ()),
-        sample_rows=tuple(detail.get("sample_rows") or ()),
     )
 
 
 def _basis_column(
     slot: str, field: str, meta: dict, cols: list[int], absent: bool = False,
-    choice: dict | None = None,
+    choice: dict | None = None, has_picker: bool = True,
 ) -> BasisColumn:
     evidence = meta.get("evidence")
     declared = {f.name: f for f in declared_fields(slot)}.get(field)
@@ -382,6 +401,7 @@ def _basis_column(
         state=state,
         required=bool(declared and declared.required),
         row_key=bool(declared and declared.row_key),
+        has_picker=has_picker,
         header=str((choice or {}).get("header") or ""),
         samples=tuple((choice or {}).get("samples") or ()),
     )
