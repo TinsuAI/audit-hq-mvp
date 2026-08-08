@@ -102,12 +102,21 @@ def seed() -> int:
         return row.id
 
 
-def shot(pg, name: str, caption: str, *, full: bool = True) -> None:
+def shot(pg, name: str, caption: str, *, full: bool = False) -> None:
     # Kéo bảng gán cột vào khung trước khi chụp — ảnh chụp cả trang mà vị trí cuộn
     # đang ở giữa thì ra một mảng trắng lớn phía trên.
+    # Chụp theo KHUNG NHÌN, không phải cả trang: lưới xem trước là `position: sticky`,
+    # mà ảnh cả trang vẽ phần dính ở vị trí đang dính rồi để lại một mảng trắng chỗ
+    # nó vốn nằm — ra ảnh không giống thứ cán bộ thấy. Kéo bảng lên đầu khung rồi chụp.
     try:
-        pg.locator('.fieldmap-table').scroll_into_view_if_needed(timeout=1500)
-        pg.wait_for_timeout(200)
+        pg.evaluate("""() => {
+            const grid = document.querySelector('.fp-grid');
+            const card = document.querySelector('.fieldmap-card');
+            const gh = grid ? grid.getBoundingClientRect().height : 0;
+            const top = card.getBoundingClientRect().top + window.scrollY;
+            window.scrollTo({top: top - gh - 24});
+        }""")
+        pg.wait_for_timeout(350)
     except Exception:  # noqa: BLE001
         pass
     path = OUT / f"{name}.png"
@@ -145,7 +154,7 @@ def main() -> int:
         cookie = make_session_cookie(SessionUser(name="can_bo", role="admin"))
         with sync_playwright() as p:
             br = p.chromium.launch()
-            ctx = br.new_context(viewport={"width": 2200, "height": 1400},
+            ctx = br.new_context(viewport={"width": 1440, "height": 1400},
                                  device_scale_factor=2)
             ctx.add_cookies([{"name": SESSION_COOKIE_NAME, "value": cookie,
                               "domain": "127.0.0.1", "path": "/"}])

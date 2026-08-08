@@ -33,8 +33,9 @@
 </div>
 {% endif %}
 
-{# Lưới dính mép trên: biểu mẫu xác nhận nằm dưới, cán bộ phải thấy được ô thật của
-   file trong lúc sửa chỉ số cột. Không dính thì lại thành hai màn như trước. #}
+{# Lưới xem trước file. KHÔNG còn dính mép trên: bảng gán cột bên dưới nay hiện sẵn
+   mẫu giá trị thật của từng cột theo từng dòng, nên không phải ngước lên lưới để
+   đối chiếu nữa — mà giữ dính thì lưới che mất hàng tên trường của chính bảng đó. #}
 <div class="fp-grid">
   <div class="cg-sheets" id="cg-sheets" hidden></div>
 
@@ -169,7 +170,7 @@
     <table class="fieldmap-table">
       <thead>
         <tr>
-          <th class="fm-corner">Trường của biểu →</th>
+          <th class="fm-corner">Trường</th>
           {% for c in basis.columns %}
           <th class="{% if c.is_absent %}fm-col-absent{% endif %}">
             <span class="fm-fname">{{ c.label }}</span>
@@ -222,7 +223,7 @@
 
         {% if basis.can_confirm and basis.has_choices %}
         <tr class="fm-absentrow">
-          <th scope="row">Không có trong file</th>
+          <th scope="row">Không có</th>
           {% for c in basis.columns %}
           <td class="{% if c.is_absent %}fm-col-absent{% endif %}">
             {% if not c.row_key %}
@@ -235,7 +236,7 @@
         {% endif %}
 
         <tr class="fm-metarow">
-          <th scope="row">Căn cứ &amp; kiểm tra</th>
+          <th scope="row">Căn cứ</th>
           {% for c in basis.columns %}
           <td class="{% if c.is_absent %}fm-col-absent{% endif %}">
             <span class="badge {{ c.state_badge }} doc-file-badge">{{ c.state_label }}</span>

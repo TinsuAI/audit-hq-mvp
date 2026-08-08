@@ -96,7 +96,8 @@
 /* — Reset — */
 *, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html {
+  scrollbar-gutter: stable; -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
@@ -1254,12 +1255,39 @@ p { margin: 0 0 var(--space-3); }
 
 /* Màn gán cột theo TRƯỜNG (#112) — bảng CHUYỂN VỊ: trường là CỘT, đọc từ trái sang.
    Dưới mỗi trường là bộ chọn cột rồi tới dòng dữ liệu thật đọc theo cột đang chọn. */
-.fieldmap-card { padding: 0; overflow-x: auto; }
+
+/* Tràn hết bề ngang khung nhìn: `.app-main` giới hạn 1280px, mà biểu tờ khai khai 19
+   trường nên mỗi cột còn vài chục điểm ảnh. `scrollbar-gutter: stable` ở `html` giữ
+   cho `100vw` bằng đúng bề rộng dùng được — không có nó thì `100vw` tính cả thanh
+   cuộn dọc và cả TRANG bị đẩy lệch ngang. */
+/* Lưới xem trước ở trên là `position: sticky`, nên nội dung cuộn CHUI XUỐNG DƯỚI
+   nó. Không chừa lề neo cuộn thì hàng tên trường — hàng quan trọng nhất — nằm
+   khuất ngay dưới lưới. */
+.fieldmap-card {
+  scroll-margin-top: 60vh;
+  width: 100vw;
+  margin-inline: calc(50% - 50vw);
+  border-radius: 0;
+  padding: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  /* Thanh cuộn LUÔN hiện, không phải kiểu overlay chỉ ló ra lúc kéo: bảng rộng hơn
+     khung mà không có dấu hiệu nào thì cán bộ tưởng chỉ có mấy trường đầu. */
+  scrollbar-width: auto;
+  scrollbar-color: var(--c-text-subtle, #94a3b8) transparent;
+}
+.fieldmap-card::-webkit-scrollbar { height: 12px; }
+.fieldmap-card::-webkit-scrollbar-track { background: var(--c-surface-alt, #f1f5f9); }
+.fieldmap-card::-webkit-scrollbar-thumb {
+  background: var(--c-text-subtle, #94a3b8); border-radius: 6px;
+  border: 3px solid var(--c-surface-alt, #f1f5f9);
+}
+
 .fieldmap-table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: var(--fs-sm); }
 .fieldmap-table th, .fieldmap-table td {
   border-bottom: 1px solid var(--c-border);
   border-right: 1px solid var(--c-border);
-  padding: var(--space-2) var(--space-3);
+  padding: 6px var(--space-2);
   vertical-align: top;
   text-align: left;
 }
@@ -1270,19 +1298,33 @@ p { margin: 0 0 var(--space-3); }
   font-weight: 600; font-size: var(--fs-xs);
   color: var(--c-text-muted); white-space: nowrap;
   text-transform: uppercase; letter-spacing: 0.03em;
+  /* Bề rộng CHỐT: để tự co thì nhãn dài nhất bị cắt mất chữ, mà cột này dính trái nên
+     lúc nào cũng nhìn thấy. Đệm trái theo lề trang vì bảng tràn hết khung nhìn. */
+  width: 7.5rem; min-width: 7.5rem;
+  padding-left: var(--space-6);
+  border-right: 2px solid var(--c-border);
 }
 .fieldmap-table thead th { background: var(--c-surface-alt, #f8fafc); border-bottom-width: 2px; }
 .fm-corner { z-index: 2; }
 .fm-fname { display: block; font-size: var(--fs-sm); color: var(--c-text); text-transform: none; letter-spacing: 0; }
-.fieldmap-table thead th { min-width: 11rem; }
-.fm-pickrow .form-input { width: 100%; min-width: 10rem; }
+
+/* Ô hẹp lại: bộ chọn trước đây giữ 10rem tối thiểu nên cột nào cũng rộng bằng nhau và
+   thừa khoảng trắng. Cho select co theo ô, chữ nhỏ hơn; danh sách bung ra lúc mở
+   vẫn đọc đủ vì trình duyệt tự nới. */
+.fieldmap-table thead th { min-width: 7.5rem; }
+.fm-pickrow td { min-width: 7.5rem; }
+.fm-pickrow .form-input {
+  width: 100%; max-width: 100%; min-width: 0;
+  padding: 3px 22px 3px 6px; font-size: var(--fs-xs); height: auto;
+}
 .fm-absentrow td { text-align: center; }
-.fm-evi, .fm-checks { font-size: var(--fs-xs); color: var(--c-text-muted); margin-top: 3px; }
+.fm-evi, .fm-checks { font-size: var(--fs-xs); color: var(--c-text-muted); margin-top: 2px; }
 .fm-datarow td { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: var(--fs-xs); white-space: nowrap; }
 .fm-datarow:nth-child(even) td { background: var(--c-surface-alt, #f8fafc); }
 .fm-blank { color: var(--c-text-muted); font-style: italic; font-family: inherit; }
 .fm-col-absent { opacity: 0.55; }
-.fm-foot { padding: var(--space-2) var(--space-3); margin: 0; }
+.fieldmap-table th:last-child, .fieldmap-table td:last-child { padding-right: var(--space-6); }
+.fm-foot { padding: var(--space-2) var(--space-6); margin: 0; }
 }
 
 .badge-success { background: var(--c-success-bg); color: var(--c-success-fg); padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; }
@@ -2479,8 +2521,13 @@ p { margin: 0 0 var(--space-3); }
 /* Lưới dính dưới thanh tiêu đề: biểu mẫu xác nhận cột nằm phía dưới, mà việc của
    nó là đối chiếu với ô thật. Lưới trôi khỏi màn hình là quay về đúng cái sai của
    hai trang tách rời — gõ chỉ số cột mà không nhìn thấy cột. */
+/* Lưới KHÔNG còn dính mép trên (#112). Lý do dính trước đây: cán bộ phải thấy ô thật
+   của file trong lúc sửa CHỈ SỐ CỘT. Nay bảng gán cột mang sẵn mẫu giá trị thật của
+   từng cột theo từng dòng, nên nhu cầu đó đã được phục vụ ngay tại chỗ sửa.
+   Giữ dính thì lưới ăn ~46vh + thanh công cụ ≈ 3/4 khung nhìn, và bảng gán cột KHÔNG
+   BAO GIỜ thoát khỏi vùng đó — hàng tên trường, hàng quan trọng nhất, khuất vĩnh viễn
+   kể cả khi đã cuộn hết trang. Đo trên khung 1440×1400. */
 .fp-grid {
-  position: sticky; top: var(--header-height); z-index: 3;
   background: var(--c-bg);
   padding: var(--space-3) 0;
   margin-bottom: var(--space-4);
