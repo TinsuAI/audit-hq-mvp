@@ -1,33 +1,19 @@
 # STATUS — Audit-HQ MVP
 
-> **(2026-08-08 — LOẠT #110 KHÉP LẠI VÀ ĐÃ LÊN PROD. Năm vé gộp vào `main`, đã push
-> (`036a549`), CI xanh, deploy chạy, issue #109–#116 đóng hết. DB dev đã migrate lên
-> head. Cộng một lượt AUDIT THIẾT KẾ và ba bản vá TRUNG THỰC sinh ra từ đó.)**
+> **(2026-08-08 — LOẠT #110 KHÉP LẠI VÀ ĐÃ LÊN PROD. `main` = `388cb06`, CI xanh, deploy
+> xong, issue #109–#116 đóng hết, DB dev + prod đều ở head `b5c6d7e8f9a0`. Bộ test **1.747**,
+> `PYTEST_EXIT=0`, xanh cả khi xáo (seed `2302101317`), `ruff` sạch, cây làm việc sạch.)**
 >
-> Chi tiết: `.ai/sessions/2026-08-08-implement-111-115-bon-ve.md`.
+> ## 👉 PHIÊN SAU LÀM GÌ: đọc `.ai/sessions/2026-08-08-handoff-redesign.md` TRƯỚC
 >
-> | Vé | Trạng thái | Commit | Seed xáo |
-> |---|---|---|---|
-> | #111 S1 tập trường khai | đã gộp `main` | `57b8b6f` | 4271458340 |
-> | #115 ĐVT không tra được | đã gộp `main` | `50a374c` | 2980988246 |
-> | #112 S2 màn gán cột | đã gộp `main` | `8b65837` | 3430776063 |
-> | #114 cột (9) theo kỳ | đã gộp `main` | `f12bd25` | 1340095647 |
-> | #113 S3 cổng trường vắng | đã gộp `main` | `46f9325` | 4164449907 | — |
+> Việc: **REDESIGN màn gán cột + lưới xem trước + hệ nhãn/badge**. Lệnh đầu tiên:
+> `/grill-with-docs` với `DESIGN-IS-2026-08-08/03-verdict.md` làm đầu vào, rồi `/to-spec`
+> → `/to-tickets`. **Ba lệnh đó người dùng phải tự gõ** — model không gọi được.
+> CHƯA mở vé nào cho việc này.
 >
-> Bộ test **1.724** trên `main` đã gộp, xanh cả thứ tự thường lẫn `--shuffle`
-> (`PYTEST_EXIT=0`, seed hợp nhất **331433647**), `ruff` sạch.
-> **DB dev `audit_hq.sqlite` không bị đụng** — đo trên bản sao lấy bằng `.backup`.
->
-> **#111 đóng luôn #109**, và trong lúc cài lộ ra chỗ giấu THỨ HAI: `_EVIDENCE_ORDER`
-> (`data_files.py`) là danh sách giữ tay lọc khối căn cứ đọc xuống 2 cột cho m16, nên phủ
-> đủ bằng chứng thôi thì `product_code` vẫn không hiện. Nay suy từ tập trường khai.
->
-> **#113 — hai chỗ vé nói sai, đã đo lại:** vé liệt **10** check đọc `declaration_lines`;
-> đi đồ thị gọi ra **tám** (C1.7 và C5.1 chỉ đọc `NvlBalance`). Và chỉ khai trường mà
-> THIẾU NÓ THÌ KẾT LUẬN KHÔNG ĐỨNG VỮNG — `value_total` cố ý để ngoài: C1.1 đọc nó qua
-> `valuation.py` chỉ để gắn số tiền, thiếu nó vẫn phát hiện đúng chênh lệch.
-> Cách biểu diễn cho `denominators.py` / `company_type.py` / `scope.py` (không có mã
-> check): quy phần đọc của chúng về CHÍNH các mã check gọi chúng — không bịa mã giả.
+> **Cảnh báo vận hành: push vào `main` KÉO THEO DEPLOY LÊN PROD**, không chỉ chạy test
+> (workflow `Test & Deploy to Tinsu`, runner self-hosted, `entrypoint.sh` tự
+> `alembic upgrade head`, có sao lưu DB prod trước).
 >
 > **AUDIT THIẾT KẾ (`DESIGN-IS-2026-08-08/`) — luồng cán bộ chấm 13/30, phán quyết
 > REDESIGN.** Chấm theo 10 nguyên tắc Dieter Rams, mỗi điểm có `file:line`, bốn
