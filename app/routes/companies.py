@@ -1716,21 +1716,26 @@ async def documents_confirm_review(
     # Trường ngoài khai còn sót trong map cũ vẫn giữ, không lặng lẽ đánh rơi.
     declared_names = [f.name for f in declared_fields(slot)]
     fields = declared_names + [f for f in base_groups if f not in declared_names]
+    # Ô trống LUÔN nghĩa là “giữ nguyên”. Muốn thôi đọc một cột thì tick “Không có
+    # trong file” — lời khai đó bền vững và đi tới tận dòng Tầng 1
+    # (`apply_absent_fields`). Trước đây ô trống gỡ cột khỏi map, rồi lượt parse sau
+    # `resolve_columns` trộn lại cột mặc định và màn hiện “Đã gán”: cán bộ bỏ gán mà
+    # hệ thống lặng lẽ gán lại, không báo gì.
+    #
+    # `_field_major` chỉ còn một việc: nói biểu mẫu lần này CÓ dựng ô “không có trong
+    # file” hay không. Không có thì truyền `None` để giữ nguyên lời khai đã lưu, chứ
+    # không phải ghi đè thành rỗng.
+    field_major = bool(form.get("_field_major"))
     absent_fields = sorted(
         f for f in fields if (form.get(f"absent_{f}") or "").strip()
-    )
-    # Biểu mẫu theo TRƯỜNG luôn gửi một giá trị cho mọi trường (bộ chọn có sẵn mục
-    # “— chưa gán —”), nên ô trống ở đó là LỰA CHỌN bỏ gán. Biểu mẫu cũ chỉ gửi ô của
-    # trường cần soát, nên ô trống ở đó vẫn là “giữ đề xuất” — hai nghĩa khác nhau,
-    # và đoán nhầm thì hoặc đánh rơi cột hoặc không bao giờ bỏ gán được.
-    field_major = bool(form.get("_field_major"))
+    ) if field_major else None
     groups: dict[str, list[int]] = {}
     try:
         for field in fields:
-            if field in absent_fields:
+            if field in (absent_fields or ()):
                 continue
             label = label_of(slot, field)
-            fallback: list[int] = [] if field_major else base_groups.get(field, [])
+            fallback: list[int] = base_groups.get(field, [])
             cols = _parse_column_answer(
                 form.get(f"col_{field}"), fallback, label, allow_groups,
             )
@@ -1739,7 +1744,7 @@ async def documents_confirm_review(
             if cols:
                 groups[field] = cols
         _reject_shared_columns(groups)
-        _reject_missing_row_keys(slot, groups, absent_fields)
+        _reject_missing_row_keys(slot, groups, absent_fields or [])
     except ValueError as e:
         return _redirect("error=" + quote_plus(str(e)))
 
