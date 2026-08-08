@@ -31,10 +31,11 @@
 {% if parse_layout %}
 <div class="parse-note">
   <div class="parse-note-head">
-    {% if parse_detail.review %}
-      <span class="badge {{ 'info' if parse_detail.review == 'verified' else 'warning' }}"
-            title="{% if parse_detail.review == 'verified' %}Mọi cột đọc đều tin được (khớp tiêu đề hoặc đẳng thức đủ){% else %}Có cột dựa trên vị trí/đẳng thức chưa đủ — cần cán bộ xác nhận cột{% endif %}">
-        {{ 'Đã kiểm' if parse_detail.review == 'verified' else 'Cần xác nhận' }}</span>
+    {# Hiện theo ngoại lệ (ADR #29): "đã kiểm" không phải một việc, nên nó không đeo nhãn. #}
+    {% if parse_detail.review == 'needs_review' %}
+      <span class="badge warning" data-axis="work"
+            title="Có cột dựa trên vị trí/đẳng thức chưa đủ — cần cán bộ xác nhận cột">
+        Cần xác nhận</span>
     {% endif %}
     {% if parse_layout == 'extended' %}<span class="badge info">🧭 Bố cục mở rộng</span>
     {% elif parse_layout == 'labeled' %}<span class="badge info">🧭 Chọn cột theo nhãn</span>{% endif %}

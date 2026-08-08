@@ -50,12 +50,6 @@ SOURCE_LABEL_VI = {
     POSITION_ONLY: "Chỉ theo vị trí",
 }
 
-REVIEW_LABEL_VI = {
-    VERIFIED: "Đã kiểm",
-    NEEDS_REVIEW: "Cần xác nhận",
-}
-
-
 def strongest(*sources: str) -> str:
     """Nguồn mạnh nhất trong các nguồn đưa vào (mặc định position-only)."""
     best = POSITION_ONLY
@@ -310,7 +304,6 @@ __all__ = [
     "NEEDS_REVIEW",
     "OFFICER_CONFIRMED",
     "POSITION_ONLY",
-    "REVIEW_LABEL_VI",
     "SOURCE_LABEL_VI",
     "VERIFIED",
     "evidence_m15_extended",

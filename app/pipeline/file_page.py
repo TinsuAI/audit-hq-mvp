@@ -24,7 +24,6 @@ from app.adapters.declared_fields import declared as declared_fields
 from app.adapters.declared_fields import label_of
 from app.adapters.evidence import (
     NEEDS_REVIEW,
-    REVIEW_LABEL_VI,
     SOURCE_LABEL_VI,
     VERIFIED,
 )
@@ -85,6 +84,29 @@ STATE_LABEL_VI = {
     ABSENT: "Không có trong file",
 }
 
+# Ba trục nhãn của luồng cán bộ (ADR #29). Mỗi nhãn thuộc ĐÚNG một trục, và không trục nào nói
+# lại điều trục khác đã nói.
+AXIS_ASSIGNMENT = "assignment"  # trường này đọc ở đâu
+AXIS_EVIDENCE = "evidence"      # vì sao tin là cột đó
+AXIS_WORK = "work"              # cán bộ còn phải làm gì
+AXES = (AXIS_ASSIGNMENT, AXIS_EVIDENCE, AXIS_WORK)
+
+# Sắc thái của nhãn — cùng bộ với class badge của stylesheet.
+TONE_BLOCKING = "danger"
+TONE_ATTENTION = "warning"
+TONE_QUIET = "muted"
+
+NO_CHECK_READS_IT = "Không kiểm tra nào đọc trường này"
+
+
+@dataclass(frozen=True)
+class FieldLabel:
+    """Một nhãn HIỆN được trên màn, kèm trục nó thuộc về."""
+
+    axis: str
+    text: str
+    tone: str
+
 
 @dataclass(frozen=True)
 class BasisColumn:
@@ -114,21 +136,39 @@ class BasisColumn:
     samples: tuple[str, ...] = ()
 
     @property
-    def review_label(self) -> str:
-        return REVIEW_LABEL_VI.get(self.review, self.review)
+    def labels(self) -> tuple[FieldLabel, ...]:
+        """Nhãn HIỆN theo ngoại lệ: trường đã gán và không còn việc gì thì trả rỗng.
+
+        Trục *căn cứ* không góp nhãn ở đây — nó nói bằng câu đủ nghĩa (`evidence_sentence`)
+        tại chỗ dùng, nên một cột bằng chứng yếu chỉ được nói MỘT lần, ở trục *việc còn lại*.
+        """
+        if self.state == ABSENT:
+            return (FieldLabel(AXIS_ASSIGNMENT, STATE_LABEL_VI[ABSENT], TONE_QUIET),)
+        if self.state == UNASSIGNED:
+            tone = (
+                TONE_BLOCKING if self.row_key
+                else TONE_ATTENTION if self.required
+                else TONE_QUIET
+            )
+            return (FieldLabel(AXIS_ASSIGNMENT, STATE_LABEL_VI[UNASSIGNED], tone),)
+        if self.needs_review:
+            return (FieldLabel(AXIS_WORK, "Cần xác nhận", TONE_ATTENTION),)
+        return ()
 
     @property
-    def state_label(self) -> str:
-        return STATE_LABEL_VI.get(self.state, self.state)
+    def evidence_sentence(self) -> str:
+        """Trục căn cứ, thành câu. Trường không kiểm tra nào đọc thì nói thẳng ra điều đó.
+
+        `review_state` trả `verified` cho chính trường hợp này, nên nhãn dựng từ `review`
+        đọc ra là "đã được kiểm" trong khi sự thật là "không có gì phụ thuộc cột này".
+        """
+        if not self.checks:
+            return f"{self.evidence_label} — {NO_CHECK_READS_IT}"
+        return self.evidence_label
 
     @property
     def is_absent(self) -> bool:
         return self.state == ABSENT
-
-    @property
-    def state_badge(self) -> str:
-        """Lớp badge theo trạng thái gán — giữ việc phân nhánh trên `state` ở MỘT chỗ."""
-        return {ABSENT: "muted", UNASSIGNED: "warning"}.get(self.state, "info")
 
     @property
     def is_group(self) -> bool:
