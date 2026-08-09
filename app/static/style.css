@@ -1331,6 +1331,33 @@ p { margin: 0 0 var(--space-3); }
 .evidence-col { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); }
 .evidence-col-name { color: var(--c-text-muted, inherit); }
 
+/* Nghĩa của nguồn bằng chứng, thành chữ (#130). Hai cột trên một hàng: thuật ngữ giữ
+   nguyên chữ đã hiện trên chip, câu nằm cùng hàng bên phải. Xếp một cột thì thuật ngữ và
+   câu của nó cách nhau một dòng, và với năm nguồn thì khối cao gấp đôi. */
+.evidence-key {
+  width: 100%;
+  margin: var(--space-3) 0 0;
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+}
+.evidence-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+}
+.evidence-key dt { font-weight: 600; color: var(--c-text); }
+.evidence-key dd { margin: 0; color: var(--c-text-muted); }
+/* Chỉ dùng cho dòng nói về chip nền vàng, và dòng đó chỉ hiện khi trên màn THẬT SỰ có
+   chip nền vàng. Sắc thái này KHÔNG dùng để đánh dấu nguồn yếu: `balance-checked` cho ra
+   cột `verified` (chip xanh) ở năm trường của Mẫu 15, nên tô nó vàng ở đây là một màn
+   hai nghĩa cho cùng một màu. Nguồn yếu đứng đầu danh sách, và câu của nó tự nêu giới hạn. */
+.evidence-key-weak dt { color: var(--c-warning-fg); }
+@media (max-width: 640px) {
+  .evidence-key-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+
 /* Màn gán cột theo TRƯỜNG (#121) — mỗi trường khai một DÒNG, đọc từ trên xuống theo
    đúng thứ tự việc: tên trường → bộ chọn cột → ô khai vắng → câu căn cứ. */
 

@@ -18,6 +18,7 @@ lẫn dòng con (tiêu đề Mẫu 15 thật tách hai dòng: cha "Lượng NL, 
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from app.adapters._common import to_float, to_str
@@ -83,6 +84,44 @@ SOURCE_SENTENCE_VI = {
         "file lệch bố cục thì đọc sai cột mà không có dấu hiệu nào báo."
     ),
 }
+
+
+@dataclass(frozen=True)
+class SourceMeaning:
+    """Một nguồn bằng chứng CÓ MẶT trên màn, kèm nghĩa của nó thành chữ (#130)."""
+
+    source: str
+    label: str
+    sentence: str
+
+
+def source_meanings(
+    columns: list[dict[str, Any]] | None,
+) -> tuple[SourceMeaning, ...]:
+    """Nghĩa của các nguồn CÓ MẶT trong danh sách cột, YẾU TRƯỚC, mỗi nguồn một lần.
+
+    Đi theo nguồn chứ không theo cột: một biểu có tới 11 cột, mà chỉ có 5 nguồn, nên nói
+    theo cột là lặp lại cùng một câu tới mười lần và không khối chữ nào chứa nổi.
+
+    Thứ tự là `_RANK` đảo — nguồn yếu nhất đứng đầu. Đó là chỗ cột có thể sai mà không
+    dấu hiệu nào báo, và mỗi câu đã tự nêu giới hạn của cơ chế nó tả, nên KHÔNG đánh dấu
+    thêm bằng màu: `balance-checked` cho ra cột `verified` (chip xanh) ở năm trường của
+    Mẫu 15, tô nó vàng ở đây là một màn hai nghĩa cho cùng một sắc thái.
+
+    Tra `SOURCE_SENTENCE_VI` lúc RENDER theo mã nguồn thô (`evidence`), không đọc câu từ
+    bản đã lưu — xem chú thích của hằng đó.
+    """
+    seen: dict[str, SourceMeaning] = {}
+    for column in columns or ():
+        source = (column or {}).get("evidence")
+        if not source or source in seen:
+            continue
+        seen[source] = SourceMeaning(
+            source=source,
+            label=SOURCE_LABEL_VI.get(source, source),
+            sentence=SOURCE_SENTENCE_VI.get(source, ""),
+        )
+    return tuple(sorted(seen.values(), key=lambda m: _RANK.get(m.source, -1)))
 
 
 def strongest(*sources: str) -> str:
@@ -341,6 +380,8 @@ __all__ = [
     "POSITION_ONLY",
     "SOURCE_LABEL_VI",
     "SOURCE_SENTENCE_VI",
+    "SourceMeaning",
+    "source_meanings",
     "VERIFIED",
     "evidence_m15_extended",
     "evidence_m15_standard",

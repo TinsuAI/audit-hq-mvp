@@ -33,9 +33,8 @@
   <div class="parse-note-head">
     {# Hiện theo ngoại lệ (ADR #29): "đã kiểm" không phải một việc, nên nó không đeo nhãn. #}
     {% if parse_detail.review == 'needs_review' %}
-      <span class="badge warning" data-axis="work"
-            title="Có cột dựa trên vị trí/đẳng thức chưa đủ — cần cán bộ xác nhận cột">
-        Cần xác nhận</span>
+      {# Nghĩa của nhãn này nằm ở danh sách nghĩa bên dưới, không ở `title` (#130). #}
+      <span class="badge warning" data-axis="work">Cần xác nhận</span>
     {% endif %}
     {% if parse_layout == 'extended' %}<span class="badge info">🧭 Bố cục mở rộng</span>
     {% elif parse_layout == 'labeled' %}<span class="badge info">🧭 Chọn cột theo nhãn</span>{% endif %}
@@ -52,20 +51,36 @@
     {{ parse_detail.header_row }}, không theo vị trí cố định. Đọc theo vị trí sẽ lấy nhầm cột.</span>
   {% endif %}
   {% if parse_detail.columns %}
+    {# Chip giữ chữ NGẮN: nhãn ngắn đi vào `parse_detail` lúc nạp, nên đổi nó là làm file
+       cũ và file mới hiện hai kiểu. Nghĩa nằm ở danh sách bên dưới. #}
     <div class="evidence-cols">
       {% for c in parse_detail.columns %}
-        {# Tooltip nói NGHĨA, không lặp lại thuật ngữ. Bản cũ đọc ra "…: nguồn Khớp tiêu đề"
-           — đúng bằng chữ đã hiện trên chip, nên không thêm gì cho người đọc. Tra theo mã
-           nguồn THÔ (`c.evidence`) lúc render: bản lưu trong `parse_detail` chỉ có nhãn
-           ngắn, file nạp trước #120 không mang câu nào, nên tra lúc render là cách duy nhất
-           để file cũ cũng đọc được nghĩa. Chip vẫn giữ chữ ngắn — câu không nhét vừa chip. #}
-        <span class="evidence-col" title="{{ c.label }}: {{ SOURCE_SENTENCE.get(c.get('evidence', ''), '') }}">
+        <span class="evidence-col">
           <span class="evidence-col-name">{{ c.label }}</span>
           <span class="badge {{ 'info' if c.review == 'verified' else 'warning' }}"
                 data-axis="evidence">{{ c.evidence_label }}</span>
         </span>
       {% endfor %}
     </div>
+    {# Nghĩa thành CHỮ, không thành tooltip (#130). Thứ tự và cách dựng ở
+       `app.adapters.evidence.source_meanings`. #}
+    <dl class="evidence-key">
+      {% for m in source_meanings %}
+      <div class="evidence-key-row">
+        <dt>{{ m.label }}</dt>
+        <dd>{{ m.sentence }}</dd>
+      </div>
+      {% endfor %}
+      {# Hiện theo ngoại lệ (ADR #29): file mà mọi cột đều đủ căn cứ thì không chip nào
+         nền vàng, và một dòng tả thứ không có trên màn là một dòng sai. Hỏi bằng CHÍNH
+         phép so bật chip vàng, không bằng cờ mức file — hai thứ đó lệch nhau được. #}
+      {% if has_unverified_column %}
+      <div class="evidence-key-row evidence-key-weak">
+        <dt>Nhãn vàng</dt>
+        <dd>Chip nền vàng, và nhãn <strong>Cần xác nhận</strong> ở đầu khối, đều nói cùng một điều: cột đó chưa đủ căn cứ để hệ thống tự nhận. Mở trang file để xác nhận vị trí cột rồi nạp lại.</dd>
+      </div>
+      {% endif %}
+    </dl>
   {% endif %}
 </div>
 {% endif %}

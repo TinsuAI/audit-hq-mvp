@@ -29,7 +29,7 @@ from app.adapters.cell_window import (
 )
 from app.adapters.declared_fields import FIELD_LABEL_VI, label_of, row_key_fields
 from app.adapters.declared_fields import declared as declared_fields
-from app.adapters.evidence import SOURCE_SENTENCE_VI
+from app.adapters.evidence import source_meanings
 from app.adapters.templates import column_groups
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled
@@ -137,10 +137,6 @@ templates.env.globals["tier_for"] = tier_for
 # Độ phủ chấm điểm — mọi chỗ hiện điểm phải hiện kèm, xem `score_coverage`.
 templates.env.globals["score_coverage"] = score_coverage
 templates.env.globals["PERCENTILE_LABEL"] = PERCENTILE_LABEL_VI
-# Nghĩa của mỗi nguồn bằng chứng, tra theo mã nguồn THÔ lúc render (#120). Bản lưu trong
-# `parse_detail` chỉ có nhãn ngắn, và file nạp trước khi có hằng này thì không có câu nào
-# trong đó — tra lúc render là cách duy nhất để file cũ cũng đọc được nghĩa.
-templates.env.globals["SOURCE_SENTENCE"] = SOURCE_SENTENCE_VI
 # Nhãn sổ quyết toán (book) — dùng ở company_detail (split line) + finding_detail (field).
 templates.env.globals["book_label"] = book_label
 # Tên một cột như cán bộ đọc nó — nhãn lựa chọn của bộ chọn cột và câu tự khai của
@@ -3078,6 +3074,9 @@ def company_data(
         )
     )
 
+    # Đọc MỘT lần: mỗi lần chạm `parse_detail_obj` là một lượt `json.loads`.
+    prov_detail = prov_file.parse_detail_obj if prov_file else {}
+
     # Giá trị có thật trong kỳ, để form gợi ý thay vì bắt cán bộ nhớ mã.
     customs_options: list[str] = []
     if is_bcct:
@@ -3129,7 +3128,18 @@ def company_data(
             "filter_qs": urlencode({k: v for k, v in active.items() if v}),
             "any_filter": any(active.values()),
             "parse_layout": prov_file.parse_layout if prov_file else None,
-            "parse_detail": prov_file.parse_detail_obj if prov_file else {},
+            "parse_detail": prov_detail,
+            # Nghĩa của nguồn bằng chứng đi thành CHỮ ở màn này (#130), không nằm trong
+            # tooltip: tooltip không hiện trên thiết bị cảm ứng, không hiện khi in, và
+            # không đọc được bằng bàn phím nếu không rê chuột được.
+            "source_meanings": source_meanings(prov_detail.get("columns")),
+            # Chip nền vàng bật theo TỪNG CỘT (`c.review != 'verified'`), không theo cờ
+            # mức file. Dòng nghĩa của chip vàng phải hỏi đúng phép so đó, nếu không thì
+            # có file hiện chip vàng mà không dòng nào giải thích.
+            "has_unverified_column": any(
+                (column or {}).get("review") != "verified"
+                for column in prov_detail.get("columns") or ()
+            ),
             **active,
         },
     )
