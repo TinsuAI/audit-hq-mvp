@@ -159,7 +159,11 @@
                   data-pinned="{% if read_settings.sheet_pinned %}{{ read_settings.sheet }}{% endif %}"
                   value="{{ read_settings.viewed }}"
                   {% if not read_settings.can_pin %}disabled{% endif %}>
-            Ghim trang <span id="sheet-pin-name">{{ read_settings.viewed }}</span> &amp; nạp lại
+            {#- Cả nhãn nằm trong MỘT `<span>`. `.btn` là `inline-flex` có `gap`, nên mỗi
+                đoạn chữ cạnh một phần tử con thành một flex item riêng và `gap` chen
+                khoảng trắng vào giữa: “Ghim trang ␣ “Phụ lục” ␣ & nạp lại”. Một item thì
+                phần trong nó xuống dòng bình thường. Chỉ trình duyệt mới lộ ra lỗi này. -#}
+            <span>Ghim trang “<span id="sheet-pin-name">{{ read_settings.viewed }}</span>” &amp; nạp lại</span>
           </button>
           {% if read_settings.sheet_pinned %}
           <button type="submit" form="fp-sheet-form" name="sheet" value="" id="sheet-unpin"
