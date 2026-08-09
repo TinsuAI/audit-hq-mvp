@@ -93,25 +93,23 @@ class SourceMeaning:
     source: str
     label: str
     sentence: str
-    #: Nguồn yếu (`position-only`, `balance-checked`) — cột đọc từ đó có thể sai mà không
-    #: có dấu hiệu nào báo, nên nó là thứ cán bộ phải đọc trước.
-    weak: bool
 
 
-#: Nguồn mà bản thân nó KHÔNG chứng minh được cột đúng: vị trí mặc định không có tín hiệu
-#: nào xác nhận, còn đẳng thức thì không phân biệt hai cột cùng dấu.
-WEAK_SOURCES = frozenset({POSITION_ONLY, BALANCE_CHECKED})
-
-
-def source_meanings(columns) -> tuple[SourceMeaning, ...]:
-    """Nghĩa của các nguồn CÓ MẶT trong danh sách cột, yếu trước, mỗi nguồn một lần.
+def source_meanings(
+    columns: list[dict[str, Any]] | None,
+) -> tuple[SourceMeaning, ...]:
+    """Nghĩa của các nguồn CÓ MẶT trong danh sách cột, YẾU TRƯỚC, mỗi nguồn một lần.
 
     Đi theo nguồn chứ không theo cột: một biểu có tới 11 cột, mà chỉ có 5 nguồn, nên nói
     theo cột là lặp lại cùng một câu tới mười lần và không khối chữ nào chứa nổi.
 
+    Thứ tự là `_RANK` đảo — nguồn yếu nhất đứng đầu. Đó là chỗ cột có thể sai mà không
+    dấu hiệu nào báo, và mỗi câu đã tự nêu giới hạn của cơ chế nó tả, nên KHÔNG đánh dấu
+    thêm bằng màu: `balance-checked` cho ra cột `verified` (chip xanh) ở năm trường của
+    Mẫu 15, tô nó vàng ở đây là một màn hai nghĩa cho cùng một sắc thái.
+
     Tra `SOURCE_SENTENCE_VI` lúc RENDER theo mã nguồn thô (`evidence`), không đọc câu từ
-    bản đã lưu: `parse_detail` chỉ giữ nhãn ngắn, nên file nạp trước khi có hằng câu vẫn
-    đọc được nghĩa, và sửa câu chữ không phải nạp lại file nào.
+    bản đã lưu — xem chú thích của hằng đó.
     """
     seen: dict[str, SourceMeaning] = {}
     for column in columns or ():
@@ -122,7 +120,6 @@ def source_meanings(columns) -> tuple[SourceMeaning, ...]:
             source=source,
             label=SOURCE_LABEL_VI.get(source, source),
             sentence=SOURCE_SENTENCE_VI.get(source, ""),
-            weak=source in WEAK_SOURCES,
         )
     return tuple(sorted(seen.values(), key=lambda m: _RANK.get(m.source, -1)))
 
@@ -384,7 +381,6 @@ __all__ = [
     "SOURCE_LABEL_VI",
     "SOURCE_SENTENCE_VI",
     "SourceMeaning",
-    "WEAK_SOURCES",
     "source_meanings",
     "VERIFIED",
     "evidence_m15_extended",

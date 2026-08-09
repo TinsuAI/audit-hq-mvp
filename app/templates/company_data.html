@@ -33,9 +33,8 @@
   <div class="parse-note-head">
     {# Hiện theo ngoại lệ (ADR #29): "đã kiểm" không phải một việc, nên nó không đeo nhãn. #}
     {% if parse_detail.review == 'needs_review' %}
-      <span class="badge warning" data-axis="work"
-            title="Có cột dựa trên vị trí/đẳng thức chưa đủ — cần cán bộ xác nhận cột">
-        Cần xác nhận</span>
+      {# Nghĩa của nhãn này nằm ở danh sách nghĩa bên dưới, không ở `title` (#130). #}
+      <span class="badge warning" data-axis="work">Cần xác nhận</span>
     {% endif %}
     {% if parse_layout == 'extended' %}<span class="badge info">🧭 Bố cục mở rộng</span>
     {% elif parse_layout == 'labeled' %}<span class="badge info">🧭 Chọn cột theo nhãn</span>{% endif %}
@@ -63,24 +62,24 @@
         </span>
       {% endfor %}
     </div>
-    {# Nghĩa thành CHỮ, không thành tooltip (#130): tooltip không hiện trên thiết bị cảm
-       ứng, không hiện khi in, và không đọc được bằng bàn phím nếu không rê chuột được.
-
-       Đi theo NGUỒN chứ không theo cột — biểu có tới 11 cột nhưng chỉ 5 nguồn, nên một
-       câu cho mỗi chip là lặp cùng một câu tới mười lần. Nguồn yếu đứng trước: đó là chỗ
-       cột có thể sai mà không dấu hiệu nào báo. Câu tra lúc render theo mã nguồn thô nên
-       file nạp trước khi có hằng câu cũng đọc được nghĩa. #}
+    {# Nghĩa thành CHỮ, không thành tooltip (#130). Thứ tự và cách dựng ở
+       `app.adapters.evidence.source_meanings`. #}
     <dl class="evidence-key">
       {% for m in source_meanings %}
-      <div class="evidence-key-row{% if m.weak %} evidence-key-weak{% endif %}">
+      <div class="evidence-key-row">
         <dt>{{ m.label }}</dt>
         <dd>{{ m.sentence }}</dd>
       </div>
       {% endfor %}
-      <div class="evidence-key-row">
+      {# Hiện theo ngoại lệ (ADR #29): file mà mọi cột đều đủ căn cứ thì không chip nào
+         nền vàng, và một dòng tả thứ không có trên màn là một dòng sai. Hỏi bằng CHÍNH
+         phép so bật chip vàng, không bằng cờ mức file — hai thứ đó lệch nhau được. #}
+      {% if has_unverified_column %}
+      <div class="evidence-key-row evidence-key-weak">
         <dt>Nhãn vàng</dt>
-        <dd>Cột mang nhãn nền vàng là cột chưa đủ căn cứ để hệ thống tự nhận; mở trang file để xác nhận vị trí cột rồi nạp lại.</dd>
+        <dd>Chip nền vàng, và nhãn <strong>Cần xác nhận</strong> ở đầu khối, đều nói cùng một điều: cột đó chưa đủ căn cứ để hệ thống tự nhận. Mở trang file để xác nhận vị trí cột rồi nạp lại.</dd>
       </div>
+      {% endif %}
     </dl>
   {% endif %}
 </div>

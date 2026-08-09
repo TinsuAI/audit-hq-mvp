@@ -37,6 +37,7 @@ _YEAR = 2025
 #: Bản `parse_detail` như file nạp TRƯỚC #120 để lại: nhãn ngắn, KHÔNG câu nào.
 _LEGACY_DETAIL = {
     "sheet": "BCQT_NVL",
+    "review": "needs_review",
     "columns": [
         {"field": "material_code", "label": "Mã NVL",
          "evidence": HEADER_MATCHED, "evidence_label": SOURCE_LABEL_VI[HEADER_MATCHED],
@@ -107,8 +108,44 @@ def test_the_yellow_badge_says_what_it_means(client: TestClient):
     """Cặp `Đã gán`/`Chưa gán` ở màn này chỉ còn là SẮC THÁI của chip; nói ra bằng chữ."""
     block = _key_block(_page(client))
 
-    assert "nhãn nền vàng" in block.lower()
+    assert "Nhãn vàng" in block
     assert "xác nhận vị trí cột" in block
+
+
+def test_the_yellow_badge_row_is_absent_when_no_chip_is_yellow(app_db: AppDb,
+                                                              client: TestClient):
+    """Hiện theo ngoại lệ (ADR #29): một dòng tả thứ không có trên màn là một dòng sai."""
+    import json
+
+    from app.models import DataFile
+
+    verified = {
+        "sheet": "BCQT_NVL",
+        "review": "verified",
+        "columns": [
+            {"field": "material_code", "label": "Mã NVL", "evidence": HEADER_MATCHED,
+             "evidence_label": SOURCE_LABEL_VI[HEADER_MATCHED], "review": "verified"},
+        ],
+    }
+    with app_db.SessionLocal() as db:
+        row = db.query(DataFile).filter_by(slot="m15").one()
+        row.parse_detail = json.dumps(verified, ensure_ascii=False)
+        db.commit()
+
+    block = _key_block(_page(client))
+
+    assert "Nhãn vàng" not in block
+    assert SOURCE_SENTENCE_VI[HEADER_MATCHED] in block
+
+
+def test_the_needs_review_badge_carries_no_tooltip(client: TestClient):
+    """Nhãn "Cần xác nhận" cũng thuộc lớp thuật ngữ vé này đi sửa — nghĩa của nó xuống
+    danh sách nghĩa, không nằm trong `title`."""
+    html = _page(client)
+
+    head = html.split('<div class="parse-note-head">', 1)[1].split("</div>", 1)[0]
+    assert "Cần xác nhận" in head
+    assert "title=" not in head
 
 
 # ─────────────── chip giữ chữ ngắn ───────────────
@@ -155,7 +192,6 @@ def test_source_meanings_lists_each_source_once_weakest_first():
     got = source_meanings(columns)
 
     assert [m.source for m in got] == [POSITION_ONLY, HEADER_MATCHED, OFFICER_CONFIRMED]
-    assert [m.weak for m in got] == [True, False, False]
 
 
 def test_source_meanings_survives_a_column_with_no_evidence():
