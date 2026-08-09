@@ -58,17 +58,18 @@
 
   <div class="cg-notes" id="cg-notes"></div>
 
-  {# `role="table"`, KHÔNG phải `role="grid"`: `grid` hứa điều hướng bàn phím ở cấp ô,
-     mà ADR #29 đã loại roving tabindex trên lưới ảo hoá 400 dòng ra khỏi phạm vi. Khai
-     vai trò mình không giữ được là đúng loại lỗi trung thực mà loạt vé này sinh ra để sửa.
+  {# `role="table"`, KHÔNG phải `role="grid"`: `grid` khai rằng lưới điều hướng được bằng
+     bàn phím ở cấp ô, mà ADR #29 đã loại roving tabindex trên lưới ảo hoá 400 dòng ra
+     khỏi phạm vi — tức khai một khả năng sản phẩm không có.
 
      Số dòng/số cột khai `-1` = CHƯA BIẾT (đúng nghĩa ARIA quy định), không phải 0: máy chủ
      dựng trang mà KHÔNG mở file — ô đi qua điểm cuối cửa sổ, và lượt trích xuất đầu trả 202
      rồi poll. Lưới ghi đè hai số này bằng `total_rows` / `total_cols` của payload lưới ngay
      khi cửa sổ đầu về. Khai ở đây để khẳng định được mà không cần trình duyệt (#123).
 
-     Màn chờ / màn lỗi nằm NGOÀI `#cell-grid`, chồng lên nó qua `.cg-stack`: nó không phải
-     một dòng của bảng, mà con của `role="table"` phải là dòng hoặc nhóm dòng. #}
+     QUY TẮC dùng chung cho cả `cell-grid.js` và `.cg-stack`: con của `role="table"` phải
+     là dòng hoặc nhóm dòng. Vì vậy màn chờ / màn lỗi nằm NGOÀI `#cell-grid` và chồng lên
+     nó qua `.cg-stack`, còn các lớp định vị của lưới khai `presentation`. #}
   <div class="cg-stack">
     <div id="cell-grid" class="cg"
          role="table"

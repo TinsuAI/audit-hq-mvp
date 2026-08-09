@@ -334,14 +334,16 @@ def grid_column_marks(basis: ReadBasis) -> dict[str, dict]:
 
     Đánh dấu MỌI cột của một nhóm `(6a)+(6b)`, không riêng cột đầu: sáng một cột thì cán
     bộ tưởng cột kia không được đọc.
+
+    KHÔNG gửi `tone`: tiêu đề cột đã đổi nền theo "cột này còn mang nhãn hay không", và
+    ba sắc thái thì hai cái không tới được lưới (cột có vị trí luôn ở trạng thái *đã gán*
+    nên chỉ trục *việc còn lại* góp nhãn). Gửi kèm là thêm một khoá không ai đọc.
     """
     return {
         str(index): {
             "field": c.field,
             "label": c.label,
-            "labels": [
-                {"axis": lb.axis, "text": lb.text, "tone": lb.tone} for lb in c.labels
-            ],
+            "labels": [{"axis": lb.axis, "text": lb.text} for lb in c.labels],
         }
         for c in basis.columns
         for index in c.columns

@@ -2424,9 +2424,8 @@ p { margin: 0 0 var(--space-3); }
   color: var(--c-warning-fg);
 }
 
-/* Màn chờ / màn lỗi chồng lên lưới nhưng KHÔNG nằm trong nó: `#cell-grid` khai
-   `role="table"` (#123), mà con của bảng phải là dòng hoặc nhóm dòng. Chồng qua lớp
-   này nên hình vẫn y như khi màn chờ nằm trong khung. */
+/* Lớp chồng màn chờ lên lưới mà không đặt nó vào trong `#cell-grid` (#123, lý do ở
+   `document_file.html`). Hình vẫn y như khi màn chờ nằm trong khung. */
 .cg-stack { position: relative; }
 
 .cg-frame {
@@ -2477,14 +2476,15 @@ p { margin: 0 0 var(--space-3); }
   overflow: hidden; text-overflow: ellipsis;
   font-weight: 400; opacity: 0.95;
 }
-.cg-col-flag {
+.cg-col-label {
   overflow: hidden; text-overflow: ellipsis;
   font-size: 10px; line-height: 1.3; font-weight: 600;
-  padding: 0 4px; border-radius: 3px;
+  padding: 0 var(--space-1); border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.22);
 }
 .cg-col-mapped { background: var(--c-success-fg); }
-.cg-col-needs { background: var(--c-warning-fg); }
+/* Cột đang đọc mà còn mang nhãn — tên cũ `cg-col-needs` gọi theo cờ `needs` đã bỏ. */
+.cg-col-labelled { background: var(--c-warning-fg); }
 /* Cột đang soi khi cán bộ gõ chỉ số ở biểu mẫu xác nhận (#92). */
 .cg-col-hi { background: var(--c-warning-fg); outline: 2px solid var(--c-warning-fg); }
 .cg-rownum {
@@ -2520,9 +2520,9 @@ p { margin: 0 0 var(--space-3); }
 .cg-cell-loading { background: var(--c-surface-alt); }
 
 .cg-overlay {
-  /* Bo góc nói lại của khung: từ #123 màn chờ nằm NGOÀI `.cg-frame`, nên `overflow:
-     hidden` của khung không cắt góc hộ nữa. */
-  position: absolute; inset: 0; z-index: 4; border-radius: 8px;
+  /* Bo góc bằng đúng bán kính của `.cg-frame`: từ #123 màn chờ nằm NGOÀI khung, nên
+     `overflow: hidden` của khung không cắt góc hộ nữa. */
+  position: absolute; inset: 0; z-index: 4; border-radius: var(--radius-lg);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: var(--space-2); padding: var(--space-6);
   background: var(--c-surface); text-align: center;

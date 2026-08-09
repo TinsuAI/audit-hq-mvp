@@ -1354,20 +1354,6 @@ def documents_download_file(
     )
 
 
-def _mapped_columns(row: DataFile) -> dict[str, dict]:
-    """Chú giải cột của lưới — cột parser THẬT SỰ đọc ở file này, kèm nhãn ba trục.
-
-    Cùng nguồn với khối căn cứ đọc, chỉ đổi chỗ hiện. File chưa từng nạp thì rỗng —
-    lưới nói ra điều đó thay vì đánh dấu bừa theo mẫu biểu.
-
-    Dựng căn cứ đọc KHÔNG kèm lời khai vắng, khác khối trên trang: ở đây chỉ những cột
-    có vị trí mới vào từ điển, nên mọi dòng đọc được đều ở trạng thái *đã gán* và danh
-    sách nhãn rút về đúng hai ca — rỗng, hoặc một nhãn trục *việc còn lại*. Cho lời khai
-    vắng vào đây là đổi chỗ lưới đánh dấu, việc của một vé khác.
-    """
-    return grid_column_marks(file_read_basis(row))
-
-
 @router.get("/companies/{code}/documents/file/{file_id}/preview", response_class=HTMLResponse)
 @router.get("/companies/{code}/documents/file/{file_id}/review", response_class=HTMLResponse)
 def documents_file_legacy_address(
@@ -1441,7 +1427,11 @@ def documents_file_page(
             # Chú giải cột chỉ đúng trên ĐÚNG trang parser đọc — trang khác thì lưới
             # nói rõ thay vì đánh dấu bừa.
             "parsed_sheet": basis.sheet or "",
-            "mapped_columns": _mapped_columns(row),
+            # Chú giải cột dựng từ căn cứ đọc KHÔNG kèm lời khai vắng, khác `basis` ngay
+            # trên: chỉ cột CÓ VỊ TRÍ mới vào từ điển, nên mọi mục đều ở trạng thái *đã
+            # gán* và danh sách nhãn rút về hai ca — rỗng, hoặc một nhãn trục *việc còn
+            # lại*. Cho lời khai vắng vào đây là đổi chỗ lưới đánh dấu, việc của vé khác.
+            "mapped_columns": grid_column_marks(file_read_basis(row)),
             "basis": basis,
             "sheet_names": sheet_names,
             "is_settlement": is_settlement,

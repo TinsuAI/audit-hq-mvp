@@ -28,8 +28,8 @@
   var ROW_H = 26;          // px mỗi dòng — cố định, để suy vị trí từ chỉ số dòng
   var COL_W = 148;
   var ROWNUM_W = 86;
-  var HEAD_H = 32;         // một dòng: chữ cái cột + tên trường hệ thống đọc
-  var HEAD_H_FLAGGED = 48; // hai dòng: thêm nhãn "việc còn lại" của cột, thành CHỮ
+  var HEAD_H = 32;          // một dòng: chữ cái cột + tên trường hệ thống đọc
+  var HEAD_H_LABELLED = 48; // hai dòng: thêm nhãn của cột, thành CHỮ
   var ROW_MARGIN = 60;     // dòng nạp thừa mỗi phía, đủ cho một cú cuộn nhanh
   var COL_MARGIN = 8;
   var MAX_ROWS = 400;      // trần điểm cuối là 1000
@@ -89,8 +89,8 @@
   function build(container) {
     container.textContent = '';
     el.root = container;
-    // Khung là lớp ĐỊNH VỊ, không phải một phần của bảng: con của `role="table"` phải
-    // là dòng hoặc nhóm dòng, nên khung tự khai mình vô nghĩa và nhường vai cho con.
+    // Khung là lớp ĐỊNH VỊ, không phải một phần của bảng: nó khai `presentation` để vai
+    // thuộc về con nó (xem `document_file.html` cho quy tắc con của `role="table"`).
     var frame = document.createElement('div');
     frame.className = 'cg-frame';
     frame.setAttribute('role', 'presentation');
@@ -125,8 +125,7 @@
     el.canvas.setAttribute('role', 'presentation');
     el.body.appendChild(el.canvas);
 
-    // Màn chờ / màn lỗi do TEMPLATE dựng, nằm ngoài `#cell-grid` và chồng lên nó: nó
-    // không phải một dòng, mà đặt trong bảng thì là một con không thuộc vai nào.
+    // Màn chờ / màn lỗi do TEMPLATE dựng, nằm ngoài `#cell-grid` và chồng lên nó.
     el.overlay = document.getElementById('cg-overlay');
 
     frame.appendChild(el.corner);
@@ -200,22 +199,22 @@
       tag.className = 'cg-col-field';
       tag.textContent = mark.label;
       // `title` chỉ LẶP LẠI chữ đang hiện — bề ngang cột cắt tên trường dài, và chuột
-      // đọc được phần bị cắt. Không thứ gì chỉ sống trong `title`: nghĩa nằm ở chữ.
+      // đọc được phần bị cắt. Không thông tin nào chỉ có trong `title`.
       tag.title = mark.label;
       line.appendChild(tag);
     }
     th.appendChild(line);
 
-    var flags = (mark && mark.labels) || [];
-    if (mark) th.classList.add(flags.length ? 'cg-col-needs' : 'cg-col-mapped');
-    flags.forEach(function (lb) {
+    var labels = (mark && mark.labels) || [];
+    if (mark) th.classList.add(labels.length ? 'cg-col-labelled' : 'cg-col-mapped');
+    labels.forEach(function (lb) {
       // Nhãn dựng ở máy chủ từ CÙNG property dòng trường đọc (`BasisColumn.labels`),
       // nên lưới không có bộ từ vựng riêng — trục đi kèm chữ để khẳng định được.
-      var flag = document.createElement('span');
-      flag.className = 'cg-col-flag';
-      flag.setAttribute('data-axis', lb.axis);
-      flag.textContent = lb.text;
-      th.appendChild(flag);
+      var label = document.createElement('span');
+      label.className = 'cg-col-label';
+      label.setAttribute('data-axis', lb.axis);
+      label.textContent = lb.text;
+      th.appendChild(label);
     });
 
     if (isHighlighted(colIndex)) th.classList.add('cg-col-hi');
@@ -500,7 +499,7 @@
   function setDimensions(data) {
     // Hai số này là số của TRANG TÍNH, đúng hai số dòng trạng thái dưới lưới viết ra
     // ("12.345 dòng × 20 cột") và đúng hai khoá `total_rows` / `total_cols` của payload
-    // lưới — nói bằng giọng đọc mà lệch với chữ trên màn hình là một lời nói dối mới.
+    // lưới. Lấy số khác thì trang đọc lên một số và viết ra một số khác cho cùng file.
     //
     // Hàng chữ cái cột KHÔNG tính vào `aria-rowcount` và không mang `aria-rowindex`:
     // tính nó thì `aria-rowindex` của mọi dòng dữ liệu lệch 1 so với số dòng đang hiện
@@ -509,7 +508,7 @@
     el.root.setAttribute('aria-colcount', String(data.total_cols));
   }
 
-  function anyColumnFlagged() {
+  function anyColumnLabelled() {
     // Chỉ tính cột lưới THẬT SỰ vẽ ra: vị trí đã lưu trỏ được ra ngoài trang tính (map
     // giữ cột 8 trong khi trang tính có 8 cột, chỉ số 0..7), và nới tiêu đề cho một cột
     // không bao giờ hiện là chừa một dòng trống suốt lượt xem.
@@ -524,12 +523,14 @@
 
   function applyHeadHeight() {
     // Nhãn của cột chiếm DÒNG THỨ HAI của tiêu đề, và chỉ khi có nhãn để hiện: bề ngang
-    // một cột là 148px, nhét nhãn cạnh tên trường thì cả hai cùng bị cắt. Đo trên CẢ
-    // bản đồ cột chứ không trên khung nhìn — theo khung nhìn thì chiều cao tiêu đề nhảy
-    // trong lúc cuộn ngang.
-    var tall = state.showMapped && onParsedSheet() && anyColumnFlagged();
+    // một cột là 148px, nhét nhãn cạnh tên trường thì cả hai cùng bị cắt. Thiếu bước này
+    // thì nhãn vẫn nằm trong DOM nhưng `overflow: hidden` của tiêu đề cắt mất.
+    //
+    // Đo trên CẢ bản đồ cột chứ không trên khung nhìn — theo khung nhìn thì chiều cao
+    // tiêu đề nhảy trong lúc cuộn ngang.
+    var tall = state.showMapped && onParsedSheet() && anyColumnLabelled();
     document.documentElement.style.setProperty(
-      '--cg-head-h', (tall ? HEAD_H_FLAGGED : HEAD_H) + 'px');
+      '--cg-head-h', (tall ? HEAD_H_LABELLED : HEAD_H) + 'px');
   }
 
   function renderStatus(data) {

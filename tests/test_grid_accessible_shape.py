@@ -13,10 +13,13 @@ Khẳng định ở BA đầu, vì không đầu nào một mình đủ:
 * **mã nguồn lưới** — `cell-grid.js` đóng đúng hai số đó vào đúng hai thuộc tính template đã
   khai, và đặt vai cho từng phần nó dựng ra.
 
-**KHÔNG phủ được ở đây** (tồn dư đã biết của AC 5): hai số thật lúc chạy, và các vai lưới đặt
-lúc chạy. `TestClient` không chạy JavaScript và bộ test không có trình duyệt, nên đầu thứ ba
-ghim CƠ CHẾ ở mức mã nguồn. Đứt bên nào cũng đỏ vì tên thuộc tính và tên khoá payload được
-đối chiếu giữa các đầu chứ không ghim thành hằng riêng trong test.
+**KHÔNG phủ được ở đây** — tồn dư đã biết, RỘNG HƠN câu chữ của AC 5 ("số do JS đóng vào lúc
+chạy thật"): mọi thứ chỉ có lúc chạy đều nằm ngoài, gồm hai số thật, các vai lưới đặt cho phần
+nó dựng, phép gắn nhãn vào tiêu đề, và chiều cao tiêu đề nới ra cho dòng nhãn. `TestClient`
+không chạy JavaScript và bộ test không có trình duyệt, nên đầu thứ ba ghim CƠ CHẾ ở mức mã
+nguồn: mỗi khẳng định bám vào một mắt CÓ THẬT của chuỗi — dựng phần tử, GẮN nó vào cây, và
+GỌI hàm — vì #122 đã cho thấy chuỗi chết ở mắt nào cũng im lặng. Tên thuộc tính và tên khoá
+payload đối chiếu giữa các đầu chứ không ghim thành hằng riêng trong test.
 
 Nhãn cột chỉ hiện khi công tắc "Hiện cột hệ thống đang đọc" bật — đó là thiết kế từ #92, và
 AC 2 đạt vì nghĩa THÔI sống riêng trong `title`, không phải vì nhãn hiện sẵn.
@@ -165,8 +168,7 @@ def test_the_grid_reads_its_column_labels_from_the_field_row_property(env):
 
     for mark in marks.values():
         expected = [
-            {"axis": lb.axis, "text": lb.text, "tone": lb.tone}
-            for lb in basis[mark["field"]].labels
+            {"axis": lb.axis, "text": lb.text} for lb in basis[mark["field"]].labels
         ]
         assert mark["labels"] == expected
 
@@ -185,7 +187,7 @@ def test_the_grid_labels_stay_on_the_three_axes(env):
             assert label["axis"] in AXES
 
 
-def test_the_flag_the_grid_used_to_invent_for_itself_is_gone(env):
+def test_the_boolean_the_grid_used_to_invent_for_itself_is_gone(env):
     """Cờ `needs` là bộ từ vựng thứ tư: máy chủ gửi một boolean, JavaScript tự đặt câu chữ
     quanh nó, nên không phép so nào bắt được khi câu đó lệch với dòng trường."""
     client, root = env
@@ -197,13 +199,32 @@ def test_the_flag_the_grid_used_to_invent_for_itself_is_gone(env):
 
 def test_a_column_label_is_text_in_the_page_not_a_tooltip():
     """AC 2. Nhãn đi vào `textContent` kèm trục; `title` chỉ được lặp lại chữ đang hiện (tên
-    trường bị bề ngang cột cắt), không được mang câu nào của riêng nó."""
+    trường bị bề ngang cột cắt), không được mang câu nào của riêng nó.
+
+    Đặt chữ vào phần tử là CHƯA ĐỦ — dựng xong mà không gắn vào tiêu đề thì trang không có
+    chữ nào, và đó là kiểu chết im lặng của #122. Nên khẳng định cả phép gắn."""
     body = _body("columnHeader")
 
     assert re.search(r"\.textContent\s*=\s*lb\.text", body)
     assert "'data-axis'" in body
+    assert "th.appendChild(label)" in body, "nhãn dựng ra mà không gắn vào tiêu đề cột"
+    assert "line.appendChild(tag)" in body, "tên trường dựng ra mà không gắn vào tiêu đề"
     assert not re.search(r"\.title\s*=\s*['\"]", body), (
-        "một câu chỉ sống trong tooltip là đúng lỗi vé này sinh ra để sửa"
+        "một câu chỉ có trong tooltip là đúng lỗi vé này sinh ra để sửa"
+    )
+
+
+def test_the_second_line_of_the_header_is_opened_before_a_label_is_drawn():
+    """Nhãn chiếm dòng thứ hai của tiêu đề, mà `.cg-col` cắt phần tràn: không nới chiều cao
+    thì nhãn nằm trong DOM và không ai thấy — cùng một kết cục với việc không dựng nó.
+
+    Hai chỗ phải nới: lúc cửa sổ đầu về (mới biết bản đồ cột nào nằm trong trang tính) và
+    lúc cán bộ bật công tắc hiện cột đang đọc."""
+    assert "applyHeadHeight()" in _body("onWindow")
+    assert "applyHeadHeight()" in _body("wireControls")
+    assert re.search(r"<\s*total", _body("anyColumnLabelled")), (
+        "chỉ số cột phải SO với tổng số cột: nới tiêu đề theo một cột nằm ngoài trang "
+        "tính là chừa một dòng trống cả lượt xem"
     )
 
 
@@ -274,6 +295,9 @@ def test_the_grid_injects_those_counts_into_the_attributes_the_template_declares
         assert re.search(rf"setAttribute\('{attr}', String\(data\.{key}\)\)", body)
         assert key in payload
         assert attr in attrs
+    # Hàm còn đó mà không ai gọi thì hai số đứng nguyên ở `-1` suốt lượt xem — kiểu chết
+    # im lặng thứ hai của #122, và chỉ khẳng định thân hàm thì không bắt được.
+    assert "setDimensions(data)" in _body("onWindow")
 
 
 def test_the_row_count_the_grid_speaks_is_the_one_the_status_line_writes():
