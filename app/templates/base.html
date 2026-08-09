@@ -10,6 +10,10 @@
 <link rel="stylesheet" href="/static/style.css?v={{ app_version_string | urlencode }}">
 </head>
 <body>
+{# Nhảy thẳng tới nội dung: bàn phím phải đi qua bảy mục menu ở MỌI trang trước khi tới
+   việc cần làm. Liên kết đứng đầu `<body>` để nó là chặng tab đầu tiên, và chỉ hiện khi
+   nhận focus — không thấy được thì không dùng được. #}
+<a class="skip-link" href="#noi-dung-chinh">Tới nội dung chính</a>
 {% if user %}
 <div class="demo-banner" role="note">
   <span class="demo-banner-icon" aria-hidden="true">🧪</span>
@@ -64,7 +68,9 @@
 </header>
 {% endif %}
 
-<main class="app-main">
+{# `tabindex="-1"` để đích của skip-link nhận được focus: không có nó thì trình duyệt
+   cuộn tới đây nhưng vòng tab vẫn nằm ở đầu trang. #}
+<main class="app-main" id="noi-dung-chinh" tabindex="-1">
 {% block content %}{% endblock %}
 </main>
 

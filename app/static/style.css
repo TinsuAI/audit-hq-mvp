@@ -309,6 +309,28 @@ p { margin: 0 0 var(--space-3); }
   font-family: var(--font-mono);
 }
 
+/* Liên kết nhảy tới nội dung (#126). Dời khỏi khung nhìn chứ KHÔNG `display: none`:
+   phần tử ẩn kiểu đó rời khỏi chuỗi tab, tức không bao giờ nhận được focus để hiện ra.
+   Nhận focus thì nó về đúng góc trên bên trái, nằm trên mọi thứ khác. */
+.skip-link {
+  position: absolute;
+  left: var(--space-2);
+  top: calc(-1 * var(--space-12));
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  background: var(--c-brand-500);
+  color: var(--c-text-inverse);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:focus { top: var(--space-2); }
+
+/* Đích của skip-link nhận focus theo mã, nên bỏ vòng focus của trình duyệt: cán bộ vừa
+   BẤM liên kết đó, không cần một khung viền quanh cả trang để biết mình đang ở đâu. */
+.app-main:focus { outline: none; }
+
 .app-main {
   max-width: 1280px;
   margin: 0 auto;

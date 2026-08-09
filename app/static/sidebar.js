@@ -184,14 +184,19 @@
     const panel = $('ai-panel');
     panel.classList.add('open');
     panel.setAttribute('aria-hidden', 'false');
+    // `inert` đi cặp với `aria-hidden`, đặt ở CÙNG một chỗ: tách ra hai chỗ thì một chỗ
+    // sửa mà chỗ kia không, và thanh đóng lại vẫn giữ sáu điều khiển trong chuỗi tab.
+    panel.removeAttribute('inert');
     if (sessionStorage.getItem(FULL_KEY) === '1') panel.classList.add('full');
     updateExpandButton();
     await resumeOrStart();
     setTimeout(() => $('ai-input').focus(), 250);
   }
   function closePanel() {
-    $('ai-panel').classList.remove('open');
-    $('ai-panel').setAttribute('aria-hidden', 'true');
+    const panel = $('ai-panel');
+    panel.classList.remove('open');
+    panel.setAttribute('aria-hidden', 'true');
+    panel.setAttribute('inert', '');
   }
   function toggleFull() {
     const isFull = $('ai-panel').classList.toggle('full');
