@@ -184,14 +184,23 @@
     const panel = $('ai-panel');
     panel.classList.add('open');
     panel.setAttribute('aria-hidden', 'false');
+    // `inert` đi cặp với `aria-hidden`, đặt ở CÙNG một chỗ: tách ra hai chỗ thì một chỗ
+    // sửa mà chỗ kia không, và thanh đóng lại vẫn nằm trong chuỗi tab.
+    panel.removeAttribute('inert');
     if (sessionStorage.getItem(FULL_KEY) === '1') panel.classList.add('full');
     updateExpandButton();
     await resumeOrStart();
     setTimeout(() => $('ai-input').focus(), 250);
   }
   function closePanel() {
-    $('ai-panel').classList.remove('open');
-    $('ai-panel').setAttribute('aria-hidden', 'true');
+    const panel = $('ai-panel');
+    // Trả focus TRƯỚC khi khai `inert`: focus đang nằm trong thanh, mà `inert` làm cả
+    // cây con hết nhận focus, nên trình duyệt đẩy focus về `<body>` và vòng tab quay lại
+    // đầu trang. Nút mở thanh là chỗ cán bộ vừa rời đi.
+    if (panel.contains(document.activeElement)) $('ai-fab').focus();
+    panel.classList.remove('open');
+    panel.setAttribute('aria-hidden', 'true');
+    panel.setAttribute('inert', '');
   }
   function toggleFull() {
     const isFull = $('ai-panel').classList.toggle('full');

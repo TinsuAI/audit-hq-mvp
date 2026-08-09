@@ -1464,6 +1464,11 @@ def documents_file_page(
             "file": row,
             "msg": msg,
             "error": error,
+            # Trang này nói về nội dung THẬT của một file, mà trợ lý không đọc được file
+            # đó — thanh trợ lý ở đây là 104.257 B JavaScript tải về để không dùng
+            # (chat-core 30.911 + sidebar 13.114 + marked 38.701 + dompurify 21.531),
+            # cộng 16.319 B CSS (#126).
+            "hide_chat_fab": True,
             "ingest": ing,
             "ingest_status_url": (
                 f"/companies/{slug}/documents/ingest.json"
