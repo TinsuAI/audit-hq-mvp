@@ -51,9 +51,14 @@ def _stylesheet() -> str:
     return re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), raw, flags=re.S)
 
 
-@lru_cache(maxsize=1)
-def _rules() -> tuple[tuple[str, str], ...]:
-    """(bộ chọn, thân) cho mọi rule trong cùng, kể cả rule nằm trong at-rule."""
+@lru_cache(maxsize=2)
+def _rules(top_level_only: bool = False) -> tuple[tuple[str, str], ...]:
+    """(bộ chọn, thân) cho mọi rule trong cùng, kể cả rule nằm trong at-rule.
+
+    `top_level_only` bỏ rule nằm trong at-rule. Phép so "một bộ chọn khai một giá trị"
+    cần nó: rule trong `@media` / `@supports` ĐƯỢC PHÉP đặt lại giá trị của rule nền —
+    đó là cách khai một breakpoint. Trộn hai tầng thì mọi breakpoint hoá thành xung khắc.
+    """
     rules: list[tuple[str, str]] = []
     stack: list[str] = []
     buf = ""
@@ -63,7 +68,9 @@ def _rules() -> tuple[tuple[str, str], ...]:
             buf = ""
         elif ch == "}":
             if stack:
-                rules.append((stack.pop(), buf))
+                sel = stack.pop()
+                if not (top_level_only and stack):
+                    rules.append((sel, buf))
             buf = ""
         else:
             buf += ch
@@ -118,6 +125,162 @@ def _contrast(fg: str, bg: str) -> float:
     a, b = _relative_luminance(fg), _relative_luminance(bg)
     hi, lo = max(a, b), min(a, b)
     return (hi + 0.05) / (lo + 0.05)
+
+
+# Class đã xoá ở #127. Mỗi tên ở đây từng có rule trong `style.css` mà không chỗ nào
+# phát ra: không `class=`, không `classList`, không tên ghép lúc chạy, không tham số
+# class truyền vào hàm dựng DOM, không giá trị `cls` trong dữ liệu Python. Giữ danh
+# sách để chúng không quay lại: một rule không ai gọi tới thì không có phép thử nào đỏ,
+# nên nó chỉ lộ ra ở một lượt quét viết tay.
+#
+# Bốn cụm, bốn lý do khác nhau:
+# - `.upload-slot*` (12 tên): ô tải lên theo từng loại biểu, thay bằng ô thả cả bộ (#88).
+# - lớp tiện ích (`.flex*`, `.items-*`, `.mt-0`, `.text-center`…): dựng theo lối
+#   utility-first rồi không màn nào dùng — repo này viết CSS theo khối, không theo tiện ích.
+# - `.fm-*` của BẢNG CHUYỂN VỊ: #121 bỏ bảng đó và xoá rule ngay trong cùng commit, nên
+#   #127 không còn gì để xoá ở đây. Ghim vẫn cần: đó là cụm mà vé này được xếp SAU #121
+#   để dọn, và không ghim thì không gì chặn nó quay lại cùng một bố cục cũ.
+# - còn lại: tàn dư của những màn đã viết lại (`.card-section`, `.dn-code`, `.badge-dot`,
+#   `.score-pill.low/.mid/.high` — hạng rủi ro dùng `tier-*`, không dùng ba tên này).
+DELETED_CLASSES = (
+    "badge-dot",
+    "card-section",
+    "card-table-wrapper",
+    "dim",
+    "dn-code",
+    "dn-name",
+    "ds-upload-slot",
+    "flex",
+    "flex-col",
+    "flex-gap-2",
+    "flex-gap-3",
+    "flex-gap-4",
+    "flex-wrap",
+    "flush",
+    "fm-absentrow",
+    "fm-blank",
+    "fm-col-absent",
+    "fm-corner",
+    "fm-datarow",
+    "fm-foot",
+    "fm-metarow",
+    "fm-pickrow",
+    "form-help",
+    "hide",
+    "items-center",
+    "items-end",
+    "justify-between",
+    "logout-btn",
+    "mb-0",
+    "mb-5",
+    "mt-0",
+    "text-center",
+    "text-num",
+    "text-right",
+    "upload-section-hint",
+    "upload-section-title",
+    "upload-slot",
+    "upload-slot-code",
+    "upload-slot-drop",
+    "upload-slot-filename",
+    "upload-slot-info",
+    "upload-slot-input",
+    "upload-slot-label",
+    "upload-slot-placeholder",
+    "upload-slot-sample",
+    "upload-slots",
+)
+
+# `.score-pill.low/.mid/.high` và `.stat.success` không còn ai phát ra ở phần TU CHỈNH,
+# còn tên cơ sở (`.score-pill`, `.stat`) vẫn sống. Ghim riêng để lượt kiểm không đòi
+# xoá cả hai.
+#
+# `.data-table .date` TỪNG nằm trong danh sách này và đó là một lỗi: tên `date` không
+# xuất hiện trong template nào vì nó là phần tử thứ ba của `view_cols` ở
+# `app/routes/companies.py`, đi ra qua `<td class="{{ cls }}">`. Lượt quét chỗ gán class
+# không nhìn thấy đường đó. `test_table_cell_classes_from_python_data_have_a_rule` bên
+# dưới đóng lỗ hổng ấy — nó hỏi thẳng cấu hình bảng, không quét chuỗi.
+DELETED_MODIFIERS = (
+    ".score-pill.low",
+    ".score-pill.mid",
+    ".score-pill.high",
+    ".stat.success",
+)
+
+# Bộ chọn khai hai lần với giá trị khác nhau là hai chỗ phải sửa cho một quyết định, và
+# chỗ đứng sau thắng lặng lẽ. Hai cặp dưới đây KHÔNG phải lỗi đó: chúng là lối "nhóm đặt
+# mặc định, rồi một bộ chọn trong nhóm đặt lại" — cùng một khai, cố ý ghi đè chính nó.
+CASCADE_OVERRIDES = {
+    ".catalog-table th": {"border-top"},
+    ".cg-col": {"height"},
+}
+
+
+def _class_names(selector: str) -> set[str]:
+    return set(re.findall(r"\.(-?[_a-zA-Z][\w-]*)", selector))
+
+
+@pytest.mark.parametrize("name", DELETED_CLASSES)
+def test_a_deleted_class_stays_deleted(name: str) -> None:
+    """Xoá rồi mà quay lại thì stylesheet lại nuôi một khối không màn nào gọi tới."""
+    back = [sel for sel, _ in _rules() if name in _class_names(sel)]
+    assert not back, f".{name} đã xoá ở #127 nhưng quay lại ở: {back}"
+
+
+@pytest.mark.parametrize("selector", DELETED_MODIFIERS)
+def test_a_deleted_modifier_stays_deleted(selector: str) -> None:
+    assert not any(selector in sel for sel, _ in _rules()), (
+        f"{selector} đã xoá ở #127 nhưng quay lại"
+    )
+
+
+def test_table_cell_classes_from_python_data_have_a_rule() -> None:
+    """Class ô bảng khai trong DỮ LIỆU Python phải có rule.
+
+    `view_cols` ở `app/routes/companies.py` mang phần tử thứ ba là tên class, và nó ra
+    màn qua `<td class="{{ cls }}">`. Không template nào chứa những tên đó, nên mọi lượt
+    quét "chỗ nào gán class" đều bỏ sót — đúng cách `.data-table .date` bị xoá nhầm ở
+    lượt đầu của #127. Hỏi thẳng cấu hình bảng thì không phải quét chuỗi nữa.
+
+    Chỉ đòi rule cho class dùng làm KIỂU Ô. `file`, `price`, `item-link` chưa bao giờ có
+    rule nào và không thuộc phạm vi vé này — ghim đúng tập đang có kiểu.
+    """
+    from app.routes.companies import _TABLE_CONFIG
+
+    styled = {"num", "date", "code-cell", "wrap"}
+    emitted: set[str] = set()
+    for config in _TABLE_CONFIG.values():
+        for column in config.get("view_cols", ()):
+            if len(column) >= 3 and column[2]:
+                emitted.update(str(column[2]).split())
+    missing = sorted(
+        name for name in emitted & styled
+        if not any(name in _class_names(sel) for sel, _ in _rules())
+    )
+    assert not missing, f"class ô bảng không còn rule nào: {missing}"
+
+
+def test_no_selector_declares_the_same_property_twice_with_different_values() -> None:
+    """Một bộ chọn, một khai. Hai khai lệch nhau thì chỗ sau thắng mà không ai biết."""
+    seen: dict[str, dict[str, set[str]]] = {}
+    for sel, body in _rules(top_level_only=True):
+        if sel.startswith("@"):
+            continue
+        for one in (" ".join(s.split()) for s in sel.split(",")):
+            if not one:
+                continue
+            props = seen.setdefault(one, {})
+            for decl in body.split(";"):
+                name, sep, value = decl.partition(":")
+                if sep:
+                    props.setdefault(name.strip(), set()).add(" ".join(value.split()))
+    clashes = {
+        one: sorted(p for p, values in props.items()
+                    if len(values) > 1 and p not in CASCADE_OVERRIDES.get(one, ()))
+        for one, props in seen.items()
+    }
+    clashes = {k: v for k, v in clashes.items() if v}
+    assert not clashes, f"bộ chọn khai trùng với giá trị xung khắc: {clashes}"
 
 
 @pytest.mark.parametrize("selector_part", [":disabled", ".empty-state", ".badge.danger"])
