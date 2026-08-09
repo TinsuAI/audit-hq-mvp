@@ -340,7 +340,8 @@ def test_an_explicit_sheet_in_the_address_wins(env):
     assert attrs["sheet"] == "0"
 
 
-def test_the_sheet_selector_and_the_book_field_stay_on_the_page(env):
+def test_the_sheet_picker_and_the_book_field_stay_on_the_page(env):
+    """Bộ chọn trang tính nay là hàng liên kết trên lưới, không phải `<select>` (#124)."""
     client, root = env
     write_xlsx(
         root / REL_DIR / "m15.xlsx", [["Mã", 1]], sheet_name="BCQT_NVL",
@@ -350,8 +351,8 @@ def test_the_sheet_selector_and_the_book_field_stay_on_the_page(env):
 
     text = client.get(file_page_url("DN_FP", fid)).text
 
-    assert 'name="sheet"' in text
-    assert '<option value="Phụ lục"' in text               # mọi trang chọn lại được
+    assert 'data-sheet-name="Phụ lục"' in text             # mọi trang xem lại được
+    assert 'id="sheet-pin"' in text                        # ghim là hành động riêng
     assert 'name="book"' in text                           # file quyết toán → có ô sổ
 
 
@@ -428,6 +429,6 @@ def test_a_file_with_no_column_layout_still_offers_the_sheet_pin(env):
 
     text = client.get(file_page_url("DN_FP", fid)).text
 
-    assert 'name="sheet"' in text
-    assert '<option value="BCQT_NVL"' in text
+    assert 'name="sheet"' in text                          # nút ghim, gửi qua `…/sheet`
+    assert 'data-sheet-name="BCQT_NVL"' in text            # trang chứa biểu xem được
     assert 'name="col_material_code"' not in text

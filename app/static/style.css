@@ -2580,3 +2580,32 @@ p { margin: 0 0 var(--space-3); }
   max-width: 68ch;
 }
 .fp-status a { white-space: nowrap; }
+
+/* — Cài đặt đọc file: thu còn một dòng khi đã đặt đúng (issue #124) —
+   Trang tính và sổ quyết toán là điều kiện đọc CẢ FILE, không phải quyết định theo từng
+   trường. Hai thẻ cao chiếm đầu tầm mắt đẩy việc chính — gán cột — xuống dưới nếp gấp
+   ở mọi lượt mở trang, kể cả khi cả hai đã đúng và không còn gì để làm với chúng. */
+.fp-settings { padding: 0; margin-bottom: var(--space-4); }
+.fp-settings-sum {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  flex-wrap: wrap; cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-sm);
+}
+.fp-settings-title { font-weight: 600; }
+.fp-settings-value { color: var(--c-text-muted); }
+.fp-settings[open] > .fp-settings-sum { border-bottom: 1px solid var(--c-border); }
+.fp-settings-body {
+  display: grid; gap: var(--space-5);
+  padding: var(--space-4);
+}
+.fp-set-h { font-size: var(--fs-sm); font-weight: 600; margin: 0 0 var(--space-2); }
+.fp-set-label {
+  display: block; font-size: var(--fs-sm);
+  margin-bottom: var(--space-1); color: var(--c-text-muted);
+}
+.fp-set .form-hint { margin: var(--space-2) 0 0; max-width: 68ch; }
+.fp-set-actions { margin-top: var(--space-3); }
+/* Trạng thái sai: lượt nạp đang dừng vì chính file này. Cùng sắc thái với
+   `.alert-warning`, không phải một bộ màu thứ hai. */
+.fp-set-wrong { color: var(--c-warning-fg); font-weight: 500; }

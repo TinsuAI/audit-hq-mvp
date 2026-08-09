@@ -96,12 +96,14 @@ from app.pipeline.audit_scope import (
 from app.pipeline.data_screen import build_data_screen
 from app.pipeline.export import build_export
 from app.pipeline.file_page import (
+    ReadSettings,
     column_label,
     file_page_url,
     file_read_basis,
     grid_column_marks,
 )
 from app.pipeline.findings_screen import not_evaluable_panel
+from app.pipeline.ingest import book_assignment_error
 from app.pipeline.ingest_status import ingest_status, mark_seen
 from app.pipeline.period import (
     FISCAL_START_MONTHS,
@@ -1412,6 +1414,27 @@ def documents_file_page(
     # Selector chọn sổ quyết toán — chỉ file settlement (m15/m15a/m16), tờ khai không
     # có (toàn pháp nhân). Datalist gợi ý sổ ĐÃ có của DN năm này (ADR #19 Revision).
     is_settlement = row.slot in SETTLEMENT_SLOTS
+    period_books = company_books(db, company.id, row.period_year) if is_settlement else []
+    # "Sổ đang sai" hỏi bằng CHÍNH đoạn mã chặn lượt nạp (`ingest.py`), không bằng một
+    # phép đo gần đúng dựng riêng cho màn này: vùng cài đặt phải mở đúng lúc lượt nạp sẽ
+    # dừng, và dừng vì file NÀY. Anh em cùng kỳ thiếu nhãn thì sửa ở màn dữ liệu.
+    book_blocked = bool(
+        is_settlement
+        and not row.book
+        and book_assignment_error(db, company.id, row.period_year)
+    )
+    read_settings = ReadSettings(
+        sheet=basis.sheet,
+        sheet_pinned=basis.sheet_pinned,
+        sheet_names=tuple(sheet_names),
+        viewed=sheet_names[selected_sheet] if selected_sheet < len(sheet_names) else "",
+        # Đường gửi biểu mẫu của file không có bố cục cột KHÔNG đọc ô sổ, nên dựng ô đó
+        # ở đó là hứa một việc máy chủ không làm.
+        book_shown=is_settlement and basis.can_confirm,
+        book=row.book,
+        period_books=tuple(period_books),
+        book_blocked=book_blocked,
+    )
     return templates.TemplateResponse(
         request,
         "document_file.html",
@@ -1434,8 +1457,7 @@ def documents_file_page(
             "mapped_columns": grid_column_marks(file_read_basis(row)),
             "basis": basis,
             "sheet_names": sheet_names,
-            "is_settlement": is_settlement,
-            "book_options": company_books(db, company.id, row.period_year) if is_settlement else [],
+            "read_settings": read_settings,
             "book_known": BOOK_LABELS,
             # Cửa sổ kỳ đang dùng lệch niên độ DN (#50): CẢNH BÁO, không tự chọn hộ.
             "period_conflict": period_window_conflict(db, company.id, row.period_year),
@@ -1650,6 +1672,51 @@ def _reject_shared_columns(groups: dict[str, list[int]]) -> None:
             owner[idx] = label
 
 
+@router.post("/companies/{code}/documents/file/{file_id}/sheet", response_model=None)
+def documents_pin_sheet(
+    code: str,
+    file_id: int,
+    sheet: str = Form(default=""),
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Ghim / bỏ ghim TRANG TÍNH — hành động riêng, không đi qua biểu mẫu gán cột (#124).
+
+    Bộ chọn trang tính trên lưới đổi thứ ĐANG XEM; ghim là việc khác và phải nói ra được
+    là việc khác. Đường riêng nên lượt ghim không chạm map cột, không chạm lời khai vắng,
+    không chạm mã sổ — ba thứ mà một lượt gửi biểu mẫu thiếu ô sẽ ghi đè.
+
+    Ô rỗng = bỏ ghim, trả quyền chọn trang về cho hệ thống.
+    """
+    company = get_company_or_404(db, code, user)
+    row = db.get(DataFile, file_id)
+    if row is None or row.company_id != company.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy file")
+
+    year = row.period_year
+    picked = (sheet or "").strip() or None
+    # So sánh trang SẼ ĐỌC, không so giá trị ô: ghim đúng trang lượt nạp gần nhất đã đọc
+    # vẫn được lưu (không tự xoá), nhưng nó không đổi một dòng nào nên không chạy lại
+    # kiểm tra. Bỏ ghim thì LUÔN là đổi — lượt nạp sau tự nhận diện, có thể ra trang khác.
+    read_sheet = row.parse_detail_obj.get("sheet")
+    was_parsed = row.parse_status == DataFileStatus.OK
+    unpinned = row.sheet_override is not None and picked is None
+    changed = unpinned or (row.sheet_override or read_sheet) != (picked or read_sheet)
+    row.sheet_override = picked
+    db.commit()
+
+    then_run_checks: dict | None = None
+    if was_parsed and changed:
+        # Đổi trang là đổi TOÀN BỘ dòng của file — xử lý như đổi sổ: chạy lại cả năm.
+        then_run_checks = {"only": None}
+        log_access(
+            db, username=user.name, action=ACTION_RUN_CHECKS,
+            company_code=company.code, detail=f"year={year} only=ALL (pin-sheet)",
+        )
+    _enqueue_ingest(db, user, company, year, gate=False, then_run_checks=then_run_checks)
+    return _back_to_period(company, year)
+
+
 @router.post("/companies/{code}/documents/file/{file_id}", response_model=None)
 @router.post("/companies/{code}/documents/file/{file_id}/review", response_model=None)
 async def documents_confirm_review(
@@ -1691,17 +1758,14 @@ async def documents_confirm_review(
     form = await request.form()
 
     if not form_signature or not base_map:
-        # File đọc hỏng thì KHÔNG có bố cục cột để xác nhận, nhưng vẫn phải ghim được
-        # trang tính: nguyên nhân thường gặp là không trang nào khớp biểu chuẩn (workbook
-        # cán bộ tự gộp — chèn cột, xoá khối tiêu đề → mọi cột lệch một ô). Ghim trang rồi
-        # nạp lại là đường DUY NHẤT đưa file đó vào hệ thống mà không phải sửa file nguồn.
-        picked = (form.get("sheet") or "").strip() or None
-        if picked is None and row.sheet_override is None:
-            return _redirect(
-                "error=" + quote_plus("File này không có thông tin bố cục cột để xác nhận.")
-            )
-        row.sheet_override = picked
-        db.commit()
+        # File đọc hỏng thì KHÔNG có bố cục cột để xác nhận: lượt gửi này chỉ còn nghĩa
+        # "nạp lại file với cài đặt hiện tại". Ghim trang tính — đường DUY NHẤT đưa một
+        # workbook không khớp biểu chuẩn vào hệ thống mà không phải sửa file nguồn — nay
+        # là hành động riêng (`…/sheet`, #124), nên ở đây không còn ô trang tính nào.
+        # Địa chỉ cũ `/review` vẫn gửi ô đó và vẫn được nhận.
+        if "sheet" in form:
+            row.sheet_override = (form.get("sheet") or "").strip() or None
+            db.commit()
         _enqueue_ingest(db, user, company, year, gate=False)
         return _back_to_period(company, year)
 
@@ -1772,15 +1836,22 @@ async def documents_confirm_review(
         book_changed = (row.book or None) != new_book
         row.book = new_book
 
-    # Trang tính: ô trống = "để hệ thống tự chọn", chọn tên = ghim trang đó. Ghim đúng
-    # trang đang đọc vẫn được lưu (không tự xoá), nếu không thì lần sửa sau lặng lẽ trả
-    # quyền chọn về cho máy. So sánh trang SẼ ĐỌC (không phải giá trị ô) để biết có đổi
-    # thật hay không — đổi trang là đổi toàn bộ dòng, xử lý như đổi sổ: chạy lại cả năm.
-    new_sheet = (form.get("sheet") or "").strip() or None
+    # Trang tính VẮNG khỏi biểu mẫu = giữ nguyên trang đang ghim (#124). Biểu mẫu gán cột
+    # không còn mang ô trang tính — ghim đi đường riêng (`…/sheet`) — nên "vắng" phải
+    # nghĩa là "không đụng tới". Giữ nghĩa cũ ("" = bỏ ghim) thì mỗi lượt xác nhận cột
+    # lặng lẽ trả quyền chọn trang về cho máy, đúng lớp lỗi mà `_field_major` đã sửa cho
+    # lời khai vắng. Địa chỉ cũ `/review` vẫn gửi ô đó, và ở đó "" vẫn là bỏ ghim.
     read_sheet = detail.get("sheet")  # trang lượt nạp gần nhất đã đọc
-    unpinned = row.sheet_override is not None and new_sheet is None
-    sheet_changed = unpinned or (row.sheet_override or read_sheet) != (new_sheet or read_sheet)
-    row.sheet_override = new_sheet
+    sheet_changed = False
+    if "sheet" in form:
+        new_sheet = (form.get("sheet") or "").strip() or None
+        # So sánh trang SẼ ĐỌC (không phải giá trị ô) để biết có đổi thật hay không —
+        # đổi trang là đổi toàn bộ dòng, xử lý như đổi sổ: chạy lại cả năm.
+        unpinned = row.sheet_override is not None and new_sheet is None
+        sheet_changed = unpinned or (row.sheet_override or read_sheet) != (
+            new_sheet or read_sheet
+        )
+        row.sheet_override = new_sheet
 
     evidence = {c["field"]: c.get("evidence") for c in columns if c.get("field")}
 

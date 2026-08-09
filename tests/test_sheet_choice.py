@@ -151,14 +151,14 @@ def test_review_screen_previews_the_parsed_sheet_and_offers_the_others(tmp_path)
         fid, _detail, _ = _m15_row()
 
         html = client.get(file_page_url("DN_SHEET", fid)).text
-        assert 'name="sheet"' in html
-        assert "Trang tính (sheet) được đọc" in html
-        # Lưới mở ở trang ĐƯỢC ĐỌC, và mọi trang đều chọn lại được.
+        assert "Cài đặt đọc file" in html
+        # Lưới mở ở trang ĐƯỢC ĐỌC, và mọi trang đều xem lại được (#124: bộ chọn đổi
+        # thứ đang xem, ghim là nút riêng).
         attrs = _grid_mount(html)
         assert attrs["parsed-sheet"] == "BCQT_NVL"
         assert attrs["sheet"] == "1"           # "Phụ lục" đứng trước trong workbook
-        assert '<option value="Phụ lục"' in html
-        assert '<option value="BCQT_NVL_KY_SAU"' in html
+        assert 'data-sheet-name="Phụ lục"' in html
+        assert 'data-sheet-name="BCQT_NVL_KY_SAU"' in html
         # Ô của trang được đọc đi qua điểm cuối cửa sổ, không dựng sẵn trong HTML.
         cells = client.get(
             f"/companies/DN_SHEET/documents/file/{fid}/cells?sheet=1"
@@ -235,11 +235,11 @@ def test_unreadable_file_still_offers_the_sheet_picker(tmp_path):
         docs = client.get("/companies/DN_SHEET/documents").text
         assert f'href="{file_page_url("DN_SHEET", fid)}"' in docs
         html = client.get(file_page_url("DN_SHEET", fid)).text
-        assert 'name="sheet"' in html
-        assert "không tự nhận ra" in html
-        assert '<option value="Dữ liệu"' in html
+        assert 'id="sheet-pin"' in html
+        assert "chưa xác định trang nào chứa biểu" in html
+        assert 'data-sheet-name="Dữ liệu"' in html
 
-        # Ghim trang → nạp lại → file đọc được.
+        # Ghim trang → nạp lại → file đọc được. Địa chỉ cũ vẫn nhận ô trang tính.
         r = client.post(f"/companies/DN_SHEET/documents/file/{fid}/review",
                         data={"sheet": "Dữ liệu"}, follow_redirects=False)
         assert r.status_code == 303
