@@ -431,10 +431,8 @@
   // ------------------------------------------------------ thanh trên lưới --
 
   function wireSheetPicker() {
-    // Bộ chọn trang tính DUY NHẤT của trang (#124), dựng ở MÁY CHỦ. Trước đây hàng nút
-    // này dựng ở đây từ `data.sheet_names`, và một `<select name="sheet">` ở thẻ dưới
-    // dựng cùng danh sách đó ở máy chủ với hậu quả khác: cái này đổi khung nhìn, cái kia
-    // ghim trang cho lượt nạp sau. Hai chỗ dựng một danh sách là hai chỗ đi lệch nhau.
+    // Bộ chọn trang tính dựng ở MÁY CHỦ (#124), không dựng ở đây nữa: hai chỗ dựng cùng
+    // một danh sách là hai chỗ đi lệch nhau.
     //
     // Liên kết `?sheet=N`, không phải nút: địa chỉ là thứ nói trang nào đang xem, nên
     // không có JS thì cú bấm tải lại trang và máy chủ dựng đúng trang đó. Ở đây chỉ chặn
@@ -470,8 +468,21 @@
     pin.value = name;
     var label = document.getElementById('sheet-pin-name');
     if (label) label.textContent = name;
-    // Ghim lại đúng trang đang ghim không đổi gì — nút câm thay vì xếp một lượt nạp.
+    // Ghim lại đúng trang đang ghim không đổi một dòng nào — `disabled` thay vì xếp
+    // một lượt nạp lại toàn kỳ.
     pin.disabled = !name || name === (pin.dataset.pinned || '');
+  }
+
+  function revealSettings(name) {
+    // Mở vùng cài đặt khi cán bộ xem sang một trang KHÁC trang hệ thống đọc: đó là trạng
+    // thái duy nhất nút ghim có việc để làm, và nút đó nằm trong vùng. Máy chủ đã mở sẵn
+    // cho lượt tải lại (`ReadSettings.viewing_other`); đây là đường của lượt đổi tại chỗ,
+    // vì đổi tại chỗ không dựng lại trang.
+    //
+    // Chỉ MỞ, không đóng lại: cán bộ tự mở ra thì lượt đổi trang sau không được đóng lại
+    // thứ họ đang đọc.
+    var box = document.getElementById('read-settings');
+    if (box && name && name !== state.parsedSheet) box.open = true;
   }
 
   function openSheet(index, name) {
@@ -485,6 +496,7 @@
     onScroll();
     markSheet(index);
     setPinTarget(name || '');
+    revealSettings(name || '');
     var u = new URL(window.location.href);
     u.searchParams.set('sheet', String(index));
     window.history.replaceState({}, '', u.toString());

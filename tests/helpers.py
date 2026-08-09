@@ -8,6 +8,9 @@ tự chạy job đã xếp thì mới thấy trạng thái sau khi nạp.
 from __future__ import annotations
 
 import io
+import re
+from functools import lru_cache
+from pathlib import Path
 
 import app.database as dbmod
 
@@ -103,3 +106,37 @@ def last_job_result(kind: str | None = None) -> dict | None:
             q = q.filter_by(kind=kind)
         job = q.order_by(Job.id.desc()).first()
         return dict(job.result) if job and job.result else None
+
+
+# ─────────────────────── đọc mã nguồn lưới ───────────────────────
+
+GRID_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "cell-grid.js"
+
+
+@lru_cache(maxsize=1)
+def grid_source() -> str:
+    return GRID_JS.read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=1)
+def grid_functions() -> dict[str, str]:
+    """Thân từng hàm mức trên cùng của `cell-grid.js`, cắt theo cột thụt đầu dòng.
+
+    Cắt thô có chủ ý: bộ test không nhúng trình phân tích JS, và một regex chặt hơn thì
+    mọi lần sửa `cell-grid.js` sau này đỏ vì lý do không liên quan.
+
+    Dùng chung vì nhiều vé cần cùng phép đọc này: mã chỉ chạy ở trình duyệt đứt im lặng,
+    nên cách bắt được nó là lấy bộ chọn / id TỪ JS rồi đối chiếu với trang đã dựng.
+    """
+    src = grid_source()
+    starts = [(m.group(1), m.start()) for m in re.finditer(r"^  function (\w+)\(", src, re.M)]
+    return {
+        name: src[pos : (starts[i + 1][1] if i + 1 < len(starts) else len(src))]
+        for i, (name, pos) in enumerate(starts)
+    }
+
+
+def grid_body(name: str) -> str:
+    fns = grid_functions()
+    assert name in fns, f"`cell-grid.js` không còn hàm `{name}`"
+    return fns[name]

@@ -2583,8 +2583,9 @@ p { margin: 0 0 var(--space-3); }
 
 /* — Cài đặt đọc file: thu còn một dòng khi đã đặt đúng (issue #124) —
    Trang tính và sổ quyết toán là điều kiện đọc CẢ FILE, không phải quyết định theo từng
-   trường. Hai thẻ cao chiếm đầu tầm mắt đẩy việc chính — gán cột — xuống dưới nếp gấp
-   ở mọi lượt mở trang, kể cả khi cả hai đã đúng và không còn gì để làm với chúng. */
+   trường. Hai thẻ cũ cao khoảng 300px cộng lại, nên bảng gán cột bắt đầu bên dưới mép
+   dưới khung nhìn ở mọi lượt mở trang — kể cả khi cả hai đã đúng và không còn việc gì
+   với chúng. Thu lại còn một dòng thì bảng gán cột nằm trong màn hình đầu tiên. */
 .fp-settings { padding: 0; margin-bottom: var(--space-4); }
 .fp-settings-sum {
   display: flex; align-items: baseline; gap: var(--space-2);

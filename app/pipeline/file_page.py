@@ -330,12 +330,11 @@ class ReadSettings:
 
     Hai thứ này không phải quyết định theo từng trường: chúng quyết định file được đọc
     bằng những dòng nào, TRƯỚC khi có cột nào để gán. Gom vào một vùng, và vùng đó thu
-    còn một dòng khi cả hai đã đặt đúng — việc chính (gán cột) mới nằm ở đầu tầm mắt.
+    còn một dòng khi cả hai đã đặt đúng, để bảng gán cột không bị đẩy xuống dưới khung
+    nhìn ở mọi lượt mở trang.
 
-    `sheet` là trang HỆ THỐNG ĐỌC, `viewed` là trang LƯỚI ĐANG XEM. Hai thứ khác nhau và
-    trước vé này màn có hai bộ chọn không nói ra sự khác nhau đó: một cái ghim trang cho
-    lượt nạp sau, một cái chỉ đổi khung nhìn. Nay bộ chọn đổi `viewed`, còn ghim là một
-    nút riêng trỏ vào chính `viewed`.
+    `sheet` là trang HỆ THỐNG ĐỌC, `viewed` là trang LƯỚI ĐANG XEM. Hai thứ khác nhau, và
+    bộ chọn nay chỉ đổi `viewed` còn ghim là một nút riêng trỏ vào chính `viewed`.
 
     Câu chữ dựng ở đây chứ không ở template: một chỗ quyết định, và khẳng định được mà
     không phải dựng trang.
@@ -373,14 +372,24 @@ class ReadSettings:
     def book_ok(self) -> bool:
         """Sổ chỉ giữ vùng mở khi CHÍNH file này là thứ làm cổng nạp dừng.
 
-        Anh em cùng kỳ thiếu nhãn thì sửa ở màn dữ liệu, không sửa được ở đây — mở vùng
-        vì một việc màn này không làm được là tiếng ồn.
+        Anh em cùng kỳ thiếu nhãn thì sửa ở màn dữ liệu, không sửa được ở đây; mở vùng
+        cho một việc màn này không làm được thì cán bộ mở ra rồi đóng lại tay không.
         """
         return not (self.book_shown and self.book_blocked)
 
     @property
+    def viewing_other(self) -> bool:
+        """Đang xem một trang KHÁC trang hệ thống đọc.
+
+        Chưa phải sai, nhưng là trạng thái duy nhất mà nút ghim có việc để làm — nên vùng
+        không được thu ở đây. Thu thì nút ghim nằm trong phần đã đóng, đúng lúc nó là thứ
+        cán bộ cần: mở một trang khác lên xem chính là bước trước khi ghim nó.
+        """
+        return bool(self.viewed) and self.viewed != self.sheet
+
+    @property
     def settled(self) -> bool:
-        return self.sheet_ok and self.book_ok
+        return self.sheet_ok and self.book_ok and not self.viewing_other
 
     @property
     def can_pin(self) -> bool:
@@ -415,6 +424,40 @@ class ReadSettings:
         if not self.sheet:
             return "Chưa xác định trang tính"
         return f"Trang “{self.sheet}” · {'đã ghim' if self.sheet_pinned else 'tự nhận diện'}"
+
+    @property
+    def period_books_line(self) -> str:
+        """Kỳ này đã có dữ liệu theo sổ nào — điều kiện khiến "bỏ hết mã sổ" bị từ chối."""
+        if not self.period_books:
+            return ""
+        return (
+            f"Kỳ này đã có dữ liệu theo sổ {', '.join(self.period_books)}. "
+            "Bỏ hết mã sổ ở kỳ này sẽ bị từ chối."
+        )
+
+    @property
+    def book_fix_line(self) -> str:
+        """Cách sửa — nói ở CẢ HAI trạng thái cần nó, không chỉ ở trạng thái đang chặn.
+
+        Kỳ đã có dữ liệu theo sổ mà file này đã có mã sổ: chưa chặn gì, nhưng câu ngay
+        trên vừa nói "bỏ hết mã sổ sẽ bị từ chối" — nêu điều kiện mà không nêu đường ra
+        là bỏ cán bộ lại giữa chừng. Cùng một cách sửa cho cả hai.
+        """
+        if not (self.book_blocked or self.period_books):
+            return ""
+        return "Cách sửa: gán mã sổ cho từng file quyết toán của kỳ rồi nạp lại."
+
+    @property
+    def book_blocked_line(self) -> str:
+        """Cổng nạp đang dừng. Nói CẢ KỲ, không nói riêng file này.
+
+        `book_assignment_error` chặn ở hai nhánh: kỳ có dữ liệu theo sổ mà không file nào
+        còn nhãn (nguyên nhân cả kỳ), và một số file đã gán số khác chưa (file này là một
+        trong số chưa). Câu chỉ đích danh file này sai ở nhánh đầu.
+        """
+        if not self.book_blocked:
+            return ""
+        return "Lượt nạp đang dừng: kỳ này còn file quyết toán chưa có mã sổ, gồm cả file này."
 
     @property
     def book_summary(self) -> str:

@@ -27,7 +27,6 @@ from __future__ import annotations
 import html
 import json
 import re
-from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -38,8 +37,7 @@ from app.models import Company, DataFile
 from app.pipeline.file_page import ReadSettings, file_page_url
 from app.settings import settings
 from tests.excel_fixtures import write_xlsx
-
-GRID_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "cell-grid.js"
+from tests.helpers import grid_body, grid_source
 
 REL_DIR = "DN_RS/2025/BCQT"
 
@@ -92,6 +90,33 @@ def test_a_settlement_file_with_no_book_while_ingest_refuses_keeps_it_open():
     assert _settings(book_shown=True, book="EPE", book_blocked=False).settled is True
     # Không phải file quyết toán → không có ô sổ để đặt, không giữ vùng mở.
     assert _settings(book_shown=False, book_blocked=True).settled is True
+
+
+def test_viewing_another_sheet_keeps_the_region_open():
+    """AC 1. Nút ghim nằm TRONG vùng, nên vùng không được thu đúng lúc nút có việc.
+
+    Xem sang một trang khác trang hệ thống đọc là bước ngay trước khi ghim nó. Thu vùng
+    ở trạng thái đó thì hành động duy nhất áp dụng được lại nằm trong phần đã đóng.
+    """
+    assert _settings(viewed="Phụ lục").viewing_other is True
+    assert _settings(viewed="Phụ lục").settled is False
+    assert _settings(viewed="BCQT_NVL").viewing_other is False
+
+
+def test_the_remedy_speaks_wherever_the_book_rules_bind():
+    """AC 4, quy tắc 4. Nêu điều kiện từ chối mà không nêu đường ra là nói nửa chừng."""
+    # Kỳ đã có dữ liệu theo sổ, file này đã có mã sổ: chưa chặn, nhưng vẫn cần cách sửa.
+    assert _settings(book_shown=True, book="EPE", period_books=("EPE", "GC")).book_fix_line
+    assert _settings(book_shown=True, book_blocked=True).book_fix_line
+    assert _settings(book_shown=True).book_fix_line == ""
+
+
+def test_the_blocked_line_does_not_pin_the_blame_on_this_file_alone():
+    """`book_assignment_error` chặn cả ở nhánh KHÔNG file nào còn nhãn — nguyên nhân cả kỳ."""
+    line = _settings(book_shown=True, book_blocked=True).book_blocked_line
+
+    assert "gồm cả file này" in line
+    assert "vì file này" not in line
 
 
 def test_the_summary_names_the_sheet_and_the_book():
@@ -214,6 +239,29 @@ def test_the_picker_marks_the_sheet_being_viewed(env):
     assert len(tags) == 2
     assert 'aria-current="true"' in tags[0] and 'data-sheet-index="0"' in tags[0]
     assert "aria-current" not in tags[1]
+
+
+def test_the_region_is_open_where_the_pin_button_applies(env):
+    """AC 1 ở trang đã dựng: mở trang khác lên xem thì nút ghim phải nhìn thấy được."""
+    client, root = env
+    fid = _register(root, detail=_M15_DETAIL)
+
+    region = _region(_page(client, fid, "?sheet=1"))       # "Phụ lục" ≠ trang đang đọc
+
+    assert " open" in region.split(">", 1)[0]
+    assert 'id="sheet-pin"' in region
+
+
+def test_switching_sheets_in_place_opens_the_region_too(env):
+    """Lượt đổi tại chỗ KHÔNG dựng lại trang, nên máy chủ không mở hộ được vùng."""
+    assert "revealSettings(" in grid_body("openSheet")
+    m = re.search(r"getElementById\('([a-z-]+)'\)", grid_body("revealSettings"))
+    assert m, "`revealSettings` không tìm vùng nào"
+
+    client, root = env
+    fid = _register(root, detail=_M15_DETAIL)
+
+    assert f'id="{m.group(1)}"' in _page(client, fid)
 
 
 def test_pinning_targets_the_sheet_being_viewed(env):
@@ -392,27 +440,6 @@ def _queued_ingests() -> int:
 
 # ─────────────────────── mối nối JS ↔ HTML ───────────────────────
 
-@lru_cache(maxsize=1)
-def _grid_source() -> str:
-    return GRID_JS.read_text(encoding="utf-8")
-
-
-@lru_cache(maxsize=1)
-def _functions() -> dict[str, str]:
-    src = _grid_source()
-    starts = [(m.group(1), m.start()) for m in re.finditer(r"^  function (\w+)\(", src, re.M)]
-    return {
-        name: src[pos : (starts[i + 1][1] if i + 1 < len(starts) else len(src))]
-        for i, (name, pos) in enumerate(starts)
-    }
-
-
-def _body(name: str) -> str:
-    fns = _functions()
-    assert name in fns, f"`cell-grid.js` không còn hàm `{name}` — chuỗi bộ chọn đã đứt"
-    return fns[name]
-
-
 def test_the_class_the_grid_hooks_on_is_the_class_the_page_emits(env):
     """Lấy lớp TỪ JS rồi đối chiếu với trang: đứt bên nào cũng đỏ.
 
@@ -422,7 +449,7 @@ def test_the_class_the_grid_hooks_on_is_the_class_the_page_emits(env):
     client, root = env
     fid = _register(root, detail=_M15_DETAIL)
 
-    m = re.search(r"querySelectorAll\(\s*'\.([a-z0-9-]+)'", _body("wireSheetPicker"))
+    m = re.search(r"querySelectorAll\(\s*'\.([a-z0-9-]+)'", grid_body("wireSheetPicker"))
     assert m, "`wireSheetPicker` không truy phần tử nào nữa"
     hook = m.group(1)
 
@@ -435,7 +462,7 @@ def test_the_class_the_grid_hooks_on_is_the_class_the_page_emits(env):
 
 def test_the_picker_wiring_is_actually_called(env):
     """#123 chết vì thân hàm được ghim mà CHỖ GỌI thì không. Ghim cả chỗ gọi."""
-    assert "wireSheetPicker()" in _body("wireControls") or "wireSheetPicker()" in _body("init")
+    assert "wireSheetPicker()" in grid_body("wireControls") or "wireSheetPicker()" in grid_body("init")
 
 
 def test_switching_sheets_retargets_the_pin_button(env):
@@ -443,8 +470,8 @@ def test_switching_sheets_retargets_the_pin_button(env):
     client, root = env
     fid = _register(root, detail=_M15_DETAIL)
 
-    assert "setPinTarget(" in _body("openSheet")
-    m = re.search(r"getElementById\('([a-z-]+)'\)", _body("setPinTarget"))
+    assert "setPinTarget(" in grid_body("openSheet")
+    m = re.search(r"getElementById\('([a-z-]+)'\)", grid_body("setPinTarget"))
     assert m, "`setPinTarget` không tìm nút nào"
 
     assert f'id="{m.group(1)}"' in _page(client, fid)
@@ -452,4 +479,4 @@ def test_switching_sheets_retargets_the_pin_button(env):
 
 def test_the_grid_no_longer_builds_a_second_sheet_picker():
     """Bộ chọn dựng ở MÁY CHỦ. Hai chỗ dựng cùng một hàng nút là hai chỗ đi lệch nhau."""
-    assert "renderSheets" not in _grid_source()
+    assert "renderSheets" not in grid_source()

@@ -39,10 +39,7 @@
    chính những dòng trường của bảng gán cột bên dưới. #}
 <div class="fp-grid">
   {# Bộ chọn trang tính DUY NHẤT của trang (#124). Nó đổi thứ ĐANG XEM và không ghim gì:
-     ghim là hành động riêng ở vùng cài đặt đọc file bên dưới. Trước đây có HAI bộ chọn
-     cùng liệt kê tên trang tính với hai hậu quả khác nhau — hàng nút này đổi khung nhìn,
-     `<select name="sheet">` ở thẻ dưới ghim trang cho lượt nạp sau — và không chỗ nào
-     trên màn nói ra sự khác nhau đó.
+     ghim là hành động riêng ở vùng cài đặt đọc file bên dưới.
 
      Liên kết chứ không nút, và dựng ở MÁY CHỦ: địa chỉ mang `?sheet=` là thứ nói trang
      nào đang xem, nên lượt tải lại dựng đúng trang đó, còn lưới chỉ chặn cú bấm để đổi
@@ -122,15 +119,17 @@
    mẫu thiếu ô sẽ ghi đè map cột, lời khai vắng và mã sổ, mà lượt ghim không định đụng
    thứ nào trong ba thứ đó. Biểu mẫu rỗng đứng ngoài để nút ghim (nằm trong vùng cài đặt,
    tức trong biểu mẫu gán cột) nối vào nó bằng thuộc tính `form=` — biểu mẫu lồng nhau là
-   HTML sai, và một nút gửi đặt sớm trong biểu mẫu gán cột sẽ cướp phím Enter của ô nhập
-   chỉ số cột. #}
+   HTML sai, và nút gửi ĐẦU TIÊN trong một biểu mẫu là nút mặc định của phím Enter — đặt
+   nút ghim trong biểu mẫu gán cột thì Enter ở ô nhập chỉ số cột đi ghim trang thay vì
+   xác nhận cột. #}
 <form method="post" action="{{ page_url }}/sheet" id="fp-sheet-form"></form>
 
 <form method="post" action="{{ page_url }}">
   {# Cài đặt đọc file (#124): trang tính + sổ quyết toán là điều kiện đọc CẢ FILE, không
      phải quyết định theo từng trường — chúng quyết định file được đọc bằng những dòng
-     nào, trước khi có cột nào để gán. Thu còn MỘT DÒNG khi cả hai đã đặt đúng để việc
-     chính (gán cột) nằm ở đầu tầm mắt; mở sẵn khi chưa đặt hoặc đang sai.
+     nào, trước khi có cột nào để gán. Thu còn MỘT DÒNG khi cả hai đã đặt đúng, để bảng
+     gán cột nằm trong màn hình đầu tiên; mở sẵn khi chưa đặt, đang sai, hoặc khi lưới
+     đang xem một trang khác trang hệ thống đọc — đó là lúc nút ghim có việc để làm.
 
      `<details>` chứ không phải một nút đóng/mở tự viết: trạng thái mở do máy chủ quyết
      định theo dữ liệu, và ô trong phần thu vẫn nằm trong biểu mẫu nên vẫn gửi đi. #}
@@ -191,11 +190,14 @@
         {% endif %}
         <p class="form-hint">Gán sổ là <strong>tất cả hoặc không</strong>: đã gán cho một file thì mọi file quyết toán của kỳ (Mẫu 15, 15a, 16) phải có mã sổ.</p>
         <p class="form-hint">Bỏ sót file nào thì lượt nạp dừng và báo tên file đó; dữ liệu cũ giữ nguyên.</p>
-        {% if read_settings.period_books %}
-        <p class="form-hint">Kỳ {{ file.period_year }} đã có dữ liệu theo sổ {{ read_settings.period_books | join(', ') }}. Bỏ hết mã sổ ở kỳ này sẽ bị từ chối.</p>
+        {% if read_settings.period_books_line %}
+        <p class="form-hint">{{ read_settings.period_books_line }}</p>
         {% endif %}
-        {% if read_settings.book_blocked %}
-        <p class="form-hint fp-set-wrong">Lượt nạp đang dừng vì file này chưa có mã sổ. <strong>Cách sửa:</strong> gán mã sổ cho từng file quyết toán của kỳ rồi nạp lại.</p>
+        {% if read_settings.book_blocked_line %}
+        <p class="form-hint fp-set-wrong">{{ read_settings.book_blocked_line }}</p>
+        {% endif %}
+        {% if read_settings.book_fix_line %}
+        <p class="form-hint">{{ read_settings.book_fix_line }}</p>
         {% endif %}
       </section>
       {% endif %}

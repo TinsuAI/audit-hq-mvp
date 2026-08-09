@@ -1672,6 +1672,24 @@ def _reject_shared_columns(groups: dict[str, list[int]]) -> None:
             owner[idx] = label
 
 
+def _repin_sheet(row: DataFile, picked: str | None) -> bool:
+    """Ghi trang tính đã ghim lên dòng file; trả về "lượt nạp sau sẽ đọc trang khác".
+
+    So sánh trang SẼ ĐỌC, không so giá trị ô: ghim đúng trang lượt nạp gần nhất đã đọc
+    vẫn được lưu (không tự xoá) nhưng không đổi một dòng nào. Bỏ ghim thì LUÔN là đổi —
+    lượt nạp sau tự nhận diện và có thể ra trang khác.
+
+    Một hàm cho cả hai đường ghi (nút ghim riêng và biểu mẫu gán cột ở địa chỉ cũ): hai
+    bản sao của phép so này thì một bản sửa mà bản kia không, và hậu quả là chạy lại hoặc
+    không chạy lại kiểm tra cho cả năm.
+    """
+    read_sheet = row.parse_detail_obj.get("sheet")
+    unpinned = row.sheet_override is not None and picked is None
+    changed = unpinned or (row.sheet_override or read_sheet) != (picked or read_sheet)
+    row.sheet_override = picked
+    return changed
+
+
 @router.post("/companies/{code}/documents/file/{file_id}/sheet", response_model=None)
 def documents_pin_sheet(
     code: str,
@@ -1694,15 +1712,8 @@ def documents_pin_sheet(
         raise HTTPException(status_code=404, detail="Không tìm thấy file")
 
     year = row.period_year
-    picked = (sheet or "").strip() or None
-    # So sánh trang SẼ ĐỌC, không so giá trị ô: ghim đúng trang lượt nạp gần nhất đã đọc
-    # vẫn được lưu (không tự xoá), nhưng nó không đổi một dòng nào nên không chạy lại
-    # kiểm tra. Bỏ ghim thì LUÔN là đổi — lượt nạp sau tự nhận diện, có thể ra trang khác.
-    read_sheet = row.parse_detail_obj.get("sheet")
     was_parsed = row.parse_status == DataFileStatus.OK
-    unpinned = row.sheet_override is not None and picked is None
-    changed = unpinned or (row.sheet_override or read_sheet) != (picked or read_sheet)
-    row.sheet_override = picked
+    changed = _repin_sheet(row, (sheet or "").strip() or None)
     db.commit()
 
     then_run_checks: dict | None = None
@@ -1841,17 +1852,10 @@ async def documents_confirm_review(
     # nghĩa là "không đụng tới". Giữ nghĩa cũ ("" = bỏ ghim) thì mỗi lượt xác nhận cột
     # lặng lẽ trả quyền chọn trang về cho máy, đúng lớp lỗi mà `_field_major` đã sửa cho
     # lời khai vắng. Địa chỉ cũ `/review` vẫn gửi ô đó, và ở đó "" vẫn là bỏ ghim.
-    read_sheet = detail.get("sheet")  # trang lượt nạp gần nhất đã đọc
     sheet_changed = False
     if "sheet" in form:
-        new_sheet = (form.get("sheet") or "").strip() or None
-        # So sánh trang SẼ ĐỌC (không phải giá trị ô) để biết có đổi thật hay không —
-        # đổi trang là đổi toàn bộ dòng, xử lý như đổi sổ: chạy lại cả năm.
-        unpinned = row.sheet_override is not None and new_sheet is None
-        sheet_changed = unpinned or (row.sheet_override or read_sheet) != (
-            new_sheet or read_sheet
-        )
-        row.sheet_override = new_sheet
+        # Đổi trang là đổi toàn bộ dòng của file, xử lý như đổi sổ: chạy lại cả năm.
+        sheet_changed = _repin_sheet(row, (form.get("sheet") or "").strip() or None)
 
     evidence = {c["field"]: c.get("evidence") for c in columns if c.get("field")}
 
