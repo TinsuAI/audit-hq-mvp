@@ -14,6 +14,7 @@ Khẳng định vào CẤU TRÚC (thuộc tính, đích liên kết, tệp đư�
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -137,16 +138,20 @@ def test_the_hidden_assistant_panel_is_out_of_the_tab_order(client: TestClient):
     assert 'aria-hidden="true"' in opening
     assert re.search(r"\binert\b", opening), opening
 
-    # Sáu điều khiển đó vẫn còn trong HTML — `inert` là thứ đưa chúng khỏi chuỗi tab.
+    # Các điều khiển đó vẫn còn trong HTML — `inert` là thứ đưa chúng khỏi chuỗi tab.
     # Đếm để phép đo nói được là nó che đúng số điều khiển vé nêu, không phải 0.
+    #
+    # SÁU là số ở HTML máy chủ dựng. Lúc chạy có thể là bảy: `renderScopeBar` bỏ `hidden`
+    # khỏi `#ai-scope-bar` ngay ở `init()`, không đợi thanh mở. Con số không phải điều
+    # kiện của bản vá — `inert` che CẢ CÂY CON nên nó không phụ thuộc số điều khiển đang
+    # hiện; đây chỉ là phép đo đối chiếu với con số vé nêu.
     assert _focusable_count(_panel(html)) == 6
 
 
 def test_opening_and_closing_the_panel_move_inert_with_aria_hidden() -> None:
     """Hai thuộc tính phải đổi ở CÙNG một chỗ; tách ra là chúng đi lệch nhau."""
     source = (
-        __import__("pathlib").Path(__file__).resolve().parents[1]
-        / "app" / "static" / "sidebar.js"
+        Path(__file__).resolve().parents[1] / "app" / "static" / "sidebar.js"
     ).read_text(encoding="utf-8")
 
     def body_of(name: str) -> str:
@@ -169,6 +174,10 @@ def test_opening_and_closing_the_panel_move_inert_with_aria_hidden() -> None:
     closed = body_of("closePanel")
     assert "aria-hidden', 'true'" in closed
     assert "setAttribute('inert'" in closed
+    # Trả focus TRƯỚC khi khai `inert`: focus đang nằm trong thanh, mà `inert` làm cả cây
+    # con hết nhận focus, nên trình duyệt đẩy focus về `<body>` và vòng tab quay lại đầu
+    # trang. Thứ tự là phần khẳng định, không chỉ sự có mặt.
+    assert closed.index("focus()") < closed.index("setAttribute('inert'")
 
 
 # ───────────────────────── trang file không tải thanh trợ lý ─────────────────────────

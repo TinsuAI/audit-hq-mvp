@@ -327,10 +327,6 @@ p { margin: 0 0 var(--space-3); }
 }
 .skip-link:focus { top: var(--space-2); }
 
-/* Đích của skip-link nhận focus theo mã, nên bỏ vòng focus của trình duyệt: cán bộ vừa
-   BẤM liên kết đó, không cần một khung viền quanh cả trang để biết mình đang ở đâu. */
-.app-main:focus { outline: none; }
-
 .app-main {
   max-width: 1280px;
   margin: 0 auto;

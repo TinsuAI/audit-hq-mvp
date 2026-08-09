@@ -4,8 +4,9 @@
 <button id="ai-fab" class="ai-fab hidden" aria-label="Mở trợ lý AI" title="Trợ lý AI">💬</button>
 
 {# `inert` đi CẶP với `aria-hidden` (#126): khai "không tồn tại" mà vẫn nhận được focus
-   là hai câu ngược nhau, và bàn phím rơi vào sáu điều khiển của một thanh đang đóng.
-   `sidebar.js` gỡ/đặt lại cả hai ở cùng một chỗ (`openPanel` / `closePanel`). #}
+   là hai câu ngược nhau, và bàn phím rơi vào các điều khiển của một thanh đang đóng.
+   `inert` che CẢ CÂY CON nên nó không phụ thuộc lúc chạy có bao nhiêu điều khiển đang
+   hiện. `sidebar.js` gỡ/đặt lại cả hai ở cùng một chỗ (`openPanel` / `closePanel`). #}
 <aside id="ai-panel" class="ai-panel" role="dialog" aria-labelledby="ai-title" aria-hidden="true" inert>
   <header class="ai-header">
     <div>

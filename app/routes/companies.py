@@ -1465,8 +1465,9 @@ def documents_file_page(
             "msg": msg,
             "error": error,
             # Trang này nói về nội dung THẬT của một file, mà trợ lý không đọc được file
-            # đó — thanh trợ lý ở đây chỉ là 103.616 B JavaScript tải về để không dùng
-            # (#126). Cờ đã có sẵn ở `base.html`.
+            # đó — thanh trợ lý ở đây là 104.257 B JavaScript tải về để không dùng
+            # (chat-core 30.911 + sidebar 13.114 + marked 38.701 + dompurify 21.531),
+            # cộng 16.319 B CSS (#126).
             "hide_chat_fab": True,
             "ingest": ing,
             "ingest_status_url": (
