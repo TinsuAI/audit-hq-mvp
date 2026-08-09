@@ -38,7 +38,23 @@
    hàng của trang tính (#121, ADR #29). KHÔNG dính mép trên: dính thì lưới che mất
    chính những dòng trường của bảng gán cột bên dưới. #}
 <div class="fp-grid">
-  <div class="cg-sheets" id="cg-sheets" hidden></div>
+  {# Bộ chọn trang tính DUY NHẤT của trang (#124). Nó đổi thứ ĐANG XEM và không ghim gì:
+     ghim là hành động riêng ở vùng cài đặt đọc file bên dưới.
+
+     Liên kết chứ không nút, và dựng ở MÁY CHỦ: địa chỉ mang `?sheet=` là thứ nói trang
+     nào đang xem, nên lượt tải lại dựng đúng trang đó, còn lưới chỉ chặn cú bấm để đổi
+     tại chỗ. Dựng ở máy chủ cũng là để chỉ còn MỘT chỗ dựng hàng nút này. #}
+  {% if sheet_names | length > 1 %}
+  <div class="cg-sheets" id="cg-sheets">
+    <span class="form-hint">Trang tính đang xem:</span>
+    {% for s in sheet_names %}
+    <a class="btn btn-sm {% if loop.index0 == selected_sheet %}btn-primary{% else %}btn-secondary{% endif %} js-sheet-pick"
+       href="{{ page_url }}?sheet={{ loop.index0 }}"
+       data-sheet-index="{{ loop.index0 }}" data-sheet-name="{{ s }}"
+       {% if loop.index0 == selected_sheet %}aria-current="true"{% endif %}>{{ s }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <div class="cg-toolbar">
     <div class="cg-jump">
@@ -99,42 +115,98 @@
   <a href="/static/docs/huong-dan/index.html#b7">Cẩm nang: nguồn bằng chứng của cột →</a>
 </p>
 
-<form method="post" action="{{ page_url }}">
-  <div class="card" style="margin-bottom:var(--space-4)">
-    <label for="sheet-input" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Trang tính (sheet) được đọc</label>
-    <p class="form-hint" style="margin:0 0 var(--space-2)">
-      {# Trang tính đang đọc nói ở DÒNG TRẠNG THÁI dưới lưới (#120), không nhắc lại ở đây:
-         nhắc hai chỗ là hai chỗ phải sửa khi lượt nạp sau đổi trang. Chỗ này chỉ giải
-         thích cái ô điều khiển làm gì và vì sao chọn sai thì nguy hiểm. #}
-      {% if not basis.sheet %}
-      Hệ thống <strong>không tự nhận ra</strong> trang nào đúng biểu trong file này.
-      {% endif %}
-      Một workbook kết xuất từ hải quan thường có cả trang tổng hợp cấp tờ khai lẫn trang chi tiết dòng hàng —
-      đọc nhầm trang ra <strong>dòng sai</strong> chứ không phải 0 dòng. Để trống = để hệ thống tự chọn.
-    </p>
-    <select id="sheet-input" name="sheet" class="form-select mono-input" style="max-width:320px">
-      <option value="">(tự nhận diện)</option>
-      {% for s in sheet_names %}
-      <option value="{{ s }}" {% if basis.sheet == s %}selected{% endif %}>{{ s }}</option>
-      {% endfor %}
-    </select>
-    {% if sheet_names | length <= 1 %}
-    <p class="form-hint" style="margin:var(--space-2) 0 0">File này chỉ có một trang tính.</p>
-    {% endif %}
-  </div>
+{# Ghim trang tính đi ĐƯỜNG RIÊNG, không qua biểu mẫu gán cột (#124): một lượt gửi biểu
+   mẫu thiếu ô sẽ ghi đè map cột, lời khai vắng và mã sổ, mà lượt ghim không định đụng
+   thứ nào trong ba thứ đó. Biểu mẫu rỗng đứng ngoài để nút ghim (nằm trong vùng cài đặt,
+   tức trong biểu mẫu gán cột) nối vào nó bằng thuộc tính `form=` — biểu mẫu lồng nhau là
+   HTML sai, và nút gửi ĐẦU TIÊN trong một biểu mẫu là nút mặc định của phím Enter — đặt
+   nút ghim trong biểu mẫu gán cột thì Enter ở ô nhập chỉ số cột đi ghim trang thay vì
+   xác nhận cột. #}
+<form method="post" action="{{ page_url }}/sheet" id="fp-sheet-form"></form>
 
-  {% if is_settlement and basis.can_confirm %}
-  <div class="card" style="margin-bottom:var(--space-4)">
-    <label for="book-input" style="font-weight:600;display:block;margin-bottom:var(--space-1)">Sổ quyết toán (loại hình)</label>
-    <p class="form-hint" style="margin:0 0 var(--space-2)">Nếu doanh nghiệp giữ nhiều sổ quyết toán khác loại hình (vd DNCX vừa chế xuất vừa gia công), nhập mã sổ cho file này — vd <code>EPE</code>, <code>GC</code>. Nạp lại sẽ gom dữ liệu theo sổ. <strong>Gán sổ là tất cả hoặc không</strong>: đã gán cho một file thì phải gán cho tất cả các file quyết toán (Mẫu 15, 15a, 16) của kỳ — bỏ sót file nào thì lượt nạp dừng và báo tên file đó, dữ liệu cũ giữ nguyên, gán nốt rồi nạp lại. Để trống <strong>mọi</strong> file = doanh nghiệp <strong>1 sổ</strong>, chỉ áp dụng cho kỳ <strong>chưa từng nạp theo sổ</strong>; kỳ đã có dữ liệu theo sổ thì bỏ hết nhãn sẽ bị từ chối — muốn sửa thì gán lại nhãn cho từng file.</p>
-    <input list="book-datalist" id="book-input" name="book" class="form-input" style="max-width:280px"
-           value="{{ file.book or '' }}" placeholder="1 sổ (dùng chung)" autocomplete="off">
-    <datalist id="book-datalist">
-      {% for b in book_options %}<option value="{{ b }}">{{ book_label(b) }}</option>{% endfor %}
-      {% for code, label in book_known.items() if code not in book_options %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
-    </datalist>
-  </div>
-  {% endif %}
+<form method="post" action="{{ page_url }}">
+  {# Cài đặt đọc file (#124): trang tính + sổ quyết toán là điều kiện đọc CẢ FILE, không
+     phải quyết định theo từng trường — chúng quyết định file được đọc bằng những dòng
+     nào, trước khi có cột nào để gán. Thu còn MỘT DÒNG khi cả hai đã đặt đúng, để bảng
+     gán cột nằm trong màn hình đầu tiên; mở sẵn khi chưa đặt, đang sai, hoặc khi lưới
+     đang xem một trang khác trang hệ thống đọc — đó là lúc nút ghim có việc để làm.
+
+     `<details>` chứ không phải một nút đóng/mở tự viết: trạng thái mở do máy chủ quyết
+     định theo dữ liệu, và ô trong phần thu vẫn nằm trong biểu mẫu nên vẫn gửi đi. #}
+  <details class="card fp-settings" id="read-settings"{% if not read_settings.settled %} open{% endif %}>
+    <summary class="fp-settings-sum">
+      <span class="fp-settings-title">Cài đặt đọc file</span>
+      <span class="fp-settings-value">{{ read_settings.summary }}</span>
+    </summary>
+    <div class="fp-settings-body">
+      <section class="fp-set">
+        <h2 class="fp-set-h">Trang tính được đọc</h2>
+        {# Câu chữ dựng ở `ReadSettings`, không ở đây. #}
+        <p class="form-hint">{{ read_settings.sheet_line }}</p>
+        {% if read_settings.viewed_line %}
+        <p class="form-hint">{{ read_settings.viewed_line }}</p>
+        {% endif %}
+        {% if not read_settings.sheet %}
+        <p class="form-hint">Workbook hải quan thường có cả trang tổng hợp lẫn trang chi tiết dòng hàng.</p>
+        <p class="form-hint">Đọc nhầm trang ra <strong>dòng sai</strong>, không phải 0 dòng.</p>
+        {% endif %}
+        {% if read_settings.sheet_names | length > 1 %}
+        <div class="btn-group fp-set-actions">
+          {# Nút ghim luôn trỏ vào trang ĐANG XEM; lưới cập nhật `value` khi cán bộ đổi
+             trang. Câm khi trang đang xem đã là trang đang ghim — bấm không đổi gì. #}
+          <button type="submit" form="fp-sheet-form" name="sheet" id="sheet-pin"
+                  class="btn btn-sm btn-secondary"
+                  data-pinned="{% if read_settings.sheet_pinned %}{{ read_settings.sheet }}{% endif %}"
+                  value="{{ read_settings.viewed }}"
+                  {% if not read_settings.can_pin %}disabled{% endif %}>
+            {#- Cả nhãn nằm trong MỘT `<span>`. `.btn` là `inline-flex` có `gap`, nên mỗi
+                đoạn chữ cạnh một phần tử con thành một flex item riêng và `gap` chen
+                khoảng trắng vào giữa: “Ghim trang ␣ “Phụ lục” ␣ & nạp lại”. Một item thì
+                phần trong nó xuống dòng bình thường. Chỉ trình duyệt mới lộ ra lỗi này. -#}
+            <span>Ghim trang “<span id="sheet-pin-name">{{ read_settings.viewed }}</span>” &amp; nạp lại</span>
+          </button>
+          {% if read_settings.sheet_pinned %}
+          <button type="submit" form="fp-sheet-form" name="sheet" value="" id="sheet-unpin"
+                  class="btn btn-sm btn-secondary">Bỏ ghim, để hệ thống tự chọn</button>
+          {% endif %}
+        </div>
+        <p class="form-hint">Ghim = mọi lượt nạp sau đọc đúng trang này. Đổi trang đang xem ở bộ chọn trên lưới.</p>
+        {% else %}
+        <p class="form-hint">File này chỉ có một trang tính.</p>
+        {% endif %}
+      </section>
+
+      {% if read_settings.book_shown %}
+      <section class="fp-set">
+        <h2 class="fp-set-h">Sổ quyết toán</h2>
+        <label class="fp-set-label" for="book-input">Mã sổ (loại hình) của file này</label>
+        <input list="book-datalist" id="book-input" name="book" class="form-input" style="max-width:280px"
+               value="{{ file.book or '' }}" placeholder="1 sổ (dùng chung)" autocomplete="off">
+        <datalist id="book-datalist">
+          {% for b in read_settings.period_books %}<option value="{{ b }}">{{ book_label(b) }}</option>{% endfor %}
+          {% for code, label in book_known.items() if code not in read_settings.period_books %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+        </datalist>
+        {# Bốn quy tắc về sổ quyết toán, mỗi quy tắc một câu và mỗi câu ở trạng thái nó áp
+           dụng (#124). Trước đây cả bốn nằm trong MỘT đoạn 559 ký tự đọc ở mọi trạng
+           thái, kể cả khi ba trong bốn quy tắc không nói về tình huống trước mắt. #}
+        {% if not file.book %}
+        <p class="form-hint">Để trống <strong>mọi</strong> file quyết toán = doanh nghiệp một sổ, dùng chung.</p>
+        {% endif %}
+        <p class="form-hint">Gán sổ là <strong>tất cả hoặc không</strong>: đã gán cho một file thì mọi file quyết toán của kỳ (Mẫu 15, 15a, 16) phải có mã sổ.</p>
+        <p class="form-hint">Bỏ sót file nào thì lượt nạp dừng và báo tên file đó; dữ liệu cũ giữ nguyên.</p>
+        {% if read_settings.period_books_line %}
+        <p class="form-hint">{{ read_settings.period_books_line }}</p>
+        {% endif %}
+        {% if read_settings.book_blocked_line %}
+        <p class="form-hint fp-set-wrong">{{ read_settings.book_blocked_line }}</p>
+        {% endif %}
+        {% if read_settings.book_fix_line %}
+        <p class="form-hint">{{ read_settings.book_fix_line }}</p>
+        {% endif %}
+      </section>
+      {% endif %}
+    </div>
+  </details>
 
   {% if basis.missing_row_keys %}
   <div class="card alert alert-danger" style="margin-bottom:var(--space-4)">
@@ -256,7 +328,10 @@
     {% if basis.can_confirm %}
     <button type="submit" class="btn btn-primary">✅ Xác nhận &amp; nạp dữ liệu</button>
     {% else %}
-    <button type="submit" class="btn btn-primary">⤵️ Ghim trang tính &amp; nạp lại</button>
+    {# Không có bố cục cột để xác nhận → lượt gửi này chỉ còn nghĩa "đọc lại file với cài
+       đặt hiện tại". Ghim trang tính là nút riêng ở vùng cài đặt (#124), nên nút này
+       không được mang tên việc đó nữa. #}
+    <button type="submit" class="btn btn-primary">⤵️ Nạp lại file</button>
     {% endif %}
     <a href="/companies/{{ company.slug or company.code }}/documents#ky-{{ file.period_year }}" class="btn btn-secondary">Huỷ</a>
   </div>
@@ -265,8 +340,8 @@
     Xác nhận lưu vị trí cột cho doanh nghiệp này theo cấu trúc biểu — lần sau gặp cùng bố cục
     (kể cả năm khác) sẽ không phải xác nhận lại. Chỉ số cột tính từ <strong>0</strong> (cột A = 0, B = 1…).
     {% else %}
-    Ghim trang tính rồi nạp lại là đường đưa file vào hệ thống khi không trang nào khớp biểu chuẩn —
-    không phải sửa file nguồn.
+    Lượt nạp gần nhất không đọc ra bố cục cột nào. Ghim đúng trang tính ở vùng cài đặt đọc file —
+    đó là đường đưa file vào hệ thống khi không trang nào khớp biểu chuẩn, không phải sửa file nguồn.
     {% endif %}
   </p>
 </form>

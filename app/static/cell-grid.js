@@ -355,7 +355,6 @@
       formulas: data.formulas || null,
     };
     hideOverlay();
-    renderSheets(data);
     renderNotes(data);
     renderStatus(data);
     setDimensions(data);
@@ -431,28 +430,62 @@
 
   // ------------------------------------------------------ thanh trên lưới --
 
-  function renderSheets(data) {
-    var names = data.sheet_names || [];
-    var box = document.getElementById('cg-sheets');
-    if (!box) return;
-    if (names.length < 2) { box.hidden = true; return; }
-    box.hidden = false;
-    box.textContent = '';
-    var label = document.createElement('span');
-    label.className = 'form-hint';
-    label.textContent = 'Trang tính:';
-    box.appendChild(label);
-    names.forEach(function (name, i) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'btn btn-sm ' + (i === state.sheet ? 'btn-primary' : 'btn-secondary');
-      b.textContent = name;
-      b.addEventListener('click', function () { openSheet(i); });
-      box.appendChild(b);
+  function wireSheetPicker() {
+    // Bộ chọn trang tính dựng ở MÁY CHỦ (#124), không dựng ở đây nữa: hai chỗ dựng cùng
+    // một danh sách là hai chỗ đi lệch nhau.
+    //
+    // Liên kết `?sheet=N`, không phải nút: địa chỉ là thứ nói trang nào đang xem, nên
+    // không có JS thì cú bấm tải lại trang và máy chủ dựng đúng trang đó. Ở đây chỉ chặn
+    // cú bấm để đổi tại chỗ, vì lưới đã nằm sẵn trong trang.
+    var links = document.querySelectorAll('.js-sheet-pick');
+    Array.prototype.forEach.call(links, function (a) {
+      a.addEventListener('click', function (ev) {
+        // Bấm mở tab mới / cửa sổ mới vẫn phải là mở tab mới.
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button) return;
+        ev.preventDefault();
+        openSheet(parseInt(a.dataset.sheetIndex, 10) || 0, a.dataset.sheetName || '');
+      });
     });
   }
 
-  function openSheet(index) {
+  function markSheet(index) {
+    var links = document.querySelectorAll('.js-sheet-pick');
+    Array.prototype.forEach.call(links, function (a) {
+      var on = Number(a.dataset.sheetIndex) === index;
+      a.classList.toggle('btn-primary', on);
+      a.classList.toggle('btn-secondary', !on);
+      if (on) a.setAttribute('aria-current', 'true');
+      else a.removeAttribute('aria-current');
+    });
+  }
+
+  function setPinTarget(name) {
+    // Nút ghim luôn trỏ vào trang ĐANG XEM. Cái ghim KHÔNG tự chạy theo khung nhìn: nó
+    // chỉ đổi khi cán bộ bấm nút, và biểu mẫu gán cột không mang ô trang tính nên một
+    // lượt xác nhận cột cũng không dời được nó.
+    var pin = document.getElementById('sheet-pin');
+    if (!pin) return;
+    pin.value = name;
+    var label = document.getElementById('sheet-pin-name');
+    if (label) label.textContent = name;
+    // Ghim lại đúng trang đang ghim không đổi một dòng nào — `disabled` thay vì xếp
+    // một lượt nạp lại toàn kỳ.
+    pin.disabled = !name || name === (pin.dataset.pinned || '');
+  }
+
+  function revealSettings(name) {
+    // Mở vùng cài đặt khi cán bộ xem sang một trang KHÁC trang hệ thống đọc: đó là trạng
+    // thái duy nhất nút ghim có việc để làm, và nút đó nằm trong vùng. Máy chủ đã mở sẵn
+    // cho lượt tải lại (`ReadSettings.viewing_other`); đây là đường của lượt đổi tại chỗ,
+    // vì đổi tại chỗ không dựng lại trang.
+    //
+    // Chỉ MỞ, không đóng lại: cán bộ tự mở ra thì lượt đổi trang sau không được đóng lại
+    // thứ họ đang đọc.
+    var box = document.getElementById('read-settings');
+    if (box && name && name !== state.parsedSheet) box.open = true;
+  }
+
+  function openSheet(index, name) {
     if (index === state.sheet) return;
     state.sheet = index;
     state.meta = null;
@@ -461,6 +494,9 @@
     el.body.scrollTop = 0;
     el.body.scrollLeft = 0;
     onScroll();
+    markSheet(index);
+    setPinTarget(name || '');
+    revealSettings(name || '');
     var u = new URL(window.location.href);
     u.searchParams.set('sheet', String(index));
     window.history.replaceState({}, '', u.toString());
@@ -631,6 +667,7 @@
     }
 
     wireColumnPickers();
+    wireSheetPicker();
 
     var formula = document.getElementById('cg-toggle-formula');
     if (formula) {

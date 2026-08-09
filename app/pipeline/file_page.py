@@ -37,6 +37,7 @@ from app.adapters.evidence import (
     VERIFIED,
 )
 from app.adapters.templates import column_groups
+from app.books import book_label
 from app.checks.registry import checks_reading
 from app.models import DataFile
 
@@ -323,6 +324,155 @@ class ReadBasis:
         )
 
 
+@dataclass(frozen=True)
+class ReadSettings:
+    """Điều kiện đọc CẢ FILE — trang tính và sổ quyết toán (#124).
+
+    Hai thứ này không phải quyết định theo từng trường: chúng quyết định file được đọc
+    bằng những dòng nào, TRƯỚC khi có cột nào để gán. Gom vào một vùng, và vùng đó thu
+    còn một dòng khi cả hai đã đặt đúng, để bảng gán cột không bị đẩy xuống dưới khung
+    nhìn ở mọi lượt mở trang.
+
+    `sheet` là trang HỆ THỐNG ĐỌC, `viewed` là trang LƯỚI ĐANG XEM. Hai thứ khác nhau, và
+    bộ chọn nay chỉ đổi `viewed` còn ghim là một nút riêng trỏ vào chính `viewed`.
+
+    Câu chữ dựng ở đây chứ không ở template: một chỗ quyết định, và khẳng định được mà
+    không phải dựng trang.
+    """
+
+    sheet: str | None
+    sheet_pinned: bool
+    sheet_names: tuple[str, ...]
+    viewed: str
+    # Ô sổ quyết toán có được dựng ở màn này không — chỉ file quyết toán, và chỉ khi có
+    # bố cục cột để xác nhận (đường gửi biểu mẫu của file hỏng không đọc ô sổ).
+    book_shown: bool
+    book: str | None
+    # Sổ ĐÃ CÓ DỮ LIỆU ở kỳ này. Bỏ hết nhãn sổ của một kỳ như vậy sẽ bị từ chối.
+    period_books: tuple[str, ...]
+    # Cổng nạp đang dừng vì CHÍNH file này chưa có mã sổ (`book_assignment_error`).
+    book_blocked: bool
+
+    @property
+    def sheet_missing(self) -> bool:
+        """Trang đã ghim không còn trong file — lượt nạp sau không đọc được gì.
+
+        Là trạng thái *đang sai*, khác *chưa đặt*: có người đã chọn, và chọn xong thì
+        file được thay bằng bản không còn trang đó.
+        """
+        return bool(
+            self.sheet_pinned and self.sheet_names and self.sheet not in self.sheet_names
+        )
+
+    @property
+    def sheet_ok(self) -> bool:
+        return bool(self.sheet) and not self.sheet_missing
+
+    @property
+    def book_ok(self) -> bool:
+        """Sổ chỉ giữ vùng mở khi CHÍNH file này là thứ làm cổng nạp dừng.
+
+        Anh em cùng kỳ thiếu nhãn thì sửa ở màn dữ liệu, không sửa được ở đây; mở vùng
+        cho một việc màn này không làm được thì cán bộ mở ra rồi đóng lại tay không.
+        """
+        return not (self.book_shown and self.book_blocked)
+
+    @property
+    def viewing_other(self) -> bool:
+        """Đang xem một trang KHÁC trang hệ thống đọc.
+
+        Chưa phải sai, nhưng là trạng thái duy nhất mà nút ghim có việc để làm — nên vùng
+        không được thu ở đây. Thu thì nút ghim nằm trong phần đã đóng, đúng lúc nó là thứ
+        cán bộ cần: mở một trang khác lên xem chính là bước trước khi ghim nó.
+        """
+        return bool(self.viewed) and self.viewed != self.sheet
+
+    @property
+    def settled(self) -> bool:
+        return self.sheet_ok and self.book_ok and not self.viewing_other
+
+    @property
+    def can_pin(self) -> bool:
+        """Ghim trang đang xem có đổi gì không.
+
+        Ghim lại đúng trang đang ghim là lượt nạp không đổi một dòng nào. Nhưng ghim
+        trang máy đang TỰ đọc thì có nghĩa: nó chốt lại lựa chọn, để lượt nạp sau không
+        nhận diện ra trang khác.
+        """
+        return bool(self.viewed) and not (self.sheet_pinned and self.viewed == self.sheet)
+
+    @property
+    def sheet_line(self) -> str:
+        if self.sheet_missing:
+            return f"Trang đã ghim “{self.sheet}” không còn trong file."
+        if not self.sheet:
+            return "Hệ thống chưa xác định trang nào chứa biểu."
+        who = "cán bộ ghim" if self.sheet_pinned else "hệ thống tự nhận diện"
+        return f"Hệ thống đọc trang “{self.sheet}” — {who}."
+
+    @property
+    def viewed_line(self) -> str:
+        """Chỉ nói khi trang đang xem KHÁC trang đang đọc — nếu không thì lặp câu trên."""
+        if not self.viewed or self.viewed == self.sheet:
+            return ""
+        return f"Lưới đang xem trang “{self.viewed}”."
+
+    @property
+    def sheet_summary(self) -> str:
+        if self.sheet_missing:
+            return f"Trang ghim “{self.sheet}” không còn trong file"
+        if not self.sheet:
+            return "Chưa xác định trang tính"
+        return f"Trang “{self.sheet}” · {'đã ghim' if self.sheet_pinned else 'tự nhận diện'}"
+
+    @property
+    def period_books_line(self) -> str:
+        """Kỳ này đã có dữ liệu theo sổ nào — điều kiện khiến "bỏ hết mã sổ" bị từ chối."""
+        if not self.period_books:
+            return ""
+        return (
+            f"Kỳ này đã có dữ liệu theo sổ {', '.join(self.period_books)}. "
+            "Bỏ hết mã sổ ở kỳ này sẽ bị từ chối."
+        )
+
+    @property
+    def book_fix_line(self) -> str:
+        """Cách sửa — nói ở CẢ HAI trạng thái cần nó, không chỉ ở trạng thái đang chặn.
+
+        Kỳ đã có dữ liệu theo sổ mà file này đã có mã sổ: chưa chặn gì, nhưng câu ngay
+        trên vừa nói "bỏ hết mã sổ sẽ bị từ chối" — nêu điều kiện mà không nêu đường ra
+        là bỏ cán bộ lại giữa chừng. Cùng một cách sửa cho cả hai.
+        """
+        if not (self.book_blocked or self.period_books):
+            return ""
+        return "Cách sửa: gán mã sổ cho từng file quyết toán của kỳ rồi nạp lại."
+
+    @property
+    def book_blocked_line(self) -> str:
+        """Cổng nạp đang dừng. Nói CẢ KỲ, không nói riêng file này.
+
+        `book_assignment_error` chặn ở hai nhánh: kỳ có dữ liệu theo sổ mà không file nào
+        còn nhãn (nguyên nhân cả kỳ), và một số file đã gán số khác chưa (file này là một
+        trong số chưa). Câu chỉ đích danh file này sai ở nhánh đầu.
+        """
+        if not self.book_blocked:
+            return ""
+        return "Lượt nạp đang dừng: kỳ này còn file quyết toán chưa có mã sổ, gồm cả file này."
+
+    @property
+    def book_summary(self) -> str:
+        if not self.book_shown:
+            return ""
+        if self.book:
+            return book_label(self.book)
+        return "Chưa gán sổ" if self.book_blocked else "Một sổ, dùng chung"
+
+    @property
+    def summary(self) -> str:
+        """Dòng DUY NHẤT còn lại khi vùng thu — phải đủ để không cần mở ra."""
+        return " · ".join(p for p in (self.sheet_summary, self.book_summary) if p)
+
+
 def grid_column_marks(basis: ReadBasis) -> dict[str, dict]:
     """`{chỉ số cột: {trường, nhãn, nhãn ba trục}}` — chú giải cột cho lưới xem trước.
 
@@ -464,6 +614,7 @@ __all__ = [
     "NEVER_PARSED",
     "BasisColumn",
     "ReadBasis",
+    "ReadSettings",
     "column_label",
     "column_letter",
     "file_page_url",

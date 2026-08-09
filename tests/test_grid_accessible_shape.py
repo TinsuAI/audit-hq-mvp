@@ -40,7 +40,7 @@ from app.models import Company
 from app.pipeline.file_page import AXES, file_page_url, file_read_basis
 from app.settings import settings
 from tests.excel_fixtures import write_xlsx
-from tests.test_column_highlight_wiring import _body, _grid_source
+from tests.helpers import grid_body, grid_source
 from tests.test_file_page import _M15_DETAIL, REL_DIR, _register, _row
 
 # Câu chỉ sống trong `title` của tiêu đề cột trước vé này — nghĩa "cột còn chờ xác nhận"
@@ -146,7 +146,7 @@ def test_the_wait_card_is_not_a_child_of_the_table(env):
 
     text = _page(client, fid)
     tag = _mount_tag(text)
-    overlay_id = re.search(r"getElementById\('(cg-[a-z]+)'\)", _body("build")).group(1)
+    overlay_id = re.search(r"getElementById\('(cg-[a-z]+)'\)", grid_body("build")).group(1)
 
     assert f'id="{overlay_id}"' in text
     assert text[text.index(tag) + len(tag):].lstrip().startswith("</div>"), (
@@ -203,7 +203,7 @@ def test_a_column_label_is_text_in_the_page_not_a_tooltip():
 
     Đặt chữ vào phần tử là CHƯA ĐỦ — dựng xong mà không gắn vào tiêu đề thì trang không có
     chữ nào, và đó là kiểu chết im lặng của #122. Nên khẳng định cả phép gắn."""
-    body = _body("columnHeader")
+    body = grid_body("columnHeader")
 
     assert re.search(r"\.textContent\s*=\s*lb\.text", body)
     assert "'data-axis'" in body
@@ -220,16 +220,16 @@ def test_the_second_line_of_the_header_is_opened_before_a_label_is_drawn():
 
     Hai chỗ phải nới: lúc cửa sổ đầu về (mới biết bản đồ cột nào nằm trong trang tính) và
     lúc cán bộ bật công tắc hiện cột đang đọc."""
-    assert "applyHeadHeight()" in _body("onWindow")
-    assert "applyHeadHeight()" in _body("wireControls")
-    assert re.search(r"<\s*total", _body("anyColumnLabelled")), (
+    assert "applyHeadHeight()" in grid_body("onWindow")
+    assert "applyHeadHeight()" in grid_body("wireControls")
+    assert re.search(r"<\s*total", grid_body("anyColumnLabelled")), (
         "chỉ số cột phải SO với tổng số cột: nới tiêu đề theo một cột nằm ngoài trang "
         "tính là chừa một dòng trống cả lượt xem"
     )
 
 
 def test_the_tooltip_only_sentence_is_gone_from_the_grid_script():
-    assert TOOLTIP_ONLY_SENTENCE not in _grid_source()
+    assert TOOLTIP_ONLY_SENTENCE not in grid_source()
 
 
 # ───────────────────── lưới đặt vai cho thứ nó dựng ra ─────────────────────
@@ -237,7 +237,7 @@ def test_the_tooltip_only_sentence_is_gone_from_the_grid_script():
 def test_every_layer_the_grid_builds_says_what_it_is():
     """Khung và lớp dịch chuyển là hình, không phải bảng: chúng nhường vai cho con. Ô góc và
     vùng số dòng lặp lại `aria-rowindex` bằng hình nên bị giấu, không đọc lên hai lần."""
-    body = _body("build")
+    body = grid_body("build")
 
     assert body.count("'rowgroup'") == 2, "hàng tiêu đề cột và vùng ô là hai nhóm dòng"
     assert re.search(r"headInner\.setAttribute\('role', 'row'\)", body)
@@ -250,7 +250,7 @@ def test_a_cell_sits_inside_a_row_that_carries_the_sheet_row_number():
     """`role="row"` rỗng không đọc ra dòng nào, nên ô phải nằm TRONG dòng — trước vé này ô là
     một biển phẳng định vị tuyệt đối. Lưới chỉ giữ vài chục dòng trong DOM nên vị trí không
     suy ra được từ thứ tự phần tử: `aria-rowindex` / `aria-colindex` nói ra vị trí thật."""
-    body = _body("render")
+    body = grid_body("render")
 
     assert re.search(r"tr\.setAttribute\('role', 'row'\)", body)
     assert re.search(r"tr\.setAttribute\('aria-rowindex', String\(r \+ 1\)\)", body)
@@ -262,7 +262,7 @@ def test_a_cell_sits_inside_a_row_that_carries_the_sheet_row_number():
 def test_a_column_header_is_a_column_header():
     """Tiêu đề cột là chỗ duy nhất lưới nói cột này đọc thành trường gì; đọc một ô mà không
     kèm tên cột thì con số trong ô không nói được nó là số của cái gì."""
-    body = _body("columnHeader")
+    body = grid_body("columnHeader")
 
     assert re.search(r"setAttribute\('role', 'columnheader'\)", body)
     assert re.search(r"setAttribute\('aria-colindex', String\(colIndex \+ 1\)\)", body)
@@ -286,7 +286,7 @@ def test_the_grid_injects_those_counts_into_the_attributes_the_template_declares
     TỪ mã nguồn lưới rồi đem đối chiếu, nên đổi tên ở một bên mà quên bên kia là đỏ."""
     client, root = env
     fid = _seed(root)
-    body = _body("setDimensions")
+    body = grid_body("setDimensions")
 
     payload = client.get(f"/companies/DN_FP/documents/file/{fid}/cells?sheet=0").json()
     attrs = _attrs(_mount_tag(_page(client, fid)))
@@ -297,15 +297,15 @@ def test_the_grid_injects_those_counts_into_the_attributes_the_template_declares
         assert attr in attrs
     # Hàm còn đó mà không ai gọi thì hai số đứng nguyên ở `-1` suốt lượt xem — kiểu chết
     # im lặng thứ hai của #122, và chỉ khẳng định thân hàm thì không bắt được.
-    assert "setDimensions(data)" in _body("onWindow")
+    assert "setDimensions(data)" in grid_body("onWindow")
 
 
 def test_the_row_count_the_grid_speaks_is_the_one_the_status_line_writes():
     """Hàng chữ cái cột KHÔNG tính vào `aria-rowcount`: tính nó thì mọi `aria-rowindex` lệch
     1 so với số dòng đang hiện ở lề trái và so với dòng trạng thái ("12.345 dòng × 20 cột"),
     mà ở trang tính thì số dòng chính là danh tính của dòng."""
-    injected = _body("setDimensions")
-    written = _body("renderStatus")
+    injected = grid_body("setDimensions")
+    written = grid_body("renderStatus")
 
     assert "+ 1" not in injected
     assert "total_rows" in injected and "total_rows" in written

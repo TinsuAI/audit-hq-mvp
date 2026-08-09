@@ -2580,3 +2580,34 @@ p { margin: 0 0 var(--space-3); }
   max-width: 68ch;
 }
 .fp-status a { white-space: nowrap; }
+
+/* — Cài đặt đọc file: thu còn một dòng khi đã đặt đúng (issue #124) —
+   Trang tính và sổ quyết toán là điều kiện đọc CẢ FILE, không phải quyết định theo từng
+   trường. Đo trên Chromium 1440×1000, file Mẫu 15 hai trang tính: hai thẻ cũ cao 130px
+   và 167px (= 297px), nên mép trên bảng gán cột nằm ở 1241px — dưới đáy khung nhìn, ở
+   mọi lượt mở trang, kể cả khi cả hai đã đúng và không còn việc gì với chúng. Thu còn
+   một dòng thì mép đó lên 974px, tức nằm trong màn hình đầu tiên. */
+.fp-settings { padding: 0; margin-bottom: var(--space-4); }
+.fp-settings-sum {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  flex-wrap: wrap; cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-sm);
+}
+.fp-settings-title { font-weight: 600; }
+.fp-settings-value { color: var(--c-text-muted); }
+.fp-settings[open] > .fp-settings-sum { border-bottom: 1px solid var(--c-border); }
+.fp-settings-body {
+  display: grid; gap: var(--space-5);
+  padding: var(--space-4);
+}
+.fp-set-h { font-size: var(--fs-sm); font-weight: 600; margin: 0 0 var(--space-2); }
+.fp-set-label {
+  display: block; font-size: var(--fs-sm);
+  margin-bottom: var(--space-1); color: var(--c-text-muted);
+}
+.fp-set .form-hint { margin: var(--space-2) 0 0; max-width: 68ch; }
+.fp-set-actions { margin-top: var(--space-3); }
+/* Trạng thái sai: lượt nạp đang dừng vì chính file này. Cùng sắc thái với
+   `.alert-warning`, không phải một bộ màu thứ hai. */
+.fp-set-wrong { color: var(--c-warning-fg); font-weight: 500; }

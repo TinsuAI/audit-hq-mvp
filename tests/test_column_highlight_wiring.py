@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 import re
-from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -38,8 +37,7 @@ from app.models import Company, DataFile
 from app.pipeline.file_page import column_label, file_page_url
 from app.settings import settings
 from tests.excel_fixtures import write_xlsx
-
-GRID_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "cell-grid.js"
+from tests.helpers import grid_body, grid_source
 
 REL_DIR = "DN_HL/2025/BCQT"
 
@@ -77,35 +75,9 @@ _NO_SNAPSHOT = {
 
 # ─────────────────────── đọc mã nguồn lưới ───────────────────────
 
-@lru_cache(maxsize=1)
-def _grid_source() -> str:
-    return GRID_JS.read_text(encoding="utf-8")
-
-
-@lru_cache(maxsize=1)
-def _functions() -> dict[str, str]:
-    """Thân từng hàm mức trên cùng của `cell-grid.js`, cắt theo cột thụt đầu dòng.
-
-    Cắt thô có chủ ý: bộ test không nhúng trình phân tích JS, và một regex chặt hơn thì
-    mọi lần sửa `cell-grid.js` sau này đỏ vì lý do không liên quan.
-    """
-    src = _grid_source()
-    starts = [(m.group(1), m.start()) for m in re.finditer(r"^  function (\w+)\(", src, re.M)]
-    return {
-        name: src[pos : (starts[i + 1][1] if i + 1 < len(starts) else len(src))]
-        for i, (name, pos) in enumerate(starts)
-    }
-
-
-def _body(name: str) -> str:
-    fns = _functions()
-    assert name in fns, f"`cell-grid.js` không còn hàm `{name}` — chuỗi làm nổi cột đã đứt"
-    return fns[name]
-
-
 def _picker_selector() -> str:
     """Bộ chọn mà `wireColumnPickers` dùng để tìm bộ chọn cột."""
-    m = re.search(r"querySelectorAll\(\s*'([^']+)'", _body("wireColumnPickers"))
+    m = re.search(r"querySelectorAll\(\s*'([^']+)'", grid_body("wireColumnPickers"))
     assert m, "`wireColumnPickers` không truy phần tử nào nữa"
     return m.group(1)
 
@@ -239,7 +211,7 @@ def test_nothing_outside_the_field_map_wears_the_hook(env):
 
 def test_the_picker_hook_reacts_to_both_typing_and_choosing():
     """AC 1. `<select>` phát `change`, ô nhập phát `input`; đưa focus vào là đủ để soi."""
-    body = _body("wireColumnPickers")
+    body = grid_body("wireColumnPickers")
 
     for event in ("input", "change", "focus"):
         assert re.search(rf"addEventListener\(\s*'{event}'", body), event
@@ -251,18 +223,18 @@ def test_the_picker_hook_reacts_to_both_typing_and_choosing():
 
 def test_the_hook_is_wired_during_grid_start_up():
     """Chuỗi chết kiểu thứ hai: lớp còn phát, hàm còn đó, nhưng không ai gọi nó."""
-    assert "wireColumnPickers()" in _body("wireControls")
-    assert "wireControls()" in _body("init")
+    assert "wireColumnPickers()" in grid_body("wireControls")
+    assert "wireControls()" in grid_body("init")
 
 
 def test_choosing_a_column_repaints_the_grid_and_brings_the_column_into_view():
-    assert "showColumn" in _body("setHighlight")
-    assert "render(" in _body("setHighlight")
+    assert "showColumn" in grid_body("setHighlight")
+    assert "render(" in grid_body("setHighlight")
 
 
 def test_bringing_a_column_into_view_never_moves_the_row_position():
     """AC 2. Cán bộ đang đối chiếu một vùng dòng cụ thể — kéo họ về dòng 1 là bắt tìm lại."""
-    body = _body("showColumn")
+    body = grid_body("showColumn")
 
     assert "scrollLeft" in body
     assert "scrollTop" not in body
@@ -274,14 +246,14 @@ def test_a_group_field_can_light_every_column_it_sums():
 
     Điều kiện đủ, khẳng định được ở mức mã nguồn: trạng thái làm nổi là một DANH SÁCH và
     phép hỏi "cột này có sáng không" là phép tìm trong danh sách đó."""
-    assert re.search(r"highlight:\s*\[\]", _grid_source()), "trạng thái làm nổi không phải danh sách"
-    assert "indexOf" in _body("isHighlighted"), "so bằng `===` thì chỉ một cột sáng được"
+    assert re.search(r"highlight:\s*\[\]", grid_source()), "trạng thái làm nổi không phải danh sách"
+    assert "indexOf" in grid_body("isHighlighted"), "so bằng `===` thì chỉ một cột sáng được"
 
 
 def test_a_column_is_only_brought_into_view_where_it_can_be_marked():
     """Chỉ số cột chỉ có nghĩa trên trang tính parser đọc — `isHighlighted` đã gác điều đó,
     và cú cuộn phải gác cùng điều kiện. Không thì lưới dời ngang mà không đánh dấu gì."""
-    assert "onParsedSheet" in _body("showColumn")
+    assert "onParsedSheet" in grid_body("showColumn")
 
 
 # ─────────────────────── dòng trường đứng được một mình ───────────────────────
@@ -337,4 +309,4 @@ def test_a_row_with_no_snapshot_still_names_the_column_it_reads(env):
 
 def test_the_dead_selector_is_gone_from_the_grid_script():
     """`input.review-idx` là chính chuỗi đã chết — còn sót một bản là còn một đường không tới."""
-    assert "review-idx" not in _grid_source()
+    assert "review-idx" not in grid_source()
