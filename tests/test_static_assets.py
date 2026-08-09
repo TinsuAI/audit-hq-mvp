@@ -21,6 +21,8 @@ import pytest
 STYLESHEET = Path(__file__).resolve().parents[1] / "app" / "static" / "style.css"
 
 _HEX = re.compile(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})")
+#: Màu viết thẳng dưới mọi dạng CSS nhận — hex và ký pháp hàm (`rgb`, `rgba`, `hsl`…).
+_COLOUR = re.compile(rf"{_HEX.pattern}\b|\b(?:rgba?|hsla?)\([^)]*\)")
 _VAR = re.compile(r"var\(\s*(--[a-z0-9-]+)")
 _TOKEN = re.compile(rf"(--[a-z0-9-]+)\s*:\s*({_HEX.pattern})")
 
@@ -46,9 +48,19 @@ PINNED_TEXT_PAIRS = [
 
 @lru_cache(maxsize=1)
 def _stylesheet() -> str:
-    """Nội dung style.css đã bỏ chú thích, GIỮ số dòng để thông báo lỗi trỏ đúng dòng gốc."""
+    """Nội dung style.css đã bỏ chú thích, GIỮ số dòng VÀ giữ độ dài.
+
+    Chú thích thay bằng khoảng trắng từng ký tự một, không thay bằng chuỗi rỗng: phép đo
+    màu literal (#128) hỏi "vị trí này có nằm trong `:root` không", và vị trí chỉ dùng
+    được khi văn bản đã bóc chú thích dài đúng bằng văn bản gốc.
+    """
     raw = STYLESHEET.read_text(encoding="utf-8")
-    return re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), raw, flags=re.S)
+    return re.sub(
+        r"/\*.*?\*/",
+        lambda m: "".join("\n" if ch == "\n" else " " for ch in m.group(0)),
+        raw,
+        flags=re.S,
+    )
 
 
 @lru_cache(maxsize=2)
@@ -216,8 +228,115 @@ CASCADE_OVERRIDES = {
 }
 
 
+# Chốt hãm màu literal (#128). Đếm trên TOÀN FILE, không khoanh "vùng luồng cán bộ" theo
+# từ khoá: `style.css` là một file 2.500 dòng và mọi cách khoanh theo tên bộ chọn đều vỡ
+# ngay khi một khối được đổi tên.
+#
+# Đơn vị đếm là GIÁ TRỊ RỜI RẠC, kể cả `rgba()` — đó là số chỗ phải sửa ở lần đổi hệ màu
+# sau, và cũng là đơn vị của vé: đo trên `main` lúc bắt đầu vé ra đúng 85 giá trị ngoài
+# `:root`, 18 trong đó trùng khít một token đã có, khớp con số vé ghi. Đếm theo LẦN XUẤT
+# HIỆN ra 199, không khớp gì cả.
+#
+# Trần là 0: mọi giá trị đều đã có tên. Con số 85 − 85 = 0 của vé, không phải một mức
+# nới ra cho dễ đạt.
+MAX_COLOUR_LITERALS_OUTSIDE_ROOT = 0
+
+#: Bậc nhỏ nhất của thang `--fs-*` (0.75rem = 12px). Khai nào nhỏ hơn bậc này thì vừa
+#: nằm ngoài thang vừa nhỏ hơn mọi bậc của nó.
+MIN_FONT_SIZE_PX = 12.0
+
+#: `font-size` theo `em` co theo phần tử cha, nên không tính ra được số px ở đây. Bốn chỗ
+#: dưới đây là BIỂU TƯỢNG, không phải chữ: chúng phải cao bằng dòng chữ đứng cạnh, mà
+#: dòng đó đổi cỡ theo từng màn. Mọi chỗ khác dùng `em` cho chữ đã chuyển sang thang.
+RELATIVE_FONT_SIZE_ALLOWED = (
+    ".demo-banner-icon",
+    ".form-alert-icon",
+    ".diag-icon",
+    ".companies-table th.sortable::after",
+)
+
+
 def _class_names(selector: str) -> set[str]:
     return set(re.findall(r"\.(-?[_a-zA-Z][\w-]*)", selector))
+
+
+@lru_cache(maxsize=1)
+def _root_spans() -> tuple[tuple[int, int], ...]:
+    """Khoảng (đầu, cuối) của mỗi khối `:root` trong văn bản đã bóc chú thích.
+
+    Chú thích thay bằng khoảng trắng CÙNG ĐỘ DÀI ở `_stylesheet`, nên vị trí ở đây khớp
+    vị trí ở văn bản gốc.
+    """
+    spans: list[tuple[int, int]] = []
+    stack: list[str] = []
+    buf = ""
+    start: int | None = None
+    for i, ch in enumerate(_stylesheet()):
+        if ch == "{":
+            stack.append(buf.strip())
+            # Bắt `:root` ở MỌI độ sâu. Khai lại bảng màu trong `@media
+            # (prefers-color-scheme: dark)` là đường chuẩn của hệ màu tối, và nó nằm ở
+            # độ sâu 2 — đòi độ sâu 1 thì cả khối đó bị đọc thành "màu literal rải rác".
+            if ":root" in stack[-1]:
+                start = i
+            buf = ""
+        elif ch == "}":
+            if stack:
+                sel = stack.pop()
+                if ":root" in sel and start is not None:
+                    spans.append((start, i))
+                    start = None
+            buf = ""
+        else:
+            buf += ch
+    return tuple(spans)
+
+
+def test_no_colour_literal_lives_outside_root() -> None:
+    """Mỗi màu literal ngoài `:root` là một chỗ phải sửa ở lần đổi hệ màu sau.
+
+    Đếm cả `rgba()`: màu có alpha cũng là màu, và bỏ nó ra thì chốt hãm không nhìn thấy
+    đúng lớp giá trị mà nó phải giữ.
+    """
+    spans = _root_spans()
+    outside = sorted({
+        " ".join(m.group(0).lower().split())
+        for m in _COLOUR.finditer(_stylesheet())
+        if not any(a <= m.start() <= b for a, b in spans)
+    })
+    assert len(outside) <= MAX_COLOUR_LITERALS_OUTSIDE_ROOT, (
+        f"{len(outside)} giá trị màu ngoài `:root`, trần "
+        f"{MAX_COLOUR_LITERALS_OUTSIDE_ROOT}: {outside}"
+    )
+
+
+def test_no_font_size_falls_below_the_scale_floor() -> None:
+    """Không khai `font-size` nào dưới bậc nhỏ nhất của thang.
+
+    `em` / `%` xét riêng: chúng co theo phần tử cha nên không quy ra px ở đây được, và
+    giá trị dưới 1 luôn NHỎ HƠN cha — ở một dòng 13px thì `0.85em` ra 11,05px. Vì vậy mọi
+    giá trị dưới 1 đều bị chặn trừ danh sách biểu tượng đã khai.
+    """
+    too_small: list[str] = []
+    for sel, body in _rules():
+        selector = " ".join(sel.split())
+        for decl in body.split(";"):
+            name, sep, value = decl.partition(":")
+            if not sep or name.strip() != "font-size":
+                continue
+            value = value.strip()
+            absolute = re.fullmatch(r"([\d.]+)(px|rem)", value)
+            if absolute:
+                px = float(absolute.group(1)) * (16 if absolute.group(2) == "rem" else 1)
+                if px < MIN_FONT_SIZE_PX:
+                    too_small.append(f"{selector}: {value} ({px:g}px)")
+                continue
+            relative = re.fullmatch(r"([\d.]+)(em|%)", value)
+            if relative:
+                factor = float(relative.group(1)) / (100 if relative.group(2) == "%" else 1)
+                if factor < 1 and not any(a in selector for a in RELATIVE_FONT_SIZE_ALLOWED):
+                    too_small.append(f"{selector}: {value} (nhỏ hơn phần tử cha)")
+    assert not too_small, f"khai font-size dưới sàn {MIN_FONT_SIZE_PX:g}px: {too_small}"
 
 
 @pytest.mark.parametrize("name", DELETED_CLASSES)
