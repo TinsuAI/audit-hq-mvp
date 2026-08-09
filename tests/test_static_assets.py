@@ -46,9 +46,19 @@ PINNED_TEXT_PAIRS = [
 
 @lru_cache(maxsize=1)
 def _stylesheet() -> str:
-    """Nội dung style.css đã bỏ chú thích, GIỮ số dòng để thông báo lỗi trỏ đúng dòng gốc."""
+    """Nội dung style.css đã bỏ chú thích, GIỮ số dòng VÀ giữ độ dài.
+
+    Chú thích thay bằng khoảng trắng từng ký tự một, không thay bằng chuỗi rỗng: phép đo
+    màu literal (#128) hỏi "vị trí này có nằm trong `:root` không", và vị trí chỉ dùng
+    được khi văn bản đã bóc chú thích dài đúng bằng văn bản gốc.
+    """
     raw = STYLESHEET.read_text(encoding="utf-8")
-    return re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), raw, flags=re.S)
+    return re.sub(
+        r"/\*.*?\*/",
+        lambda m: "".join("\n" if ch == "\n" else " " for ch in m.group(0)),
+        raw,
+        flags=re.S,
+    )
 
 
 @lru_cache(maxsize=2)
@@ -216,8 +226,83 @@ CASCADE_OVERRIDES = {
 }
 
 
+# Chốt hãm màu literal (#128). Đếm trên TOÀN FILE, không khoanh "vùng luồng cán bộ" theo
+# từ khoá: `style.css` là một file 2.500 dòng và mọi cách khoanh theo tên bộ chọn đều vỡ
+# ngay khi một khối được đổi tên.
+#
+# Mốc lúc bắt đầu vé: 177 lần xuất hiện ngoài `:root`. Vé đòi ≤ 177 − 85 = 92. Đo được
+# sau khi làm: 25 — đều là giá trị dùng ĐÚNG MỘT LẦN, không đặt tên. Trần đặt ở 30 chứ
+# không ở 92: một chốt hãm cách con số thật 67 đơn vị thì không hãm gì cả, còn 30 vẫn
+# chừa chỗ cho vài giá trị mới dùng một lần.
+MAX_COLOUR_LITERALS_OUTSIDE_ROOT = 30
+
+#: Bậc nhỏ nhất của thang chữ. Dưới mức này dấu tiếng Việt (huyền/sắc/hỏi/ngã/nặng) chồng
+#: lên nhau ở mật độ điểm ảnh thường gặp, và đây là giao diện đọc số liệu cả ngày.
+MIN_FONT_SIZE_PX = 12.0
+
+
 def _class_names(selector: str) -> set[str]:
     return set(re.findall(r"\.(-?[_a-zA-Z][\w-]*)", selector))
+
+
+@lru_cache(maxsize=1)
+def _root_spans() -> tuple[tuple[int, int], ...]:
+    """Khoảng (đầu, cuối) của mỗi khối `:root` trong văn bản đã bóc chú thích.
+
+    Chú thích thay bằng khoảng trắng CÙNG ĐỘ DÀI ở `_stylesheet`, nên vị trí ở đây khớp
+    vị trí ở văn bản gốc.
+    """
+    spans: list[tuple[int, int]] = []
+    stack: list[str] = []
+    buf = ""
+    start: int | None = None
+    for i, ch in enumerate(_stylesheet()):
+        if ch == "{":
+            stack.append(buf.strip())
+            if len(stack) == 1 and ":root" in stack[0]:
+                start = i
+            buf = ""
+        elif ch == "}":
+            if stack:
+                stack.pop()
+                if not stack and start is not None:
+                    spans.append((start, i))
+                    start = None
+            buf = ""
+        else:
+            buf += ch
+    return tuple(spans)
+
+
+def test_colour_literals_outside_root_stay_under_the_ratchet() -> None:
+    """Mỗi màu literal ngoài `:root` là một chỗ phải sửa ở lần đổi hệ màu sau."""
+    spans = _root_spans()
+    outside = [
+        m.group(0)
+        for m in _HEX.finditer(_stylesheet())
+        if not any(a <= m.start() <= b for a, b in spans)
+    ]
+    assert len(outside) <= MAX_COLOUR_LITERALS_OUTSIDE_ROOT, (
+        f"{len(outside)} màu literal ngoài `:root`, trần {MAX_COLOUR_LITERALS_OUTSIDE_ROOT}: "
+        f"{sorted(set(v.lower() for v in outside))}"
+    )
+
+
+def test_no_font_size_falls_below_the_scale_floor() -> None:
+    """Không khai `font-size` nào dưới bậc nhỏ nhất của thang."""
+    too_small: list[str] = []
+    for sel, body in _rules():
+        for decl in body.split(";"):
+            name, sep, value = decl.partition(":")
+            if not sep or name.strip() != "font-size":
+                continue
+            m = re.fullmatch(r"\s*([\d.]+)(px|rem)\s*", value)
+            if not m:
+                continue
+            px = float(m.group(1)) * (16 if m.group(2) == "rem" else 1)
+            if px < MIN_FONT_SIZE_PX:
+                too_small.append(f"{' '.join(sel.split())}: {value.strip()} ({px:g}px)")
+    assert not too_small, f"khai font-size dưới sàn {MIN_FONT_SIZE_PX:g}px: {too_small}"
 
 
 @pytest.mark.parametrize("name", DELETED_CLASSES)
