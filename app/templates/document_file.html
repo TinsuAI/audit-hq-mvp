@@ -39,43 +39,14 @@
    bộ đếm poll với dòng kỳ — câu chữ dựng ở `ingest_status.py`, không dựng hai bản.
    `data-ingest-url` mang sẵn kỳ và số hiệu file, nên lượt tải lại khi nạp xong dựng
    lại chính trang này chứ không kéo cán bộ về danh sách tài liệu. #}
-<div class="ds-ingest-slot" data-ingest-year="{{ file.period_year }}"
-     data-ingest-url="{{ ingest_status_url }}"
-     data-ingest-active="{{ 1 if (ingest and ingest.active) else 0 }}">
-  {% if ingest and ingest.visible %}
-  <div class="ds-ingest ds-ingest-{{ ingest.tone }}">
-    <p class="ds-ingest-title">
-      {% if ingest.active %}<span class="ds-ingest-spin" aria-hidden="true"></span>{% endif %}
-      {{ ingest.title }}
-    </p>
-    <p class="ds-ingest-detail">{{ ingest.detail }}</p>
-    {% if ingest.notes %}
-    <ul class="ds-ingest-notes">
-      {% for note in ingest.notes %}<li>{{ note }}</li>{% endfor %}
-    </ul>
-    {% endif %}
-    {% if ingest.actions %}
-    <div class="ds-ingest-actions">
-      {% for a in ingest.actions %}
-        {% if a.kind == 'post' %}
-        <form method="post" action="{{ a.url }}">
-          <input type="hidden" name="year" value="{{ a.year }}">
-          <button type="submit" class="btn btn-sm btn-primary">{{ a.label }}</button>
-        </form>
-        {% else %}
-        <a href="{{ a.url }}" class="btn btn-sm btn-primary">{{ a.label }}</a>
-        {% endif %}
-      {% endfor %}
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
-</div>
+{% with ing = ingest, ingest_url = ingest_status_url %}
+  {% include "_ingest_slot.html" %}
+{% endwith %}
 
 {# Xác nhận cột KHÔNG kéo theo lượt chạy kiểm tra ở lần đầu, và im lặng về điều đó
    là chỗ cán bộ tưởng đã xong việc (#125). Nói ra, kèm nút chạy ngay cạnh câu. #}
 {% if period_has_data and not checks_run %}
-<div class="fp-checks" role="status">
+<div class="fp-checks" role="status" data-checks-run="0">
   <p class="fp-checks-note">
     Kỳ {{ file.period_year }} chưa chạy kiểm tra lần nào. Nạp dữ liệu xong hệ thống
     không tự chạy kiểm tra — một kỳ có tới bốn file quyết toán, chạy khi bộ file

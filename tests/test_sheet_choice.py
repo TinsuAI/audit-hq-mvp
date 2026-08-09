@@ -22,7 +22,7 @@ from app.main import app
 from app.models import Company, DataFile, DataFileStatus, NvlBalance
 from app.pipeline.file_page import file_page_url
 from app.settings import settings
-from tests.helpers import drain_jobs, upload_and_ingest
+from tests.helpers import drain_jobs, unreadable_m15_xlsx_bytes, upload_and_ingest
 
 _M15_HEADER = [
     "STT", "Mã NVL", "Tên NVL", "Đơn vị tính", "Tồn đầu kỳ", "Nhập trong kỳ",
@@ -193,25 +193,6 @@ def test_officer_can_pin_another_sheet_and_reingest_reads_it(tmp_path):
         _teardown(new_engine, prev_root)
 
 
-def _unreadable_m15() -> bytes:
-    """Workbook mà `select_sheet` KHÔNG nhận ra trang nào đúng biểu.
-
-    Dựng lại tình huống file cán bộ tự gộp: chèn một cột đầu (nhãn nguồn) và bỏ khối
-    tiêu đề → mọi cột lệch một ô, mọi trang chấm 0 điểm, file bị từ chối khi nạp.
-    """
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Bìa"
-    ws.append(["Trang bìa"])
-    ws2 = wb.create_sheet("Dữ liệu")
-    ws2.append(["Nguồn", *_M15_HEADER])
-    for i in range(3):
-        ws2.append(["F1", i + 1, f"MAT{i}", "Tên", "KG", 10, 100, 0, 0, 80, 0, 30])
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
-
-
 def test_unreadable_file_still_offers_the_sheet_picker(tmp_path):
     """File đọc hỏng vẫn phải ghim được trang tính — nếu không thì nó bế tắc.
 
@@ -222,7 +203,7 @@ def test_unreadable_file_still_offers_the_sheet_picker(tmp_path):
     try:
         client = TestClient(app)
         _login(client)
-        upload_and_ingest(client, "DN_SHEET", "Mau15_NVL.xlsx", _unreadable_m15())
+        upload_and_ingest(client, "DN_SHEET", "Mau15_NVL.xlsx", unreadable_m15_xlsx_bytes(_M15_HEADER))
         drain_jobs()
 
         with dbmod.SessionLocal() as db:

@@ -39,6 +39,27 @@ def m15_xlsx_bytes(header: list[str] = M15_HEADER, rows: int = 3) -> bytes:
     return buf.getvalue()
 
 
+def unreadable_m15_xlsx_bytes(header: list[str] = M15_HEADER) -> bytes:
+    """Workbook mà `select_sheet` KHÔNG nhận ra trang nào đúng biểu.
+
+    Dựng lại tình huống file cán bộ tự gộp: chèn một cột đầu (nhãn nguồn) và bỏ khối
+    tiêu đề → mọi cột lệch một ô, mọi trang chấm 0 điểm, file bị từ chối khi nạp.
+    """
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Bìa"
+    ws.append(["Trang bìa"])
+    ws2 = wb.create_sheet("Dữ liệu")
+    ws2.append(["Nguồn", *header])
+    for i in range(3):
+        ws2.append(["F1", i + 1, f"MAT{i}", "Tên", "KG", 10, 100, 0, 0, 80, 0, 30])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def upload_and_ingest(
     client, code: str, name: str, content: bytes, year: int = 2024, mime: str = XLSX_MIME
 ):

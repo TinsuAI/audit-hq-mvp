@@ -732,11 +732,9 @@ def _enqueue_ingest(
 
 
 def _back_to_file(company: Company, file_id: int) -> RedirectResponse:
-    """Về chính TRANG FILE vừa xác nhận, nơi tiến độ lượt nạp in ra (#125).
+    """Về chính TRANG FILE vừa xác nhận — chỗ tiến độ lượt nạp in ra (#125).
 
-    Trước vé này lượt xác nhận cột đưa cán bộ về danh sách tài liệu: họ vừa làm
-    việc trên một file, và màn kế tiếp không nói gì về file đó lẫn về việc vừa xếp.
-    Đơn vị nạp vẫn là `(DN, kỳ)` — thứ đổi là chỗ đứng xem, không phải phạm vi nạp.
+    Đơn vị nạp vẫn là `(DN, kỳ)`: đổi đích chuyển hướng, không đổi phạm vi nạp.
     """
     slug = company.slug or company.code
     return RedirectResponse(url=file_page_url(slug, file_id), status_code=303)
@@ -1469,7 +1467,7 @@ def documents_file_page(
             "ingest": ing,
             "ingest_status_url": (
                 f"/companies/{slug}/documents/ingest.json"
-                f"?year={row.period_year}&file={row.id}"
+                f"?year={row.period_year}&file_id={row.id}"
             ),
             # "Kiểm tra chưa chạy" hỏi cùng hai phép đo dòng kỳ dùng — một định
             # nghĩa, hai màn (#125).
@@ -1988,7 +1986,7 @@ def documents_ingest_year(
 def documents_ingest_status(
     code: str,
     year: int = Query(...),
-    file: int | None = None,
+    file_id: int | None = None,
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -1997,14 +1995,14 @@ def documents_ingest_status(
     Trả đủ bốn trạng thái công việc (đang chờ · đang chạy · xong · hỏng) cộng dạng
     kết quả khi xong, kèm chữ và nút đã dựng sẵn (xem `app/pipeline/ingest_status.py`).
 
-    `file` nói bộ đếm poll đang chạy trên TRANG FILE nào (#125), và chỉ đổi đích tải
-    lại khi lượt nạp trót lọt. Nhận SỐ HIỆU file rồi tự dựng địa chỉ — không nhận địa
-    chỉ từ máy khách, vì giá trị này đi thẳng vào `location.replace`.
+    `file_id` nói bộ đếm poll đang chạy trên TRANG FILE nào (#125), và chỉ đổi đích
+    tải lại khi lượt nạp trót lọt. Nhận SỐ HIỆU file rồi tự dựng địa chỉ — không nhận
+    địa chỉ từ máy khách, vì giá trị này đi thẳng vào `location.replace`.
     """
     company = get_company_or_404(db, code, user)
     reload_to: str | None = None
-    if file is not None:
-        row = db.get(DataFile, file)
+    if file_id is not None:
+        row = db.get(DataFile, file_id)
         if row is None or row.company_id != company.id or row.period_year != year:
             raise HTTPException(status_code=404, detail="Không tìm thấy file")
         reload_to = file_page_url(company.slug or company.code, row.id)
