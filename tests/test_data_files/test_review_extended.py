@@ -122,7 +122,7 @@ def test_officer_group_is_applied_and_clears_the_review_gate(app_db):
         f"/companies/DN_EXT/documents/file/{fid}/review", data=data, follow_redirects=False,
     )
     assert r.status_code == 303
-    assert r.headers["location"].endswith("/documents#ky-2024")
+    assert r.headers["location"].endswith(f"/documents/file/{fid}")
     drain_jobs()
 
     with app_db.SessionLocal() as db:
@@ -171,7 +171,7 @@ def test_officer_may_turn_a_single_column_field_into_a_group(app_db):
         f"/companies/DN_EXT/documents/file/{fid}/review", data=data, follow_redirects=False,
     )
     assert r.status_code == 303
-    assert r.headers["location"].endswith("/documents#ky-2024")
+    assert r.headers["location"].endswith(f"/documents/file/{fid}")
     drain_jobs()
 
     with app_db.SessionLocal() as db:
@@ -245,7 +245,7 @@ def test_two_fields_may_not_claim_the_same_column(app_db):
         f"/companies/DN_EXT/documents/file/{fid}/review", data=data, follow_redirects=False,
     )
     assert r.status_code == 303
-    assert "/documents?error=" in r.headers["location"]
+    assert f"/documents/file/{fid}?error=" in r.headers["location"]
     assert _queued_and_saved(app_db) == before  # không xếp job, không ghi map
 
 
@@ -285,4 +285,4 @@ def test_standard_layout_rejects_a_multi_column_answer(app_db):
         f"/companies/DN_STD/documents/file/{fid}/review", data=data, follow_redirects=False,
     )
     assert r.status_code == 303
-    assert "/documents?error=" in r.headers["location"]
+    assert f"/documents/file/{fid}?error=" in r.headers["location"]

@@ -1,0 +1,41 @@
+{# Tấm bảng tiến độ lượt nạp của MỘT kỳ — dòng kỳ ở màn dữ liệu và trang file cùng in
+   khối này (#125). Một bản dựng duy nhất: hai bản chép thì một bản sửa mà bản kia không,
+   và hai màn nói khác nhau về cùng một lượt nạp.
+
+   Câu chữ (`title`, `detail`, `notes`, nhãn nút) dựng ở `app/pipeline/ingest_status.py`,
+   không ở đây và không ở JavaScript — lần render đầu và lần cập nhật của bộ đếm poll đọc
+   cùng một nguồn chữ.
+
+   Biến vào: `ing` (IngestStatus hoặc None) · `ingest_url` (địa chỉ hỏi trạng thái, đã kèm
+   kỳ và — ở trang file — số hiệu file, để đích tải lại là chính màn đang xem). #}
+<div class="ds-ingest-slot" data-ingest-url="{{ ingest_url }}"
+     data-ingest-active="{{ 1 if (ing and ing.active) else 0 }}">
+  {% if ing and ing.visible %}
+  <div class="ds-ingest ds-ingest-{{ ing.tone }}">
+    <p class="ds-ingest-title">
+      {% if ing.active %}<span class="ds-ingest-spin" aria-hidden="true"></span>{% endif %}
+      {{ ing.title }}
+    </p>
+    <p class="ds-ingest-detail">{{ ing.detail }}</p>
+    {% if ing.notes %}
+    <ul class="ds-ingest-notes">
+      {% for note in ing.notes %}<li>{{ note }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if ing.actions %}
+    <div class="ds-ingest-actions">
+      {% for a in ing.actions %}
+        {% if a.kind == 'post' %}
+        <form method="post" action="{{ a.url }}">
+          <input type="hidden" name="year" value="{{ a.year }}">
+          <button type="submit" class="btn btn-sm btn-primary">{{ a.label }}</button>
+        </form>
+        {% else %}
+        <a href="{{ a.url }}" class="btn btn-sm btn-primary">{{ a.label }}</a>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

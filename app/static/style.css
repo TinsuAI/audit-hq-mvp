@@ -2018,6 +2018,10 @@ p { margin: 0 0 var(--space-3); }
   margin-bottom: var(--space-3);
 }
 .ds-period-actions form { margin: 0; }
+/* Câu "chưa chạy" đứng ngay trên nút chạy của chính nó (#125) — một cột trong hàng
+   nút, không phải một khối riêng ở chỗ khác của dòng kỳ. */
+.ds-run-checks { display: flex; flex-direction: column; gap: var(--space-1); }
+.ds-run-note { margin: 0; font-size: var(--fs-xs); color: var(--c-text-muted); }
 .ds-upload { display: flex; gap: var(--space-1); align-items: center; margin: 0; }
 .ds-upload-slot { max-width: 190px; font-size: var(--fs-sm); }
 .ds-upload-pick { cursor: pointer; white-space: nowrap; }
@@ -2611,3 +2615,15 @@ p { margin: 0 0 var(--space-3); }
 /* Trạng thái sai: lượt nạp đang dừng vì chính file này. Cùng sắc thái với
    `.alert-warning`, không phải một bộ màu thứ hai. */
 .fp-set-wrong { color: var(--c-warning-fg); font-weight: 500; }
+
+/* "Kiểm tra chưa chạy" ở trang file (#125): câu và nút chạy trong CÙNG một khối, vì
+   nút một mình không nói được rằng lượt nạp vừa xong không kéo theo lượt chạy nào. */
+.fp-checks {
+  display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap;
+  border: 1px solid var(--c-border); border-left: 3px solid var(--c-warning-fg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.fp-checks form { margin: 0; }
+.fp-checks-note { margin: 0; font-size: var(--fs-sm); max-width: 68ch; }

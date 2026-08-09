@@ -32,7 +32,7 @@ from collections.abc import Iterable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import CheckRun, CompanyPeriod
+from app.models import CheckRun, CompanyPeriod, CompanyYearScore, Finding
 from app.pipeline.period import current_data_version
 
 
@@ -54,6 +54,36 @@ def results_stale(session: Session, company_id: int, period_year: int) -> bool:
     return data_version_moved(
         based_on, current_data_version(session, company_id, period_year)
     )
+
+
+def checks_have_run(session: Session, company_id: int, period_year: int) -> bool:
+    """Kỳ đã chạy kiểm tra ít nhất một lần chưa (#125).
+
+    Định nghĩa dùng chung cho dòng kỳ ở màn dữ liệu VÀ trang file: có điểm rủi ro
+    đã lưu, hoặc có ít nhất một phát hiện. Hai chỗ nói cùng một câu nên hai chỗ
+    phải hỏi cùng một phép so — hai bản sao thì một bản sửa mà bản kia không, và
+    cán bộ đọc được "chưa chạy" ở màn này trong khi màn kia nói đã chạy.
+
+    KHÔNG hỏi `check_runs`: dòng đó ghi theo từng mã, còn câu này nói về cả kỳ.
+
+    Trục thứ hai là `results_stale` ngay trên — đã chạy nhưng chạy trên dữ liệu cũ.
+    Chưa chạy lần nào thì KHÔNG cũ, và hai câu không bao giờ hiện cùng lúc.
+    """
+    has_score = session.scalar(
+        select(func.count(CompanyYearScore.id)).where(
+            CompanyYearScore.company_id == company_id,
+            CompanyYearScore.period_year == period_year,
+        )
+    )
+    if has_score:
+        return True
+    has_finding = session.scalar(
+        select(func.count(Finding.id)).where(
+            Finding.company_id == company_id,
+            Finding.period_year == period_year,
+        )
+    )
+    return bool(has_finding)
 
 
 def stale_result_years(
@@ -94,4 +124,9 @@ def stale_result_years(
     return {cid: tuple(sorted(years)) for cid, years in out.items()}
 
 
-__all__ = ["data_version_moved", "results_stale", "stale_result_years"]
+__all__ = [
+    "checks_have_run",
+    "data_version_moved",
+    "results_stale",
+    "stale_result_years",
+]

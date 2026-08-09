@@ -129,7 +129,7 @@ def test_review_confirm_saves_map_and_advances_to_parsed(app_db: AppDb):
         data=data, follow_redirects=False,
     )
     assert r.status_code == 303
-    assert r.headers["location"].endswith("/documents#ky-2024")
+    assert r.headers["location"].endswith(f"/documents/file/{fid}")
     drain_jobs()
 
     with app_db.SessionLocal() as db:

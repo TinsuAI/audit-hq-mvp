@@ -6,6 +6,11 @@
  *
  * Chỉ theo dõi khối mà SERVER đã đánh dấu đang chạy — trang này không tự tạo việc
  * nạp nào. Nhờ đó khối "đã nạp xong" render sẵn không bao giờ tự tải lại trang.
+ *
+ * Địa chỉ hỏi trạng thái nằm TRÊN CHÍNH KHỐI (`data-ingest-url`), dựng sẵn ở máy chủ
+ * (#125): dòng kỳ và trang file cùng in khối này, và trang file phải hỏi kèm số hiệu
+ * file để đích tải lại là chính nó. Ghép địa chỉ ở đây thì mỗi màn thêm một tham số
+ * là một nhánh nữa trong JS.
  */
 (function () {
   'use strict';
@@ -14,22 +19,19 @@
   const MAX_TRIES = 900;   // ~30 phút; job treo có đường lùi riêng ở điểm cuối
 
   function init() {
-    const root = document.getElementById('documents-root');
-    const base = root ? root.dataset.ingestUrl : null;
-    if (!base) return;
-
     const slots = document.querySelectorAll('.ds-ingest-slot[data-ingest-active="1"]');
-    for (const slot of slots) watch(slot, base, slot.dataset.ingestYear);
+    for (const slot of slots) {
+      if (slot.dataset.ingestUrl) watch(slot, slot.dataset.ingestUrl);
+    }
   }
 
-  function watch(slot, base, year) {
+  function watch(slot, url) {
     let tries = 0;
     const timer = setInterval(async () => {
       if (++tries > MAX_TRIES) { clearInterval(timer); return; }
       let data;
       try {
-        const r = await fetch(`${base}?year=${encodeURIComponent(year)}`,
-                              { credentials: 'same-origin' });
+        const r = await fetch(url, { credentials: 'same-origin' });
         if (!r.ok) return;      // lỗi tạm thời → thử lại vòng sau
         data = await r.json();
       } catch { return; }
