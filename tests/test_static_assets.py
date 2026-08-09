@@ -133,10 +133,13 @@ def _contrast(fg: str, bg: str) -> float:
 # sách để chúng không quay lại: một rule không ai gọi tới thì không có phép thử nào đỏ,
 # nên nó chỉ lộ ra ở một lượt quét viết tay.
 #
-# Ba cụm, ba lý do khác nhau:
+# Bốn cụm, bốn lý do khác nhau:
 # - `.upload-slot*` (12 tên): ô tải lên theo từng loại biểu, thay bằng ô thả cả bộ (#88).
 # - lớp tiện ích (`.flex*`, `.items-*`, `.mt-0`, `.text-center`…): dựng theo lối
 #   utility-first rồi không màn nào dùng — repo này viết CSS theo khối, không theo tiện ích.
+# - `.fm-*` của BẢNG CHUYỂN VỊ: #121 bỏ bảng đó và xoá rule ngay trong cùng commit, nên
+#   #127 không còn gì để xoá ở đây. Ghim vẫn cần: đó là cụm mà vé này được xếp SAU #121
+#   để dọn, và không ghim thì không gì chặn nó quay lại cùng một bố cục cũ.
 # - còn lại: tàn dư của những màn đã viết lại (`.card-section`, `.dn-code`, `.badge-dot`,
 #   `.score-pill.low/.mid/.high` — hạng rủi ro dùng `tier-*`, không dùng ba tên này).
 DELETED_CLASSES = (
@@ -154,6 +157,14 @@ DELETED_CLASSES = (
     "flex-gap-4",
     "flex-wrap",
     "flush",
+    "fm-absentrow",
+    "fm-blank",
+    "fm-col-absent",
+    "fm-corner",
+    "fm-datarow",
+    "fm-foot",
+    "fm-metarow",
+    "fm-pickrow",
     "form-help",
     "hide",
     "items-center",
