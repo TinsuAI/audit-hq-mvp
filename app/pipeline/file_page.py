@@ -323,6 +323,31 @@ class ReadBasis:
         )
 
 
+def grid_column_marks(basis: ReadBasis) -> dict[str, dict]:
+    """`{chỉ số cột: {trường, nhãn, nhãn ba trục}}` — chú giải cột cho lưới xem trước.
+
+    Lưới KHÔNG giữ bộ từ vựng riêng: nhãn lấy thẳng từ `BasisColumn.labels`, đúng
+    property mà dòng trường của bảng gán cột đọc (#123, ADR #29 mục 1). Trước đây lưới
+    nhận một cờ `needs` rồi tự đặt câu chữ trong JavaScript, nên "cột này còn chờ cán bộ
+    xác nhận" là bộ từ vựng THỨ TƯ — nằm ngoài ba trục, và không chỗ nào bắt được khi nó
+    lệch câu chữ với dòng trường nói về cùng cột đó.
+
+    Đánh dấu MỌI cột của một nhóm `(6a)+(6b)`, không riêng cột đầu: sáng một cột thì cán
+    bộ tưởng cột kia không được đọc.
+    """
+    return {
+        str(index): {
+            "field": c.field,
+            "label": c.label,
+            "labels": [
+                {"axis": lb.axis, "text": lb.text, "tone": lb.tone} for lb in c.labels
+            ],
+        }
+        for c in basis.columns
+        for index in c.columns
+    }
+
+
 def file_read_basis(
     row: DataFile, absent_fields: Iterable[str] | None = None,
 ) -> ReadBasis:
@@ -441,4 +466,5 @@ __all__ = [
     "column_letter",
     "file_page_url",
     "file_read_basis",
+    "grid_column_marks",
 ]

@@ -14,6 +14,13 @@
  * cắt 100 giây của Cloudflare. Máy chủ trả 202 kèm số dòng đã đọc; lưới hiện màn
  * chờ rồi tự hỏi lại với `wait=0` — cán bộ không phải bấm lại, và không request nào
  * giữ kết nối lâu.
+ *
+ * Hình dạng khai ra được (#123): điểm neo `#cell-grid` khai sẵn `role="table"` + tên +
+ * `aria-rowcount` / `aria-colcount` ở TEMPLATE, còn đây đóng hai số thật vào khi cửa sổ
+ * đầu về, và đóng vai cho từng phần lưới dựng ra. Dòng ô là phần tử THẬT (`.cg-row`),
+ * không phải một biển ô phẳng: `role="row"` phải có ô nằm trong nó mới đọc ra được.
+ * Vùng số dòng và ô góc mang `aria-hidden` — chúng lặp lại `aria-rowindex` bằng hình,
+ * và là hai lớp cuộn riêng nên không nằm được trong dòng của chúng.
  */
 (function () {
   'use strict';
@@ -21,7 +28,8 @@
   var ROW_H = 26;          // px mỗi dòng — cố định, để suy vị trí từ chỉ số dòng
   var COL_W = 148;
   var ROWNUM_W = 86;
-  var HEAD_H = 32;
+  var HEAD_H = 32;         // một dòng: chữ cái cột + tên trường hệ thống đọc
+  var HEAD_H_FLAGGED = 48; // hai dòng: thêm nhãn "việc còn lại" của cột, thành CHỮ
   var ROW_MARGIN = 60;     // dòng nạp thừa mỗi phía, đủ cho một cú cuộn nhanh
   var COL_MARGIN = 8;
   var MAX_ROWS = 400;      // trần điểm cuối là 1000
@@ -80,40 +88,51 @@
 
   function build(container) {
     container.textContent = '';
+    el.root = container;
+    // Khung là lớp ĐỊNH VỊ, không phải một phần của bảng: con của `role="table"` phải
+    // là dòng hoặc nhóm dòng, nên khung tự khai mình vô nghĩa và nhường vai cho con.
     var frame = document.createElement('div');
     frame.className = 'cg-frame';
+    frame.setAttribute('role', 'presentation');
 
+    // Ô góc chỉ có dấu `#`, và vùng số dòng lặp lại đúng `aria-rowindex` của mỗi dòng.
+    // Cả hai là hình, nên giấu khỏi cây khả truy cập thay vì đọc lên hai lần.
     el.corner = document.createElement('div');
     el.corner.className = 'cg-corner';
     el.corner.textContent = '#';
+    el.corner.setAttribute('aria-hidden', 'true');
 
     el.head = document.createElement('div');
     el.head.className = 'cg-head';
+    el.head.setAttribute('role', 'rowgroup');
     el.headInner = document.createElement('div');
     el.headInner.className = 'cg-head-inner';
+    el.headInner.setAttribute('role', 'row');
     el.head.appendChild(el.headInner);
 
     el.side = document.createElement('div');
     el.side.className = 'cg-side';
+    el.side.setAttribute('aria-hidden', 'true');
     el.sideInner = document.createElement('div');
     el.sideInner.className = 'cg-side-inner';
     el.side.appendChild(el.sideInner);
 
     el.body = document.createElement('div');
     el.body.className = 'cg-body';
+    el.body.setAttribute('role', 'rowgroup');
     el.canvas = document.createElement('div');
     el.canvas.className = 'cg-canvas';
+    el.canvas.setAttribute('role', 'presentation');
     el.body.appendChild(el.canvas);
 
-    el.overlay = document.createElement('div');
-    el.overlay.className = 'cg-overlay';
-    el.overlay.hidden = true;
+    // Màn chờ / màn lỗi do TEMPLATE dựng, nằm ngoài `#cell-grid` và chồng lên nó: nó
+    // không phải một dòng, mà đặt trong bảng thì là một con không thuộc vai nào.
+    el.overlay = document.getElementById('cg-overlay');
 
     frame.appendChild(el.corner);
     frame.appendChild(el.head);
     frame.appendChild(el.side);
     frame.appendChild(el.body);
-    frame.appendChild(el.overlay);
     container.appendChild(frame);
 
     el.body.addEventListener('scroll', onScroll, { passive: true });
@@ -157,6 +176,52 @@
     return state.highlight.indexOf(colIndex) !== -1 && onParsedSheet();
   }
 
+  function columnHeader(colIndex) {
+    // Tiêu đề cột là chỗ DUY NHẤT lưới nói "hệ thống đọc cột này thành trường gì", nên
+    // nó phải đọc được bằng bàn phím và bằng trình đọc màn hình: `role="columnheader"`
+    // để mỗi ô của cột được đọc kèm tên cột, `aria-colindex` vì lưới chỉ giữ vài chục
+    // cột trong DOM nên vị trí không suy ra được từ thứ tự phần tử.
+    var th = document.createElement('div');
+    th.className = 'cg-col';
+    th.setAttribute('role', 'columnheader');
+    th.setAttribute('aria-colindex', String(colIndex + 1));
+    th.style.left = (colIndex * COL_W) + 'px';
+
+    var line = document.createElement('span');
+    line.className = 'cg-col-line';
+    var letter = document.createElement('span');
+    letter.className = 'cg-col-letter';
+    letter.textContent = colLetter(colIndex);
+    line.appendChild(letter);
+
+    var mark = markedColumn(colIndex);
+    if (mark) {
+      var tag = document.createElement('span');
+      tag.className = 'cg-col-field';
+      tag.textContent = mark.label;
+      // `title` chỉ LẶP LẠI chữ đang hiện — bề ngang cột cắt tên trường dài, và chuột
+      // đọc được phần bị cắt. Không thứ gì chỉ sống trong `title`: nghĩa nằm ở chữ.
+      tag.title = mark.label;
+      line.appendChild(tag);
+    }
+    th.appendChild(line);
+
+    var flags = (mark && mark.labels) || [];
+    if (mark) th.classList.add(flags.length ? 'cg-col-needs' : 'cg-col-mapped');
+    flags.forEach(function (lb) {
+      // Nhãn dựng ở máy chủ từ CÙNG property dòng trường đọc (`BasisColumn.labels`),
+      // nên lưới không có bộ từ vựng riêng — trục đi kèm chữ để khẳng định được.
+      var flag = document.createElement('span');
+      flag.className = 'cg-col-flag';
+      flag.setAttribute('data-axis', lb.axis);
+      flag.textContent = lb.text;
+      th.appendChild(flag);
+    });
+
+    if (isHighlighted(colIndex)) th.classList.add('cg-col-hi');
+    return th;
+  }
+
   function render(force) {
     if (!state.meta) return;
     var v = visibleRange();
@@ -174,25 +239,7 @@
 
     var head = document.createDocumentFragment();
     for (var c = v.firstCol; c < v.lastCol; c++) {
-      var th = document.createElement('div');
-      th.className = 'cg-col';
-      th.style.left = (c * COL_W) + 'px';
-      var letter = document.createElement('span');
-      letter.className = 'cg-col-letter';
-      letter.textContent = colLetter(c);
-      th.appendChild(letter);
-      var mark = markedColumn(c);
-      if (mark) {
-        th.classList.add(mark.needs ? 'cg-col-needs' : 'cg-col-mapped');
-        var tag = document.createElement('span');
-        tag.className = 'cg-col-field';
-        tag.textContent = mark.label;
-        tag.title = 'Hệ thống đọc cột này thành trường “' + mark.label + '”'
-          + (mark.needs ? ' — cột này còn chờ cán bộ xác nhận.' : '.');
-        th.appendChild(tag);
-      }
-      if (isHighlighted(c)) th.classList.add('cg-col-hi');
-      head.appendChild(th);
+      head.appendChild(columnHeader(c));
     }
     el.headInner.textContent = '';
     el.headInner.appendChild(head);
@@ -206,11 +253,20 @@
       num.textContent = intVi(r + 1);
       side.appendChild(num);
 
+      // Dòng là phần tử thật, ô nằm TRONG dòng: `role="row"` rỗng không đọc ra được gì,
+      // và chỉ số dòng của trang tính nói MỘT lần ở đây thay vì lặp trên từng ô.
+      var tr = document.createElement('div');
+      tr.className = 'cg-row';
+      tr.setAttribute('role', 'row');
+      tr.setAttribute('aria-rowindex', String(r + 1));
+      tr.style.top = (r * ROW_H) + 'px';
+
       for (var cc = v.firstCol; cc < v.lastCol; cc++) {
         var cell = document.createElement('div');
         cell.className = 'cg-cell';
+        cell.setAttribute('role', 'cell');
+        cell.setAttribute('aria-colindex', String(cc + 1));
         cell.style.left = (cc * COL_W) + 'px';
-        cell.style.top = (r * ROW_H) + 'px';
         var got = cellText(r, cc);
         if (got === null) {
           cell.classList.add('cg-cell-loading');
@@ -221,8 +277,9 @@
         }
         if (markedColumn(cc)) cell.classList.add('cg-cell-mapped');
         if (isHighlighted(cc)) cell.classList.add('cg-cell-hi');
-        body.appendChild(cell);
+        tr.appendChild(cell);
       }
+      body.appendChild(tr);
     }
     el.sideInner.textContent = '';
     el.sideInner.appendChild(side);
@@ -302,6 +359,8 @@
     renderSheets(data);
     renderNotes(data);
     renderStatus(data);
+    setDimensions(data);
+    applyHeadHeight();
     if (data.total_rows === 0) {
       showCard('Trang tính này không có ô nào.', '');
       return;
@@ -438,6 +497,41 @@
     }
   }
 
+  function setDimensions(data) {
+    // Hai số này là số của TRANG TÍNH, đúng hai số dòng trạng thái dưới lưới viết ra
+    // ("12.345 dòng × 20 cột") và đúng hai khoá `total_rows` / `total_cols` của payload
+    // lưới — nói bằng giọng đọc mà lệch với chữ trên màn hình là một lời nói dối mới.
+    //
+    // Hàng chữ cái cột KHÔNG tính vào `aria-rowcount` và không mang `aria-rowindex`:
+    // tính nó thì `aria-rowindex` của mọi dòng dữ liệu lệch 1 so với số dòng đang hiện
+    // ở lề trái, mà ở trang tính thì số dòng CHÍNH LÀ danh tính của dòng.
+    el.root.setAttribute('aria-rowcount', String(data.total_rows));
+    el.root.setAttribute('aria-colcount', String(data.total_cols));
+  }
+
+  function anyColumnFlagged() {
+    // Chỉ tính cột lưới THẬT SỰ vẽ ra: vị trí đã lưu trỏ được ra ngoài trang tính (map
+    // giữ cột 8 trong khi trang tính có 8 cột, chỉ số 0..7), và nới tiêu đề cho một cột
+    // không bao giờ hiện là chừa một dòng trống suốt lượt xem.
+    var total = state.meta ? state.meta.total_cols : 0;
+    var marks = state.mapped;
+    for (var key in marks) {
+      if (!Object.prototype.hasOwnProperty.call(marks, key)) continue;
+      if (Number(key) < total && (marks[key].labels || []).length) return true;
+    }
+    return false;
+  }
+
+  function applyHeadHeight() {
+    // Nhãn của cột chiếm DÒNG THỨ HAI của tiêu đề, và chỉ khi có nhãn để hiện: bề ngang
+    // một cột là 148px, nhét nhãn cạnh tên trường thì cả hai cùng bị cắt. Đo trên CẢ
+    // bản đồ cột chứ không trên khung nhìn — theo khung nhìn thì chiều cao tiêu đề nhảy
+    // trong lúc cuộn ngang.
+    var tall = state.showMapped && onParsedSheet() && anyColumnFlagged();
+    document.documentElement.style.setProperty(
+      '--cg-head-h', (tall ? HEAD_H_FLAGGED : HEAD_H) + 'px');
+  }
+
   function renderStatus(data) {
     var box = document.getElementById('cg-status');
     if (!box) return;
@@ -530,6 +624,7 @@
       mapped.addEventListener('change', function () {
         state.showMapped = mapped.checked;
         if (state.meta) renderNotes(state.meta);
+        applyHeadHeight();
         render(true);
       });
     }
@@ -568,7 +663,7 @@
     document.documentElement.style.setProperty('--cg-row-h', ROW_H + 'px');
     document.documentElement.style.setProperty('--cg-col-w', COL_W + 'px');
     document.documentElement.style.setProperty('--cg-rownum-w', ROWNUM_W + 'px');
-    document.documentElement.style.setProperty('--cg-head-h', HEAD_H + 'px');
+    applyHeadHeight();
     showCard('Đang mở file…', '');
     load({ row: 0, rows: 200, col: 0, cols: 60 });
   }
