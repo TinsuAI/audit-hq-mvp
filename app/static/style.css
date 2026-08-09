@@ -1331,6 +1331,30 @@ p { margin: 0 0 var(--space-3); }
 .evidence-col { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); }
 .evidence-col-name { color: var(--c-text-muted, inherit); }
 
+/* Nghĩa của nguồn bằng chứng, thành chữ (#130). Hai cột: thuật ngữ giữ nguyên chữ đã
+   hiện trên chip, câu nằm ngay cạnh — đọc theo hàng thì thuật ngữ và nghĩa đi cùng nhau,
+   không phải bắt mắt chạy xuống rồi chạy ngược lên. */
+.evidence-key {
+  width: 100%;
+  margin: var(--space-3) 0 0;
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+}
+.evidence-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+}
+.evidence-key dt { font-weight: 600; color: var(--c-text); }
+.evidence-key dd { margin: 0; color: var(--c-text-muted); }
+/* Nguồn yếu: cột đọc từ đó có thể sai mà không dấu hiệu nào báo. */
+.evidence-key-weak dt { color: var(--c-warning-fg); }
+@media (max-width: 640px) {
+  .evidence-key-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+
 /* Màn gán cột theo TRƯỜNG (#121) — mỗi trường khai một DÒNG, đọc từ trên xuống theo
    đúng thứ tự việc: tên trường → bộ chọn cột → ô khai vắng → câu căn cứ. */
 

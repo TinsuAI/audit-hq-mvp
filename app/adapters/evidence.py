@@ -18,6 +18,7 @@ lẫn dòng con (tiêu đề Mẫu 15 thật tách hai dòng: cha "Lượng NL, 
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from app.adapters._common import to_float, to_str
@@ -83,6 +84,47 @@ SOURCE_SENTENCE_VI = {
         "file lệch bố cục thì đọc sai cột mà không có dấu hiệu nào báo."
     ),
 }
+
+
+@dataclass(frozen=True)
+class SourceMeaning:
+    """Một nguồn bằng chứng CÓ MẶT trên màn, kèm nghĩa của nó thành chữ (#130)."""
+
+    source: str
+    label: str
+    sentence: str
+    #: Nguồn yếu (`position-only`, `balance-checked`) — cột đọc từ đó có thể sai mà không
+    #: có dấu hiệu nào báo, nên nó là thứ cán bộ phải đọc trước.
+    weak: bool
+
+
+#: Nguồn mà bản thân nó KHÔNG chứng minh được cột đúng: vị trí mặc định không có tín hiệu
+#: nào xác nhận, còn đẳng thức thì không phân biệt hai cột cùng dấu.
+WEAK_SOURCES = frozenset({POSITION_ONLY, BALANCE_CHECKED})
+
+
+def source_meanings(columns) -> tuple[SourceMeaning, ...]:
+    """Nghĩa của các nguồn CÓ MẶT trong danh sách cột, yếu trước, mỗi nguồn một lần.
+
+    Đi theo nguồn chứ không theo cột: một biểu có tới 11 cột, mà chỉ có 5 nguồn, nên nói
+    theo cột là lặp lại cùng một câu tới mười lần và không khối chữ nào chứa nổi.
+
+    Tra `SOURCE_SENTENCE_VI` lúc RENDER theo mã nguồn thô (`evidence`), không đọc câu từ
+    bản đã lưu: `parse_detail` chỉ giữ nhãn ngắn, nên file nạp trước khi có hằng câu vẫn
+    đọc được nghĩa, và sửa câu chữ không phải nạp lại file nào.
+    """
+    seen: dict[str, SourceMeaning] = {}
+    for column in columns or ():
+        source = (column or {}).get("evidence")
+        if not source or source in seen:
+            continue
+        seen[source] = SourceMeaning(
+            source=source,
+            label=SOURCE_LABEL_VI.get(source, source),
+            sentence=SOURCE_SENTENCE_VI.get(source, ""),
+            weak=source in WEAK_SOURCES,
+        )
+    return tuple(sorted(seen.values(), key=lambda m: _RANK.get(m.source, -1)))
 
 
 def strongest(*sources: str) -> str:
@@ -341,6 +383,9 @@ __all__ = [
     "POSITION_ONLY",
     "SOURCE_LABEL_VI",
     "SOURCE_SENTENCE_VI",
+    "SourceMeaning",
+    "WEAK_SOURCES",
+    "source_meanings",
     "VERIFIED",
     "evidence_m15_extended",
     "evidence_m15_standard",

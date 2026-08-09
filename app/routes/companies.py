@@ -29,7 +29,7 @@ from app.adapters.cell_window import (
 )
 from app.adapters.declared_fields import FIELD_LABEL_VI, label_of, row_key_fields
 from app.adapters.declared_fields import declared as declared_fields
-from app.adapters.evidence import SOURCE_SENTENCE_VI
+from app.adapters.evidence import SOURCE_SENTENCE_VI, source_meanings
 from app.adapters.templates import column_groups
 from app.ai.overview_stats import PERCENTILE_LABEL_VI
 from app.app_settings import get_combos_enabled
@@ -3130,6 +3130,12 @@ def company_data(
             "any_filter": any(active.values()),
             "parse_layout": prov_file.parse_layout if prov_file else None,
             "parse_detail": prov_file.parse_detail_obj if prov_file else {},
+            # Nghĩa của nguồn bằng chứng đi thành CHỮ ở màn này (#130), không nằm trong
+            # tooltip: tooltip không hiện trên thiết bị cảm ứng, không hiện khi in, và
+            # không đọc được bằng bàn phím nếu không rê chuột được.
+            "source_meanings": source_meanings(
+                (prov_file.parse_detail_obj if prov_file else {}).get("columns")
+            ),
             **active,
         },
     )

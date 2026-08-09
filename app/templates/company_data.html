@@ -52,20 +52,36 @@
     {{ parse_detail.header_row }}, không theo vị trí cố định. Đọc theo vị trí sẽ lấy nhầm cột.</span>
   {% endif %}
   {% if parse_detail.columns %}
+    {# Chip giữ chữ NGẮN: nhãn ngắn đi vào `parse_detail` lúc nạp, nên đổi nó là làm file
+       cũ và file mới hiện hai kiểu. Nghĩa nằm ở danh sách bên dưới. #}
     <div class="evidence-cols">
       {% for c in parse_detail.columns %}
-        {# Tooltip nói NGHĨA, không lặp lại thuật ngữ. Bản cũ đọc ra "…: nguồn Khớp tiêu đề"
-           — đúng bằng chữ đã hiện trên chip, nên không thêm gì cho người đọc. Tra theo mã
-           nguồn THÔ (`c.evidence`) lúc render: bản lưu trong `parse_detail` chỉ có nhãn
-           ngắn, file nạp trước #120 không mang câu nào, nên tra lúc render là cách duy nhất
-           để file cũ cũng đọc được nghĩa. Chip vẫn giữ chữ ngắn — câu không nhét vừa chip. #}
-        <span class="evidence-col" title="{{ c.label }}: {{ SOURCE_SENTENCE.get(c.get('evidence', ''), '') }}">
+        <span class="evidence-col">
           <span class="evidence-col-name">{{ c.label }}</span>
           <span class="badge {{ 'info' if c.review == 'verified' else 'warning' }}"
                 data-axis="evidence">{{ c.evidence_label }}</span>
         </span>
       {% endfor %}
     </div>
+    {# Nghĩa thành CHỮ, không thành tooltip (#130): tooltip không hiện trên thiết bị cảm
+       ứng, không hiện khi in, và không đọc được bằng bàn phím nếu không rê chuột được.
+
+       Đi theo NGUỒN chứ không theo cột — biểu có tới 11 cột nhưng chỉ 5 nguồn, nên một
+       câu cho mỗi chip là lặp cùng một câu tới mười lần. Nguồn yếu đứng trước: đó là chỗ
+       cột có thể sai mà không dấu hiệu nào báo. Câu tra lúc render theo mã nguồn thô nên
+       file nạp trước khi có hằng câu cũng đọc được nghĩa. #}
+    <dl class="evidence-key">
+      {% for m in source_meanings %}
+      <div class="evidence-key-row{% if m.weak %} evidence-key-weak{% endif %}">
+        <dt>{{ m.label }}</dt>
+        <dd>{{ m.sentence }}</dd>
+      </div>
+      {% endfor %}
+      <div class="evidence-key-row">
+        <dt>Nhãn vàng</dt>
+        <dd>Cột mang nhãn nền vàng là cột chưa đủ căn cứ để hệ thống tự nhận; mở trang file để xác nhận vị trí cột rồi nạp lại.</dd>
+      </div>
+    </dl>
   {% endif %}
 </div>
 {% endif %}
