@@ -120,6 +120,144 @@ def _contrast(fg: str, bg: str) -> float:
     return (hi + 0.05) / (lo + 0.05)
 
 
+# Bia mộ (#127). Mỗi tên ở đây từng có rule trong `style.css` mà KHÔNG chỗ nào phát ra:
+# không thuộc tính `class=` nào, không `classList`, không tên ghép lúc chạy, không tham
+# số class truyền vào hàm dựng DOM. Giữ danh sách để chúng không quay lại — CSS bỏ hoang
+# không đỏ ở đâu cả, nên nó chỉ được phát hiện bằng một lượt quét viết tay như lượt này.
+#
+# Ba cụm, ba lý do chết khác nhau:
+# - `.upload-slot*` (12 tên): ô tải lên theo từng loại biểu, thay bằng ô thả cả bộ (#88).
+# - lớp tiện ích (`.flex*`, `.items-*`, `.mt-0`, `.text-center`…): dựng theo lối
+#   utility-first rồi không màn nào dùng — repo này viết CSS theo khối, không theo tiện ích.
+# - còn lại: tàn dư của những màn đã viết lại (`.card-section`, `.dn-code`, `.badge-dot`,
+#   `.score-pill.low/.mid/.high` — hạng rủi ro dùng `tier-*`, không dùng ba tên này).
+DELETED_CLASSES = (
+    "badge-dot",
+    "card-section",
+    "card-table-wrapper",
+    "dim",
+    "dn-code",
+    "dn-name",
+    "ds-upload-slot",
+    "flex",
+    "flex-col",
+    "flex-gap-2",
+    "flex-gap-3",
+    "flex-gap-4",
+    "flex-wrap",
+    "flush",
+    "form-help",
+    "hide",
+    "items-center",
+    "items-end",
+    "justify-between",
+    "logout-btn",
+    "mb-0",
+    "mb-5",
+    "mt-0",
+    "text-center",
+    "text-num",
+    "text-right",
+    "upload-section-hint",
+    "upload-section-title",
+    "upload-slot",
+    "upload-slot-code",
+    "upload-slot-drop",
+    "upload-slot-filename",
+    "upload-slot-info",
+    "upload-slot-input",
+    "upload-slot-label",
+    "upload-slot-placeholder",
+    "upload-slot-sample",
+    "upload-slots",
+)
+
+# `.score-pill.low/.mid/.high` và `.stat.success` chết ở phần TU CHỈNH, không ở tên cơ
+# sở: `.score-pill` và `.stat` vẫn sống. Ghim riêng để lượt kiểm không đòi xoá cả hai.
+DELETED_MODIFIERS = (
+    ".score-pill.low",
+    ".score-pill.mid",
+    ".score-pill.high",
+    ".stat.success",
+    ".data-table .date",
+)
+
+# Bộ chọn khai hai lần với giá trị khác nhau là hai chỗ phải sửa cho một quyết định, và
+# chỗ đứng sau thắng lặng lẽ. Hai cặp dưới đây KHÔNG phải lỗi đó: chúng là lối "nhóm đặt
+# mặc định, rồi một bộ chọn trong nhóm đặt lại" — cùng một khai, cố ý ghi đè chính nó.
+CASCADE_OVERRIDES = {
+    ".catalog-table th": {"border-top"},
+    ".cg-col": {"height"},
+}
+
+
+def _class_names(selector: str) -> set[str]:
+    return set(re.findall(r"\.(-?[_a-zA-Z][\w-]*)", selector))
+
+
+@pytest.mark.parametrize("name", DELETED_CLASSES)
+def test_a_deleted_class_stays_deleted(name: str) -> None:
+    """Xoá rồi mà quay lại thì stylesheet lại nuôi một khối không màn nào gọi tới."""
+    back = [sel for sel, _ in _rules() if name in _class_names(sel)]
+    assert not back, f".{name} đã xoá ở #127 nhưng quay lại ở: {back}"
+
+
+@pytest.mark.parametrize("selector", DELETED_MODIFIERS)
+def test_a_deleted_modifier_stays_deleted(selector: str) -> None:
+    assert not any(selector in sel for sel, _ in _rules()), (
+        f"{selector} đã xoá ở #127 nhưng quay lại"
+    )
+
+
+@lru_cache(maxsize=1)
+def _top_level_rules() -> tuple[tuple[str, str], ...]:
+    """(bộ chọn, thân) cho rule NGOÀI mọi at-rule.
+
+    Khác `_rules()` ở đúng một điểm, và điểm đó quyết định phép so bên dưới: rule trong
+    `@media` / `@supports` ĐƯỢC PHÉP đặt lại giá trị của rule nền — đó là cách khai một
+    breakpoint. Trộn hai tầng vào một phép đếm thì mọi breakpoint hoá thành xung khắc.
+    """
+    rules: list[tuple[str, str]] = []
+    stack: list[str] = []
+    buf = ""
+    for ch in _stylesheet():
+        if ch == "{":
+            stack.append(buf.strip())
+            buf = ""
+        elif ch == "}":
+            if stack:
+                sel = stack.pop()
+                if not stack:
+                    rules.append((sel, buf))
+            buf = ""
+        else:
+            buf += ch
+    return tuple(rules)
+
+
+def test_no_selector_declares_the_same_property_twice_with_different_values() -> None:
+    """Một bộ chọn, một khai. Hai khai lệch nhau thì chỗ sau thắng mà không ai biết."""
+    seen: dict[str, dict[str, set[str]]] = {}
+    for sel, body in _top_level_rules():
+        if sel.startswith("@"):
+            continue
+        for one in (" ".join(s.split()) for s in sel.split(",")):
+            if not one:
+                continue
+            props = seen.setdefault(one, {})
+            for decl in body.split(";"):
+                name, sep, value = decl.partition(":")
+                if sep:
+                    props.setdefault(name.strip(), set()).add(" ".join(value.split()))
+    clashes = {
+        one: sorted(p for p, values in props.items()
+                    if len(values) > 1 and p not in CASCADE_OVERRIDES.get(one, ()))
+        for one, props in seen.items()
+    }
+    clashes = {k: v for k, v in clashes.items() if v}
+    assert not clashes, f"bộ chọn khai trùng với giá trị xung khắc: {clashes}"
+
+
 @pytest.mark.parametrize("selector_part", [":disabled", ".empty-state", ".badge.danger"])
 def test_state_has_a_rule(selector_part: str) -> None:
     """Ba trạng thái có markup dùng tới; thiếu rule là ô khoá / vùng rỗng / nhãn khoá dòng vô hình."""

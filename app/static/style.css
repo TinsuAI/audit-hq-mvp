@@ -200,15 +200,6 @@ p { margin: 0 0 var(--space-3); }
 .app-header .user-name {
   color: rgba(255, 255, 255, 0.85);
 }
-.app-header .logout-btn {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-sm);
-  color: var(--c-text-inverse);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-}
-.app-header .logout-btn:hover { background: rgba(255, 255, 255, 0.1); }
 .app-header .header-link {
   color: rgba(255, 255, 255, 0.85);
   font-size: var(--fs-sm);
@@ -297,14 +288,6 @@ p { margin: 0 0 var(--space-3); }
   color: var(--c-text-subtle);
   margin: 0 0 var(--space-3);
 }
-.card-section {
-  padding: var(--space-5);
-  border-bottom: 1px solid var(--c-border);
-}
-.card-section:last-child { border-bottom: none; }
-.card.flush { padding: 0; }
-.card.flush > * { padding-left: var(--space-5); padding-right: var(--space-5); }
-.card.flush > .card-table-wrapper { padding: 0; }
 
 /* — Buttons — */
 .btn {
@@ -375,14 +358,6 @@ p { margin: 0 0 var(--space-3); }
 .badge.info     { background: var(--c-info-bg);     color: var(--c-info-fg);     border-color: var(--c-info-border); }
 .badge.muted    { background: var(--c-status-new-bg); color: var(--c-status-new-fg); border-color: var(--c-border); }
 
-.badge-dot {
-  display: inline-block;
-  width: 6px; height: 6px; border-radius: 50%;
-}
-.badge-dot.critical { background: #c1272d; }
-.badge-dot.warning  { background: #d97706; }
-.badge-dot.info     { background: #2563eb; }
-
 /* — Status pill (for finding workflow status) — */
 .status-pill {
   display: inline-flex;
@@ -400,35 +375,22 @@ p { margin: 0 0 var(--space-3); }
 .status-pill.status-rejected  { background: var(--c-status-rejected-bg);  color: var(--c-status-rejected-fg); }
 .status-pill.status-noted     { background: var(--c-status-noted-bg);     color: var(--c-status-noted-fg); }
 
-/* — Score pill (risk score) — */
+/* — Score pill (risk score) —
+   MỘT khai duy nhất. Trước đây khai hai chỗ (ở đây và ở khối 5 hạng rủi ro), năm
+   thuộc tính khác giá trị, và khai sau thắng — tức mười một dòng ở khối này chưa bao
+   giờ vẽ ra gì. Giá trị dưới đây là giá trị ĐANG có hiệu lực. */
 .score-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
   background: var(--c-brand-500);
   color: var(--c-text-inverse);
-  font-weight: 700;
-  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   border: 1px solid transparent;
   min-width: 64px;
-  justify-content: center;
-}
-.score-pill.low {
-  background: var(--c-success-bg);
-  color: var(--c-success-fg);
-  border-color: var(--c-success-border);
-}
-.score-pill.mid {
-  background: var(--c-warning-bg);
-  color: var(--c-warning-fg);
-  border-color: var(--c-warning-border);
-}
-.score-pill.high {
-  background: var(--c-critical-bg);
-  color: var(--c-critical-fg);
-  border-color: var(--c-critical-border);
 }
 
 /* — Stat / KPI tile — */
@@ -464,7 +426,6 @@ p { margin: 0 0 var(--space-3); }
 .stat.critical { border-left-color: #c1272d; }
 .stat.warning  { border-left-color: #d97706; }
 .stat.info     { border-left-color: #2563eb; }
-.stat.success  { border-left-color: #15803d; }
 .stat.critical .stat-value { color: var(--c-critical-fg); }
 .stat.warning  .stat-value { color: var(--c-warning-fg); }
 .stat.info     .stat-value { color: var(--c-info-fg); }
@@ -512,7 +473,6 @@ p { margin: 0 0 var(--space-3); }
 .table-overflow { overflow-x: auto; }
 
 .data-table .num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.data-table .date { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--c-text-muted); }
 
 /* Wrap cells: text dài như Tên hàng, Mô tả — clamp 2 dòng + tooltip xem full */
 .data-table td.wrap, .data-table th.wrap { max-width: 360px; }
@@ -613,13 +573,6 @@ p { margin: 0 0 var(--space-3); }
 
 /* DN cell trong companies table */
 .dn-cell { display: flex; flex-direction: column; gap: 2px; }
-.dn-code {
-  font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--c-brand-500);
-}
-.dn-name { font-size: var(--fs-sm); color: var(--c-text); }
 .dn-name-link { font-size: var(--fs-sm); font-weight: 600; color: var(--c-brand-500); text-decoration: none; }
 .dn-name-link:hover { text-decoration: underline; }
 
@@ -876,7 +829,6 @@ p { margin: 0 0 var(--space-3); }
   cursor: not-allowed;
   box-shadow: none;
 }
-.form-help { font-size: var(--fs-xs); color: var(--c-text-subtle); }
 .form-error { color: var(--c-critical-fg); font-size: var(--fs-sm); }
 
 .form-stack { display: flex; flex-direction: column; gap: var(--space-3); }
@@ -1137,31 +1089,11 @@ p { margin: 0 0 var(--space-3); }
 .text-muted    { color: var(--c-text-muted); }
 .text-subtle   { color: var(--c-text-subtle); }
 .text-mono     { font-family: var(--font-mono); }
-.text-num      { font-variant-numeric: tabular-nums; }
-.text-right    { text-align: right; }
-.text-center   { text-align: center; }
-
-.flex          { display: flex; }
-.flex-col      { flex-direction: column; }
-.flex-gap-2    { gap: var(--space-2); }
-.flex-gap-3    { gap: var(--space-3); }
-.flex-gap-4    { gap: var(--space-4); }
-.items-center  { align-items: center; }
-.items-end     { align-items: flex-end; }
-.justify-between { justify-content: space-between; }
-.flex-wrap     { flex-wrap: wrap; }
-
-.mt-0          { margin-top: 0; }
 .mt-2          { margin-top: var(--space-2); }
 .mt-3          { margin-top: var(--space-3); }
 .mt-4          { margin-top: var(--space-4); }
 .mt-5          { margin-top: var(--space-5); }
-.mb-0          { margin-bottom: 0; }
 .mb-3          { margin-bottom: var(--space-3); }
-.mb-5          { margin-bottom: var(--space-5); }
-
-.dim           { opacity: 0.6; }
-.hide          { display: none; }
 
 /* — Print styles (cán bộ HQ in báo cáo) — */
 @media print {
@@ -1291,7 +1223,6 @@ p { margin: 0 0 var(--space-3); }
 .evidence-cols { display: flex; flex-wrap: wrap; gap: var(--space-2); width: 100%; margin-top: var(--space-1); }
 .evidence-col { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; }
 .evidence-col-name { color: var(--c-text-muted, inherit); }
-.doc-file-badge { font-size: 0.68rem; }
 
 /* Màn gán cột theo TRƯỜNG (#121) — mỗi trường khai một DÒNG, đọc từ trên xuống theo
    đúng thứ tự việc: tên trường → bộ chọn cột → ô khai vắng → câu căn cứ. */
@@ -1360,8 +1291,6 @@ p { margin: 0 0 var(--space-3); }
 .chart-waterfall .wf-value  { font-size: 11px; fill: var(--c-text); font-weight: 600; }
 .chart-sankey .sankey-center { fill: #1e293b; }
 .chart-sankey .sankey-center-label { font-family: 'JetBrains Mono', monospace; font-size: 12px; fill: var(--c-text); }
-.chart-sankey .sankey-ribbon { stroke: #60a5fa; stroke-opacity: 0.5; }
-.chart-sankey .sankey-ribbon:hover { stroke-opacity: 0.85; }
 .chart-sankey .sankey-side-label { font-size: 12px; fill: var(--c-text); }
 
 .bcct-timeline { min-height: 220px; margin-bottom: var(--space-3); }
@@ -1420,7 +1349,7 @@ p { margin: 0 0 var(--space-3); }
 /* Sankey "+N khác" group rendered distinctly so users know it's an aggregate */
 .chart-sankey .sankey-other { stroke: #94a3b8; stroke-dasharray: 4 3; stroke-opacity: 0.45; }
 .chart-sankey .sankey-other-label .text-mono { fill: var(--c-text-muted); font-style: italic; }
-.chart-sankey .sankey-ribbon { stroke-linecap: round; }
+.chart-sankey .sankey-ribbon { stroke: #60a5fa; stroke-opacity: 0.5; stroke-linecap: round; }
 .chart-sankey:hover .sankey-ribbon { stroke-opacity: 0.25; transition: stroke-opacity 0.15s; }
 .chart-sankey .sankey-ribbon:hover { stroke-opacity: 0.9; }
 
@@ -1474,7 +1403,7 @@ p { margin: 0 0 var(--space-3); }
 }
 
 /* --- 5-tier risk score UI (rate-based scoring) --- */
-.tier-pill, .score-pill {
+.tier-pill {
   display: inline-block;
   padding: 3px 10px;
   border-radius: 12px;
@@ -1900,51 +1829,6 @@ p { margin: 0 0 var(--space-3); }
 }
 .form-alert-icon { font-size: 1.1em; line-height: 1.3; }
 
-/* — Upload slots (drag & drop) — */
-.upload-section-title { margin: var(--space-2) 0 var(--space-1); font-size: var(--fs-md); }
-.upload-section-hint { margin-bottom: var(--space-3); max-width: 80ch; }
-.upload-slots { display: flex; flex-direction: column; gap: var(--space-3); }
-.upload-slot {
-  display: grid;
-  grid-template-columns: minmax(0, 240px) 1fr;
-  gap: var(--space-3);
-  align-items: center;
-  padding: var(--space-3);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  background: var(--c-surface);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-.upload-slot:hover { border-color: var(--c-border-strong); }
-.upload-slot.dragover { border-color: var(--c-brand-500); background: var(--c-brand-50); }
-.upload-slot.has-file { border-color: var(--c-success-border); background: var(--c-success-bg); }
-.upload-slot-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.upload-slot-code { font-weight: 700; font-size: var(--fs-sm); color: var(--c-text); }
-.upload-slot-label { font-size: var(--fs-sm); color: var(--c-text-muted); }
-.upload-slot-sample { font-size: var(--fs-xs); color: var(--c-text-subtle); }
-.upload-slot-drop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: var(--space-2);
-  border: 1px dashed var(--c-border-strong);
-  border-radius: var(--radius-sm);
-  text-align: center;
-}
-.upload-slot.has-file .upload-slot-drop { border-style: solid; border-color: var(--c-success-border); }
-.upload-slot-placeholder { font-size: var(--fs-sm); color: var(--c-text-subtle); }
-.upload-slot-filename {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--c-success-fg);
-  word-break: break-all;
-}
-.upload-slot-filename::before { content: "✓ "; }
-.upload-slot-input { display: none; }
-@media (max-width: 620px) { .upload-slot { grid-template-columns: 1fr; } }
-
 /* — Upload diagnostic panel — */
 .diag-panel {
   max-width: 800px;
@@ -2023,7 +1907,6 @@ p { margin: 0 0 var(--space-3); }
 .ds-run-checks { display: flex; flex-direction: column; gap: var(--space-1); }
 .ds-run-note { margin: 0; font-size: var(--fs-xs); color: var(--c-text-muted); }
 .ds-upload { display: flex; gap: var(--space-1); align-items: center; margin: 0; }
-.ds-upload-slot { max-width: 190px; font-size: var(--fs-sm); }
 .ds-upload-pick { cursor: pointer; white-space: nowrap; }
 .ds-upload-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
