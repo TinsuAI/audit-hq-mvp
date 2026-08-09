@@ -21,6 +21,8 @@ import pytest
 STYLESHEET = Path(__file__).resolve().parents[1] / "app" / "static" / "style.css"
 
 _HEX = re.compile(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})")
+#: Màu viết thẳng dưới mọi dạng CSS nhận — hex và ký pháp hàm (`rgb`, `rgba`, `hsl`…).
+_COLOUR = re.compile(rf"{_HEX.pattern}\b|\b(?:rgba?|hsla?)\([^)]*\)")
 _VAR = re.compile(r"var\(\s*(--[a-z0-9-]+)")
 _TOKEN = re.compile(rf"(--[a-z0-9-]+)\s*:\s*({_HEX.pattern})")
 
@@ -230,15 +232,28 @@ CASCADE_OVERRIDES = {
 # từ khoá: `style.css` là một file 2.500 dòng và mọi cách khoanh theo tên bộ chọn đều vỡ
 # ngay khi một khối được đổi tên.
 #
-# Mốc lúc bắt đầu vé: 177 lần xuất hiện ngoài `:root`. Vé đòi ≤ 177 − 85 = 92. Đo được
-# sau khi làm: 25 — đều là giá trị dùng ĐÚNG MỘT LẦN, không đặt tên. Trần đặt ở 30 chứ
-# không ở 92: một chốt hãm cách con số thật 67 đơn vị thì không hãm gì cả, còn 30 vẫn
-# chừa chỗ cho vài giá trị mới dùng một lần.
-MAX_COLOUR_LITERALS_OUTSIDE_ROOT = 30
+# Đơn vị đếm là GIÁ TRỊ RỜI RẠC, kể cả `rgba()` — đó là số chỗ phải sửa ở lần đổi hệ màu
+# sau, và cũng là đơn vị của vé: đo trên `main` lúc bắt đầu vé ra đúng 85 giá trị ngoài
+# `:root`, 18 trong đó trùng khít một token đã có, khớp con số vé ghi. Đếm theo LẦN XUẤT
+# HIỆN ra 199, không khớp gì cả.
+#
+# Trần là 0: mọi giá trị đều đã có tên. Con số 85 − 85 = 0 của vé, không phải một mức
+# nới ra cho dễ đạt.
+MAX_COLOUR_LITERALS_OUTSIDE_ROOT = 0
 
-#: Bậc nhỏ nhất của thang chữ. Dưới mức này dấu tiếng Việt (huyền/sắc/hỏi/ngã/nặng) chồng
-#: lên nhau ở mật độ điểm ảnh thường gặp, và đây là giao diện đọc số liệu cả ngày.
+#: Bậc nhỏ nhất của thang `--fs-*` (0.75rem = 12px). Khai nào nhỏ hơn bậc này thì vừa
+#: nằm ngoài thang vừa nhỏ hơn mọi bậc của nó.
 MIN_FONT_SIZE_PX = 12.0
+
+#: `font-size` theo `em` co theo phần tử cha, nên không tính ra được số px ở đây. Bốn chỗ
+#: dưới đây là BIỂU TƯỢNG, không phải chữ: chúng phải cao bằng dòng chữ đứng cạnh, mà
+#: dòng đó đổi cỡ theo từng màn. Mọi chỗ khác dùng `em` cho chữ đã chuyển sang thang.
+RELATIVE_FONT_SIZE_ALLOWED = (
+    ".demo-banner-icon",
+    ".form-alert-icon",
+    ".diag-icon",
+    ".companies-table th.sortable::after",
+)
 
 
 def _class_names(selector: str) -> set[str]:
@@ -259,13 +274,16 @@ def _root_spans() -> tuple[tuple[int, int], ...]:
     for i, ch in enumerate(_stylesheet()):
         if ch == "{":
             stack.append(buf.strip())
-            if len(stack) == 1 and ":root" in stack[0]:
+            # Bắt `:root` ở MỌI độ sâu. Khai lại bảng màu trong `@media
+            # (prefers-color-scheme: dark)` là đường chuẩn của hệ màu tối, và nó nằm ở
+            # độ sâu 2 — đòi độ sâu 1 thì cả khối đó bị đọc thành "màu literal rải rác".
+            if ":root" in stack[-1]:
                 start = i
             buf = ""
         elif ch == "}":
             if stack:
-                stack.pop()
-                if not stack and start is not None:
+                sel = stack.pop()
+                if ":root" in sel and start is not None:
                     spans.append((start, i))
                     start = None
             buf = ""
@@ -274,34 +292,50 @@ def _root_spans() -> tuple[tuple[int, int], ...]:
     return tuple(spans)
 
 
-def test_colour_literals_outside_root_stay_under_the_ratchet() -> None:
-    """Mỗi màu literal ngoài `:root` là một chỗ phải sửa ở lần đổi hệ màu sau."""
+def test_no_colour_literal_lives_outside_root() -> None:
+    """Mỗi màu literal ngoài `:root` là một chỗ phải sửa ở lần đổi hệ màu sau.
+
+    Đếm cả `rgba()`: màu có alpha cũng là màu, và bỏ nó ra thì chốt hãm không nhìn thấy
+    đúng lớp giá trị mà nó phải giữ.
+    """
     spans = _root_spans()
-    outside = [
-        m.group(0)
-        for m in _HEX.finditer(_stylesheet())
+    outside = sorted({
+        " ".join(m.group(0).lower().split())
+        for m in _COLOUR.finditer(_stylesheet())
         if not any(a <= m.start() <= b for a, b in spans)
-    ]
+    })
     assert len(outside) <= MAX_COLOUR_LITERALS_OUTSIDE_ROOT, (
-        f"{len(outside)} màu literal ngoài `:root`, trần {MAX_COLOUR_LITERALS_OUTSIDE_ROOT}: "
-        f"{sorted(set(v.lower() for v in outside))}"
+        f"{len(outside)} giá trị màu ngoài `:root`, trần "
+        f"{MAX_COLOUR_LITERALS_OUTSIDE_ROOT}: {outside}"
     )
 
 
 def test_no_font_size_falls_below_the_scale_floor() -> None:
-    """Không khai `font-size` nào dưới bậc nhỏ nhất của thang."""
+    """Không khai `font-size` nào dưới bậc nhỏ nhất của thang.
+
+    `em` / `%` xét riêng: chúng co theo phần tử cha nên không quy ra px ở đây được, và
+    giá trị dưới 1 luôn NHỎ HƠN cha — ở một dòng 13px thì `0.85em` ra 11,05px. Vì vậy mọi
+    giá trị dưới 1 đều bị chặn trừ danh sách biểu tượng đã khai.
+    """
     too_small: list[str] = []
     for sel, body in _rules():
+        selector = " ".join(sel.split())
         for decl in body.split(";"):
             name, sep, value = decl.partition(":")
             if not sep or name.strip() != "font-size":
                 continue
-            m = re.fullmatch(r"\s*([\d.]+)(px|rem)\s*", value)
-            if not m:
+            value = value.strip()
+            absolute = re.fullmatch(r"([\d.]+)(px|rem)", value)
+            if absolute:
+                px = float(absolute.group(1)) * (16 if absolute.group(2) == "rem" else 1)
+                if px < MIN_FONT_SIZE_PX:
+                    too_small.append(f"{selector}: {value} ({px:g}px)")
                 continue
-            px = float(m.group(1)) * (16 if m.group(2) == "rem" else 1)
-            if px < MIN_FONT_SIZE_PX:
-                too_small.append(f"{' '.join(sel.split())}: {value.strip()} ({px:g}px)")
+            relative = re.fullmatch(r"([\d.]+)(em|%)", value)
+            if relative:
+                factor = float(relative.group(1)) / (100 if relative.group(2) == "%" else 1)
+                if factor < 1 and not any(a in selector for a in RELATIVE_FONT_SIZE_ALLOWED):
+                    too_small.append(f"{selector}: {value} (nhỏ hơn phần tử cha)")
     assert not too_small, f"khai font-size dưới sàn {MIN_FONT_SIZE_PX:g}px: {too_small}"
 
 
