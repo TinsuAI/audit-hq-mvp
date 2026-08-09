@@ -473,6 +473,12 @@ p { margin: 0 0 var(--space-3); }
 .table-overflow { overflow-x: auto; }
 
 .data-table .num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+/* `date` KHÔNG nằm trong template nào: nó là phần tử thứ ba của `view_cols` ở
+   `app/routes/companies.py` (`("declaration_date", "Ngày", "date")`) và đi ra qua
+   `<td class="{{ cls }}">`. Một lượt quét chỗ gán class trong template/JS không thấy
+   được đường đó — cột Ngày ở màn dữ liệu BCCT và mọi khối bằng chứng phát hiện đọc
+   `declaration_lines` mất kiểu mà không test nào đỏ. */
+.data-table .date { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--c-text-muted); }
 
 /* Wrap cells: text dài như Tên hàng, Mô tả — clamp 2 dòng + tooltip xem full */
 .data-table td.wrap, .data-table th.wrap { max-width: 360px; }
