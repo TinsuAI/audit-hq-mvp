@@ -28,6 +28,66 @@
   </div>
 </div>
 
+{% if msg %}
+<div class="form-alert form-alert-success" role="status"><span class="form-alert-icon" aria-hidden="true">✅</span><div>{{ msg }}</div></div>
+{% endif %}
+{% if error %}
+<div class="form-alert form-alert-error" role="alert"><span class="form-alert-icon" aria-hidden="true">⚠️</span><div>{{ error }}</div></div>
+{% endif %}
+
+{# Tiến độ lượt nạp vừa xếp, ở lại ĐÚNG màn vừa bấm (#125). Cùng khối chữ và cùng
+   bộ đếm poll với dòng kỳ — câu chữ dựng ở `ingest_status.py`, không dựng hai bản.
+   `data-ingest-url` mang sẵn kỳ và số hiệu file, nên lượt tải lại khi nạp xong dựng
+   lại chính trang này chứ không kéo cán bộ về danh sách tài liệu. #}
+<div class="ds-ingest-slot" data-ingest-year="{{ file.period_year }}"
+     data-ingest-url="{{ ingest_status_url }}"
+     data-ingest-active="{{ 1 if (ingest and ingest.active) else 0 }}">
+  {% if ingest and ingest.visible %}
+  <div class="ds-ingest ds-ingest-{{ ingest.tone }}">
+    <p class="ds-ingest-title">
+      {% if ingest.active %}<span class="ds-ingest-spin" aria-hidden="true"></span>{% endif %}
+      {{ ingest.title }}
+    </p>
+    <p class="ds-ingest-detail">{{ ingest.detail }}</p>
+    {% if ingest.notes %}
+    <ul class="ds-ingest-notes">
+      {% for note in ingest.notes %}<li>{{ note }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if ingest.actions %}
+    <div class="ds-ingest-actions">
+      {% for a in ingest.actions %}
+        {% if a.kind == 'post' %}
+        <form method="post" action="{{ a.url }}">
+          <input type="hidden" name="year" value="{{ a.year }}">
+          <button type="submit" class="btn btn-sm btn-primary">{{ a.label }}</button>
+        </form>
+        {% else %}
+        <a href="{{ a.url }}" class="btn btn-sm btn-primary">{{ a.label }}</a>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{# Xác nhận cột KHÔNG kéo theo lượt chạy kiểm tra ở lần đầu, và im lặng về điều đó
+   là chỗ cán bộ tưởng đã xong việc (#125). Nói ra, kèm nút chạy ngay cạnh câu. #}
+{% if period_has_data and not checks_run %}
+<div class="fp-checks" role="status">
+  <p class="fp-checks-note">
+    Kỳ {{ file.period_year }} chưa chạy kiểm tra lần nào. Nạp dữ liệu xong hệ thống
+    không tự chạy kiểm tra — một kỳ có tới bốn file quyết toán, chạy khi bộ file
+    chưa đủ sẽ dựng lại danh sách phát hiện.
+  </p>
+  <form method="post" action="{{ run_checks_url }}">
+    <input type="hidden" name="year" value="{{ file.period_year }}">
+    <button type="submit" class="btn btn-sm btn-primary">Chạy kiểm tra kỳ {{ file.period_year }}</button>
+  </form>
+</div>
+{% endif %}
+
 {% if period_conflict %}
 <div class="alert alert-warning" role="status" style="margin-bottom:var(--space-4)">
   <p style="margin:0">⚠️ Cửa sổ kỳ năm {{ file.period_year }} đang là <strong>{{ period_conflict[0][0].strftime('%d/%m/%Y') }} – {{ period_conflict[0][1].strftime('%d/%m/%Y') }}</strong> (đọc từ tiêu đề file), <strong>lệch với niên độ kế toán</strong> đã khai cho doanh nghiệp: <strong>{{ period_conflict[1][0].strftime('%d/%m/%Y') }} – {{ period_conflict[1][1].strftime('%d/%m/%Y') }}</strong>. Hệ thống không tự chọn hộ — nếu tiêu đề file đúng thì bỏ qua, nếu sai thì sửa kỳ ở trang dữ liệu rồi chạy lại kiểm tra.</p>
@@ -325,13 +385,17 @@
   {% endif %}
 
   <div class="btn-group" style="margin-top:var(--space-4)">
+    {# Nhãn nêu ĐÚNG hai việc lượt gửi này làm: ghi vị trí cột, rồi nạp lại dữ liệu của
+       CẢ KỲ. Nhãn cũ ("Xác nhận & nạp dữ liệu") đứng trên trang mang tên một file nên
+       đọc ra là nạp file đó. Đơn vị nạp vẫn là (DN, kỳ) — sửa cách nói, không sửa đơn
+       vị nạp (#125). Không emoji: nút chính không cần một hình thay cho động từ. #}
     {% if basis.can_confirm %}
-    <button type="submit" class="btn btn-primary">✅ Xác nhận &amp; nạp dữ liệu</button>
+    <button type="submit" class="btn btn-primary">Xác nhận vị trí cột &amp; nạp lại dữ liệu kỳ {{ file.period_year }}</button>
     {% else %}
     {# Không có bố cục cột để xác nhận → lượt gửi này chỉ còn nghĩa "đọc lại file với cài
        đặt hiện tại". Ghim trang tính là nút riêng ở vùng cài đặt (#124), nên nút này
        không được mang tên việc đó nữa. #}
-    <button type="submit" class="btn btn-primary">⤵️ Nạp lại file</button>
+    <button type="submit" class="btn btn-primary">Nạp lại dữ liệu kỳ {{ file.period_year }}</button>
     {% endif %}
     <a href="/companies/{{ company.slug or company.code }}/documents#ky-{{ file.period_year }}" class="btn btn-secondary">Huỷ</a>
   </div>
@@ -347,4 +411,5 @@
 </form>
 
 <script src="/static/cell-grid.js?v={{ app_version_string | urlencode }}" defer></script>
+<script src="/static/ingest-poll.js?v={{ app_version_string | urlencode }}" defer></script>
 {% endblock %}

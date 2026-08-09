@@ -203,12 +203,18 @@ def ingest_status(
     year: int,
     *,
     ai_enabled: bool = False,
+    reload_to: str | None = None,
 ) -> IngestStatus | None:
     """Lượt nạp gần nhất của (DN, kỳ) — `None` khi kỳ chưa từng được xếp lượt nạp.
 
     `ai_enabled` truyền vào chứ không đọc trong đây: `app.ai.config.get_setting`
     giữ sẵn một `SessionLocal` từ lúc import, gọi nó trong một seam nhận `session`
     là mở phiên thứ hai vào DB khác.
+
+    `reload_to` là màn ĐANG theo dõi lượt nạp, mặc định là dòng kỳ ở màn dữ liệu.
+    Trang file cũng in tấm bảng này (#125), và ở đó đích tải lại phải là chính
+    trang file: giữ mặc định thì cán bộ vừa được đưa về trang file đã bị kéo ngược
+    về danh sách tài liệu đúng lúc lượt nạp xong.
     """
     job = _latest_ingest_job(session, company.id, year)
     if job is None:
@@ -279,7 +285,10 @@ def ingest_status(
             ),
         )
 
-    return _done_status(session, company, year, job, slug=slug, ai_enabled=ai_enabled)
+    return _done_status(
+        session, company, year, job,
+        slug=slug, ai_enabled=ai_enabled, reload_to=reload_to,
+    )
 
 
 def _done_status(
@@ -290,6 +299,7 @@ def _done_status(
     *,
     slug: str,
     ai_enabled: bool,
+    reload_to: str | None = None,
 ) -> IngestStatus:
     result = job.result or {}
     outcome = result.get("status")
@@ -402,11 +412,21 @@ def _done_status(
         detail=msg,
         notes=(),
         actions=(),
-        reload_url=(
-            f"/companies/{slug}/documents?msg={quote_plus(f'Kỳ {year}: {msg}')}"
-            f"#ky-{year}"
-        ),
+        reload_url=_reload_url(slug, year, msg, reload_to),
     )
+
+
+def _reload_url(slug: str, year: int, msg: str, reload_to: str | None) -> str:
+    """Đích tải lại khi lượt nạp trót lọt — MÀN ĐANG XEM, kèm câu kết quả.
+
+    Địa chỉ dựng ở đây từ `slug` và `file_id`, không nhận địa chỉ từ máy khách:
+    bộ đếm poll đổ thẳng giá trị này vào `location.replace`.
+    """
+    query = f"msg={quote_plus(f'Kỳ {year}: {msg}')}"
+    if reload_to is None:
+        return f"/companies/{slug}/documents?{query}#ky-{year}"
+    sep = "&" if "?" in reload_to else "?"
+    return f"{reload_to}{sep}{query}"
 
 
 def mark_seen(session: Session, statuses, *, user_id: int | None) -> int:

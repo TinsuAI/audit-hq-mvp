@@ -93,7 +93,7 @@ from app.pipeline.audit_scope import (
     finding_scope_tag,
     scope_coverage,
 )
-from app.pipeline.data_screen import build_data_screen
+from app.pipeline.data_screen import build_data_screen, period_has_rows
 from app.pipeline.export import build_export
 from app.pipeline.file_page import (
     ReadSettings,
@@ -117,7 +117,7 @@ from app.pipeline.period import (
     period_window_conflict,
     period_window_errors,
 )
-from app.pipeline.staleness import results_stale, stale_result_years
+from app.pipeline.staleness import checks_have_run, results_stale, stale_result_years
 from app.pipeline.validate import diagnose_upload
 from app.scoping import allowed_company_ids, can_access_company_id, get_company_or_404
 from app.settings import settings
@@ -729,6 +729,17 @@ def _enqueue_ingest(
         db, kind=JobKind.INGEST, payload=payload,
         created_by=ur.id, company_id=company.id, period_year=year,
     )
+
+
+def _back_to_file(company: Company, file_id: int) -> RedirectResponse:
+    """Về chính TRANG FILE vừa xác nhận, nơi tiến độ lượt nạp in ra (#125).
+
+    Trước vé này lượt xác nhận cột đưa cán bộ về danh sách tài liệu: họ vừa làm
+    việc trên một file, và màn kế tiếp không nói gì về file đó lẫn về việc vừa xếp.
+    Đơn vị nạp vẫn là `(DN, kỳ)` — thứ đổi là chỗ đứng xem, không phải phạm vi nạp.
+    """
+    slug = company.slug or company.code
+    return RedirectResponse(url=file_page_url(slug, file_id), status_code=303)
 
 
 def _back_to_period(company: Company, year: int) -> RedirectResponse:
@@ -1381,6 +1392,8 @@ def documents_file_page(
     request: Request,
     file_id: int,
     sheet: int | None = Query(default=None, ge=0),
+    msg: str = "",
+    error: str = "",
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -1435,6 +1448,15 @@ def documents_file_page(
         period_books=tuple(period_books),
         book_blocked=book_blocked,
     )
+    # Tiến độ lượt nạp in NGAY TẠI ĐÂY (#125): đường xác nhận cột quay về chính trang
+    # này, nên trạng thái của việc vừa xếp phải đọc được ở đây chứ không ở màn khác.
+    # `reload_to` là trang này — mặc định (dòng kỳ) sẽ kéo cán bộ khỏi trang vừa mở.
+    page_url = file_page_url(slug, row.id)
+    ing = ingest_status(
+        db, company, row.period_year,
+        ai_enabled=_ai_available(), reload_to=page_url,
+    )
+    mark_seen(db, [ing], user_id=_user_id_or_none(db, user))
     return templates.TemplateResponse(
         request,
         "document_file.html",
@@ -1442,9 +1464,21 @@ def documents_file_page(
             "user": user,
             "company": company,
             "file": row,
+            "msg": msg,
+            "error": error,
+            "ingest": ing,
+            "ingest_status_url": (
+                f"/companies/{slug}/documents/ingest.json"
+                f"?year={row.period_year}&file={row.id}"
+            ),
+            # "Kiểm tra chưa chạy" hỏi cùng hai phép đo dòng kỳ dùng — một định
+            # nghĩa, hai màn (#125).
+            "checks_run": checks_have_run(db, company.id, row.period_year),
+            "period_has_data": period_has_rows(db, company.id, row.period_year),
+            "run_checks_url": f"/companies/{slug}/run-checks",
             "slot_label": SLOT_LABEL_VI.get(row.slot, row.slot),
             "human_size": _human_size,
-            "page_url": file_page_url(slug, row.id),
+            "page_url": page_url,
             "cells_url": f"/companies/{slug}/documents/file/{row.id}/cells",
             "selected_sheet": selected_sheet,
             # Chú giải cột chỉ đúng trên ĐÚNG trang parser đọc — trang khác thì lưới
@@ -1763,8 +1797,19 @@ async def documents_confirm_review(
     base_map = detail.get("column_map", {})
     columns = detail.get("columns", [])
 
-    def _redirect(params: str) -> RedirectResponse:
-        return RedirectResponse(url=f"/companies/{code}/documents?{params}", status_code=303)
+    def _reject(message: str) -> RedirectResponse:
+        """Ô sai định dạng → về CHÍNH trang file, kèm câu từ chối (#125).
+
+        Câu nói về một cột của file này, và cán bộ vừa gõ nó ở biểu mẫu tại đây.
+        Đưa họ sang danh sách tài liệu là bắt tự tìm đường quay lại chỗ vừa gõ sai.
+        """
+        return RedirectResponse(
+            url=(
+                f"{file_page_url(company.slug or company.code, row.id)}"
+                f"?error={quote_plus(message)}"
+            ),
+            status_code=303,
+        )
 
     form = await request.form()
 
@@ -1778,7 +1823,7 @@ async def documents_confirm_review(
             row.sheet_override = (form.get("sheet") or "").strip() or None
             db.commit()
         _enqueue_ingest(db, user, company, year, gate=False)
-        return _back_to_period(company, year)
+        return _back_to_file(company, row.id)
 
     # Map đầy đủ = cột officer sửa (field `needs_review`) chồng lên map đề xuất. Ô trống
     # giữ giá trị đề xuất để map không khuyết cột; ô SAI thì từ chối cả biểu mẫu thay vì
@@ -1823,7 +1868,7 @@ async def documents_confirm_review(
         _reject_shared_columns(groups)
         _reject_missing_row_keys(slot, groups, absent_fields or [])
     except ValueError as e:
-        return _redirect("error=" + quote_plus(str(e)))
+        return _reject(str(e))
 
     # Ghi `int` khi một cột, `list` khi là nhóm cột con — giữ nguyên hình dạng map cũ
     # cho bố cục chuẩn, và diễn đạt được nhóm cho bố cục mở rộng (#95).
@@ -1904,7 +1949,7 @@ async def documents_confirm_review(
     _enqueue_ingest(
         db, user, company, year, gate=False, then_run_checks=then_run_checks,
     )
-    return _back_to_period(company, year)
+    return _back_to_file(company, row.id)
 
 
 @router.post("/companies/{code}/documents/ingest", response_model=None)
@@ -1943,6 +1988,7 @@ def documents_ingest_year(
 def documents_ingest_status(
     code: str,
     year: int = Query(...),
+    file: int | None = None,
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -1950,9 +1996,21 @@ def documents_ingest_status(
 
     Trả đủ bốn trạng thái công việc (đang chờ · đang chạy · xong · hỏng) cộng dạng
     kết quả khi xong, kèm chữ và nút đã dựng sẵn (xem `app/pipeline/ingest_status.py`).
+
+    `file` nói bộ đếm poll đang chạy trên TRANG FILE nào (#125), và chỉ đổi đích tải
+    lại khi lượt nạp trót lọt. Nhận SỐ HIỆU file rồi tự dựng địa chỉ — không nhận địa
+    chỉ từ máy khách, vì giá trị này đi thẳng vào `location.replace`.
     """
     company = get_company_or_404(db, code, user)
-    status = ingest_status(db, company, year, ai_enabled=_ai_available())
+    reload_to: str | None = None
+    if file is not None:
+        row = db.get(DataFile, file)
+        if row is None or row.company_id != company.id or row.period_year != year:
+            raise HTTPException(status_code=404, detail="Không tìm thấy file")
+        reload_to = file_page_url(company.slug or company.code, row.id)
+    status = ingest_status(
+        db, company, year, ai_enabled=_ai_available(), reload_to=reload_to,
+    )
     if status is None:
         return {"status": None}
     # Trả về một trạng thái đã dừng nghĩa là dòng kỳ vừa in kết quả cuối tại chỗ (#100).

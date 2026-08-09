@@ -202,11 +202,19 @@
               {% if not p.has_files %}disabled title="Chưa có file để nạp"
               {% elif p.ingest_locked %}disabled title="{{ p.ingest_lock_message }}"{% endif %}>Nạp dữ liệu</button>
     </form>
-    <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks">
-      <input type="hidden" name="year" value="{{ p.year }}">
-      <button type="submit" class="btn btn-sm {% if p.has_data and not p.checks_run %}btn-primary{% else %}btn-secondary{% endif %}"
-              {% if not p.has_data %}disabled title="Cần nạp dữ liệu trước"{% endif %}>Chạy kiểm tra</button>
-    </form>
+    {# Câu "chưa chạy" đứng NGAY TRÊN nút chạy, không ở một khối khác của dòng kỳ
+       (#125): nút một mình không nói được rằng lượt nạp vừa xong không kéo theo lượt
+       chạy nào. Một nút duy nhất cho một việc — câu thêm vào, nút không nhân đôi. #}
+    <div class="ds-run-checks">
+      {% if p.has_data and not p.checks_run %}
+      <p class="ds-run-note">Kiểm tra chưa chạy lần nào. Nạp dữ liệu xong hệ thống không tự chạy.</p>
+      {% endif %}
+      <form method="post" action="/companies/{{ company.slug or company.code }}/run-checks">
+        <input type="hidden" name="year" value="{{ p.year }}">
+        <button type="submit" class="btn btn-sm {% if p.has_data and not p.checks_run %}btn-primary{% else %}btn-secondary{% endif %}"
+                {% if not p.has_data %}disabled title="Cần nạp dữ liệu trước"{% endif %}>Chạy kiểm tra</button>
+      </form>
+    </div>
     {% if p.has_data %}<a href="/companies/{{ company.slug or company.code }}/data?year={{ p.year }}&table=m15" class="btn btn-sm btn-secondary">Dữ liệu gốc</a>{% endif %}
     <a href="{{ p.findings_url }}" class="btn btn-sm btn-secondary">Phát hiện kỳ {{ p.year }}</a>
   </div>
@@ -215,6 +223,7 @@
      Bộ đếm poll (ingest-poll.js) đổ lại đúng khối này khi trạng thái đổi. #}
   {% set ing = ingests.get(p.year) %}
   <div class="ds-ingest-slot" data-ingest-year="{{ p.year }}"
+       data-ingest-url="/companies/{{ company.slug or company.code }}/documents/ingest.json?year={{ p.year }}"
        data-ingest-active="{{ 1 if (ing and ing.active) else 0 }}">
     {% if ing and ing.visible %}
     <div class="ds-ingest ds-ingest-{{ ing.tone }}">
@@ -380,8 +389,6 @@
 </section>
 {% endfor %}
 
-<div id="documents-root"
-     data-ingest-url="/companies/{{ company.slug or company.code }}/documents/ingest.json"></div>
 <script src="/static/ingest-poll.js?v={{ app_version_string | urlencode }}" defer></script>
 
 <script>

@@ -135,7 +135,7 @@ def test_edit_column_reruns_only_affected(app_db: AppDb):
     )
     assert r.status_code == 303
     # Re-confirm file đã `parsed` + cột đổi → enqueue re-run scoped, cán bộ về hàng kỳ.
-    assert r.headers["location"].endswith("/documents#ky-2024")
+    assert r.headers["location"].endswith(f"/documents/file/{fid}")
     drain_jobs()
 
     with app_db.SessionLocal() as db:
@@ -181,7 +181,7 @@ def test_edit_key_column_reruns_balance_check(app_db: AppDb):
         f"/companies/DN_RERUN/documents/file/{fid}/review", data=data, follow_redirects=False,
     )
     assert r.status_code == 303
-    assert r.headers["location"].endswith("/documents#ky-2024")
+    assert r.headers["location"].endswith(f"/documents/file/{fid}")
     drain_jobs()
 
     with app_db.SessionLocal() as db:

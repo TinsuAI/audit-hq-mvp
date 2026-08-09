@@ -93,7 +93,7 @@ from app.pipeline.readiness import (
     PeriodReadiness,
     period_readiness,
 )
-from app.pipeline.staleness import results_stale
+from app.pipeline.staleness import checks_have_run, results_stale
 from app.settings import settings
 
 # --- Hành động gỡ một vướng mắc --------------------------------------------------
@@ -405,6 +405,15 @@ def _data_years(session: Session, company_id: int) -> set[int]:
     return years
 
 
+def period_has_rows(session: Session, company_id: int, year: int) -> bool:
+    """Kỳ đã có dòng Tầng 1 chưa — cùng phép đo dòng kỳ dùng cho `has_data` (#125).
+
+    Gọi lại `_data_years` chứ không viết phép đếm thứ hai: trang file và dòng kỳ
+    cùng quyết định "chạy kiểm tra được chưa" bằng con số này.
+    """
+    return year in _data_years(session, company_id)
+
+
 def _files_by_year(session: Session, company_id: int) -> dict[int, list[DataFile]]:
     """Mọi bản ghi registry của DN, gom theo kỳ — một lượt truy vấn cho cả màn."""
     out: dict[int, list[DataFile]] = {}
@@ -673,7 +682,6 @@ def _period_row(
     data_years: set[int],
     windows: dict[int, CompanyPeriod],
     scores: dict[int, CompanyYearScore],
-    finding_years: set[int],
     raw_root: Path,
 ) -> PeriodRow:
     readiness = period_readiness(session, company.id, year)
@@ -703,7 +711,9 @@ def _period_row(
         window_manual=bool(stored and stored.is_manual),
         has_files=year in file_years,
         has_data=year in data_years,
-        checks_run=year in scores or year in finding_years,
+        # Một định nghĩa duy nhất cho "đã chạy kiểm tra chưa" — trang file hỏi cùng
+        # hàm này (#125).
+        checks_run=checks_have_run(session, company.id, year),
         score=score_row.score if score_row is not None else None,
         findings_url=findings_url,
         window_url=f"/companies/{slug}/documents/period",
@@ -775,7 +785,6 @@ def build_data_screen(
             data_years=data_years,
             windows=windows,
             scores=scores,
-            finding_years=finding_years,
             raw_root=root,
         )
         for year in ordered
@@ -825,4 +834,5 @@ __all__ = [
     "ScreenAction",
     "build_data_screen",
     "period_anchor",
+    "period_has_rows",
 ]
