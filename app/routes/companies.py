@@ -95,7 +95,12 @@ from app.pipeline.audit_scope import (
 )
 from app.pipeline.data_screen import build_data_screen
 from app.pipeline.export import build_export
-from app.pipeline.file_page import column_label, file_page_url, file_read_basis
+from app.pipeline.file_page import (
+    column_label,
+    file_page_url,
+    file_read_basis,
+    grid_column_marks,
+)
 from app.pipeline.findings_screen import not_evaluable_panel
 from app.pipeline.ingest_status import ingest_status, mark_seen
 from app.pipeline.period import (
@@ -1349,21 +1354,6 @@ def documents_download_file(
     )
 
 
-def _mapped_columns(row: DataFile) -> dict[str, dict]:
-    """`{chỉ số cột: {trường, nhãn, cần soát}}` — cột parser THẬT SỰ đọc ở file này.
-
-    Cùng nguồn với khối căn cứ đọc, chỉ đổi chỗ hiện. Đánh dấu MỌI cột của một nhóm
-    `(6a)+(6b)`, không riêng cột đầu: sáng một cột thì cán bộ tưởng cột kia không
-    được đọc. File chưa từng nạp thì rỗng — lưới nói ra điều đó thay vì đánh dấu bừa
-    theo mẫu biểu.
-    """
-    return {
-        str(index): {"field": c.field, "label": c.label, "needs": c.needs_review}
-        for c in file_read_basis(row).columns
-        for index in c.columns
-    }
-
-
 @router.get("/companies/{code}/documents/file/{file_id}/preview", response_class=HTMLResponse)
 @router.get("/companies/{code}/documents/file/{file_id}/review", response_class=HTMLResponse)
 def documents_file_legacy_address(
@@ -1437,7 +1427,11 @@ def documents_file_page(
             # Chú giải cột chỉ đúng trên ĐÚNG trang parser đọc — trang khác thì lưới
             # nói rõ thay vì đánh dấu bừa.
             "parsed_sheet": basis.sheet or "",
-            "mapped_columns": _mapped_columns(row),
+            # Chú giải cột dựng từ căn cứ đọc KHÔNG kèm lời khai vắng, khác `basis` ngay
+            # trên: chỉ cột CÓ VỊ TRÍ mới vào từ điển, nên mọi mục đều ở trạng thái *đã
+            # gán* và danh sách nhãn rút về hai ca — rỗng, hoặc một nhãn trục *việc còn
+            # lại*. Cho lời khai vắng vào đây là đổi chỗ lưới đánh dấu, việc của vé khác.
+            "mapped_columns": grid_column_marks(file_read_basis(row)),
             "basis": basis,
             "sheet_names": sheet_names,
             "is_settlement": is_settlement,

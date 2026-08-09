@@ -109,8 +109,12 @@ def test_the_columns_the_parser_reads_come_with_the_page_for_the_first_toggle(en
 
     assert mapped["0"]["label"] == "Mã nguyên liệu"
     assert mapped["2"]["field"] == "material_name"
-    assert mapped["7"]["needs"] is True
-    assert mapped["0"]["needs"] is False
+    # Nhãn hiện theo ngoại lệ, dựng từ `BasisColumn.labels` (#123): cột còn chờ xác nhận
+    # mang một nhãn trục *việc còn lại*, cột không còn việc gì không mang nhãn nào. Cờ
+    # `needs` cũ là bộ từ vựng riêng của lưới, nằm ngoài ba trục — xem
+    # `tests/test_grid_accessible_shape.py` cho phép so hai đầu.
+    assert [lb["axis"] for lb in mapped["7"]["labels"]] == ["work"]
+    assert mapped["0"]["labels"] == []
     # Chú giải chỉ đúng trên trang tính parser đọc — lưới phải biết trang nào.
     assert attrs["parsed-sheet"] == "BCQT_NPL"
 
