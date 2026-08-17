@@ -1,7 +1,7 @@
 # STATUS — Audit-HQ MVP
 
 > **(2026-08-09 — LOẠT REDESIGN XONG TOÀN BỘ, 13/13 VÉ ĐÃ MERGE VÀO `main` LOCAL.
-> `main` = `<sau merge #129>`, **CHƯA PUSH**. Bộ test **1.967** + 1 xfail, `ruff` sạch, xanh cả
+> `main` = `11677c9`, **CHƯA PUSH**. Bộ test **1.967** + 1 xfail, `ruff` sạch, xanh cả
 > khi xáo (seed `1783921999`), cây làm việc sạch. KHÔNG migration trong cả loạt.)**
 >
 > ## 👉 PHIÊN SAU LÀM GÌ: push `main`, xem deploy, rồi đóng vé trên tracker
