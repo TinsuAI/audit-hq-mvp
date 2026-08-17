@@ -1,17 +1,27 @@
 # STATUS — Audit-HQ MVP
 
-> **(2026-08-09 — LOẠT REDESIGN XONG TOÀN BỘ, 13/13 VÉ ĐÃ MERGE VÀO `main` LOCAL.
-> `main` = `11677c9`, **CHƯA PUSH**. Bộ test **1.967** + 1 xfail, `ruff` sạch, xanh cả
-> khi xáo (seed `1783921999`), cây làm việc sạch. KHÔNG migration trong cả loạt.)**
+> **(2026-08-17 — LOẠT REDESIGN XONG TOÀN BỘ, 13/13 VÉ ĐÃ MERGE VÀ **ĐÃ LÊN PROD**.
+> `main` = `704efce`, prod trả `build_sha=704efce`, `/healthz` ok. Bộ test **1.969** +
+> 1 xfail, `ruff` sạch, cây làm việc sạch. KHÔNG migration trong cả loạt.)**
 >
-> ## 👉 PHIÊN SAU LÀM GÌ: push `main`, xem deploy, rồi đóng vé trên tracker
+> ## 👉 PHIÊN SAU LÀM GÌ: đóng **#118–#128, #130** và **#117** trên tracker
 >
-> `git push` là **DEPLOY LÊN PROD**, không chỉ chạy test (workflow `Test & Deploy to
-> Tinsu`, runner self-hosted, `entrypoint.sh` tự `alembic upgrade head`, có sao lưu DB
-> prod trước). Loạt này không có migration nên `alembic upgrade head` là no-op.
+> Mỗi vé một comment nêu commit merge. Xong loạt thì mở vé cho phần nợ ở cuối khối này.
 >
-> Sau khi deploy xong: đối chiếu `build_sha` trên prod, rồi đóng **#118–#128, #130** và
-> **#117**, mỗi vé một comment nêu commit merge.
+> **PROD ĐÃ SẬP 24 PHÚT Ở LƯỢT DEPLOY ĐẦU (`81f16a9`, 04:07–04:31 UTC), và nguyên nhân
+> KHÔNG nằm trong loạt vé.** `app/ai/config.py:17` `import httpx`, nhưng `httpx` chưa bao
+> giờ được khai ở `[project.dependencies]` — nó vào ảnh nhờ `openai` kéo theo. Lượt build
+> hôm đó resolve ra `openai` 3.1.0, bản này chuyển sang `httpx2`, nên `import httpx` gãy
+> ngay lượt import của `app.main` và uvicorn không khởi động (502).
+>
+> **Lùi commit KHÔNG cứu được:** ảnh dựng lại từ `pyproject.toml` không ghim phiên bản,
+> nên deploy lại `668b6a2` cũng resolve ra `openai` 3.1.0 và hỏng y hệt. Chỉ có sửa tiến.
+> Vá ở `704efce`: khai `httpx` và `starlette` làm phụ thuộc runtime (cả hai đều được
+> `app/` import thẳng), cộng `tests/test_declared_dependencies.py` đọc thẳng
+> `pyproject.toml` — chính phép so đó tìm ra `starlette` là ca thứ hai cùng loại.
+>
+> **Bài học vận hành:** phụ thuộc không ghim + không khai = deploy nào cũng có thể sập vì
+> một bản phát hành của bên thứ ba, không liên quan gì tới thứ mình vừa sửa.
 >
 > **13 vé, mỗi vé một nhánh cắt từ `main`, review hai trục trước merge, gấp phát hiện
 > vào commit thứ hai.** #118 · #119 · #120 · #121 · #122 · #123 · #124 · #125 · #126 ·
@@ -46,7 +56,8 @@
 > quản trị, 7 ở màn cán bộ — lượt audit gốc gọi gộp là "màn quản trị") · poll
 > `/jobs/unread.json` mỗi 10 giây · chưa có hệ màu tối.
 >
-> **Nợ đã biết, chưa thành vé:** `var(--border)` và `var(--radius)` ở khối `.apex-*` trỏ
+> **Nợ đã biết, chưa thành vé:** phụ thuộc KHÔNG ghim phiên bản — cân nhắc lockfile hoặc
+> chặn trên (`openai<4`) để lượt build không đổi nền dưới chân. · `var(--border)` và `var(--radius)` ở khối `.apex-*` trỏ
 > tới token không tồn tại ở bất kỳ file nào được nạp, nên khối đó đang render không viền
 > và bo góc 0. Sửa là ĐỔI hình dạng trên màn, nên tách vé riêng.
 >

@@ -133,3 +133,36 @@ thì con số của vé (103.616 B) chính xác tới byte.
   đổi hình dạng trên màn nên phải tách vé.
 - **21 vé cũ của PR #105** (#81–88, #91–93, #95, #97, #99–104, #107–108) vẫn mở trên
   tracker dù đã ship — quyết định soát-rồi-đóng hay sửa câu chữ STATUS vẫn treo.
+
+---
+
+## Bổ sung 2026-08-17 — push, prod sập 24 phút, sửa tiến
+
+Người dùng cho phép push. `81f16a9` lên `main`, CI test **xanh**, job deploy **hỏng**:
+`ModuleNotFoundError: No module named 'httpx'` tại `app/ai/config.py:17`, ngay lượt import
+của `app.main`. Uvicorn không khởi động → prod trả **502 từ 04:07 tới 04:31 UTC**.
+
+**Nguyên nhân không nằm trong loạt vé.** `httpx` chưa bao giờ được khai ở
+`[project.dependencies]`; nó vào ảnh vì `openai` kéo theo. Log build của chính lượt deploy
+đó: cài `openai-3.1.0` và `httpx2-2.10.0`, **không có `httpx`** — bản `openai` mới chuyển
+sang `httpx2`. Mã của mình gọi `httpx.get` / `httpx.post` trực tiếp nên gãy.
+
+**Vì sao không lùi commit.** Ảnh dựng lại từ `pyproject.toml` không ghim phiên bản, nên
+deploy lại `668b6a2` hôm nay cũng resolve ra `openai` 3.1.0 và hỏng y hệt. Lùi không khôi
+phục được dịch vụ; chỉ có sửa tiến.
+
+**Vá (`704efce`).** Khai `httpx` và `starlette` làm phụ thuộc RUNTIME — cả hai đều được
+`app/` import thẳng. `httpx` rời khỏi `dev` extras. Thêm
+`tests/test_declared_dependencies.py`: đọc THẲNG `pyproject.toml` và so với mọi module
+`app/` import (kể cả import trong hàm), **không hỏi môi trường đang chạy** — máy dev và
+runner CI đều cài `dev` extras, mà đó đúng là chỗ đã che mất lỗi này suốt thời gian qua.
+Chính phép so đó tìm ra `starlette` là ca thứ hai cùng loại, chưa nổ.
+
+**Xác nhận sau vá:** run `31993939177` xanh cả test lẫn deploy · `/healthz` trả
+`build_sha=704efce` · `/` trả 303 (chuyển hướng đăng nhập) · `style.css` trên prod có
+**0 màu literal ngoài `:root`**, có `.skip-link`, có `.evidence-key`, không còn
+`.upload-slot` · `cell-grid.js` trên prod có `js-col-pick` và `cg-col-hi`.
+
+**Bài học vận hành, đáng thành vé:** phụ thuộc không ghim + import không khai = deploy nào
+cũng có thể sập vì một bản phát hành của bên thứ ba, không liên quan gì tới thứ mình vừa
+sửa. Bộ test không bao giờ bắt được, vì môi trường test luôn đầy đủ hơn ảnh production.
