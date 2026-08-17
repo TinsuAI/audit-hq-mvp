@@ -1,46 +1,54 @@
 # STATUS — Audit-HQ MVP
 
-> **(2026-08-09 — LOẠT REDESIGN ĐANG CHẠY, 3/12 VÉ ĐÃ LÊN PROD. `main` = `ab01811`, CI xanh,
-> deploy xong, #118 + #119 + #120 đóng. Bộ test **1.796** + 1 xfail, `ruff` sạch, xanh cả khi
-> xáo (seed `4020044574`), cây làm việc sạch. Không migration trong ba vé này.)**
+> **(2026-08-09 — LOẠT REDESIGN XONG TOÀN BỘ, 13/13 VÉ ĐÃ MERGE VÀO `main` LOCAL.
+> `main` = `<sau merge #129>`, **CHƯA PUSH**. Bộ test **1.967** + 1 xfail, `ruff` sạch, xanh cả
+> khi xáo (seed `1783921999`), cây làm việc sạch. KHÔNG migration trong cả loạt.)**
 >
-> ## 👉 PHIÊN SAU LÀM GÌ: `/implement #121` trong phiên MỚI (xoá ngữ cảnh trước)
+> ## 👉 PHIÊN SAU LÀM GÌ: push `main`, xem deploy, rồi đóng vé trên tracker
 >
-> **Grill / spec / tickets ĐÃ XONG — đừng chạy lại.** `/grill-with-docs` → `/to-spec` →
-> `/to-tickets` đã chạy phiên 2026-08-08, kết quả là **ADR #29** + vé tracker **#117** và
-> 12 vé con **#118–#129** (nay thêm **#130**). Mỗi vé cắt thẳng từ `main`, review hai trục
-> (`/code-review`), gấp phát hiện vào commit thứ hai, merge từng vé một.
+> `git push` là **DEPLOY LÊN PROD**, không chỉ chạy test (workflow `Test & Deploy to
+> Tinsu`, runner self-hosted, `entrypoint.sh` tự `alembic upgrade head`, có sao lưu DB
+> prod trước). Loạt này không có migration nên `alembic upgrade head` là no-op.
 >
-> Thứ tự còn lại: **121 → 122 → 123 → 124 → 125 → 127 → 128 → 126 → 129** (+ #130 khi rảnh).
-> Trạng thái loạt vé sống ở **#117**, không ở file này — đọc comment mới nhất của #117.
+> Sau khi deploy xong: đối chiếu `build_sha` trên prod, rồi đóng **#118–#128, #130** và
+> **#117**, mỗi vé một comment nêu commit merge.
 >
-> **Trước khi bắt đầu #121:** đọc comment ràng buộc ở chính #121. #120 để lại hai thứ chỉ
-> đúng tới khi #121 đổi bố cục — câu "chưa gán" gọi tên control của bảng chuyển vị, và chặn
-> CSS `18rem` nhân theo số cột trường.
+> **13 vé, mỗi vé một nhánh cắt từ `main`, review hai trục trước merge, gấp phát hiện
+> vào commit thứ hai.** #118 · #119 · #120 · #121 · #122 · #123 · #124 · #125 · #126 ·
+> #127 · #128 · #129 · #130.
 >
-> **Cảnh báo vận hành: push vào `main` KÉO THEO DEPLOY LÊN PROD**, không chỉ chạy test
-> (workflow `Test & Deploy to Tinsu`, runner self-hosted, `entrypoint.sh` tự
-> `alembic upgrade head`, có sao lưu DB prod trước).
+> **Review hai trục bắt được LỖI THẬT ở bốn vé, không chỉ khoản trình bày:**
+> - #125 — bộ test dò bốn chuỗi tiếng Việt, đúng thứ AC 7 của chính vé ghi là KHÔNG được
+>   khẳng định bằng test. Thay bằng `data-checks-run` và đường đi của chuỗi từ chối.
+> - #127 — `.data-table .date` KHÔNG chết: tên `date` nằm trong `view_cols` ở
+>   `companies.py`, ra màn qua `<td class="{{ cls }}">`. Năm kênh quét chỗ gán class
+>   không kênh nào thấy được dữ liệu Python. Cột "Ngày" ở màn dữ liệu BCCT và mọi khối
+>   bằng chứng phát hiện đã mất kiểu. Khôi phục + `test_table_cell_classes_from_python_data_have_a_rule`.
+> - #126 — `closePanel` khai `inert` trong lúc focus còn TRONG thanh, nên trình duyệt
+>   đẩy focus về `<body>` và vòng tab quay lại đầu trang. Trả focus về nút mở trước.
+> - #128 — đơn vị đếm màu literal của vé là GIÁ TRỊ RỜI RẠC kể cả `rgba()` (đo trên
+>   `main` ra đúng 85 và 18, khớp con số vé), không phải lần xuất hiện. Đích là 0, không
+>   phải 92. Quét nốt → **0 màu literal ngoài `:root`**.
 >
-> **AUDIT THIẾT KẾ (`DESIGN-IS-2026-08-08/`) — luồng cán bộ chấm 13/30, phán quyết
-> REDESIGN.** Chấm theo 10 nguyên tắc Dieter Rams, mỗi điểm có `file:line`, bốn
-> subagent thu bằng chứng và bị cấm tự chấm. Nguyên tắc chịu lực **#6 Trung thực
-> chấm 0** vì **ba lỗi do CHÍNH loạt #110 gây ra** — đã vá ở `d75f07a`:
-> 1. Lời khai "không có trong file" không tới adapter (`grep -rn absent app/adapters/`
->    → 0) nên cột đó vẫn nạp vào Tầng 1 theo vị trí mặc định, trong khi cổng check
->    báo "chưa đánh giá được". Hai màn nói ngược nhau.
-> 2. Gửi biểu mẫu từ file không dựng ô đó → xoá sạch lời khai đã lưu, không báo gì.
-> 3. "— chưa gán —" bị gán lại ở lượt parse sau, giao diện quay về "Đã gán".
+> **Số đo audit, gốc (2026-08-08) → nay** — bảng đầy đủ 21 dòng ở
+> `.ai/features/2026-08-09-thiet-ke-lai-man-gan-cot/brief.md`:
+> màu literal ngoài `:root` 85 → **0** · `font-size` không token 73 → **4** (đều là `em`
+> của biểu tượng) · dưới sàn 12px 10 → **0** · lớp CSS chết 42 → **0** · selector khai
+> trùng xung khắc 13 → **2** (ghi đè có chủ ý, đã khai) · `}` thừa 1 → **0** · bộ từ vựng
+> nhãn 10 → **6** · bộ chọn trang tính 2 → **1** · vòng focus 1,34 → **12,36** · JS ở
+> trang file 125.882 B → **34.611 B** · điều khiển của thanh trợ lý đóng nhận focus 6 →
+> **0** · bộ test 1.747 → **1.967**.
 >
-> Sau vá, #6 lên 2–3, tổng khoảng 16–17 — **vẫn dưới 20, vẫn REDESIGN**, nhưng nay là
-> nợ thiết kế có kiểm soát chứ không phải lỗi đang chảy máu.
+> **Điểm audit chấm lại: 13/30 → 24/30. ĐỌC LÀM THÔNG TIN, KHÔNG PHẢI CỔNG** — đó là hai
+> model chấm hai lần, không phải hai phép đo (ADR #29). Phần chắc chắn là bảng số.
 >
-> **Việc tiếp theo:** chạy tiếp loạt vé redesign, mỗi vé một phiên. Kế tiếp là **#121**.
+> **Cố ý KHÔNG dời, đừng đọc thành hồi quy:** 15 giãn cách inline lệch thang (8 ở màn
+> quản trị, 7 ở màn cán bộ — lượt audit gốc gọi gộp là "màn quản trị") · poll
+> `/jobs/unread.json` mỗi 10 giây · chưa có hệ màu tối.
 >
-> Nợ audit nay ĐÃ THÀNH VÉ, không còn là danh sách rời — đừng vá lẻ ngoài vé:
-> `:disabled` + `.empty-state` + vòng focus 1,34 → **#118 (xong)** · 42 class CSS chết +
-> 13 selector khai trùng → **#127** · skip-link + thanh AI 83% JS → **#126** · tính năng
-> làm nổi cột chết (`cell-grid.js` bắt class không template nào phát) → **#122**.
+> **Nợ đã biết, chưa thành vé:** `var(--border)` và `var(--radius)` ở khối `.apex-*` trỏ
+> tới token không tồn tại ở bất kỳ file nào được nạp, nên khối đó đang render không viền
+> và bo góc 0. Sửa là ĐỔI hình dạng trên màn, nên tách vé riêng.
 >
 > **#115 chỉ tra được 17/25 chuỗi đơn vị.** Bảy chuỗi để nguyên có chủ ý (`UNL` 277 dòng,
 > `UNK`, `I/át`, `I/at`, `1000 viên`) — đúng nghĩa là "không rõ", gán bí danh cho chúng là
