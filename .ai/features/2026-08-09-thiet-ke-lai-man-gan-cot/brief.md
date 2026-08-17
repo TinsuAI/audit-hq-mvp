@@ -142,10 +142,10 @@ thứ một model khác từng chấm — không phải hai phép đo so với n
 | — trong đó trùng khít một token đã có | 19 | 0 | |
 | `font-size` không dùng token | 73 | **4** (đều là `em` của biểu tượng) | |
 | — khai dưới sàn 12px | 3 + 7 chỗ `11px` | **0** | |
-| Lớp CSS chết | 42 | **0** | tombstone `test_static_assets.py` |
+| Lớp CSS chết¹ | 42 | **0** | tombstone `test_static_assets.py` |
 | Selector khai trùng, giá trị xung khắc | 13 | **2** (đều là ghi đè có chủ ý, đã khai) | |
 | Dấu `}` thừa mức cao nhất | 1 (`:1328`) | **0** | |
-| Bộ từ vựng nhãn trên màn gán cột | 10 | **6** | `file_page.py`, `cell-grid.js` |
+| Bộ từ vựng nhãn trên màn gán cột² | 10 | **6** | `file_page.py`, `cell-grid.js` |
 | Bộ chọn trang tính trên trang file | 2 (khác nghĩa) | **1** | `document_file.html:79` |
 | Tính năng làm nổi cột | chết hoàn toàn | **sống**, đo trong trình duyệt | `cell-grid.js:631` |
 | `:disabled` có rule | 0 | **2** | |
@@ -156,10 +156,32 @@ thứ một model khác từng chấm — không phải hai phép đo so với n
 | Skip-link | không | **có, ở mọi trang** | `base.html` |
 | Điều khiển của thanh trợ lý đóng nhận focus | 6 | **0** (`inert`) | đo trong trình duyệt |
 | JS tải về ở trang file | 125.882 B (83% là thanh trợ lý) | **34.611 B, 0% là thanh trợ lý** | |
-| Giãn cách inline lệch thang ở màn quản trị | 15 | **15** (ngoài phạm vi, cố ý) | |
+| Giãn cách inline lệch thang³ | 15 | **15** (ngoài phạm vi, cố ý) | |
 | `prefers-color-scheme` | 0 rule | **0 rule** (chưa có hệ màu tối) | |
 | Poll `/jobs/unread.json` | 10 giây | **10 giây** (ngoài phạm vi, cố ý) | |
-| Bộ test | 1.747 | **1.968** | |
+| Bộ test | 1.747 | **1.967** (+1 xfail) | |
+
+**¹ "0 lớp chết" đúng THEO PHƯƠNG PHÁP nào.** Dò theo chỗ class THẬT SỰ được gán
+(`class=` sau khi bóc khối Jinja · `classList` · `{ class: … }` của `util.el` ·
+`className` · tham số class truyền vào hàm dựng DOM · giá trị `cls` trong dữ liệu Python).
+Một lượt dò tên trên toàn văn bản vẫn trả về khoảng 40 tên "không thấy ở đâu" — tất cả đều
+là **tên ghép lúc chạy** (`badge-op-{{ … }}`, `job-status-{{ … }}`, `tier_css_for()`), tức
+sống. Lượt gốc cũng loại nhóm này ra; con số 0 chỉ có nghĩa dưới cùng phương pháp đó.
+
+**² Sáu bộ từ vựng nhãn, liệt kê ra** (lượt gốc liệt kê đủ 10, nên lượt này cũng phải):
+`STATE_LABEL_VI` 3 giá trị (`file_page.py:82`) · "Cần xác nhận" (`:178`) · ba cách nói về
+trang đã ghim, cả ba đều render: `sheet_note` (`:310`), `sheet_line` (`:414`),
+`sheet_summary` (`:426`) · `cg-col-labelled`/`cg-col-mapped` (`cell-grid.js:209`) ·
+`#cg-notes` (`:515`) · `#cg-status` (`:573`). Bốn bộ đã mất: `match_source_label` và
+`layout_label` (nay chết, ghim ở `test_evidence_prose.py:218,220`), `review_label` và
+`evidence_label` (gộp thành CÂU ở `evidence_sentence`, không còn là một bộ nhãn).
+
+**³ "Màn quản trị" là cách gọi của lượt gốc, và nó không chính xác.** Đo lại: đúng 15 giá
+trị lệch thang, đúng danh sách `file:line` lượt gốc đưa — nhưng 7 trong 15 nằm ở màn của
+CÁN BỘ (`company_detail.html` 6, `item_detail.html` 1), không phải màn quản trị. Cả 15 vẫn
+nằm ngoài phạm vi #128 (vé chỉ đụng `style.css`), chỉ là nhãn dán sai chỗ. Bốn giá trị
+`.25rem`/`.5rem` ở `admin_checks_detail.html` KHÔNG tính: chúng đúng thang, chỉ viết thiếu
+số 0 ở đầu.
 
 Ba lỗi trung thực làm nguyên tắc #6 chấm 0 (lời khai vắng không tới adapter · gửi biểu
 mẫu xoá lời khai đã lưu · "— chưa gán —" tự hoàn tác) đã vá ở `d75f07a` **trước** loạt

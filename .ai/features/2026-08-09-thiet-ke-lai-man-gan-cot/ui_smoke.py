@@ -294,7 +294,7 @@ def main() -> int:  # noqa: C901
                              f"và lưới cuộn ngang tới nó ({before}px → {after}px)")
                 pick.evaluate("e => e.blur()")
                 pg.wait_for_timeout(600)
-                check("rời ô thì tắt đèn",
+                check("rời ô thì bỏ đánh dấu",
                       pg.eval_on_selector_all(".cg-col-hi", "e => e.length"), 0)
 
             # ── 3. Bộ chọn trang tính đã gộp, lúc chạy thật (#124) ───────────────
