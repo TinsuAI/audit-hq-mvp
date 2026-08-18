@@ -38,6 +38,7 @@ PERCENTILE_KEYS: dict[str, tuple[tuple[str, bool], ...]] = {
     "C3.2": (("divergence", False),),
     "C4.3": (("diff_pct", True), ("theoretical_consumption", False)),
     "C6.1": (("diff", False),),
+    "C6.2": (("diff", False),),
 }
 
 # Nhãn tiếng Việt cho từng khoá phân vị. Khoá `details` là định danh nội bộ,
