@@ -64,3 +64,34 @@ def test_ingest_through_the_queue_stays_in_the_fixture_db(app_db: AppDb, default
     # Vế 2: DB của máy không nhận thêm bản ghi nào.
     assert not _company_exists(default_engine, _COMPANY_CODE)
     assert _row_counts(default_engine) == before
+
+
+def test_no_earlier_test_left_a_patched_session_behind(default_engine: Engine) -> None:
+    """Không nhận fixture DB nào, nên phải thấy đúng phiên mặc định của tiến trình.
+
+    Đây là lớp lỗi của #108: file test vá `app.database.engine` / `SessionLocal` rồi
+    không khôi phục và cũng không `dispose()`. Engine rò vẫn giữ nguyên bảng, nên test
+    chạy sau đọc ghi vào DB in-memory của file kia mà KHÔNG có `no such table`, không
+    có dấu hiệu nào — vẫn xanh, chỉ là kiểm sai database.
+
+    **Tầm với có giới hạn, đừng đọc quá lời:** teardown của `app_db` trả `app.database`
+    về bản gốc chụp lúc import conftest, nên BẤT KỲ test dùng `app_db` nào chen vào giữa
+    cũng vá xong chỗ rò trước khi bài này nhìn tới. Nó chỉ đỏ khi chạy TRƯỚC lượt teardown
+    `app_db` kế tiếp. Đo trên chính mã trước khi sửa #108: xếp ngay sau
+    `test_raw_data_view.py` thì đỏ, còn để bài `app_db` cùng file chạy trước thì xanh. Vì
+    vậy `--shuffle` nhiều seed mới là cách dùng đúng — mỗi seed là một thứ tự khác.
+    """
+    import app.database as dbmod
+    from app.app_settings import get_number_format
+
+    assert dbmod.engine is default_engine, (
+        "`app.database.engine` không còn là engine mặc định — một test chạy trước đã vá "
+        "mà không khôi phục."
+    )
+    with dbmod.SessionLocal() as db:
+        assert db.get_bind() is default_engine, (
+            "`SessionLocal` mở phiên tới engine khác engine mặc định — ràng buộc rò từ "
+            "một test chạy trước."
+        )
+        # Đọc thật một setting: chuỗi `SessionLocal` → engine → bảng phải đi tới cùng.
+        assert get_number_format(db) in {"vi", "en"}
