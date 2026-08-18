@@ -475,3 +475,52 @@ def test_unknown_operation_badge_contrast() -> None:
     assert fg and bg, ".badge-op-unknown thiếu `color` hoặc `background`"
     ratio = _contrast(_color(fg), _color(bg))
     assert ratio >= 4.5, f".badge-op-unknown: {ratio:.2f}, ngưỡng 4,5"
+
+
+STATIC_DIR = STYLESHEET.parent
+TEMPLATE_DIR = STYLESHEET.resolve().parents[1] / "templates"
+
+#: `var(--x)` KHÔNG kèm giá trị dự phòng. `var(--x, 12px)` không nằm ở đây: token vắng
+#: thì trình duyệt dùng giá trị sau dấu phẩy, nên nó không hỏng. Đó cũng là lý do bốn
+#: token `--cg-*` (do `cell-grid.js` đặt lúc chạy) không bị bài này chặn — mọi chỗ dùng
+#: chúng đều khai dự phòng.
+_BARE_VAR = re.compile(r"var\(\s*(--[A-Za-z0-9-]+)\s*\)")
+_TOKEN_DEF = re.compile(r"(--[A-Za-z0-9-]+)\s*:")
+
+
+def _strip_comments(text: str) -> str:
+    return re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+
+
+@lru_cache(maxsize=1)
+def _defined_tokens() -> frozenset[str]:
+    """Mọi token khai trong bó CSS — hợp của cả ba file, token dùng chéo file là hợp lệ."""
+    names: set[str] = set()
+    for path in sorted(STATIC_DIR.glob("*.css")):
+        names |= set(_TOKEN_DEF.findall(_strip_comments(path.read_text(encoding="utf-8"))))
+    return frozenset(names)
+
+
+def test_every_bare_var_token_is_defined() -> None:
+    """`var(--x)` không dự phòng mà `--x` chưa khai ở đâu → khai báo đó bị BỎ, im lặng.
+
+    Không có cảnh báo nào ở trình duyệt lẫn ở bộ test: `border: 1px solid var(--border)`
+    với `--border` chưa khai thì cả dòng `border` mất, phần tử hiện ra không viền, đúng
+    như khi không ai viết dòng đó. Đợt #128 đưa 85 literal màu về token nhưng không bài
+    nào hỏi chiều ngược lại — token được TRỎ TỚI có tồn tại không.
+
+    Quét cả `app/templates`: thuộc tính `style=` viết thẳng trong template dùng token y
+    như stylesheet, và cùng hỏng y như vậy.
+    """
+    defined = _defined_tokens()
+    dangling: list[str] = []
+    files = sorted(STATIC_DIR.glob("*.css")) + sorted(TEMPLATE_DIR.rglob("*.html"))
+    for path in files:
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for token in _BARE_VAR.findall(line):
+                if token not in defined:
+                    dangling.append(f"{path.name}:{lineno} {token}")
+    assert not dangling, (
+        f"{len(dangling)} chỗ trỏ tới token chưa khai — khai báo CSS ở đó bị bỏ: "
+        + ", ".join(dangling)
+    )
