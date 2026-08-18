@@ -300,9 +300,13 @@ def load_every_predictable_source(session, company_id: int, year: int = 2025) ->
 
     Kỳ N−1 có dòng M15 vì hai lý do cùng lúc: C6.1 đối chiếu tồn cuối kỳ trước, và
     cổng định mức chỉ thôi chặn khi kỳ đang xét không còn là kỳ sớm nhất hệ thống giữ.
+    Kỳ N−1 cũng phải có dòng M15a: C6.2 là phép đối chiếu tương ứng cho thành phẩm và
+    có cổng kỳ trước RIÊNG — có Mẫu 15 kỳ trước không mở được cổng của nó.
     """
     add_nvl(session, company_id, material_code="A", unit="KG", closing=10,
             year=year - 1)
+    add_sp(session, company_id, product_code="TP", unit="PCE", closing=0,
+           year=year - 1)
     add_nvl(session, company_id, material_code="A", unit="KG", opening=10, imported=100,
             production_out=100, closing=10, year=year)
     add_sp(session, company_id, product_code="TP", unit="PCE", intake=100,

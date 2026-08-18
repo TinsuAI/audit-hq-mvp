@@ -10,34 +10,10 @@ from __future__ import annotations
 from datetime import date
 
 from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
 
-from app.database import Base
 from app.main import app
 from app.models import Company, DeclarationLine, Finding, NvlBalance
-
-
-def _setup_db():
-    import app.database as dbmod
-    from app.app_settings import invalidate_cache
-    from app.auth_users import seed_default_admin
-
-    new_engine = dbmod.create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
-    new_session = dbmod.sessionmaker(
-        bind=new_engine, autoflush=False, autocommit=False, future=True
-    )
-    dbmod.engine = new_engine
-    dbmod.SessionLocal = new_session
-    Base.metadata.create_all(new_engine)
-    with new_session() as db:
-        seed_default_admin(db, "admin", "admin")
-    invalidate_cache()
-    return new_engine, new_session
+from tests.conftest import AppDb
 
 
 def _login(client: TestClient) -> None:
@@ -81,8 +57,8 @@ def _seed(new_session):
         return c.id
 
 
-def test_source_file_column_shows_the_file_name_not_the_server_path():
-    _engine, new_session = _setup_db()
+def test_source_file_column_shows_the_file_name_not_the_server_path(app_db: AppDb):
+    new_session = app_db.SessionLocal
     _seed(new_session)
     client = TestClient(app)
     _login(client)
@@ -91,8 +67,8 @@ def test_source_file_column_shows_the_file_name_not_the_server_path():
     assert "/srv/data" not in page, "đường dẫn máy chủ không có lý do gì phải in ra"
 
 
-def test_filter_by_declaration_number():
-    _engine, new_session = _setup_db()
+def test_filter_by_declaration_number(app_db: AppDb):
+    new_session = app_db.SessionLocal
     _seed(new_session)
     client = TestClient(app)
     _login(client)
@@ -103,9 +79,9 @@ def test_filter_by_declaration_number():
     assert "103000002" not in page
 
 
-def test_filter_by_customs_code_accepts_a_set():
+def test_filter_by_customs_code_accepts_a_set(app_db: AppDb):
     """Link từ phát hiện truyền cả tập loại hình mà check đã cộng."""
-    _engine, new_session = _setup_db()
+    new_session = app_db.SessionLocal
     _seed(new_session)
     client = TestClient(app)
     _login(client)
@@ -115,8 +91,8 @@ def test_filter_by_customs_code_accepts_a_set():
     assert "103000001" in both and "103000002" in both
 
 
-def test_filter_by_date_range():
-    _engine, new_session = _setup_db()
+def test_filter_by_date_range(app_db: AppDb):
+    new_session = app_db.SessionLocal
     _seed(new_session)
     client = TestClient(app)
     _login(client)
@@ -128,8 +104,8 @@ def test_filter_by_date_range():
     assert "103000002" not in page
 
 
-def test_filter_by_book_applies_to_settlement_tables():
-    _engine, new_session = _setup_db()
+def test_filter_by_book_applies_to_settlement_tables(app_db: AppDb):
+    new_session = app_db.SessionLocal
     _seed(new_session)
     client = TestClient(app)
     _login(client)
@@ -138,7 +114,7 @@ def test_filter_by_book_applies_to_settlement_tables():
     assert "NVL-A" not in page
 
 
-def test_m16_filter_matches_both_the_product_code_and_the_material_code():
+def test_m16_filter_matches_both_the_product_code_and_the_material_code(app_db: AppDb):
     """Mẫu 16 là bảng CẶP — tra mã TP ở đây phải ra dòng, không ra bảng rỗng.
 
     C4.9 (thiếu định mức) trỏ sang chính bảng này bằng mã TP; lọc một cột thôi thì
@@ -147,7 +123,7 @@ def test_m16_filter_matches_both_the_product_code_and_the_material_code():
     """
     from app.models import Norm
 
-    _engine, new_session = _setup_db()
+    new_session = app_db.SessionLocal
     _seed(new_session)
     with new_session() as s:
         cid = s.query(Company).filter_by(code="RAWCO").one().id
@@ -170,9 +146,9 @@ def test_m16_filter_matches_both_the_product_code_and_the_material_code():
     assert "TP-9" not in by_material
 
 
-def test_switching_table_tab_keeps_the_code_filter():
+def test_switching_table_tab_keeps_the_code_filter(app_db: AppDb):
     """Đổi tab mà mất bộ lọc thì cán bộ phải gõ lại mã — đúng thứ đang bực."""
-    _engine, new_session = _setup_db()
+    new_session = app_db.SessionLocal
     _seed(new_session)
     client = TestClient(app)
     _login(client)
@@ -180,8 +156,8 @@ def test_switching_table_tab_keeps_the_code_filter():
     assert "table=bcct&amp;q=NVL-A" in page or "table=bcct&q=NVL-A" in page
 
 
-def test_numbers_follow_the_vietnamese_convention():
-    _engine, new_session = _setup_db()
+def test_numbers_follow_the_vietnamese_convention(app_db: AppDb):
+    new_session = app_db.SessionLocal
     _seed(new_session)
     client = TestClient(app)
     _login(client)
@@ -189,8 +165,8 @@ def test_numbers_follow_the_vietnamese_convention():
     assert "1.234,50" in page
 
 
-def test_unit_price_keeps_four_decimals():
-    _engine, new_session = _setup_db()
+def test_unit_price_keeps_four_decimals(app_db: AppDb):
+    new_session = app_db.SessionLocal
     _seed(new_session)
     client = TestClient(app)
     _login(client)
@@ -198,11 +174,11 @@ def test_unit_price_keeps_four_decimals():
     assert "0,0125" in page, "đơn giá cắt còn 2 chữ số là mất giá trị thật"
 
 
-def test_raw_data_link_points_at_the_table_the_check_actually_read():
+def test_raw_data_link_points_at_the_table_the_check_actually_read(app_db: AppDb):
     """C1.2 có mã NVL nhưng bằng chứng ở tờ khai — link phải sang BCCT, không M15."""
     from app.routes.companies import raw_data_url
 
-    _engine, new_session = _setup_db()
+    new_session = app_db.SessionLocal
     cid = _seed(new_session)
     with new_session() as s:
         company = s.get(Company, cid)
@@ -218,11 +194,11 @@ def test_raw_data_link_points_at_the_table_the_check_actually_read():
     assert "customs=E31%2CE62" in url
 
 
-def test_raw_data_link_has_no_book_param_for_declarations():
+def test_raw_data_link_has_no_book_param_for_declarations(app_db: AppDb):
     """`declaration_lines` không có cột `book` — truyền vào là lọc rỗng."""
     from app.routes.companies import raw_data_url
 
-    _engine, new_session = _setup_db()
+    new_session = app_db.SessionLocal
     cid = _seed(new_session)
     with new_session() as s:
         company = s.get(Company, cid)
@@ -235,10 +211,10 @@ def test_raw_data_link_has_no_book_param_for_declarations():
     assert "book=" not in url
 
 
-def test_raw_data_link_carries_the_book_for_settlement_tables():
+def test_raw_data_link_carries_the_book_for_settlement_tables(app_db: AppDb):
     from app.routes.companies import raw_data_url
 
-    _engine, new_session = _setup_db()
+    new_session = app_db.SessionLocal
     cid = _seed(new_session)
     with new_session() as s:
         company = s.get(Company, cid)
@@ -251,11 +227,11 @@ def test_raw_data_link_carries_the_book_for_settlement_tables():
     assert "table=m15" in url and "book=EPE" in url
 
 
-def test_raw_data_link_is_none_when_the_table_is_unknown():
+def test_raw_data_link_is_none_when_the_table_is_unknown(app_db: AppDb):
     """Phát hiện tổ hợp trỏ vào bảng `findings` — không có dữ liệu gốc để mở."""
     from app.routes.companies import raw_data_url
 
-    _engine, new_session = _setup_db()
+    new_session = app_db.SessionLocal
     cid = _seed(new_session)
     with new_session() as s:
         company = s.get(Company, cid)
@@ -273,8 +249,8 @@ def test_raw_data_link_is_none_when_the_table_is_unknown():
         assert raw_data_url(company, 2024, no_subject) is None
 
 
-def test_finding_row_offers_the_raw_data_link():
-    _engine, new_session = _setup_db()
+def test_finding_row_offers_the_raw_data_link(app_db: AppDb):
+    new_session = app_db.SessionLocal
     cid = _seed(new_session)
     with new_session() as s:
         s.add(Finding(

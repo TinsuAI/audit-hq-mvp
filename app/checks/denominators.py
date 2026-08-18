@@ -38,7 +38,7 @@ RULE_SCOPE: dict[str, str] = {
     # Nhóm 5: truy nguồn NVL
     "C5.1": "nvl",
     # Nhóm 6: liên kỳ
-    "C6.1": "nvl",
+    "C6.1": "nvl", "C6.2": "tp",
 }
 
 

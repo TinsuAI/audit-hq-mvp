@@ -59,6 +59,7 @@ def test_requires_matches_the_source_audit():
         "C4.9": {"m15a", "m16"},        # M15a sản lượng → M16 định mức, không đọc M15
         "C5.1": {"m15"},
         "C6.1": {"m15"},                # kỳ N và N-1, cả hai đều M15
+        "C6.2": {"m15a"},               # kỳ N và N-1, cả hai đều M15a
     }
     actual = {code: set(SPECS[code].requires) for code in ALL_CHECKS}
     assert actual == expected

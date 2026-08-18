@@ -94,6 +94,8 @@ def _load_every_source(session, company_id: int, year: int = 2024) -> None:
     # test dưới đây đo lẫn một mã `not_evaluable` thứ hai không liên quan.
     add_nvl(session, company_id, material_code="SRC", closing=0, year=year - 1)
     add_sp(session, company_id, product_code="SRC_P", export_qty=1, closing=0, year=year)
+    # Y hệt cho C6.2 trên Mẫu 15a — nó có cổng kỳ trước riêng, Mẫu 15 kỳ trước không mở.
+    add_sp(session, company_id, product_code="SRC_P", closing=0, year=year - 1)
     session.add(Norm(company_id=company_id, period_year=year, product_code="SRC_P",
                      material_code="SRC", norm_qty=1.0))
     add_decl(session, company_id, declaration_no="SRC1", customs_code="E31",

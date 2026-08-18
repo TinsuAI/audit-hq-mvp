@@ -95,7 +95,7 @@
 </div>
 
 {% if check.status == CheckStatus.DRAFT %}
-<div class="card mt-2" style="border-color:var(--c-warning)">
+<div class="card mt-2" style="border-color:var(--c-warning-border)">
   <p style="margin:0;font-size:var(--fs-sm);color:var(--c-text-muted)">
     ⚠️ Kiểm tra đang ở trạng thái <strong>Nháp</strong>. Nhấn "Công bố" để kiểm tra này chạy trong lần
     chạy kế tiếp. Sau khi công bố, kết quả sẽ hiển thị trong trang chi tiết doanh nghiệp
@@ -105,8 +105,8 @@
 {% endif %}
 
 <!-- Khung chạy thử -->
-<div class="card mt-3" style="border-color:var(--c-info)">
-  <h3 class="card-title" style="color:var(--c-info)">▶ Chạy thử</h3>
+<div class="card mt-3" style="border-color:var(--c-info-border)">
+  <h3 class="card-title" style="color:var(--c-info-fg)">▶ Chạy thử</h3>
   <p style="font-size:var(--fs-sm);color:var(--c-text-muted);margin-top:0">
     Chạy kiểm tra này trên một doanh nghiệp và năm cụ thể — không lưu kết quả vào cơ sở dữ liệu.
   </p>
@@ -150,7 +150,7 @@ async function runPreview() {
   const results = document.getElementById('preview-results');
 
   status.style.display = 'block';
-  status.style.color = 'var(--c-info)';
+  status.style.color = 'var(--c-info-fg)';
   status.textContent = 'Đang chạy…';
   results.style.display = 'none';
 
@@ -183,7 +183,7 @@ async function runPreview() {
 
     const tbody = document.getElementById('preview-tbody');
     tbody.innerHTML = '';
-    const severityColor = {critical: 'var(--c-critical,#c0392b)', warning: 'var(--c-warning,#e67e22)', info: 'var(--c-info)'};
+    const severityColor = {critical: 'var(--c-critical,#c0392b)', warning: 'var(--c-warning,#e67e22)', info: 'var(--c-info-fg)'};
     const severityLabel = {critical: 'Nghiêm trọng', warning: 'Cảnh báo', info: 'Thông tin'};
     for (const f of findings) {
       const tr = document.createElement('tr');

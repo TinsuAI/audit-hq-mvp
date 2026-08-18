@@ -270,7 +270,7 @@ CATALOG: list[CatalogEntry] = [
         title="Tồn đầu kỳ N khác tồn cuối kỳ N-1 — TP (M15a)",
         problem="Tương tự C6.1 cho thành phẩm.",
         risk="Điều chỉnh tồn giữa 2 kỳ không có giải trình.",
-        severities=("critical",), status="wip",
+        severities=("critical",), status="mvp",
     ),
     CatalogEntry(
         phase=1, group=6, code="C6.3",

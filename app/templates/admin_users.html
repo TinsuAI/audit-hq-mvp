@@ -9,7 +9,7 @@
 </div>
 
 {% if saved %}
-<div class="alert alert-success" style="margin-bottom:var(--space-4);padding:var(--space-3);background:#d1fae5;border:1px solid #6ee7b7;border-radius:var(--radius);color:#065f46">
+<div class="alert alert-success" style="margin-bottom:var(--space-4);padding:var(--space-3);background:#d1fae5;border:1px solid #6ee7b7;border-radius:var(--radius-md);color:#065f46">
   ✅
   {% if saved.startswith('deleted-') %}Đã xóa tài khoản <strong>{{ saved[8:] }}</strong>.
   {% elif saved.startswith('password-') %}Đã đổi mật khẩu cho <strong>{{ saved[9:] }}</strong>.

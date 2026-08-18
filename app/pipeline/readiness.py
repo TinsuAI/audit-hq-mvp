@@ -39,7 +39,7 @@ from sqlalchemy.orm import Session
 
 from app.checks import ALL_CHECKS
 from app.checks.c3_classify import comparison_units_gate
-from app.checks.c6_cross_period import previous_period_gate
+from app.checks.c6_cross_period import previous_period_gate, previous_period_sp_gate
 from app.checks.norm_gate import norm_gate_outcome
 from app.checks.not_evaluable import (
     REMEDY_NOTHING_TO_LOAD,
@@ -245,6 +245,7 @@ _EXTRA_GATES = {
     "C3.3": comparison_units_gate,
     "C4.3": norm_gate_outcome,
     "C6.1": previous_period_gate,
+    "C6.2": previous_period_sp_gate,
 }
 
 

@@ -285,6 +285,18 @@ register(CheckSpec(
     default_severity=Severity.CRITICAL,
     requires=frozenset({"m15"}),
 ))
+register(CheckSpec(
+    code="C6.2",
+    group=6,
+    title="Tồn đầu kỳ N khác tồn cuối kỳ N-1 (thành phẩm)",
+    description=(
+        "M15a tồn đầu kỳ N ≠ M15a tồn cuối kỳ N-1 theo từng mã thành phẩm. "
+        "Cần ≥2 kỳ dữ liệu (tolerance ±0.01). Chưa nạp M15a kỳ N-1 thì trả "
+        "CHƯA ĐÁNH GIÁ ĐƯỢC, không trả 0 phát hiện."
+    ),
+    default_severity=Severity.CRITICAL,
+    requires=frozenset({"m15a"}),
+))
 
 
 # --- Severity scales for rule with thresholds ---

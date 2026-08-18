@@ -174,6 +174,7 @@ FINDING_COLUMNS: dict[str, tuple[str, ...]] = {
     "C4.9": ("intake", "norm_in_other_book", "boundary_period"),
     "C5.1": ("production_out", "import", "opening"),
     "C6.1": ("current_opening", "previous_closing", "diff"),
+    "C6.2": ("current_opening", "previous_closing", "diff"),
     "COMBO_FORGED_NORM": ("triggers",),
     "COMBO_UNDECLARED_SOURCE": ("triggers",),
     "COMBO_ACCOUNTING_INCONSISTENT": ("triggers",),

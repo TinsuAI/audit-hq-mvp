@@ -26,7 +26,7 @@
   <div class="transcript" style="display:flex;flex-direction:column;gap:var(--space-3)">
     {% for m in msgs %}
     <div class="transcript-msg transcript-{{ m.role }}"
-         style="padding:var(--space-3);border-radius:var(--radius);
+         style="padding:var(--space-3);border-radius:var(--radius-md);
                 {% if m.role == 'user' %}background:#f0f9ff;border-left:3px solid #38bdf8;
                 {% elif m.role == 'assistant' %}background:#f0fdf4;border-left:3px solid #4ade80;
                 {% elif m.role == 'tool' %}background:#fffbeb;border-left:3px solid #fbbf24;font-size:var(--fs-sm);
