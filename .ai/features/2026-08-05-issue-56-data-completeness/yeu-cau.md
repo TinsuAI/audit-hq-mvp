@@ -11,15 +11,19 @@ Xếp theo **mức** — mức thấp phải đứng vững trước thì mức 
 **Soát lại 06/08/2026** sau khi PR #64 (bảy ticket #57–#63) và PR #67 (ADR #23) vào `main`. Số phát
 hiện lấy từ `check_runs` trên DB local — 14 (DN, kỳ), lần chạy cuối 06/08 07:38.
 
+**Soát lại 18/08/2026** đối chiếu từng dòng với code thật sau loạt #110–#130. Bốn dòng đổi trạng
+thái: L.2 ship (C6.2), 0.3 lên một phần (#114), 2.6 và 0.1 giữ trạng thái nhưng mô tả cũ đã sai.
+Mọi con số phát hiện dưới đây vẫn là phép đo 06/08 — lượt soát này KHÔNG đo lại.
+
 ---
 
 ## Mức 0 — Tiếp nhận file
 
 | # | Yêu cầu | Nguồn | TT |
 |---|---|---|---|
-| 0.1 | Kiểm định dạng + đúng mẫu + đủ chỉ tiêu. **Sai mẫu → từ chối tiếp nhận**, báo lỗi cụ thể | J10 | 🔨 đã từ chối được 2 ca: BCCT không resolve nổi trường bắt buộc (`bcct.py`), file quyết toán không đọc được / thiếu nhãn sổ (`ingest.py:129-168`). M15/15a/16 sai mẫu vẫn *nhận rồi gắn cờ* |
+| 0.1 | Kiểm định dạng + đúng mẫu + đủ chỉ tiêu. **Sai mẫu → từ chối tiếp nhận**, báo lỗi cụ thể | J10 | 🔨 **soát 18/08: 3 ca từ chối, không phải 2** — BCCT không resolve nổi trường bắt buộc (`bcct.py`), file quyết toán không đọc được / thiếu nhãn sổ (`ingest.py:215,240`), và tiêu đề file nói một kỳ khác hẳn nhãn đang nạp (`ingest.py:359-364`, #66). Ô thả của #88 **cố ý nhận mọi file** rồi gợi ý loại, nên M15/15a/16 sai mẫu vẫn *nhận rồi gắn cờ* |
 | 0.2 | Đọc đúng cột — mỗi cột mang nhãn bằng chứng, cột đoán theo vị trí thì cảnh báo | — | ✅ T7 #63 — `BcctFile` mang `ParseProvenance`, `_COL` chỉ dùng khi nhãn xác nhận bố cục chuẩn. 3 file từng đọc sai nay resolve **19/19 trường theo nhãn** |
-| 0.3 | Map biểu mẫu 15 / 15a / 16 theo thông tư **121** | D12, Y11 | ⬜ Y11 ghi "later"; 4 họ template seed (#51, #52) đều là TT39 |
+| 0.3 | Map biểu mẫu 15 / 15a / 16 theo thông tư **121** | D12, Y11 | 🔨 **đổi từ ⬜ ngày 18/08** — #114 đưa TT 121 vào code ở một điểm: bộ mã cột (9) Mẫu 16 suy theo kỳ, `TT121_EFFECTIVE = 2026-02-01`, thêm `TH` / `SPTN` (`app/adapters/m16_note.py`). 4 họ template seed (#51, #52) vẫn là TT39. Câu hỏi nghiệp vụ #114 giao lại còn treo: `KXDĐM` tác động thế nào tới cổng độ phủ định mức |
 | 0.4 | Chuẩn hoá dữ liệu đầu vào — mỗi phần mềm kế toán kết xuất một kiểu | D13 | ⬜ |
 
 ## Mức 1 — Mỗi biểu tự đứng vững
@@ -44,7 +48,7 @@ hiện lấy từ `check_runs` trên DB local — 14 (DN, kỳ), lần chạy cu
 | 2.3 | Chuỗi Mẫu 16 **đứt quãng** giữa các năm → cảnh báo | J2c | ⬜ luật kế thừa (2.2) lấp chỗ đứt mà không báo — chưa ai thấy khoảng hở |
 | 2.4 | Có tồn đầu kỳ mà lại có ĐM khai kỳ này → cảnh báo **"ĐM mới"** | Y1.3 | ⬜ |
 | 2.5 | NVL trong M16 không có nguồn trong M15 | — | ✅ C4.1 — **244** phát hiện (19 lúc 05/08; phạm vi mở theo #59 + sửa ngoài ticket) |
-| 2.6 | **Đvt của cùng một NVL phải khớp** giữa M16 và M15 | J8 | ✅ 06/08 — C3.3 mở phạm vi sang M16 (đề án sửa trước). Trên pilot: 108 → **152** phát hiện, 47 dòng có M16 trong nguồn lệch |
+| 2.6 | **Đvt của cùng một NVL phải khớp** giữa M16 và M15 | J8 | ✅ 06/08 — C3.3 mở phạm vi sang M16 (đề án sửa trước). Trên pilot: 108 → **152** phát hiện, 47 dòng có M16 trong nguồn lệch. **#115 sửa sau đó:** tách "chưa tra được đơn vị" khỏi "đã đo ra lệch" (`uom.is_unresolvable`), 7 chuỗi (`UNL` 277 dòng, `UNK`, `I/át`, `1000 viên`…) cố ý để nguyên vì gán bí danh cho chúng là khẳng định một tương đương không có căn cứ — chúng ra Cảnh báo thay vì Nghiêm trọng. Con số 152 có TRƯỚC phép tách, phân bố mức đã đổi |
 | 2.7 | **Đếm tờ khai** HQ vs DN, chỉ ra thừa/thiếu từng tờ | D3 | ⬜ |
 | 2.8 | Số dư đầu kỳ: đối chiếu DN vs HQ, bắt `#N/A` | D2 | ⬜ |
 
@@ -71,7 +75,7 @@ hiện lấy từ `check_runs` trên DB local — 14 (DN, kỳ), lần chạy cu
 | # | Yêu cầu | Nguồn | TT |
 |---|---|---|---|
 | L.1 | Tồn cuối kỳ trước = tồn đầu kỳ này, **NVL** | Y2 | ✅ C6.1 — ra **2** phát hiện. Lỗ "kỳ N-1 trống vẫn ra 0" đã bịt 06/08: thiếu M15 kỳ N-1 → *chưa đánh giá được*, đúng **8/14** kỳ pilot rơi vào đó |
-| L.2 | Bản tương ứng cho **thành phẩm** (M15a) | Y2 | ⬜ |
+| L.2 | Bản tương ứng cho **thành phẩm** (M15a) | Y2 | ✅ 18/08 — **C6.2**, mã catalog đã có sẵn nên không sửa đề án. Cùng phép đối chiếu với C6.1 trên `sp_balances`, sai số ±0,01, khoá theo (sổ, mã TP). Cổng kỳ trước RIÊNG trên Mẫu 15a: có Mẫu 15 kỳ N-1 không mở được cổng của nó, dùng chung sẽ chạy trên tập rỗng rồi trả 0 phát hiện. **Chưa đo trên pilot** |
 
 ## Điều tra — không phải yêu cầu mới
 
@@ -134,17 +138,19 @@ lẫn trần); #68 — cột chết `check_runs.skip_reason` sau khi #53 gộp v
 **Cả sổ**, chia theo cái gì đang chặn — danh sách dưới gồm luôn 3 dòng #56 đã ship. Không phải dòng
 nào cũng ship được bằng PR:
 
-- **Đã có** (12): 0.2, 1.1, 1.2, 2.1, 2.2, 2.5, 2.6, 3.1, 3.3, 3.4, 4.1, L.1 — nhưng 5 check phủ
-  1.1/1.2/3.3 vẫn bắn 0, xem Đ.1 (đã đo: 0 là thật).
-- **Ship được bằng code, xếp hàng sau** (14): 0.1, 0.3, 0.4, 1.3, 1.4, 2.3, 2.4, 2.7, 2.8, 3.2,
-  4.2, 4.3, 4.4, L.2. Rẻ nhất là 1.4 và 4.2: phần đo (1.4: 5.310 dòng) và nền ĐM nhiều kỳ (4.2)
-  đã xong, chỉ còn viết check.
+- **Đã có** (13): 0.2, 1.1, 1.2, 2.1, 2.2, 2.5, 2.6, 3.1, 3.3, 3.4, 4.1, L.1, L.2 — nhưng 5 check
+  phủ 1.1/1.2/3.3 vẫn bắn 0, xem Đ.1 (đã đo: 0 là thật).
+- **Ship được bằng code, xếp hàng sau** (13): 0.1, 0.3, 0.4, 1.3, 1.4, 2.3, 2.4, 2.7, 2.8, 3.2,
+  4.2, 4.3, 4.4. Rẻ nhất là 4.2: mã catalog **C6.3** đã có sẵn kèm ngưỡng chốt trong đề án (>20%
+  Cảnh báo, >50% Nghiêm trọng) và nền định mức nhiều kỳ (`effective_norms.py`) đã xong — chỉ còn
+  viết check. Dòng 4.2 trước ghi "= C4.6": C4.6 là ngoại lai thống kê ±3σ/±5σ và ĐÒI ≥3 kỳ BCQT,
+  trên pilot chỉ DN 10 đủ điều kiện. Kế đó là 1.4 (đã đo 5.310 dòng) nhưng nó cần mã catalog mới.
 - **Chặn bởi dữ liệu nguồn** (3): B.1, B.2, B.3. Không PR nào ship được, phải xin nguồn khác.
 - **Cần file mới nạp vào** (5): N.1–N.5. Adapter viết được, nhưng vô nghĩa khi chưa có file.
 - **Ngoài phạm vi kiểm tra** (5): X.1–X.5. Ông tự đánh dấu, X.3 (quy tắc xuất xứ) là domain riêng.
 
-12 + 14 + 3 + 5 + 5 = 39 dòng đánh số trong sổ. (Sáng 06/08 là 3 + 6 + 17 + 3 + 5 + 5; ba dòng
-trong phạm vi #56 rồi 2.6, 3.1, 4.1 lần lượt chuyển sang nhóm "đã có".)
+13 + 13 + 3 + 5 + 5 = 39 dòng đánh số trong sổ. (Sáng 06/08 là 3 + 6 + 17 + 3 + 5 + 5; ba dòng
+trong phạm vi #56 rồi 2.6, 3.1, 4.1 lần lượt chuyển sang nhóm "đã có"; L.2 chuyển sang 18/08.)
 
 **Một câu còn treo** (chi tiết ở `grill-state.md`):
 
@@ -162,7 +168,7 @@ ra được nhưng có cột phải đoán theo vị trí. Không phải chọn 
 bỏ tiếp **5** dòng X.* nằm ngoài phạm vi kiểm tra → **29**. Trùng lặp đã gộp: tờ khai huỷ/sửa nêu 3
 lần, tiêu hao lý thuyết 3 lần, ĐM kế thừa 4 lần.
 
-**12 cái đã có sẵn** (0.2, 1.1, 1.2, 2.1, 2.2, 2.5, 2.6, 3.1, 3.3, 3.4, 4.1, L.1). Năm check phủ 1.1/1.2/3.3 vẫn
+**13 cái đã có sẵn** (0.2, 1.1, 1.2, 2.1, 2.2, 2.5, 2.6, 3.1, 3.3, 3.4, 4.1, L.1, L.2). Năm check phủ 1.1/1.2/3.3 vẫn
 bắn 0 (C2.1–C2.4, C5.1) nhưng Đ.1 đã đo xong: **dữ liệu không có dòng nào vi phạm**, nên ba dòng
 đó ✅ có căn cứ. Hệ quả cho việc chọn việc tiếp: check nào đọc lại đúng các cột M15/M15a đó cũng sẽ
 ra 0 — muốn có phát hiện phải đi vào cột khác (định mức, đơn vị tính, giá trị tiền).
